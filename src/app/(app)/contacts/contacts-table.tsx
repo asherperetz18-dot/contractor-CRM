@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
   STAGE_COLOR,
@@ -22,8 +23,24 @@ export function ContactsTable({
   canWrite: boolean;
   canDelete: boolean;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Lead | null>(null);
+  const [consumedOpenId, setConsumedOpenId] = useState<string | null>(null);
+
+  const openLeadId = searchParams.get("openLead");
+  if (openLeadId && openLeadId !== consumedOpenId) {
+    setConsumedOpenId(openLeadId);
+    const found = leads.find((l) => l.id === openLeadId);
+    if (found) setEditing(found);
+  }
+
+  useEffect(() => {
+    if (searchParams.get("openLead")) {
+      router.replace("/contacts", { scroll: false });
+    }
+  }, [searchParams, router]);
 
   const totalContacts = leads.length;
   const withOpenLeads = leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length;

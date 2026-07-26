@@ -81,6 +81,66 @@ body {
   font-size: 13px;
   background: var(--paper);
 }
+.gsearch-wrap {
+  position: relative;
+  flex: 1;
+  max-width: 420px;
+}
+.gsearch-wrap .global-search {
+  max-width: none;
+  width: 100%;
+}
+.gsearch-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+}
+.gsearch-panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  width: 100%;
+  min-width: 340px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(20, 32, 46, 0.18);
+  padding: 6px 0;
+  z-index: 40;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.gsearch-empty {
+  padding: 14px 16px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.gsearch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.gsearch-item:hover {
+  background: #faf8f3;
+}
+.gsearch-item-main {
+  min-width: 0;
+}
+.gsearch-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.gsearch-item-sub {
+  font-size: 12px;
+  color: var(--ink-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .global-topbar-right {
   display: flex;
   align-items: center;

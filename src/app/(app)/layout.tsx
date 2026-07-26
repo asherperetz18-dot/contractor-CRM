@@ -6,6 +6,7 @@ import { NAV } from "@/lib/nav";
 import { NavLink } from "./nav-link";
 import { NavGroup } from "./nav-group";
 import { QuickCreateMenu } from "./quick-create-menu";
+import { GlobalSearch } from "./global-search";
 import { version } from "../../../package.json";
 
 export default async function AppLayout({
@@ -39,7 +40,7 @@ export default async function AppLayout({
                 {companyName || "Contractor CRM"}
               </span>
             )}
-            <input className="global-search" placeholder="Search for Anything" />
+            <GlobalSearch />
           </div>
           <div className="global-topbar-right">
             <QuickCreateMenu />
