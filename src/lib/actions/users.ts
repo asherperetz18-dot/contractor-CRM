@@ -12,9 +12,9 @@ export async function createUser(input: {
   password: string;
   roles: AppRole[];
 }) {
-  // Guard: only an Office user may create accounts. RLS protects the
-  // profiles table itself, but user creation goes through the Admin API
-  // (service role, bypasses RLS), so the check has to happen here.
+  // Guard: only an Office or Admin user may create accounts. RLS protects
+  // the profiles table itself, but user creation goes through the Admin
+  // API (service role, bypasses RLS), so the check has to happen here.
   const supabase = await createClient();
   const {
     data: { user },
@@ -26,8 +26,8 @@ export async function createUser(input: {
     .eq("id", user.id)
     .single();
   const roles = (profile as { roles: AppRole[] } | null)?.roles ?? [];
-  if (!roles.includes("Office")) {
-    return { error: "Only Office users can create accounts." };
+  if (!roles.includes("Office") && !roles.includes("Admin")) {
+    return { error: "Only Office or Admin users can create accounts." };
   }
 
   const admin = createAdminClient();
@@ -58,6 +58,17 @@ export async function updateUserRoles(userId: string, roles: AppRole[]) {
   const { error } = await supabase
     .from("profiles")
     .update({ roles })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/users-roles");
+  return {};
+}
+
+export async function updateCanDeleteLeads(userId: string, canDelete: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ can_delete_leads: canDelete })
     .eq("id", userId);
   if (error) return { error: error.message };
   revalidatePath("/settings/users-roles");

@@ -15,10 +15,12 @@ export function ContactsTable({
   leads,
   reps,
   canWrite,
+  canDelete,
 }: {
   leads: Lead[];
   reps: Profile[];
   canWrite: boolean;
+  canDelete: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Lead | null>(null);
@@ -119,6 +121,7 @@ export function ContactsTable({
           lead={editing}
           reps={reps}
           readOnly={!canWrite}
+          canDelete={canDelete}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

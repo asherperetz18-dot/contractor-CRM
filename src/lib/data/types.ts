@@ -1,7 +1,7 @@
 export type ContactType = "Individual" | "Company";
 
-export type AppRole = "Office" | "Field";
-export const APP_ROLES: AppRole[] = ["Office", "Field"];
+export type AppRole = "Office" | "Field" | "Admin" | "Sales";
+export const APP_ROLES: AppRole[] = ["Office", "Field", "Admin", "Sales"];
 
 export type UserStatus = "Active" | "Archived";
 
@@ -12,8 +12,28 @@ export type Profile = {
   phone: string | null;
   roles: AppRole[];
   status: UserStatus;
+  can_delete_leads: boolean;
   created_at: string;
 };
+
+// Admin Settings (company profile, users & roles): Office or Admin.
+export function isAdminRole(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return profile.roles.includes("Office") || profile.roles.includes("Admin");
+}
+
+// Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office
+// or Sales can create/edit; delete on leads is a separate, narrower check.
+export function canEditDispatch(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return profile.roles.includes("Office") || profile.roles.includes("Sales");
+}
+
+export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_leads"> | null) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office")) return true;
+  return profile.roles.includes("Sales") && profile.can_delete_leads;
+}
 
 export type CompanyProfile = {
   id: number;

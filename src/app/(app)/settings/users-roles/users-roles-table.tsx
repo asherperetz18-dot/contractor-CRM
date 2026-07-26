@@ -7,7 +7,12 @@ import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { APP_ROLES, type AppRole, type Profile } from "@/lib/data/types";
-import { createUser, toggleUserStatus, updateUserRoles } from "@/lib/actions/users";
+import {
+  createUser,
+  toggleUserStatus,
+  updateCanDeleteLeads,
+  updateUserRoles,
+} from "@/lib/actions/users";
 
 type StatusTab = "Active" | "Archived" | "All";
 
@@ -64,6 +69,11 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
       ? u.roles.filter((r) => r !== role)
       : [...u.roles, role];
     await updateUserRoles(u.id, next);
+    refresh();
+  }
+
+  async function handleToggleCanDelete(u: Profile) {
+    await updateCanDeleteLeads(u.id, !u.can_delete_leads);
     refresh();
   }
 
@@ -124,6 +134,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
               <th>Email</th>
               <th>Phone</th>
               <th>Roles</th>
+              <th>Can Delete Leads</th>
               <th className="right">Status</th>
             </tr>
           </thead>
@@ -167,6 +178,32 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                       <span className="ur-add-phone">No roles</span>
                     )}
                   </div>
+                </td>
+                <td>
+                  {u.roles.includes("Office") ? (
+                    <span className="ur-add-phone">Always (Office)</span>
+                  ) : u.roles.includes("Sales") ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleCanDelete(u)}
+                      title={
+                        u.can_delete_leads
+                          ? "Turn off delete access"
+                          : "Turn on delete access"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_delete_leads ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone">—</span>
+                  )}
                 </td>
                 <td className="right">
                   <button

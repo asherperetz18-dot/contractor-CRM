@@ -54,6 +54,7 @@ export function LeadForm({
   reps,
   tasks,
   readOnly,
+  canDelete,
   onCancel,
   onSaved,
   onDeleted,
@@ -62,6 +63,7 @@ export function LeadForm({
   reps: Profile[];
   tasks?: LeadTask[];
   readOnly?: boolean;
+  canDelete?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -468,7 +470,7 @@ export function LeadForm({
 
         <div className="modal-actions">
           <div className="modal-actions-left">
-            {lead && !readOnly && (
+            {lead && !readOnly && canDelete && (
               <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
                 Delete
               </button>

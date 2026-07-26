@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { Lead, Profile, SetterContact } from "@/lib/data/types";
+import { canEditDispatch, type Lead, type Profile, type SetterContact } from "@/lib/data/types";
 import { SetterAssignments } from "./setter-assignments";
 
 export default async function ApptSetterAssignmentsPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
-  const canWrite = profile?.roles.includes("Office") ?? false;
+  const canWrite = canEditDispatch(profile);
 
   const [{ data: reps }, { data: leads }, { data: assignments }] = await Promise.all([
     supabase

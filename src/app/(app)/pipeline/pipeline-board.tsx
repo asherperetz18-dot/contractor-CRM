@@ -30,11 +30,13 @@ export function PipelineBoard({
   tasks,
   reps,
   canWrite,
+  canDelete,
 }: {
   leads: Lead[];
   tasks: LeadTask[];
   reps: Profile[];
   canWrite: boolean;
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -331,6 +333,7 @@ export function PipelineBoard({
           reps={reps}
           tasks={tasksByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
+          canDelete={canDelete}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}
