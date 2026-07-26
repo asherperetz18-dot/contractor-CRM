@@ -13,6 +13,8 @@ function toRow(input: EventInput) {
     assigned_to: input.assigned_to || null,
     job_id: input.job_id || null,
     notes: input.notes || null,
+    customer_confirmed: input.customer_confirmed,
+    rep_confirmed: input.rep_confirmed,
   };
 }
 

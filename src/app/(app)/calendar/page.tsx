@@ -1,6 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { Event, Job, Profile } from "@/lib/data/types";
+import type {
+  DocumentRecord,
+  Event,
+  Job,
+  Lead,
+  LeadTask,
+  Profile,
+} from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
@@ -9,7 +16,14 @@ export default async function CalendarPage() {
   const canWrite =
     (profile?.roles.includes("Office") || profile?.roles.includes("Field")) ?? false;
 
-  const [{ data: events }, { data: jobs }, { data: reps }] = await Promise.all([
+  const [
+    { data: events },
+    { data: jobs },
+    { data: reps },
+    { data: leads },
+    { data: leadTasks },
+    { data: documents },
+  ] = await Promise.all([
     supabase.from("events").select("*"),
     supabase.from("jobs").select("*").order("name", { ascending: true }),
     supabase
@@ -17,6 +31,11 @@ export default async function CalendarPage() {
       .select("id, name, email, phone, roles, status, created_at")
       .eq("status", "Active")
       .order("name", { ascending: true }),
+    supabase.from("leads").select("*"),
+    supabase
+      .from("lead_tasks")
+      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at"),
+    supabase.from("documents").select("*").eq("type", "Estimate"),
   ]);
 
   return (
@@ -24,6 +43,9 @@ export default async function CalendarPage() {
       events={(events as Event[]) ?? []}
       jobs={(jobs as Job[]) ?? []}
       reps={(reps as Profile[]) ?? []}
+      leads={(leads as Lead[]) ?? []}
+      leadTasks={(leadTasks as LeadTask[]) ?? []}
+      documents={(documents as DocumentRecord[]) ?? []}
       canWrite={canWrite}
     />
   );

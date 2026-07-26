@@ -92,6 +92,8 @@ export type Event = {
   job_id: string | null;
   lead_id: string | null;
   notes: string | null;
+  customer_confirmed: boolean;
+  rep_confirmed: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -104,6 +106,23 @@ export type EventInput = {
   assigned_to: string;
   job_id: string;
   notes: string;
+  customer_confirmed: boolean;
+  rep_confirmed: boolean;
+};
+
+export type DocumentType = "Estimate" | "Invoice";
+export type DocumentStatus = "Draft" | "Sent" | "Approved" | "Paid";
+
+export type DocumentRecord = {
+  id: string;
+  type: DocumentType;
+  contact_id: string | null;
+  job_id: string | null;
+  date: string;
+  status: DocumentStatus;
+  items: { desc: string; qty: number; price: number }[];
+  notes: string | null;
+  created_at: string;
 };
 
 export type ActivityEvent = {

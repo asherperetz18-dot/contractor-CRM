@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import type { Event, Job, Profile } from "@/lib/data/types";
+import type { DocumentRecord, Event, Job, Lead, LeadTask, Profile } from "@/lib/data/types";
 import { EventForm } from "./event-form";
 
 const MONTH_NAMES = [
@@ -25,11 +25,17 @@ export function CalendarBoard({
   events,
   jobs,
   reps,
+  leads,
+  leadTasks,
+  documents,
   canWrite,
 }: {
   events: Event[];
   jobs: Job[];
   reps: Profile[];
+  leads: Lead[];
+  leadTasks: LeadTask[];
+  documents: DocumentRecord[];
   canWrite: boolean;
 }) {
   const today = new Date();
@@ -211,6 +217,9 @@ export function CalendarBoard({
           initialDate={newDate}
           jobs={jobs}
           reps={reps}
+          leads={leads}
+          leadTasks={leadTasks}
+          documents={documents}
           onCancel={() => setShowNew(false)}
           onSaved={() => {
             setShowNew(false);
@@ -223,6 +232,9 @@ export function CalendarBoard({
           event={editing}
           jobs={jobs}
           reps={reps}
+          leads={leads}
+          leadTasks={leadTasks}
+          documents={documents}
           readOnly={!canWrite}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}

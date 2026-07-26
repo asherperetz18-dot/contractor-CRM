@@ -144,6 +144,8 @@ export function AppointmentWizard({
             assigned_to: details.assignedTo,
             job_id: "",
             notes: "",
+            customer_confirmed: false,
+            rep_confirmed: false,
           },
           leadId
         );
