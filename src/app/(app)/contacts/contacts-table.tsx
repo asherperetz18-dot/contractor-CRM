@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
   leadDisplayName,
+  mapsUrl,
   money,
   stageColor,
   type Lead,
@@ -120,7 +121,20 @@ export function ContactsTable({
                   <div className="ur-name">{leadDisplayName(l)}</div>
                   {l.email && <div className="ur-add-phone">{l.email}</div>}
                 </td>
-                <td>{l.address || "—"}</td>
+                <td>
+                  {l.address ? (
+                    <a
+                      href={mapsUrl(l.address)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {l.address}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td>{l.phone || "—"}</td>
                 <td>{l.source || "—"}</td>
                 <td>{repName(l.assigned_to)}</td>

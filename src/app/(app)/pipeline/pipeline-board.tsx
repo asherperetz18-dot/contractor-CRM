@@ -8,6 +8,7 @@ import {
   hasFollowUpDue,
   isColdLead,
   leadDisplayName,
+  mapsUrl,
   money,
   stageColor,
   type Lead,
@@ -483,7 +484,17 @@ export function PipelineBoard({
                       {l.phone && <div className="lead-card-line">☎ {l.phone}</div>}
                       {l.email && <div className="lead-card-line">✉ {l.email}</div>}
                       {l.address && (
-                        <div className="lead-card-line">📍 {l.address}</div>
+                        <div className="lead-card-line">
+                          📍{" "}
+                          <a
+                            href={mapsUrl(l.address)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {l.address}
+                          </a>
+                        </div>
                       )}
                       {l.project_type && (
                         <div className="lead-card-project">{l.project_type}</div>

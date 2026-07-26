@@ -296,6 +296,10 @@ export function daysSince(dateStr: string | null) {
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
 
+export function mapsUrl(address: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 export function leadDisplayName(l: {
   contact_type: ContactType;
   company_name: string | null;

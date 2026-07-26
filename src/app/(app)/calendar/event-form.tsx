@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   EVENT_TYPES,
   leadDisplayName,
+  mapsUrl,
   money,
   type DocumentRecord,
   type Event,
@@ -122,7 +123,14 @@ export function EventForm({
       {lead && (
         <div className="contact-card">
           <div className="contact-card-name">{leadDisplayName(lead)}</div>
-          {lead.address && <div className="contact-card-line">📍 {lead.address}</div>}
+          {lead.address && (
+            <div className="contact-card-line">
+              📍{" "}
+              <a href={mapsUrl(lead.address)} target="_blank" rel="noopener noreferrer">
+                {lead.address}
+              </a>
+            </div>
+          )}
           {lead.phone && <div className="contact-card-line">☎ {lead.phone}</div>}
           {lead.email && <div className="contact-card-line">✉ {lead.email}</div>}
           {lead.source && <div className="contact-card-line">Source: {lead.source}</div>}

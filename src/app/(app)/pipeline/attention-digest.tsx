@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   leadDisplayName,
+  mapsUrl,
   money,
   type Lead,
   type LeadWarnings,
@@ -80,7 +81,20 @@ function DigestSection({
               {leads.slice(0, 25).map((l) => (
                 <tr key={l.id} onClick={() => onOpenLead(l)}>
                   <td>{leadDisplayName(l)}</td>
-                  <td>{l.address || "—"}</td>
+                  <td>
+                    {l.address ? (
+                      <a
+                        href={mapsUrl(l.address)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {l.address}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td>{l.stage}</td>
                   <td>
                     <WarningBadges warnings={warningsByLead.get(l.id)} />
