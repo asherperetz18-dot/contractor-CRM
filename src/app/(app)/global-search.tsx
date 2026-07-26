@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { STAGE_COLOR } from "@/lib/data/types";
 import { searchDirectory, type DirectoryHit } from "@/lib/actions/search";
 
 export function GlobalSearch() {
@@ -89,9 +88,7 @@ export function GlobalSearch() {
                       {[r.phone, r.address].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </div>
-                  <Badge color={STAGE_COLOR[r.stage] ?? STAGE_COLOR.Other}>
-                    {r.stage}
-                  </Badge>
+                  <Badge color={r.color}>{r.stage}</Badge>
                 </div>
               ))
             )}

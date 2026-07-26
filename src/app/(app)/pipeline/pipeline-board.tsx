@@ -1,20 +1,20 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  LEAD_STAGES,
-  STAGE_COLOR,
   computeLeadWarnings,
   daysSince,
   hasFollowUpDue,
   isColdLead,
   leadDisplayName,
   money,
+  stageColor,
   type Lead,
   type LeadTask,
   type LeadWarnings,
   type PipelineStage,
+  type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import { moveLeadStage } from "@/lib/actions/leads";
@@ -24,17 +24,33 @@ import { CsvImportPanel } from "./csv-import-panel";
 
 type StatusFilter = "Open" | "Won" | "Lost";
 type SortBy = "Name" | "Days" | "Amount";
+type SortDir = "asc" | "desc";
+type AgeFilter = "All" | "7" | "30" | "Stale";
+
+const HIDDEN_STAGES_KEY = "pipeline-hidden-stages";
+
+function loadHiddenStages(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_STAGES_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
 
 export function PipelineBoard({
   leads,
   tasks,
   reps,
+  stages,
   canWrite,
   canDelete,
 }: {
   leads: Lead[];
   tasks: LeadTask[];
   reps: Profile[];
+  stages: PipelineStageRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -42,12 +58,79 @@ export function PipelineBoard({
   const [, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("Open");
   const [sortBy, setSortBy] = useState<SortBy>("Days");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [repFilter, setRepFilter] = useState<string>("All Reps");
+  const [ageFilter, setAgeFilter] = useState<AgeFilter>("All");
+  const [noApptOnly, setNoApptOnly] = useState(false);
+  const [hiddenStages, setHiddenStages] = useState<Set<string>>(() => loadHiddenStages());
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Lead | null>(null);
+  const [scrollMetrics, setScrollMetrics] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
+  const [dragThumb, setDragThumb] = useState<{ startX: number; startScrollLeft: number } | null>(
+    null
+  );
+  const scrollElRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+
+  function toggleStageVisible(name: string) {
+    setHiddenStages((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      window.localStorage.setItem(HIDDEN_STAGES_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function measureScroll(el: HTMLDivElement) {
+    setScrollMetrics({
+      scrollLeft: el.scrollLeft,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    });
+  }
+
+  function setScrollContainer(node: HTMLDivElement | null) {
+    scrollElRef.current = node;
+    if (!node) return;
+    measureScroll(node);
+    const onScroll = () => measureScroll(node);
+    node.addEventListener("scroll", onScroll);
+    return () => node.removeEventListener("scroll", onScroll);
+  }
+
+  function scrollByAmount(delta: number) {
+    scrollElRef.current?.scrollBy({ left: delta, behavior: "smooth" });
+  }
+
+  useEffect(() => {
+    if (!dragThumb) return;
+    function onMove(e: MouseEvent) {
+      const el = scrollElRef.current;
+      if (!el || !dragThumb) return;
+      const trackWidth = trackRef.current?.clientWidth ?? el.clientWidth;
+      const scrollableWidth = el.scrollWidth - el.clientWidth;
+      const thumbWidth = trackWidth * (el.clientWidth / el.scrollWidth);
+      const draggableTrack = Math.max(1, trackWidth - thumbWidth);
+      const ratio = scrollableWidth / draggableTrack;
+      const deltaX = e.clientX - dragThumb.startX;
+      el.scrollLeft = dragThumb.startScrollLeft + deltaX * ratio;
+      measureScroll(el);
+    }
+    function onUp() {
+      setDragThumb(null);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragThumb]);
 
   const tasksByLead = useMemo(() => {
     const map = new Map<string, LeadTask[]>();
@@ -92,6 +175,16 @@ export function PipelineBoard({
     return l.stage === "Lost";
   });
 
+  const ageFiltered = statusFiltered.filter((l) => {
+    if (ageFilter === "All") return true;
+    const age = daysSince(l.created_at);
+    if (ageFilter === "7") return age <= 7;
+    if (ageFilter === "30") return age <= 30;
+    return age > 14;
+  });
+
+  const apptFiltered = noApptOnly ? ageFiltered.filter((l) => !l.has_appt) : ageFiltered;
+
   const openLeads = repFiltered.filter((l) => !["Won", "Lost"].includes(l.stage));
   const pipelineValue = openLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
   const avgDealSize = openLeads.length ? pipelineValue / openLeads.length : 0;
@@ -107,19 +200,22 @@ export function PipelineBoard({
     return w && isColdLead(w);
   });
 
-  const sortedFiltered = [...statusFiltered].sort((a, b) => {
-    if (sortBy === "Name")
-      return leadDisplayName(a).localeCompare(leadDisplayName(b));
-    if (sortBy === "Amount") return (Number(b.value) || 0) - (Number(a.value) || 0);
-    return daysSince(b.created_at) - daysSince(a.created_at);
+  const sortedFiltered = [...apptFiltered].sort((a, b) => {
+    let cmp: number;
+    if (sortBy === "Name") cmp = leadDisplayName(a).localeCompare(leadDisplayName(b));
+    else if (sortBy === "Amount") cmp = (Number(a.value) || 0) - (Number(b.value) || 0);
+    else cmp = daysSince(a.created_at) - daysSince(b.created_at);
+    return sortDir === "asc" ? cmp : -cmp;
   });
 
-  const grouped = LEAD_STAGES.filter((s) => !["Won", "Lost"].includes(s)).map(
-    (stage) => ({
-      stage,
-      items: sortedFiltered.filter((l) => l.stage === stage),
-    })
-  );
+  const openStageNames = stages.map((s) => s.name).filter((s) => !["Won", "Lost"].includes(s));
+  const visibleStageNames = openStageNames.filter((s) => !hiddenStages.has(s));
+  const visibleColumnCount = openStageNames.length - hiddenStages.size;
+
+  const grouped = visibleStageNames.map((stage) => ({
+    stage,
+    items: sortedFiltered.filter((l) => l.stage === stage),
+  }));
 
   const displayGroups: { stage: string; items: Lead[] }[] =
     statusFilter === "Won"
@@ -129,6 +225,15 @@ export function PipelineBoard({
         : grouped;
 
   const repOptions = ["All Reps", "Unassigned", ...reps.map((r) => r.name || r.email || "")];
+
+  const clientWidth = scrollMetrics.clientWidth || 1;
+  const totalScrollWidth = scrollMetrics.scrollWidth || clientWidth;
+  const thumbWidthPct = Math.min(100, (clientWidth / totalScrollWidth) * 100);
+  const maxScroll = Math.max(1, totalScrollWidth - clientWidth);
+  const thumbLeftPct = (scrollMetrics.scrollLeft / maxScroll) * (100 - thumbWidthPct);
+  const canScrollLeft = scrollMetrics.scrollLeft > 2;
+  const canScrollRight = scrollMetrics.scrollLeft < maxScroll - 2;
+  const showScrollbar = totalScrollWidth > clientWidth + 4;
 
   return (
     <div>
@@ -168,7 +273,11 @@ export function PipelineBoard({
           <div className="stat-value mono">{staleCount}</div>
           <div className="stat-label">Stale (&gt;14d)</div>
         </div>
-        <div className="stat-card" onClick={() => setStatusFilter("Open")}>
+        <div
+          className={"stat-card" + (noApptOnly ? " stat-card-active" : "")}
+          onClick={() => setNoApptOnly((v) => !v)}
+          title="Toggle: show only leads with no appointment yet"
+        >
           <div className="stat-value mono">{noApptCount}</div>
           <div className="stat-label">No Appt Yet</div>
         </div>
@@ -193,8 +302,6 @@ export function PipelineBoard({
               {s}
             </button>
           ))}
-        </div>
-        <div className="filter-bar-right">
           <select
             className="ur-company-filter"
             value={repFilter}
@@ -206,6 +313,24 @@ export function PipelineBoard({
               </option>
             ))}
           </select>
+          <button
+            className={"chip" + (noApptOnly ? " chip-active" : "")}
+            onClick={() => setNoApptOnly((v) => !v)}
+          >
+            No Appt Yet
+          </button>
+          <select
+            className="ur-company-filter"
+            value={ageFilter}
+            onChange={(e) => setAgeFilter(e.target.value as AgeFilter)}
+          >
+            <option value="All">All Ages</option>
+            <option value="7">Last 7 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="Stale">14+ Days (Stale)</option>
+          </select>
+        </div>
+        <div className="filter-bar-right">
           <span className="filter-label">Sort by</span>
           {(["Name", "Days", "Amount"] as SortBy[]).map((s) => (
             <button
@@ -216,6 +341,39 @@ export function PipelineBoard({
               {s}
             </button>
           ))}
+          <button
+            className="icon-btn"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            title={sortDir === "desc" ? "Descending — click for ascending" : "Ascending — click for descending"}
+            aria-label="Toggle sort direction"
+          >
+            {sortDir === "desc" ? "↓" : "↑"}
+          </button>
+          <div className="columns-menu-wrap">
+            <button className="btn-ghost" onClick={() => setShowColumnsMenu((v) => !v)}>
+              Columns ({visibleColumnCount}/{openStageNames.length})
+            </button>
+            {showColumnsMenu && (
+              <>
+                <div
+                  className="quick-create-backdrop"
+                  onClick={() => setShowColumnsMenu(false)}
+                />
+                <div className="columns-menu">
+                  {openStageNames.map((name) => (
+                    <label key={name} className="columns-menu-item">
+                      <input
+                        type="checkbox"
+                        checked={!hiddenStages.has(name)}
+                        onChange={() => toggleStageVisible(name)}
+                      />
+                      {name}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -230,7 +388,38 @@ export function PipelineBoard({
           </p>
         </div>
       ) : (
-        <div className="pipeline-board">
+        <>
+          {showScrollbar && (
+            <div className="pipeline-scrollbar">
+              <button
+                className="pipeline-scroll-arrow"
+                onClick={() => scrollByAmount(-320)}
+                disabled={!canScrollLeft}
+                aria-label="Scroll left"
+              >
+                ◀
+              </button>
+              <div className="pipeline-scroll-track" ref={trackRef}>
+                <div
+                  className="pipeline-scroll-thumb"
+                  style={{ width: `${thumbWidthPct}%`, left: `${thumbLeftPct}%` }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setDragThumb({ startX: e.clientX, startScrollLeft: scrollMetrics.scrollLeft });
+                  }}
+                />
+              </div>
+              <button
+                className="pipeline-scroll-arrow"
+                onClick={() => scrollByAmount(320)}
+                disabled={!canScrollRight}
+                aria-label="Scroll right"
+              >
+                ▶
+              </button>
+            </div>
+          )}
+        <div className="pipeline-board" ref={setScrollContainer}>
           {displayGroups.map(({ stage, items }) => (
             <div
               className={
@@ -257,7 +446,7 @@ export function PipelineBoard({
               <div className="pipeline-col-head">
                 <span
                   className="tick"
-                  style={{ background: STAGE_COLOR[stage] }}
+                  style={{ background: stageColor(stages, stage) }}
                 />
                 <span>{stage}</span>
                 <span className="count-pill">{items.length}</span>
@@ -315,22 +504,25 @@ export function PipelineBoard({
             </div>
           ))}
         </div>
+        </>
       )}
 
       {showNew && canWrite && (
         <LeadForm
           reps={reps}
+          stages={stages}
           onCancel={() => setShowNew(false)}
           onSaved={() => setShowNew(false)}
         />
       )}
       {showImport && canWrite && (
-        <CsvImportPanel onCancel={() => setShowImport(false)} />
+        <CsvImportPanel stages={stages} onCancel={() => setShowImport(false)} />
       )}
       {editing && (
         <LeadForm
           lead={editing}
           reps={reps}
+          stages={stages}
           tasks={tasksByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}

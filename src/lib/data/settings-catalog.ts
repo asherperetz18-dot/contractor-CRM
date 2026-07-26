@@ -3,7 +3,7 @@ export type SettingsCardDef = {
   desc: string;
   icon: string;
   href?: string;
-  key?: "logo" | "pipeline-stages";
+  key?: "logo";
 };
 
 export type SettingsSectionDef = {
@@ -77,7 +77,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         title: "Pipeline Stages",
         desc: "Manage stages within each pipeline (Appointment Scheduled, Won, Lost, etc.)",
         icon: "📍",
-        key: "pipeline-stages",
+        href: "/settings/pipeline-stages",
       },
       { title: "Pipeline Custom Fields", desc: "Configure custom field schema for pipelines", icon: "🧩" },
       { title: "Stage Badges", desc: "Map pipeline stages to badge colors and labels shown on cards", icon: "🏷" },

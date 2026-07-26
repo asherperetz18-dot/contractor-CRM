@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
-  LEAD_STAGES,
-  STAGE_COLOR,
   daysSince,
   leadDisplayName,
   money,
+  stageColor,
   type Lead,
+  type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 
@@ -26,7 +26,15 @@ function withinRange(dateStr: string | null, days: number | null) {
   return daysSince(dateStr) <= days;
 }
 
-export function AnalyticsView({ leads, reps }: { leads: Lead[]; reps: Profile[] }) {
+export function AnalyticsView({
+  leads,
+  reps,
+  stages,
+}: {
+  leads: Lead[];
+  reps: Profile[];
+  stages: PipelineStageRow[];
+}) {
   const [range, setRange] = useState<RangeKey>("30");
   const days = range === "all" ? null : Number(range);
 
@@ -81,7 +89,9 @@ export function AnalyticsView({ leads, reps }: { leads: Lead[]; reps: Profile[] 
   );
 
   const byStage = useMemo(() => {
-    return LEAD_STAGES.filter((s) => !["Won", "Lost", "DNC"].includes(s))
+    return stages
+      .map((s) => s.name)
+      .filter((s) => !["Won", "Lost", "DNC"].includes(s))
       .map((stage) => {
         const items = createdInRange.filter((l) => l.stage === stage);
         return {
@@ -91,7 +101,7 @@ export function AnalyticsView({ leads, reps }: { leads: Lead[]; reps: Profile[] 
         };
       })
       .filter((s) => s.count > 0);
-  }, [createdInRange]);
+  }, [createdInRange, stages]);
 
   function daysToClose(l: Lead) {
     if (!l.won_at) return null;
@@ -244,7 +254,7 @@ export function AnalyticsView({ leads, reps }: { leads: Lead[]; reps: Profile[] 
           <div className="chip-row">
             {byStage.map((s) => (
               <div key={s.stage} className="stat-card stat-static" style={{ minWidth: 140 }}>
-                <Badge color={STAGE_COLOR[s.stage]}>{s.stage}</Badge>
+                <Badge color={stageColor(stages, s.stage)}>{s.stage}</Badge>
                 <div className="stat-value mono" style={{ fontSize: 18, marginTop: 6 }}>
                   {s.count}
                 </div>

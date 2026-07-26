@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import {
-  LEAD_STAGES,
   type Lead,
   type LeadInput,
   type LeadTask,
+  type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import {
@@ -52,6 +52,7 @@ function toInput(lead?: Lead): LeadInput {
 export function LeadForm({
   lead,
   reps,
+  stages,
   tasks,
   readOnly,
   canDelete,
@@ -61,6 +62,7 @@ export function LeadForm({
 }: {
   lead?: Lead;
   reps: Profile[];
+  stages: PipelineStageRow[];
   tasks?: LeadTask[];
   readOnly?: boolean;
   canDelete?: boolean;
@@ -334,9 +336,9 @@ export function LeadForm({
           </Field>
           <Field label="Stage">
             <select value={form.stage} onChange={(e) => set("stage", e.target.value as LeadInput["stage"])}>
-              {LEAD_STAGES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+              {stages.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
                 </option>
               ))}
             </select>

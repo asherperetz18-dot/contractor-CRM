@@ -6,10 +6,10 @@ import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import {
   EVENT_TYPES,
-  LEAD_STAGES,
   type EventType,
   type Lead,
   type PipelineStage,
+  type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import { bookAppointmentForLead, createLead } from "@/lib/actions/leads";
@@ -27,11 +27,13 @@ function leadMatchLabel(l: Lead) {
 export function AppointmentWizard({
   leads,
   reps,
+  stages,
   onCancel,
   onFinished,
 }: {
   leads: Lead[];
   reps: Profile[];
+  stages: PipelineStageRow[];
   onCancel: () => void;
   onFinished: () => void;
 }) {
@@ -255,9 +257,9 @@ export function AppointmentWizard({
                     value={leadStage}
                     onChange={(e) => setLeadStage(e.target.value as PipelineStage)}
                   >
-                    {LEAD_STAGES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
+                    {stages.map((s) => (
+                      <option key={s.id} value={s.name}>
+                        {s.name}
                       </option>
                     ))}
                   </select>

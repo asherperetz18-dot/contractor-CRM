@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import type { Event, Job, Lead, Profile } from "@/lib/data/types";
+import type { Event, Job, Lead, PipelineStageRow, Profile } from "@/lib/data/types";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
 
@@ -11,12 +11,14 @@ export function ScheduleList({
   jobs,
   reps,
   leads,
+  stages,
   canWrite,
 }: {
   events: Event[];
   jobs: Job[];
   reps: Profile[];
   leads: Lead[];
+  stages: PipelineStageRow[];
   canWrite: boolean;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
@@ -82,6 +84,7 @@ export function ScheduleList({
         <AppointmentWizard
           leads={leads}
           reps={reps}
+          stages={stages}
           onCancel={() => setShowNew(false)}
           onFinished={() => setShowNew(false)}
         />

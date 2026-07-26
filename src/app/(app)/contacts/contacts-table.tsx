@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
-  STAGE_COLOR,
   leadDisplayName,
   money,
+  stageColor,
   type Lead,
+  type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
@@ -15,11 +16,13 @@ import { LeadForm } from "../pipeline/lead-form";
 export function ContactsTable({
   leads,
   reps,
+  stages,
   canWrite,
   canDelete,
 }: {
   leads: Lead[];
   reps: Profile[];
+  stages: PipelineStageRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -122,7 +125,7 @@ export function ContactsTable({
                 <td>{l.source || "—"}</td>
                 <td>{repName(l.assigned_to)}</td>
                 <td>
-                  <Badge color={STAGE_COLOR[l.stage] ?? STAGE_COLOR.Other}>
+                  <Badge color={stageColor(stages, l.stage)}>
                     {l.stage}
                   </Badge>
                 </td>
@@ -137,6 +140,7 @@ export function ContactsTable({
         <LeadForm
           lead={editing}
           reps={reps}
+          stages={stages}
           readOnly={!canWrite}
           canDelete={canDelete}
           onCancel={() => setEditing(null)}

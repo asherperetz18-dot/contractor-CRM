@@ -9,7 +9,6 @@ import {
   SETTINGS_SECTIONS,
   type SettingsCardDef,
 } from "@/lib/data/settings-catalog";
-import { LEAD_STAGES, STAGE_COLOR } from "@/lib/data/types";
 import { removeLogo, uploadLogo } from "@/lib/actions/settings";
 
 export function SettingsGrid({ logoUrl }: { logoUrl: string | null }) {
@@ -203,32 +202,6 @@ export function SettingsGrid({ logoUrl }: { logoUrl: string | null }) {
                 disabled={pending || !logoFile}
               >
                 {pending ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {activeCard?.key === "pipeline-stages" && (
-        <Modal title="Pipeline Stages" onClose={() => setActiveCard(null)}>
-          <p className="hint-note" style={{ marginTop: 0 }}>
-            Current stages used across the Pipeline board, in order:
-          </p>
-          <ol className="settings-stage-list">
-            {LEAD_STAGES.map((s) => (
-              <li key={s}>
-                <span className="tick" style={{ background: STAGE_COLOR[s] }} /> {s}
-              </li>
-            ))}
-          </ol>
-          <p className="hint-note">
-            Reordering and adding custom stages isn&apos;t wired up yet.
-          </p>
-          <div className="modal-actions">
-            <div />
-            <div>
-              <button className="btn-primary" onClick={() => setActiveCard(null)}>
-                Close
               </button>
             </div>
           </div>

@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
-import type { PipelineStage } from "@/lib/data/types";
+import type { PipelineStage, PipelineStageRow } from "@/lib/data/types";
 import { bulkImportLeads } from "@/lib/actions/leads";
-
-const IMPORT_TARGET_STAGES: PipelineStage[] = ["Unsorted", "New Lead", "Contacted"];
 
 type Mapping = {
   firstName: number;
@@ -74,7 +72,13 @@ function cell(row: unknown[], idx: number) {
   return idx >= 0 && idx < row.length ? String(row[idx] ?? "").trim() : "";
 }
 
-export function CsvImportPanel({ onCancel }: { onCancel: () => void }) {
+export function CsvImportPanel({
+  stages,
+  onCancel,
+}: {
+  stages: PipelineStageRow[];
+  onCancel: () => void;
+}) {
   const router = useRouter();
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -251,9 +255,9 @@ export function CsvImportPanel({ onCancel }: { onCancel: () => void }) {
                 value={targetStage}
                 onChange={(e) => setTargetStage(e.target.value as PipelineStage)}
               >
-                {IMPORT_TARGET_STAGES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
+                {stages.map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
                   </option>
                 ))}
               </select>

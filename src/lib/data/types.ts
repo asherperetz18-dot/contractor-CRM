@@ -50,59 +50,34 @@ export type CompanyProfile = {
   logo_url: string | null;
 };
 
-export type PipelineStage =
-  | "Unsorted"
-  | "New Lead"
-  | "Meta"
-  | "No Answer"
-  | "Contacted"
-  | "Appointment Scheduled"
-  | "Appointment Follow Up"
-  | "2nd Appointment"
-  | "Estimate Prepared"
-  | "Proposal Sent"
-  | "Pending Finance"
-  | "Close to Sale"
-  | "Won"
-  | "Lost"
-  | "DNC";
+// Stages are admin-managed (Settings -> Pipeline Stages), not a fixed
+// set, so this is just a plain string matching a pipeline_stages.name.
+export type PipelineStage = string;
 
-export const LEAD_STAGES: PipelineStage[] = [
+// Stage names that app logic depends on directly (auto-advance on
+// booking, pipeline value/won stats) -- protected from rename/delete
+// in the Pipeline Stages admin UI, but still reorderable.
+export const SYSTEM_STAGE_NAMES = [
   "Unsorted",
-  "New Lead",
-  "Meta",
-  "No Answer",
-  "Contacted",
   "Appointment Scheduled",
-  "Appointment Follow Up",
-  "2nd Appointment",
-  "Estimate Prepared",
-  "Proposal Sent",
-  "Pending Finance",
-  "Close to Sale",
   "Won",
   "Lost",
-  "DNC",
 ];
 
-export const STAGE_COLOR: Record<string, string> = {
-  Unsorted: "#9A9384",
-  "New Lead": "#7C8798",
-  Meta: "#7C8798",
-  "No Answer": "#B7862B",
-  Contacted: "#2D5F8A",
-  "Appointment Scheduled": "#C7691B",
-  "Appointment Follow Up": "#C7691B",
-  "2nd Appointment": "#C7691B",
-  "Estimate Prepared": "#2D5F8A",
-  "Proposal Sent": "#2D5F8A",
-  "Pending Finance": "#B7862B",
-  "Close to Sale": "#B7862B",
-  Won: "#2F855A",
-  Lost: "#C0392B",
-  DNC: "#C0392B",
-  Other: "#9A9384",
+export type PipelineStageRow = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  is_system: boolean;
+  created_at: string;
 };
+
+export const FALLBACK_STAGE_COLOR = "#9A9384";
+
+export function stageColor(stages: { name: string; color: string }[], name: string) {
+  return stages.find((s) => s.name === name)?.color ?? FALLBACK_STAGE_COLOR;
+}
 
 export type EventType = "Estimate" | "Job Visit" | "Meeting" | "Other";
 export const EVENT_TYPES: EventType[] = ["Estimate", "Job Visit", "Meeting", "Other"];
