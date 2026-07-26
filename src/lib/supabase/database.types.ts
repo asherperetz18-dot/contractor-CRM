@@ -6,6 +6,7 @@ type LooseTable = {
   Row: Record<string, unknown>;
   Insert: Record<string, unknown>;
   Update: Record<string, unknown>;
+  Relationships: never[];
 };
 
 export type Database = {

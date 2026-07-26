@@ -32,7 +32,7 @@ export default async function DashboardPage() {
     ]);
 
   const totalPipelineValue = (pipelineValue.data ?? []).reduce(
-    (sum: number, row: { value: number }) => sum + (Number(row.value) || 0),
+    (sum: number, row: Record<string, unknown>) => sum + (Number(row.value) || 0),
     0
   );
 
