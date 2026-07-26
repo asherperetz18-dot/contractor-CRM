@@ -32,12 +32,16 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
 
 # claude code local settings
 .claude/settings.local.json
+
+# local-machine dev server launcher (hardcoded absolute path)
+dev-server.bat
 
 # typescript
 *.tsbuildinfo
