@@ -27,7 +27,7 @@ export const NAV: NavEntry[] = [
     items: [
       { label: "Leads Pipeline", href: "/pipeline" },
       { label: "Dispatch Dashboard", comingSoon: true },
-      { label: "Reply Inbox", comingSoon: true },
+      { label: "Reply Inbox", href: "/reply-inbox" },
       { label: "Marketing Analytics", href: "/marketing-analytics" },
       { label: "Contacts", href: "/contacts" },
       { label: "Salespeople", href: "/salespeople" },

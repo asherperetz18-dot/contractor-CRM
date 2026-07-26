@@ -162,6 +162,24 @@ export type ActivityEvent = {
   created_at: string;
 };
 
+export type SmsMessage = {
+  id: string;
+  lead_id: string | null;
+  direction: "inbound" | "outbound";
+  from_number: string;
+  to_number: string;
+  body: string;
+  twilio_sid: string | null;
+  created_at: string;
+};
+
+// Normalizes to the last 10 digits so numbers stored/typed with
+// different formatting (parens, dashes, +1) still match each other.
+export function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
 export type JobStatus = "Not Started" | "In Progress" | "On Hold" | "Complete";
 
 export const JOB_STATUSES: JobStatus[] = [
