@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { logout } from "@/lib/actions/auth";
 import { NAV } from "@/lib/nav";
@@ -13,12 +14,29 @@ export default async function AppLayout({
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 
+  const supabase = await createClient();
+  const { data: companyProfile } = await supabase
+    .from("company_profile")
+    .select("name, logo_url")
+    .eq("id", 1)
+    .single();
+  const company = companyProfile as { name: string | null; logo_url: string | null } | null;
+  const logoUrl = company?.logo_url ?? null;
+  const companyName = company?.name?.trim();
+
   return (
     <div className="app-shell">
       <div className="app-root">
         <div className="global-topbar">
           <div className="global-topbar-left">
-            <span className="global-topbar-brand">Contractor CRM</span>
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt="Company logo" className="topbar-logo-img" />
+            ) : (
+              <span className="global-topbar-brand">
+                {companyName || "Contractor CRM"}
+              </span>
+            )}
             <input className="global-search" placeholder="Search for Anything" />
           </div>
           <div className="global-topbar-right">
@@ -29,7 +47,12 @@ export default async function AppLayout({
         <div className="app-body">
           <aside className="sidebar">
             <div className="sidebar-head">
-              <div className="sidebar-title">Contractor CRM</div>
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Company logo" className="sidebar-logo-img" />
+              ) : (
+                <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
+              )}
               <div className="sidebar-sub">{profile.name ?? profile.email}</div>
             </div>
             <nav className="sidebar-nav">

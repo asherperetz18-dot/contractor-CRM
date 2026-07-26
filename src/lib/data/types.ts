@@ -1,5 +1,35 @@
 export type ContactType = "Individual" | "Company";
 
+export type AppRole = "Office" | "Field";
+export const APP_ROLES: AppRole[] = ["Office", "Field"];
+
+export type UserStatus = "Active" | "Archived";
+
+export type Profile = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  roles: AppRole[];
+  status: UserStatus;
+  created_at: string;
+};
+
+export type CompanyProfile = {
+  id: number;
+  name: string | null;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  license_holder_name: string | null;
+  license_number: string | null;
+  license_state: string | null;
+  license_type: string | null;
+  timezone: string;
+  logo_url: string | null;
+};
+
 export type PipelineStage =
   | "New Leads"
   | "Contacted"
