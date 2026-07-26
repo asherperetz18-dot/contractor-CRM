@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CompanyProfile } from "@/lib/data/types";
+import { AdminGate } from "@/components/admin-gate";
 import { CompanyProfileForm } from "./company-profile-form";
 
 export default async function CompanyProfilePage() {
@@ -10,5 +11,9 @@ export default async function CompanyProfilePage() {
     .eq("id", 1)
     .single();
 
-  return <CompanyProfileForm profile={data as CompanyProfile} />;
+  return (
+    <AdminGate>
+      <CompanyProfileForm profile={data as CompanyProfile} />
+    </AdminGate>
+  );
 }

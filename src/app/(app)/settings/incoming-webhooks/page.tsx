@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { AdminGate } from "@/components/admin-gate";
 import { WebhookSettings } from "./webhook-settings";
 
 export default async function IncomingWebhooksPage() {
@@ -14,9 +15,11 @@ export default async function IncomingWebhooksPage() {
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
 
   return (
-    <WebhookSettings
-      secret={(data as { webhook_secret: string | null } | null)?.webhook_secret ?? null}
-      origin={origin}
-    />
+    <AdminGate>
+      <WebhookSettings
+        secret={(data as { webhook_secret: string | null } | null)?.webhook_secret ?? null}
+        origin={origin}
+      />
+    </AdminGate>
   );
 }
