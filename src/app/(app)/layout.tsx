@@ -10,6 +10,7 @@ import { QuickCreateMenu } from "./quick-create-menu";
 import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { ActivityTracker } from "./activity-tracker";
+import { VoiceDialer } from "./voice-dialer";
 import { version } from "../../../package.json";
 
 export default async function AppLayout({
@@ -51,6 +52,7 @@ export default async function AppLayout({
           </div>
         </div>
         <ActivityTracker />
+        <VoiceDialer />
 
         <div className="app-body">
           <aside className="sidebar">
