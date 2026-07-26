@@ -62,6 +62,46 @@ export const STAGE_COLOR: Record<string, string> = {
 
 export type EventType = "Estimate" | "Job Visit" | "Meeting" | "Other";
 
+export type JobStatus = "Not Started" | "In Progress" | "On Hold" | "Complete";
+
+export const JOB_STATUSES: JobStatus[] = [
+  "Not Started",
+  "In Progress",
+  "On Hold",
+  "Complete",
+];
+
+export const JOB_COLOR: Record<JobStatus, string> = {
+  "Not Started": "#7C8798",
+  "In Progress": "#2D5F8A",
+  "On Hold": "#C7691B",
+  Complete: "#2F855A",
+};
+
+export type Job = {
+  id: string;
+  lead_id: string | null;
+  name: string;
+  address: string | null;
+  status: JobStatus;
+  start_date: string | null;
+  end_date: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type JobInput = {
+  name: string;
+  address: string;
+  status: JobStatus;
+  start_date: string;
+  end_date: string;
+  assigned_to: string;
+  notes: string;
+};
+
 export type Lead = {
   id: string;
   contact_type: ContactType;
