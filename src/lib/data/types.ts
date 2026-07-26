@@ -146,6 +146,7 @@ export type Lead = {
   second_contact_last_name: string | null;
   second_contact_phone: string | null;
   assigned_to: string | null;
+  won_at: string | null;
   notes_updated_at: string | null;
   created_at: string;
   updated_at: string;
@@ -170,6 +171,13 @@ export type LeadInput = {
   second_contact_last_name: string;
   second_contact_phone: string;
   assigned_to: string;
+};
+
+export type SetterContact = {
+  id: string;
+  setter_id: string;
+  lead_id: string;
+  created_at: string;
 };
 
 export type LeadTask = {
