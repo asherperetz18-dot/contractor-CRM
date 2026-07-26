@@ -62,10 +62,14 @@ export async function createUser(input: {
 
 export async function updateUserProfile(
   userId: string,
-  input: { name: string; email: string; phone: string }
+  input: { name: string; email: string; phone: string; password?: string }
 ): Promise<{ error?: string }> {
   const guardError = await requireOfficeOrAdmin();
   if (guardError) return guardError;
+
+  if (input.password && input.password.length < 6) {
+    return { error: "Password must be at least 6 characters." };
+  }
 
   const admin = createAdminClient();
 
@@ -76,11 +80,16 @@ export async function updateUserProfile(
     .single();
   const currentEmail = (current as { email: string | null } | null)?.email;
 
+  const authUpdates: { email?: string; email_confirm?: boolean; password?: string } = {};
   if (input.email && input.email !== currentEmail) {
-    const { error: authError } = await admin.auth.admin.updateUserById(userId, {
-      email: input.email,
-      email_confirm: true,
-    });
+    authUpdates.email = input.email;
+    authUpdates.email_confirm = true;
+  }
+  if (input.password) {
+    authUpdates.password = input.password;
+  }
+  if (Object.keys(authUpdates).length > 0) {
+    const { error: authError } = await admin.auth.admin.updateUserById(userId, authUpdates);
     if (authError) return { error: authError.message };
   }
 

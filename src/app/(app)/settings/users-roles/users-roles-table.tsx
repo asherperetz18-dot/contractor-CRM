@@ -30,7 +30,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "" });
+  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [editPending, setEditPending] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -84,7 +84,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
 
   function openEdit(u: Profile) {
     setEditingUser(u);
-    setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "" });
+    setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "", password: "" });
     setEditError("");
   }
 
@@ -92,6 +92,10 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
     if (!editingUser) return;
     if (!editForm.name.trim() || !editForm.email.trim()) {
       setEditError("Name and email are required.");
+      return;
+    }
+    if (editForm.password && editForm.password.length < 6) {
+      setEditError("New password must be at least 6 characters.");
       return;
     }
     setEditPending(true);
@@ -358,10 +362,21 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                 onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
               />
             </Field>
+            <Field label="New Password">
+              <input
+                type="text"
+                value={editForm.password}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, password: e.target.value }))
+                }
+                placeholder="Leave blank to keep current password"
+              />
+            </Field>
           </div>
           <p className="hint-note">
             Changing email updates their login email too — they&apos;ll sign
-            in with the new address going forward.
+            in with the new address going forward. Only fill in New Password
+            if you want to reset it.
           </p>
           {editError && <p className="error-note">{editError}</p>}
           <div className="modal-actions">
