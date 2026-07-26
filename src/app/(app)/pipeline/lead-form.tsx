@@ -4,7 +4,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
-import { LEAD_STAGES, type Lead, type LeadInput } from "@/lib/data/types";
+import {
+  LEAD_STAGES,
+  type Lead,
+  type LeadInput,
+  type LeadTask,
+  type Profile,
+} from "@/lib/data/types";
 import {
   bookAppointmentForLead,
   convertLeadToJob,
@@ -12,6 +18,7 @@ import {
   deleteLead,
   updateLead,
 } from "@/lib/actions/leads";
+import { TasksPanel } from "./tasks-panel";
 
 const EVENT_TYPES = ["Estimate", "Job Visit", "Meeting", "Other"];
 
@@ -31,24 +38,29 @@ function toInput(lead?: Lead): LeadInput {
     zip: lead?.zip ?? "",
     source: lead?.source ?? "",
     project_type: lead?.project_type ?? "",
-    stage: lead?.stage ?? "New Leads",
+    stage: lead?.stage ?? "Unsorted",
     value: lead ? String(lead.value ?? "") : "",
     notes: lead?.notes ?? "",
     has_appt: lead?.has_appt ?? false,
     second_contact_first_name: lead?.second_contact_first_name ?? "",
     second_contact_last_name: lead?.second_contact_last_name ?? "",
     second_contact_phone: lead?.second_contact_phone ?? "",
+    assigned_to: lead?.assigned_to ?? "",
   };
 }
 
 export function LeadForm({
   lead,
+  reps,
+  tasks,
   readOnly,
   onCancel,
   onSaved,
   onDeleted,
 }: {
   lead?: Lead;
+  reps: Profile[];
+  tasks?: LeadTask[];
   readOnly?: boolean;
   onCancel: () => void;
   onSaved: () => void;
@@ -336,6 +348,19 @@ export function LeadForm({
               <option value="yes">Scheduled</option>
             </select>
           </Field>
+          <Field label="Assigned Rep">
+            <select
+              value={form.assigned_to}
+              onChange={(e) => set("assigned_to", e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {reps.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name || r.email}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
         <Field label="Notes">
           <textarea
@@ -420,6 +445,16 @@ export function LeadForm({
               📅 Book Appointment
             </button>
           )
+        )}
+
+        {lead && (
+          <TasksPanel
+            leadId={lead.id}
+            tasks={tasks ?? []}
+            reps={reps}
+            readOnly={readOnly}
+            onChanged={refresh}
+          />
         )}
 
         {error && <p className="error-note">{error}</p>}

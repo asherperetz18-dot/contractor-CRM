@@ -23,6 +23,7 @@ function toRow(input: LeadInput) {
     second_contact_first_name: input.second_contact_first_name || null,
     second_contact_last_name: input.second_contact_last_name || null,
     second_contact_phone: input.second_contact_phone || null,
+    assigned_to: input.assigned_to || null,
   };
 }
 
@@ -130,10 +131,16 @@ export async function bookAppointmentForLead(
   });
   if (eventError) return { error: eventError.message };
 
-  const nextStage =
-    currentStage === "New Leads" || currentStage === "Contacted"
-      ? "Estimate Scheduled"
-      : currentStage;
+  const preAppointmentStages: PipelineStage[] = [
+    "Unsorted",
+    "New Lead",
+    "Meta",
+    "No Answer",
+    "Contacted",
+  ];
+  const nextStage = preAppointmentStages.includes(currentStage)
+    ? "Appointment Scheduled"
+    : currentStage;
 
   const { error: leadError } = await supabase
     .from("leads")
@@ -144,5 +151,45 @@ export async function bookAppointmentForLead(
   revalidatePath("/pipeline");
   revalidatePath("/calendar");
   revalidatePath("/schedule");
+  return {};
+}
+
+export async function createLeadTask(
+  leadId: string,
+  input: { title: string; due_date: string; assigned_to: string }
+) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { error } = await supabase.from("lead_tasks").insert({
+    lead_id: leadId,
+    title: input.title.trim(),
+    due_date: input.due_date,
+    assigned_to: input.assigned_to || null,
+    created_by: user?.id ?? null,
+  });
+  if (error) return { error: error.message };
+  revalidatePath("/pipeline");
+  return {};
+}
+
+export async function completeLeadTask(taskId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("lead_tasks")
+    .update({ completed_at: new Date().toISOString() })
+    .eq("id", taskId);
+  if (error) return { error: error.message };
+  revalidatePath("/pipeline");
+  return {};
+}
+
+export async function deleteLeadTask(taskId: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("lead_tasks").delete().eq("id", taskId);
+  if (error) return { error: error.message };
+  revalidatePath("/pipeline");
   return {};
 }

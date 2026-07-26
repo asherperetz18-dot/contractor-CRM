@@ -31,32 +31,56 @@ export type CompanyProfile = {
 };
 
 export type PipelineStage =
-  | "New Leads"
+  | "Unsorted"
+  | "New Lead"
+  | "Meta"
+  | "No Answer"
   | "Contacted"
-  | "Estimate Scheduled"
-  | "Estimate Sent"
-  | "Negotiating"
+  | "Appointment Scheduled"
+  | "Appointment Follow Up"
+  | "2nd Appointment"
+  | "Estimate Prepared"
+  | "Proposal Sent"
+  | "Pending Finance"
+  | "Close to Sale"
   | "Won"
-  | "Lost";
+  | "Lost"
+  | "DNC";
 
 export const LEAD_STAGES: PipelineStage[] = [
-  "New Leads",
+  "Unsorted",
+  "New Lead",
+  "Meta",
+  "No Answer",
   "Contacted",
-  "Estimate Scheduled",
-  "Estimate Sent",
-  "Negotiating",
+  "Appointment Scheduled",
+  "Appointment Follow Up",
+  "2nd Appointment",
+  "Estimate Prepared",
+  "Proposal Sent",
+  "Pending Finance",
+  "Close to Sale",
   "Won",
   "Lost",
+  "DNC",
 ];
 
 export const STAGE_COLOR: Record<string, string> = {
-  "New Leads": "#7C8798",
+  Unsorted: "#9A9384",
+  "New Lead": "#7C8798",
+  Meta: "#7C8798",
+  "No Answer": "#B7862B",
   Contacted: "#2D5F8A",
-  "Estimate Scheduled": "#C7691B",
-  "Estimate Sent": "#C7691B",
-  Negotiating: "#B7862B",
+  "Appointment Scheduled": "#C7691B",
+  "Appointment Follow Up": "#C7691B",
+  "2nd Appointment": "#C7691B",
+  "Estimate Prepared": "#2D5F8A",
+  "Proposal Sent": "#2D5F8A",
+  "Pending Finance": "#B7862B",
+  "Close to Sale": "#B7862B",
   Won: "#2F855A",
   Lost: "#C0392B",
+  DNC: "#C0392B",
   Other: "#9A9384",
 };
 
@@ -121,6 +145,8 @@ export type Lead = {
   second_contact_first_name: string | null;
   second_contact_last_name: string | null;
   second_contact_phone: string | null;
+  assigned_to: string | null;
+  notes_updated_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -143,7 +169,61 @@ export type LeadInput = {
   second_contact_first_name: string;
   second_contact_last_name: string;
   second_contact_phone: string;
+  assigned_to: string;
 };
+
+export type LeadTask = {
+  id: string;
+  lead_id: string;
+  title: string;
+  due_date: string;
+  completed_at: string | null;
+  assigned_to: string | null;
+  created_at: string;
+};
+
+export type LeadWarnings = {
+  noAppts: boolean;
+  noNotes: boolean;
+  noTasks: boolean;
+  staleNotes: boolean;
+  overdueTaskDays: number | null;
+};
+
+const STALE_NOTES_DAYS = 14;
+
+export function computeLeadWarnings(
+  lead: Lead,
+  hasAppt: boolean,
+  tasks: LeadTask[]
+): LeadWarnings {
+  const openTasks = tasks.filter((t) => !t.completed_at);
+  const overdue = openTasks
+    .map((t) => daysSince(t.due_date))
+    .filter((d) => d > 0);
+
+  return {
+    noAppts: !hasAppt,
+    noNotes: !lead.notes || !lead.notes.trim(),
+    noTasks: openTasks.length === 0,
+    staleNotes:
+      !!lead.notes?.trim() &&
+      (!lead.notes_updated_at || daysSince(lead.notes_updated_at) > STALE_NOTES_DAYS),
+    overdueTaskDays: overdue.length ? Math.max(...overdue) : null,
+  };
+}
+
+export function hasFollowUpDue(tasks: LeadTask[]) {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  return tasks.some((t) => !t.completed_at && t.due_date <= todayISO);
+}
+
+export function isColdLead(warnings: LeadWarnings) {
+  return (
+    warnings.noAppts &&
+    (warnings.noTasks || warnings.staleNotes || warnings.overdueTaskDays !== null)
+  );
+}
 
 export function money(n: number | string) {
   return (Number(n) || 0).toLocaleString("en-US", {
