@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -86,5 +87,40 @@ export async function removeLogo() {
   if (error) return { error: error.message };
 
   revalidatePath("/", "layout");
+  return {};
+}
+
+export async function regenerateWebhookSecret() {
+  const supabase = await createClient();
+  const secret = crypto.randomBytes(24).toString("hex");
+  const { error } = await supabase
+    .from("company_profile")
+    .update({ webhook_secret: secret })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/incoming-webhooks");
+  return { secret };
+}
+
+export type MetaConfigInput = {
+  meta_page_id: string;
+  meta_page_access_token: string;
+  meta_verify_token: string;
+  meta_app_secret: string;
+};
+
+export async function saveMetaConfig(input: MetaConfigInput) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_profile")
+    .update({
+      meta_page_id: input.meta_page_id || null,
+      meta_page_access_token: input.meta_page_access_token || null,
+      meta_verify_token: input.meta_verify_token || null,
+      meta_app_secret: input.meta_app_secret || null,
+    })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/facebook-lead-ads");
   return {};
 }

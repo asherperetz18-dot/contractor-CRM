@@ -238,7 +238,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         desc: "Connect Dropbox or Google Drive to automatically sync project files and free up Supabase storage",
         icon: "☁",
       },
-      { title: "Facebook Lead Ads", desc: "Auto-import leads from Facebook Lead Ads into Contacts & Leads", icon: "📘" },
+      {
+        title: "Facebook Lead Ads",
+        desc: "Auto-import leads from Facebook Lead Ads into Contacts & Leads",
+        icon: "📘",
+        href: "/settings/facebook-lead-ads",
+      },
       {
         title: "Google Local Services Ads",
         desc: "Auto-import Google Guarantee leads from Google Local Services Ads into Contacts & Leads",
@@ -248,6 +253,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         title: "Incoming Data (Webhooks)",
         desc: "Custom inbound URLs so your website, Zapier, or any system can push leads into the CRM",
         icon: "📥",
+        href: "/settings/incoming-webhooks",
       },
       { title: "Outgoing Webhooks", desc: "Push lead status updates back to your CRM, lead source, or accounting system", icon: "📤" },
     ],
