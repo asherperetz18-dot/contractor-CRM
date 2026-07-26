@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   computeLeadWarnings,
@@ -94,14 +94,14 @@ export function PipelineBoard({
     });
   }
 
-  function setScrollContainer(node: HTMLDivElement | null) {
+  const setScrollContainer = useCallback((node: HTMLDivElement | null) => {
     scrollElRef.current = node;
     if (!node) return;
     measureScroll(node);
     const onScroll = () => measureScroll(node);
     node.addEventListener("scroll", onScroll);
     return () => node.removeEventListener("scroll", onScroll);
-  }
+  }, []);
 
   function scrollByAmount(delta: number) {
     scrollElRef.current?.scrollBy({ left: delta, behavior: "smooth" });
