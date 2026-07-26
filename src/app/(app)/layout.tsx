@@ -4,7 +4,9 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { logout } from "@/lib/actions/auth";
 import { NAV } from "@/lib/nav";
 import { NavLink } from "./nav-link";
+import { NavGroup } from "./nav-group";
 import { QuickCreateMenu } from "./quick-create-menu";
+import { version } from "../../../package.json";
 
 export default async function AppLayout({
   children,
@@ -53,15 +55,19 @@ export default async function AppLayout({
               ) : (
                 <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
               )}
-              <div className="sidebar-sub">{profile.name ?? profile.email}</div>
+              <div className="sidebar-sub">v{version}</div>
             </div>
             <nav className="sidebar-nav">
-              {NAV.map((item) => (
-                <NavLink key={item.href} href={item.href}>
-                  <span className="nav-icon">{item.icon}</span>
-                  {item.label}
-                </NavLink>
-              ))}
+              {NAV.map((item) =>
+                item.type === "group" ? (
+                  <NavGroup key={item.label} group={item} />
+                ) : (
+                  <NavLink key={item.href} href={item.href}>
+                    <span className="nav-icon">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                )
+              )}
             </nav>
             <div className="sidebar-foot">
               <div className="role-label">Signed in as</div>
