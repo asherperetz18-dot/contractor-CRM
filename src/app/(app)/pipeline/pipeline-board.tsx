@@ -20,6 +20,7 @@ import {
 import { moveLeadStage } from "@/lib/actions/leads";
 import { LeadForm } from "./lead-form";
 import { AttentionDigest } from "./attention-digest";
+import { CsvImportPanel } from "./csv-import-panel";
 
 type StatusFilter = "Open" | "Won" | "Lost";
 type SortBy = "Name" | "Days" | "Amount";
@@ -44,6 +45,7 @@ export function PipelineBoard({
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const tasksByLead = useMemo(() => {
     const map = new Map<string, LeadTask[]>();
@@ -136,9 +138,14 @@ export function PipelineBoard({
           </p>
         </div>
         {canWrite && (
-          <button className="btn-primary" onClick={() => setShowNew(true)}>
-            + New Lead
-          </button>
+          <div>
+            <button className="btn-ghost" onClick={() => setShowImport(true)}>
+              Import CSV
+            </button>
+            <button className="btn-primary" onClick={() => setShowNew(true)}>
+              + New Lead
+            </button>
+          </div>
         )}
       </div>
 
@@ -314,6 +321,9 @@ export function PipelineBoard({
           onCancel={() => setShowNew(false)}
           onSaved={() => setShowNew(false)}
         />
+      )}
+      {showImport && canWrite && (
+        <CsvImportPanel onCancel={() => setShowImport(false)} />
       )}
       {editing && (
         <LeadForm

@@ -27,6 +27,48 @@ function toRow(input: LeadInput) {
   };
 }
 
+export type BulkLeadRow = {
+  company_name: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+  address: string;
+  project_type: string;
+  value: string;
+};
+
+export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const payload = rows.map((r) => ({
+    contact_type: "Individual" as const,
+    company_name: r.company_name || null,
+    first_name: r.first_name || null,
+    last_name: r.last_name || null,
+    phone: r.phone || null,
+    email: r.email || null,
+    address: r.address || null,
+    project_type: r.project_type || null,
+    value: Number(r.value) || 0,
+    stage,
+    source: "CSV Import",
+    created_by: user?.id ?? null,
+  }));
+
+  const CHUNK = 500;
+  for (let i = 0; i < payload.length; i += CHUNK) {
+    const { error } = await supabase.from("leads").insert(payload.slice(i, i + CHUNK));
+    if (error) return { error: error.message, imported: i };
+  }
+
+  revalidatePath("/pipeline");
+  return { imported: payload.length };
+}
+
 export async function createLead(input: LeadInput) {
   const supabase = await createClient();
   const {
