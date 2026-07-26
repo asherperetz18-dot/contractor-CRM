@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getTwilioEnv } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -33,12 +34,11 @@ export async function sendSms(
   if (!trimmedBody) return { error: "Message cannot be empty." };
   if (!toNumber.trim()) return { error: "No phone number to send to." };
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER;
-  if (!accountSid || !authToken || !fromNumber) {
+  const twilioEnv = getTwilioEnv();
+  if (!twilioEnv) {
     return { error: "Twilio is not configured on the server." };
   }
+  const { accountSid, authToken, phoneNumber: fromNumber } = twilioEnv;
 
   const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
   const res = await fetch(

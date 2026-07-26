@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone, type Lead } from "@/lib/data/types";
+import { getTwilioEnv } from "@/lib/twilio-env";
 
 function computeTwilioSignature(
   url: string,
@@ -29,8 +30,8 @@ function validateTwilioSignature(
 }
 
 export async function POST(req: NextRequest) {
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  if (!authToken) {
+  const twilioEnv = getTwilioEnv();
+  if (!twilioEnv) {
     return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
   }
 
@@ -39,14 +40,8 @@ export async function POST(req: NextRequest) {
   for (const [key, value] of form.entries()) params[key] = String(value);
 
   const signature = req.headers.get("x-twilio-signature");
-  if (!validateTwilioSignature(req.url, params, signature, authToken)) {
-    return NextResponse.json(
-      {
-        error: "Invalid signature",
-        debugFingerprint: `${authToken.slice(0, 2)}...${authToken.slice(-2)} (len ${authToken.length})`,
-      },
-      { status: 403 }
-    );
+  if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
   }
 
   const from = params.From || "";
