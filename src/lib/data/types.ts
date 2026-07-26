@@ -85,6 +85,31 @@ export const STAGE_COLOR: Record<string, string> = {
 };
 
 export type EventType = "Estimate" | "Job Visit" | "Meeting" | "Other";
+export const EVENT_TYPES: EventType[] = ["Estimate", "Job Visit", "Meeting", "Other"];
+
+export type Event = {
+  id: string;
+  title: string | null;
+  date: string;
+  time: string | null;
+  event_type: EventType;
+  assigned_to: string | null;
+  job_id: string | null;
+  lead_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EventInput = {
+  title: string;
+  date: string;
+  time: string;
+  event_type: EventType;
+  assigned_to: string;
+  job_id: string;
+  notes: string;
+};
 
 export type JobStatus = "Not Started" | "In Progress" | "On Hold" | "Complete";
 

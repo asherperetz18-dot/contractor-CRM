@@ -418,12 +418,19 @@ export function LeadForm({
                   </select>
                 </Field>
                 <Field label="Assigned To">
-                  <input
+                  <select
                     value={booking.assignedTo}
                     onChange={(e) =>
                       setBooking((b) => ({ ...b, assignedTo: e.target.value }))
                     }
-                  />
+                  >
+                    <option value="">Unassigned</option>
+                    {reps.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name || r.email}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
               </div>
               <button

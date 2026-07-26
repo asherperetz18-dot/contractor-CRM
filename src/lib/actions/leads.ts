@@ -75,13 +75,15 @@ export async function createLead(input: LeadInput) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("leads")
-    .insert({ ...toRow(input), created_by: user?.id ?? null });
+    .insert({ ...toRow(input), created_by: user?.id ?? null })
+    .select("id")
+    .single();
 
   if (error) return { error: error.message };
   revalidatePath("/pipeline");
-  return {};
+  return { id: (data as { id: string }).id };
 }
 
 export async function updateLead(id: string, input: LeadInput) {
@@ -166,9 +168,8 @@ export async function bookAppointmentForLead(
     date: details.date,
     time: details.time || null,
     event_type: details.eventType,
-    assigned_to: null,
+    assigned_to: details.assignedTo || null,
     lead_id: leadId,
-    notes: details.assignedTo ? `Assigned to: ${details.assignedTo}` : null,
     created_by: user?.id ?? null,
   });
   if (eventError) return { error: eventError.message };
