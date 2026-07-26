@@ -5,16 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { AppRole } from "@/lib/data/types";
 
-export async function createUser(input: {
-  name: string;
-  email: string;
-  phone: string;
-  password: string;
-  roles: AppRole[];
-}) {
-  // Guard: only an Office or Admin user may create accounts. RLS protects
-  // the profiles table itself, but user creation goes through the Admin
-  // API (service role, bypasses RLS), so the check has to happen here.
+// User creation and profile edits (name/phone/email) go through the Admin
+// API (service role, bypasses RLS) because changing a user's auth email
+// requires it -- so the Office-or-Admin check has to happen here rather
+// than relying on RLS alone.
+async function requireOfficeOrAdmin(): Promise<{ error: string } | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -27,8 +22,20 @@ export async function createUser(input: {
     .single();
   const roles = (profile as { roles: AppRole[] } | null)?.roles ?? [];
   if (!roles.includes("Office") && !roles.includes("Admin")) {
-    return { error: "Only Office or Admin users can create accounts." };
+    return { error: "Only Office or Admin users can do this." };
   }
+  return null;
+}
+
+export async function createUser(input: {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+  roles: AppRole[];
+}): Promise<{ error?: string }> {
+  const guardError = await requireOfficeOrAdmin();
+  if (guardError) return guardError;
 
   const admin = createAdminClient();
   const { data: created, error } = await admin.auth.admin.createUser({
@@ -53,7 +60,48 @@ export async function createUser(input: {
   return {};
 }
 
-export async function updateUserRoles(userId: string, roles: AppRole[]) {
+export async function updateUserProfile(
+  userId: string,
+  input: { name: string; email: string; phone: string }
+): Promise<{ error?: string }> {
+  const guardError = await requireOfficeOrAdmin();
+  if (guardError) return guardError;
+
+  const admin = createAdminClient();
+
+  const { data: current } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+  const currentEmail = (current as { email: string | null } | null)?.email;
+
+  if (input.email && input.email !== currentEmail) {
+    const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+      email: input.email,
+      email_confirm: true,
+    });
+    if (authError) return { error: authError.message };
+  }
+
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      name: input.name || null,
+      email: input.email || null,
+      phone: input.phone || null,
+    })
+    .eq("id", userId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/settings/users-roles");
+  return {};
+}
+
+export async function updateUserRoles(
+  userId: string,
+  roles: AppRole[]
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
@@ -64,7 +112,10 @@ export async function updateUserRoles(userId: string, roles: AppRole[]) {
   return {};
 }
 
-export async function updateCanDeleteLeads(userId: string, canDelete: boolean) {
+export async function updateCanDeleteLeads(
+  userId: string,
+  canDelete: boolean
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
@@ -75,7 +126,10 @@ export async function updateCanDeleteLeads(userId: string, canDelete: boolean) {
   return {};
 }
 
-export async function toggleUserStatus(userId: string, currentStatus: string) {
+export async function toggleUserStatus(
+  userId: string,
+  currentStatus: string
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const nextStatus = currentStatus === "Active" ? "Archived" : "Active";
   const { error } = await supabase

@@ -11,6 +11,7 @@ import {
   createUser,
   toggleUserStatus,
   updateCanDeleteLeads,
+  updateUserProfile,
   updateUserRoles,
 } from "@/lib/actions/users";
 
@@ -28,6 +29,10 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
   const [newUserRoles, setNewUserRoles] = useState<AppRole[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", email: "", phone: "" });
+  const [editPending, setEditPending] = useState(false);
+  const [editError, setEditError] = useState("");
 
   const q = search.trim().toLowerCase();
   const filtered = users.filter((u) => {
@@ -74,6 +79,30 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
 
   async function handleToggleCanDelete(u: Profile) {
     await updateCanDeleteLeads(u.id, !u.can_delete_leads);
+    refresh();
+  }
+
+  function openEdit(u: Profile) {
+    setEditingUser(u);
+    setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "" });
+    setEditError("");
+  }
+
+  async function handleSaveEdit() {
+    if (!editingUser) return;
+    if (!editForm.name.trim() || !editForm.email.trim()) {
+      setEditError("Name and email are required.");
+      return;
+    }
+    setEditPending(true);
+    setEditError("");
+    const result = await updateUserProfile(editingUser.id, editForm);
+    setEditPending(false);
+    if (result?.error) {
+      setEditError(result.error);
+      return;
+    }
+    setEditingUser(null);
     refresh();
   }
 
@@ -152,6 +181,15 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                         {u.status}
                       </Badge>
                     </div>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => openEdit(u)}
+                      aria-label="Edit user"
+                      title="Edit name, email, phone"
+                    >
+                      ✎
+                    </button>
                   </div>
                 </td>
                 <td>{u.email}</td>
@@ -292,6 +330,52 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
               </button>
               <button className="btn-primary" onClick={handleCreate} disabled={pending}>
                 {pending ? "Creating…" : "Create User"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {editingUser && (
+        <Modal title="Edit User" onClose={() => setEditingUser(null)}>
+          <div className="form-grid">
+            <Field label="Name">
+              <input
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </Field>
+            <Field label="Email">
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </Field>
+            <Field label="Phone">
+              <input
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            </Field>
+          </div>
+          <p className="hint-note">
+            Changing email updates their login email too — they&apos;ll sign
+            in with the new address going forward.
+          </p>
+          {editError && <p className="error-note">{editError}</p>}
+          <div className="modal-actions">
+            <div />
+            <div>
+              <button className="btn-ghost" onClick={() => setEditingUser(null)}>
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleSaveEdit}
+                disabled={editPending}
+              >
+                {editPending ? "Saving…" : "Save"}
               </button>
             </div>
           </div>
