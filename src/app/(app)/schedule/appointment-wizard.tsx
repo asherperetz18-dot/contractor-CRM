@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import {
-  EVENT_TYPES,
+  type CalendarRow,
   type EventType,
   type Lead,
   type PipelineStage,
@@ -28,12 +28,14 @@ export function AppointmentWizard({
   leads,
   reps,
   stages,
+  calendars,
   onCancel,
   onFinished,
 }: {
   leads: Lead[];
   reps: Profile[];
   stages: PipelineStageRow[];
+  calendars: CalendarRow[];
   onCancel: () => void;
   onFinished: () => void;
 }) {
@@ -141,6 +143,7 @@ export function AppointmentWizard({
             date: details.date,
             time: details.time,
             event_type: details.eventType,
+            status: "New",
             assigned_to: details.assignedTo,
             job_id: "",
             notes: "",
@@ -305,11 +308,11 @@ export function AppointmentWizard({
                   placeholder="Estimate walkthrough..."
                 />
               </Field>
-              <Field label="Type">
+              <Field label="Calendar">
                 <select value={apptType} onChange={(e) => setApptType(e.target.value as EventType)}>
-                  {EVENT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
+                  {calendars.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
                     </option>
                   ))}
                 </select>

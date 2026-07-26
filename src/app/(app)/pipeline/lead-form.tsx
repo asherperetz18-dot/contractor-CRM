@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import {
+  type CalendarRow,
   type Lead,
   type LeadInput,
   type LeadTask,
@@ -19,8 +20,6 @@ import {
   updateLead,
 } from "@/lib/actions/leads";
 import { TasksPanel } from "./tasks-panel";
-
-const EVENT_TYPES = ["Estimate", "Job Visit", "Meeting", "Other"];
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -53,6 +52,7 @@ export function LeadForm({
   lead,
   reps,
   stages,
+  calendars,
   tasks,
   readOnly,
   canDelete,
@@ -63,6 +63,7 @@ export function LeadForm({
   lead?: Lead;
   reps: Profile[];
   stages: PipelineStageRow[];
+  calendars: CalendarRow[];
   tasks?: LeadTask[];
   readOnly?: boolean;
   canDelete?: boolean;
@@ -407,16 +408,16 @@ export function LeadForm({
                     }
                   />
                 </Field>
-                <Field label="Type">
+                <Field label="Calendar">
                   <select
                     value={booking.eventType}
                     onChange={(e) =>
                       setBooking((b) => ({ ...b, eventType: e.target.value }))
                     }
                   >
-                    {EVENT_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                    {calendars.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
                       </option>
                     ))}
                   </select>

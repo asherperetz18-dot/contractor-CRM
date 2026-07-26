@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import type {
-  DocumentRecord,
-  Event,
-  Job,
-  Lead,
-  LeadTask,
-  PipelineStageRow,
-  Profile,
+import {
+  stageColor,
+  type CalendarRow,
+  type DocumentRecord,
+  type Event,
+  type Job,
+  type Lead,
+  type LeadTask,
+  type PipelineStageRow,
+  type Profile,
 } from "@/lib/data/types";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
@@ -22,6 +24,7 @@ export function ScheduleList({
   stages,
   leadTasks,
   documents,
+  calendars,
   canWrite,
 }: {
   events: Event[];
@@ -31,6 +34,7 @@ export function ScheduleList({
   stages: PipelineStageRow[];
   leadTasks: LeadTask[];
   documents: DocumentRecord[];
+  calendars: CalendarRow[];
   canWrite: boolean;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
@@ -82,7 +86,7 @@ export function ScheduleList({
               <div className="schedule-body">
                 <div className="schedule-title">{ev.title}</div>
                 <div className="schedule-meta">
-                  <Badge color="#2D5F8A">{ev.event_type}</Badge>
+                  <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
                   {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
                   {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
                 </div>
@@ -97,6 +101,7 @@ export function ScheduleList({
           leads={leads}
           reps={reps}
           stages={stages}
+          calendars={calendars}
           onCancel={() => setShowNew(false)}
           onFinished={() => setShowNew(false)}
         />
@@ -109,6 +114,7 @@ export function ScheduleList({
           leads={leads}
           leadTasks={leadTasks}
           documents={documents}
+          calendars={calendars}
           readOnly={!canWrite}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}

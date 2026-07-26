@@ -10,6 +10,7 @@ function toRow(input: EventInput) {
     date: input.date,
     time: input.time || null,
     event_type: input.event_type,
+    status: input.status,
     assigned_to: input.assigned_to || null,
     job_id: input.job_id || null,
     notes: input.notes || null,

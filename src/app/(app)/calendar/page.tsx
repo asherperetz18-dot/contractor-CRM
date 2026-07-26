@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import type {
+  CalendarRow,
   DocumentRecord,
   Event,
   Job,
@@ -23,6 +24,7 @@ export default async function CalendarPage() {
     { data: leads },
     { data: leadTasks },
     { data: documents },
+    { data: calendars },
   ] = await Promise.all([
     supabase.from("events").select("*"),
     supabase.from("jobs").select("*").order("name", { ascending: true }),
@@ -36,6 +38,7 @@ export default async function CalendarPage() {
       .from("lead_tasks")
       .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at"),
     supabase.from("documents").select("*").eq("type", "Estimate"),
+    supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
   ]);
 
   return (
@@ -46,6 +49,7 @@ export default async function CalendarPage() {
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       documents={(documents as DocumentRecord[]) ?? []}
+      calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
     />
   );

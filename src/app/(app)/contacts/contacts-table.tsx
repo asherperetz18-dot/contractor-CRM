@@ -8,6 +8,7 @@ import {
   mapsUrl,
   money,
   stageColor,
+  type CalendarRow,
   type Lead,
   type PipelineStageRow,
   type Profile,
@@ -18,12 +19,14 @@ export function ContactsTable({
   leads,
   reps,
   stages,
+  calendars,
   canWrite,
   canDelete,
 }: {
   leads: Lead[];
   reps: Profile[];
   stages: PipelineStageRow[];
+  calendars: CalendarRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -155,6 +158,7 @@ export function ContactsTable({
           lead={editing}
           reps={reps}
           stages={stages}
+          calendars={calendars}
           readOnly={!canWrite}
           canDelete={canDelete}
           onCancel={() => setEditing(null)}

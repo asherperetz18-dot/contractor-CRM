@@ -79,8 +79,34 @@ export function stageColor(stages: { name: string; color: string }[], name: stri
   return stages.find((s) => s.name === name)?.color ?? FALLBACK_STAGE_COLOR;
 }
 
-export type EventType = "Estimate" | "Job Visit" | "Meeting" | "Other";
-export const EVENT_TYPES: EventType[] = ["Estimate", "Job Visit", "Meeting", "Other"];
+// Calendars are admin-managed (Settings -> Calendars), not a fixed set,
+// so this is just a plain string matching a calendars.name.
+export type EventType = string;
+
+export type CalendarRow = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  is_system: boolean;
+  created_at: string;
+};
+
+export type EventStatus = "New" | "Confirmed" | "Showed" | "No-show" | "Cancelled";
+export const EVENT_STATUSES: EventStatus[] = [
+  "New",
+  "Confirmed",
+  "Showed",
+  "No-show",
+  "Cancelled",
+];
+export const EVENT_STATUS_COLOR: Record<EventStatus, string> = {
+  New: "#7C8798",
+  Confirmed: "#2F855A",
+  Showed: "#2D5F8A",
+  "No-show": "#C7691B",
+  Cancelled: "#C0392B",
+};
 
 export type Event = {
   id: string;
@@ -88,6 +114,7 @@ export type Event = {
   date: string;
   time: string | null;
   event_type: EventType;
+  status: EventStatus;
   assigned_to: string | null;
   job_id: string | null;
   lead_id: string | null;
@@ -103,6 +130,7 @@ export type EventInput = {
   date: string;
   time: string;
   event_type: EventType;
+  status: EventStatus;
   assigned_to: string;
   job_id: string;
   notes: string;

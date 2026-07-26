@@ -6,13 +6,15 @@ import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import {
-  EVENT_TYPES,
+  EVENT_STATUSES,
   leadDisplayName,
   mapsUrl,
   money,
+  type CalendarRow,
   type DocumentRecord,
   type Event,
   type EventInput,
+  type EventStatus,
   type Job,
   type Lead,
   type LeadTask,
@@ -33,6 +35,7 @@ function toInput(event?: Event, initialDate?: string): EventInput {
     date: event?.date ?? initialDate ?? todayISO(),
     time: event?.time ?? "09:00",
     event_type: event?.event_type ?? "Estimate",
+    status: event?.status ?? "New",
     assigned_to: event?.assigned_to ?? "",
     job_id: event?.job_id ?? "",
     notes: event?.notes ?? "",
@@ -49,6 +52,7 @@ export function EventForm({
   leads,
   leadTasks,
   documents,
+  calendars,
   readOnly,
   onCancel,
   onSaved,
@@ -61,6 +65,7 @@ export function EventForm({
   leads?: Lead[];
   leadTasks?: LeadTask[];
   documents?: DocumentRecord[];
+  calendars: CalendarRow[];
   readOnly?: boolean;
   onCancel: () => void;
   onSaved: () => void;
@@ -166,14 +171,26 @@ export function EventForm({
                 placeholder="Site visit, estimate walkthrough..."
               />
             </Field>
-            <Field label="Type">
+            <Field label="Calendar">
               <select
                 value={form.event_type}
-                onChange={(e) => set("event_type", e.target.value as EventInput["event_type"])}
+                onChange={(e) => set("event_type", e.target.value)}
               >
-                {EVENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                {calendars.map((c) => (
+                  <option key={c.id} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select
+                value={form.status}
+                onChange={(e) => set("status", e.target.value as EventStatus)}
+              >
+                {EVENT_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>

@@ -3,6 +3,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import {
   canDeleteLeads,
   canEditDispatch,
+  type CalendarRow,
   type Lead,
   type LeadTask,
   type PipelineStageRow,
@@ -16,7 +17,7 @@ export default async function PipelinePage() {
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
 
-  const [{ data: leads }, { data: tasks }, { data: reps }, { data: stages }] =
+  const [{ data: leads }, { data: tasks }, { data: reps }, { data: stages }, { data: calendars }] =
     await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
       supabase
@@ -28,6 +29,7 @@ export default async function PipelinePage() {
         .eq("status", "Active")
         .order("name", { ascending: true }),
       supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
+      supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
     ]);
 
   return (
@@ -36,6 +38,7 @@ export default async function PipelinePage() {
       tasks={(tasks as LeadTask[]) ?? []}
       reps={(reps as Profile[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
+      calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
       canDelete={canDelete}
     />

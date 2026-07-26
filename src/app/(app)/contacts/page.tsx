@@ -3,6 +3,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import {
   canDeleteLeads,
   canEditDispatch,
+  type CalendarRow,
   type Lead,
   type PipelineStageRow,
   type Profile,
@@ -15,21 +16,24 @@ export default async function ContactsPage() {
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
 
-  const [{ data: leads }, { data: reps }, { data: stages }] = await Promise.all([
-    supabase.from("leads").select("*").order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, can_delete_leads, created_at")
-      .eq("status", "Active")
-      .order("name", { ascending: true }),
-    supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
-  ]);
+  const [{ data: leads }, { data: reps }, { data: stages }, { data: calendars }] =
+    await Promise.all([
+      supabase.from("leads").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("profiles")
+        .select("id, name, email, phone, roles, status, can_delete_leads, created_at")
+        .eq("status", "Active")
+        .order("name", { ascending: true }),
+      supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
+      supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
+    ]);
 
   return (
     <ContactsTable
       leads={(leads as Lead[]) ?? []}
       reps={(reps as Profile[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
+      calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
       canDelete={canDelete}
     />

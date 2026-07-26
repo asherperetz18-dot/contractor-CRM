@@ -11,6 +11,7 @@ import {
   mapsUrl,
   money,
   stageColor,
+  type CalendarRow,
   type Lead,
   type LeadTask,
   type LeadWarnings,
@@ -45,6 +46,7 @@ export function PipelineBoard({
   tasks,
   reps,
   stages,
+  calendars,
   canWrite,
   canDelete,
 }: {
@@ -52,6 +54,7 @@ export function PipelineBoard({
   tasks: LeadTask[];
   reps: Profile[];
   stages: PipelineStageRow[];
+  calendars: CalendarRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -522,6 +525,7 @@ export function PipelineBoard({
         <LeadForm
           reps={reps}
           stages={stages}
+          calendars={calendars}
           onCancel={() => setShowNew(false)}
           onSaved={() => setShowNew(false)}
         />
@@ -534,6 +538,7 @@ export function PipelineBoard({
           lead={editing}
           reps={reps}
           stages={stages}
+          calendars={calendars}
           tasks={tasksByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}

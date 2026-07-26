@@ -113,8 +113,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     cards: [
       {
         title: "Calendars",
-        desc: "Configure the 5 system calendars (Sales Rep, Office, Architect, Sign-Off, 2nd @ Property) and add custom ones. Set colors per calendar.",
+        desc: "Configure the default calendars and add custom ones. Set colors per calendar.",
         icon: "📅",
+        href: "/settings/calendars",
       },
       {
         title: "Appointment Notifications",
