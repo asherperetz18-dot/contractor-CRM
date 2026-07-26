@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, authToken)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Invalid signature", debugUrl: req.url, debugParams: params },
+      { status: 403 }
+    );
   }
 
   const from = params.From || "";
