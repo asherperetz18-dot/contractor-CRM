@@ -62,6 +62,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/users-roles",
       },
       {
+        title: "Team Activity",
+        desc: "Active users, session time, and top pages across your team",
+        icon: "📈",
+        href: "/settings/team-activity",
+      },
+      {
         title: "Role Visibility",
         desc: "Choose which pages each role can open. Hidden pages are removed from the sidebar and blocked at the URL.",
         icon: "👁",

@@ -313,6 +313,47 @@ body {
   align-items: flex-end;
   margin-bottom: 18px;
 }
+.ta-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+}
+.ta-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+.ta-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 140px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+}
+.ta-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 8px;
+}
+.ta-bar {
+  width: 100%;
+  background: var(--blueprint);
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+.ta-bar-label {
+  font-size: 9px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  white-space: nowrap;
+}
 .module-title {
   font-family: var(--font-headers);
   font-size: 24px;
@@ -376,6 +417,14 @@ body {
   color: var(--ink-soft);
   cursor: pointer;
   font-size: 14px;
+}
+.topbar-icon-btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  background: #fff;
 }
 
 .chip-row {

@@ -106,6 +106,15 @@ export type EventInput = {
   notes: string;
 };
 
+export type ActivityEvent = {
+  id: string;
+  user_id: string;
+  session_id: string;
+  path: string;
+  kind: "pageview" | "heartbeat";
+  created_at: string;
+};
+
 export type JobStatus = "Not Started" | "In Progress" | "On Hold" | "Complete";
 
 export const JOB_STATUSES: JobStatus[] = [

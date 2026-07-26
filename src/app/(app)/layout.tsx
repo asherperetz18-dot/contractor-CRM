@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 import { logout } from "@/lib/actions/auth";
 import { NAV } from "@/lib/nav";
 import { NavLink } from "./nav-link";
 import { NavGroup } from "./nav-group";
 import { QuickCreateMenu } from "./quick-create-menu";
 import { GlobalSearch } from "./global-search";
+import { AdminToolsMenu } from "./admin-tools-menu";
+import { ActivityTracker } from "./activity-tracker";
 import { version } from "../../../package.json";
 
 export default async function AppLayout({
@@ -44,8 +47,10 @@ export default async function AppLayout({
           </div>
           <div className="global-topbar-right">
             <QuickCreateMenu />
+            {isAdminRole(profile) && <AdminToolsMenu />}
           </div>
         </div>
+        <ActivityTracker />
 
         <div className="app-body">
           <aside className="sidebar">
