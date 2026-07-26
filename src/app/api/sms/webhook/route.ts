@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
         debugParams: params,
         debugReceivedSignature: signature,
         debugComputedSignature: computeTwilioSignature(req.url, params, authToken),
+        debugTokenFingerprint: `${authToken.slice(0, 4)}...${authToken.slice(-4)} (len ${authToken.length})`,
       },
       { status: 403 }
     );
