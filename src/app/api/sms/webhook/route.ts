@@ -3,6 +3,17 @@ import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone, type Lead } from "@/lib/data/types";
 
+function computeTwilioSignature(
+  url: string,
+  params: Record<string, string>,
+  authToken: string
+): string {
+  const sortedKeys = Object.keys(params).sort();
+  let data = url;
+  for (const key of sortedKeys) data += key + params[key];
+  return crypto.createHmac("sha1", authToken).update(data, "utf8").digest("base64");
+}
+
 function validateTwilioSignature(
   url: string,
   params: Record<string, string>,
@@ -10,11 +21,7 @@ function validateTwilioSignature(
   authToken: string
 ): boolean {
   if (!signature) return false;
-  const sortedKeys = Object.keys(params).sort();
-  let data = url;
-  for (const key of sortedKeys) data += key + params[key];
-
-  const expected = crypto.createHmac("sha1", authToken).update(data, "utf8").digest("base64");
+  const expected = computeTwilioSignature(url, params, authToken);
   const expectedBuf = Buffer.from(expected);
   const signatureBuf = Buffer.from(signature);
   if (expectedBuf.length !== signatureBuf.length) return false;
@@ -34,7 +41,13 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, authToken)) {
     return NextResponse.json(
-      { error: "Invalid signature", debugUrl: req.url, debugParams: params },
+      {
+        error: "Invalid signature",
+        debugUrl: req.url,
+        debugParams: params,
+        debugReceivedSignature: signature,
+        debugComputedSignature: computeTwilioSignature(req.url, params, authToken),
+      },
       { status: 403 }
     );
   }
