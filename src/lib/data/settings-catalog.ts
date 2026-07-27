@@ -71,6 +71,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         title: "Role Visibility",
         desc: "Choose which pages each role can open. Hidden pages are removed from the sidebar and blocked at the URL.",
         icon: "👁",
+        href: "/settings/role-visibility",
       },
       { title: "Role Analytics Defaults", desc: "Default KPI visibility per role and dashboard layout", icon: "📊" },
     ],

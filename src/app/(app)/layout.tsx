@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
 import { logout } from "@/lib/actions/auth";
-import { NAV } from "@/lib/nav";
+import { NAV, filterNavForProfile } from "@/lib/nav";
 import { NavLink } from "./nav-link";
 import { NavGroup } from "./nav-group";
 import { QuickCreateMenu } from "./quick-create-menu";
@@ -22,14 +23,19 @@ export default async function AppLayout({
   if (!profile) redirect("/login");
 
   const supabase = await createClient();
-  const { data: companyProfile } = await supabase
-    .from("company_profile")
-    .select("name, logo_url")
-    .eq("id", 1)
-    .single();
+  const [{ data: companyProfile }, { data: visibilityRows }] = await Promise.all([
+    supabase.from("company_profile").select("name, logo_url").eq("id", 1).single(),
+    supabase.from("role_page_visibility").select("id, role, page_key, visible"),
+  ]);
   const company = companyProfile as { name: string | null; logo_url: string | null } | null;
   const logoUrl = company?.logo_url ?? null;
   const companyName = company?.name?.trim();
+  const overrides = (visibilityRows as RolePageVisibilityRow[]) ?? [];
+  const filteredNav = filterNavForProfile(NAV, profile, overrides);
+
+  const pathname = (await headers()).get("x-pathname") ?? "/";
+  const pageKey = pathToPageKey(pathname);
+  const pageBlocked = !!pageKey && !canSeePage(profile, pageKey, overrides);
 
   return (
     <div className="app-shell">
@@ -66,7 +72,7 @@ export default async function AppLayout({
               <div className="sidebar-sub">v{version}</div>
             </div>
             <nav className="sidebar-nav">
-              {NAV.map((item) =>
+              {filteredNav.map((item) =>
                 item.type === "group" ? (
                   <NavGroup key={item.label} group={item} />
                 ) : (
@@ -103,7 +109,19 @@ export default async function AppLayout({
             </div>
           </aside>
 
-          <main className="main">{children}</main>
+          <main className="main">
+            {pageBlocked ? (
+              <div className="empty-state">
+                <p className="empty-label">Page not available</p>
+                <p className="empty-hint">
+                  Your role doesn&apos;t have access to this page. Contact an admin if you
+                  think this is a mistake.
+                </p>
+              </div>
+            ) : (
+              children
+            )}
+          </main>
         </div>
       </div>
     </div>

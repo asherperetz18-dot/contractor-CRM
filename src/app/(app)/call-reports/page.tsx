@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
-  canEditDispatch,
+  canUseSalesCenter,
   type CallDispositionRow,
   type CallLog,
   type Lead,
@@ -12,7 +12,7 @@ import { CallReportsView } from "./call-reports-view";
 export default async function CallReportsPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
-  const canWrite = canEditDispatch(profile);
+  const canWrite = canUseSalesCenter(profile);
 
   const [{ data: callLogs }, { data: leads }, { data: reps }, { data: dispositions }] =
     await Promise.all([

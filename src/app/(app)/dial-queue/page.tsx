@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
-  canEditDispatch,
+  canUseSalesCenter,
   type CallDispositionRow,
   type CallLog,
   type CompanyProfile,
@@ -15,7 +15,7 @@ import { DialQueueView } from "./dial-queue-view";
 export default async function DialQueuePage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
-  const canWrite = canEditDispatch(profile);
+  const canWrite = canUseSalesCenter(profile);
 
   const [
     { data: leads },

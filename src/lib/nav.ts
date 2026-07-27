@@ -18,6 +18,36 @@ export type NavGroupItem = {
 
 export type NavEntry = NavLinkItem | NavGroupItem;
 
+import { canSeePage, pathToPageKey, type Profile, type RolePageVisibilityRow } from "./data/types";
+
+export function filterNavForProfile(
+  nav: NavEntry[],
+  profile: Pick<Profile, "roles"> | null,
+  overrides: RolePageVisibilityRow[]
+): NavEntry[] {
+  function allowed(href?: string): boolean {
+    if (!href) return true;
+    const pageKey = pathToPageKey(href);
+    if (!pageKey) return true;
+    return canSeePage(profile, pageKey, overrides);
+  }
+
+  return nav
+    .map((entry): NavEntry | null => {
+      if (entry.type === "link") {
+        return allowed(entry.href) ? entry : null;
+      }
+      const items = entry.items.filter((item) => allowed(item.href));
+      // Placeholder ("coming soon") items have no href and would otherwise
+      // keep an entire group visible even when every real page in it is
+      // hidden for this role, so they don't count toward keeping the group.
+      const hasRealItem = items.some((item) => !!item.href);
+      if (!hasRealItem) return null;
+      return { ...entry, items };
+    })
+    .filter((entry): entry is NavEntry => entry !== null);
+}
+
 export const NAV: NavEntry[] = [
   { type: "link", href: "/", label: "Dashboard", icon: "◎" },
   {

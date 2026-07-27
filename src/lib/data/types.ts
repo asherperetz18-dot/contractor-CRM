@@ -1,7 +1,7 @@
 export type ContactType = "Individual" | "Company";
 
-export type AppRole = "Office" | "Field" | "Admin" | "Sales";
-export const APP_ROLES: AppRole[] = ["Office", "Field", "Admin", "Sales"];
+export type AppRole = "Office" | "Field" | "Admin" | "Sales" | "Call Center";
+export const APP_ROLES: AppRole[] = ["Office", "Field", "Admin", "Sales", "Call Center"];
 
 export type UserStatus = "Active" | "Archived";
 
@@ -33,6 +33,114 @@ export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_lead
   if (!profile) return false;
   if (profile.roles.includes("Office")) return true;
   return profile.roles.includes("Sales") && profile.can_delete_leads;
+}
+
+// Your Sales Center (Power Dialer, Call Reports): Office, Sales, or the
+// Call-Center-only role can place calls, set dispositions, and manage lists.
+export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Sales") ||
+    profile.roles.includes("Call Center")
+  );
+}
+
+// Pages that can be individually shown/hidden per role (Settings -> Role
+// Visibility), matching the real iBuildPro product. Office/Admin always see
+// everything, mirroring its "Admins always have full access" behavior.
+export type PageKey =
+  | "dashboard"
+  | "pipeline"
+  | "reply-inbox"
+  | "marketing-analytics"
+  | "contacts"
+  | "salespeople"
+  | "appt-setter-assignments"
+  | "power-dialer"
+  | "call-reports"
+  | "production"
+  | "documents"
+  | "calendar"
+  | "schedule"
+  | "contracts";
+
+export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: string }[] = [
+  { key: "dashboard", label: "Dashboard", href: "/", group: "General" },
+  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch (Leads Mgmt.)" },
+  { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
+  {
+    key: "marketing-analytics",
+    label: "Marketing Analytics",
+    href: "/marketing-analytics",
+    group: "Dispatch (Leads Mgmt.)",
+  },
+  { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch (Leads Mgmt.)" },
+  { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Dispatch (Leads Mgmt.)" },
+  {
+    key: "appt-setter-assignments",
+    label: "Appt. Setter Assignments",
+    href: "/appt-setter-assignments",
+    group: "Dispatch (Leads Mgmt.)",
+  },
+  { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Your Sales Center" },
+  { key: "call-reports", label: "Call Reports", href: "/call-reports", group: "Your Sales Center" },
+  { key: "production", label: "Production", href: "/production", group: "General" },
+  { key: "documents", label: "Estimates & Invoices", href: "/documents", group: "General" },
+  { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
+  { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
+  { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
+];
+
+// Roles that can be individually restricted via Role Visibility. Office and
+// Admin are excluded from the matrix because they always have full access.
+export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Field", "Sales", "Call Center"];
+
+// Platform default when no explicit override row exists for a role/page --
+// "untouched cells follow the default," same wording as the real product.
+// Every role defaults to full access except the Call Center role, which
+// defaults to just Dashboard + Power Dialer + Call Reports.
+export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
+  if (role === "Call Center") {
+    return pageKey === "dashboard" || pageKey === "power-dialer" || pageKey === "call-reports";
+  }
+  return true;
+}
+
+export type RolePageVisibilityRow = {
+  id: string;
+  role: AppRole;
+  page_key: PageKey;
+  visible: boolean;
+};
+
+export function effectivePageVisible(
+  role: AppRole,
+  pageKey: PageKey,
+  overrides: RolePageVisibilityRow[]
+): boolean {
+  const override = overrides.find((o) => o.role === role && o.page_key === pageKey);
+  return override ? override.visible : defaultPageVisible(role, pageKey);
+}
+
+export function canSeePage(
+  profile: Pick<Profile, "roles"> | null,
+  pageKey: PageKey,
+  overrides: RolePageVisibilityRow[]
+): boolean {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  if (profile.roles.length === 0) return defaultPageVisible("Field", pageKey);
+  return profile.roles.some((role) => effectivePageVisible(role, pageKey, overrides));
+}
+
+export function pathToPageKey(pathname: string): PageKey | null {
+  if (pathname === "/") return "dashboard";
+  const sorted = [...PAGE_REGISTRY].sort((a, b) => b.href.length - a.href.length);
+  const match = sorted.find(
+    (p) => p.href !== "/" && (pathname === p.href || pathname.startsWith(p.href + "/"))
+  );
+  return match?.key ?? null;
 }
 
 export type CompanyProfile = {

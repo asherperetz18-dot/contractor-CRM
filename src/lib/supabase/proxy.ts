@@ -4,7 +4,15 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/auth"];
 
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // Rebuilt fresh each time (not snapshotted once) so it always reflects
+  // request.cookies.set() calls made by the Supabase setAll callback below.
+  function buildResponse() {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", request.nextUrl.pathname);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
+  let response = buildResponse();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,7 +26,7 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          response = NextResponse.next({ request });
+          response = buildResponse();
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
