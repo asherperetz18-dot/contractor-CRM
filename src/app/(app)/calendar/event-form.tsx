@@ -34,7 +34,10 @@ function todayISO() {
 }
 
 function friendlyWhen(dateStr: string, timeStr: string): string {
-  const d = new Date(`${dateStr}T${timeStr || "00:00"}:00`);
+  // event.time comes back from Postgres as "HH:MM:SS"; normalize to "HH:MM"
+  // so it isn't ambiguous whether a trailing ":00" is ours or already there.
+  const hhmm = timeStr ? timeStr.slice(0, 5) : "00:00";
+  const d = new Date(`${dateStr}T${hhmm}:00`);
   if (isNaN(d.getTime())) return dateStr;
   const today = new Date();
   const tomorrow = new Date(today);
