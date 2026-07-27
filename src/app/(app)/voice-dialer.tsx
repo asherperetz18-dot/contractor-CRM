@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getVoiceAccessToken } from "@/lib/actions/voice";
+import { logCall } from "@/lib/actions/call-logs";
 
 type CallStatus = "idle" | "connecting" | "ringing" | "in-call" | "ended" | "error";
 
@@ -19,6 +20,9 @@ export function VoiceDialer() {
   const deviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
   const callRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const leadIdRef = useRef<string | null>(null);
+  const callSidRef = useRef<string | null>(null);
+  const durationRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -41,14 +45,41 @@ export function VoiceDialer() {
 
   function startTimer() {
     setDuration(0);
-    timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+    durationRef.current = 0;
+    timerRef.current = setInterval(() => {
+      durationRef.current += 1;
+      setDuration(durationRef.current);
+    }, 1000);
   }
   function stopTimer() {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
   }
 
-  async function handleCall(overridePhone?: string) {
+  function finishCall(digits: string, callStatus: string) {
+    stopTimer();
+    const sid = callSidRef.current;
+    const leadId = leadIdRef.current;
+    const dur = durationRef.current;
+    callRef.current = null;
+    callSidRef.current = null;
+    leadIdRef.current = null;
+    logCall({
+      leadId,
+      toNumber: digits,
+      durationSeconds: dur,
+      twilioCallSid: sid,
+      status: callStatus,
+    }).then((result) => {
+      if (result.id) {
+        window.dispatchEvent(
+          new CustomEvent("crm:call-logged", { detail: { leadId, callLogId: result.id } })
+        );
+      }
+    });
+  }
+
+  async function handleCall(overridePhone?: string, leadId?: string | null) {
     const digits = (overridePhone ?? phone).trim();
     if (!digits) {
       setErrorMsg("Enter a phone number to call.");
@@ -56,6 +87,8 @@ export function VoiceDialer() {
     }
     setErrorMsg("");
     setStatus("connecting");
+    leadIdRef.current = leadId ?? null;
+    callSidRef.current = null;
     try {
       const device = await ensureDevice();
       const call = await device.connect({
@@ -66,23 +99,21 @@ export function VoiceDialer() {
       call.on("ringing", () => setStatus("ringing"));
       call.on("accept", () => {
         setStatus("in-call");
+        callSidRef.current = call.parameters.CallSid ?? null;
         startTimer();
       });
       call.on("disconnect", () => {
         setStatus("ended");
-        stopTimer();
-        callRef.current = null;
+        finishCall(digits, "completed");
       });
       call.on("cancel", () => {
         setStatus("ended");
-        stopTimer();
-        callRef.current = null;
+        finishCall(digits, "cancelled");
       });
       call.on("error", (err: Error) => {
         setErrorMsg(err.message || "Call error.");
         setStatus("error");
-        stopTimer();
-        callRef.current = null;
+        finishCall(digits, "error");
       });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Could not place the call.");
@@ -92,11 +123,11 @@ export function VoiceDialer() {
 
   useEffect(() => {
     function onCallRequest(e: Event) {
-      const detail = (e as CustomEvent<{ phone: string }>).detail;
+      const detail = (e as CustomEvent<{ phone: string; leadId?: string }>).detail;
       if (!detail?.phone) return;
       setPhone(detail.phone);
       setExpanded(true);
-      handleCall(detail.phone);
+      handleCall(detail.phone, detail.leadId ?? null);
     }
     window.addEventListener("crm:call", onCallRequest);
     return () => window.removeEventListener("crm:call", onCallRequest);

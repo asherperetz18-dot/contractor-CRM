@@ -2151,3 +2151,154 @@ body {
   gap: 8px;
   justify-content: center;
 }
+
+.call-recording-player {
+  height: 32px;
+  max-width: 220px;
+}
+
+.dial-queue-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 18px;
+  align-items: start;
+}
+.dial-queue-main {
+  min-width: 0;
+}
+.dial-queue-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 16px;
+}
+.dial-queue-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.dial-queue-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dial-queue-filter-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  min-width: 110px;
+}
+.dial-queue-toggle-row {
+  display: flex;
+  gap: 6px;
+}
+.dial-queue-toggle {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.dial-queue-toggle-active {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.dial-queue-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+.dial-queue-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.dial-queue-count {
+  font-size: 28px;
+  font-weight: 600;
+}
+.dial-queue-count-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+}
+.dial-queue-saved-list-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.dial-queue-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.dial-session-progress {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-bottom: 6px;
+}
+.dial-session-name {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.dial-session-phone {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+.dial-session-script {
+  background: #faf8f3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.dial-session-disposition-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.dial-session-disposition-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: center;
+}
+.dial-session-disposition-btn:hover {
+  border-color: var(--blueprint);
+}
+.dial-session-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}

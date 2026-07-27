@@ -48,6 +48,7 @@ export type CompanyProfile = {
   license_type: string | null;
   timezone: string;
   logo_url: string | null;
+  call_script: string | null;
 };
 
 // Stages are admin-managed (Settings -> Pipeline Stages), not a fixed
@@ -162,6 +163,46 @@ export type ActivityEvent = {
   created_at: string;
 };
 
+// Call dispositions are admin-managed (Settings -> Call Dispositions),
+// mirroring Pipeline Stages / Calendars.
+export type CallDispositionRow = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  is_system: boolean;
+  created_at: string;
+};
+
+export const NO_DISPOSITION = "No Disposition";
+
+export type CallAttemptsFilter = "All" | "Never" | "1x" | "2x" | "3+";
+export const CALL_ATTEMPTS_FILTERS: CallAttemptsFilter[] = ["All", "Never", "1x", "2x", "3+"];
+
+export type CallLog = {
+  id: string;
+  lead_id: string | null;
+  rep_id: string | null;
+  direction: "outbound" | "inbound";
+  from_number: string;
+  to_number: string;
+  status: string;
+  duration_seconds: number;
+  disposition: string;
+  recording_url: string | null;
+  twilio_call_sid: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type DialList = {
+  id: string;
+  name: string;
+  lead_ids: string[];
+  created_by: string | null;
+  created_at: string;
+};
+
 export type SmsMessage = {
   id: string;
   lead_id: string | null;
@@ -242,9 +283,29 @@ export type Lead = {
   assigned_to: string | null;
   won_at: string | null;
   notes_updated_at: string | null;
+  address_type: AddressType;
   created_at: string;
   updated_at: string;
 };
+
+// Power Dialer's ADDRESS TYPE filter (verified against the real
+// iBuildPro product). Defaults to "Unverified" since we don't run an
+// address-verification service; can be set manually.
+export type AddressType =
+  | "Unverified"
+  | "Unknown"
+  | "Office (commercial)"
+  | "Residence (residential)"
+  | "PO Box"
+  | "Mailbox (CMRA)";
+export const ADDRESS_TYPES: AddressType[] = [
+  "Unverified",
+  "Unknown",
+  "Office (commercial)",
+  "Residence (residential)",
+  "PO Box",
+  "Mailbox (CMRA)",
+];
 
 export type LeadInput = {
   contact_type: ContactType;

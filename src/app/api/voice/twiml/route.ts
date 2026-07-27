@@ -34,10 +34,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const recordAttr = shouldRecord ? ` record="record-from-answer-dual"` : "";
+  let recordAttrs = "";
+  if (shouldRecord) {
+    const callbackUrl = `${new URL(req.url).origin}/api/voice/recording-status`;
+    recordAttrs =
+      ` record="record-from-answer-dual" recordingStatusCallback="${xmlEscape(callbackUrl)}"` +
+      ` recordingStatusCallbackEvent="completed"`;
+  }
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<Response><Dial callerId="${xmlEscape(twilioEnv.phoneNumber)}"${recordAttr}>` +
+    `<Response><Dial callerId="${xmlEscape(twilioEnv.phoneNumber)}"${recordAttrs}>` +
     `<Number>${xmlEscape(to)}</Number>` +
     `</Dial></Response>`;
 

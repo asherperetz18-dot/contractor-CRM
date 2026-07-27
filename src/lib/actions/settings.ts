@@ -102,6 +102,18 @@ export async function regenerateWebhookSecret() {
   return { secret };
 }
 
+export async function saveCallScript(body: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_profile")
+    .update({ call_script: body || null })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/call-scripts");
+  revalidatePath("/dial-queue");
+  return {};
+}
+
 export type MetaConfigInput = {
   meta_page_id: string;
   meta_page_access_token: string;

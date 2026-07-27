@@ -124,7 +124,9 @@ export function EventForm({
   }
 
   function callPhone(phone: string) {
-    window.dispatchEvent(new CustomEvent("crm:call", { detail: { phone } }));
+    window.dispatchEvent(
+      new CustomEvent("crm:call", { detail: { phone, leadId: lead?.id } })
+    );
   }
 
   function textPhone(phone: string) {

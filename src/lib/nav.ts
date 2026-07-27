@@ -34,6 +34,15 @@ export const NAV: NavEntry[] = [
       { label: "Appt. Setter Assignments", href: "/appt-setter-assignments" },
     ],
   },
+  {
+    type: "group",
+    label: "Your Sales Center",
+    icon: "☎",
+    items: [
+      { label: "Power Dialer", href: "/dial-queue" },
+      { label: "Call Reports", href: "/call-reports" },
+    ],
+  },
   { type: "link", href: "/production", label: "Production", icon: "▦" },
   { type: "link", href: "/documents", label: "Estimates & Invoices", icon: "▤" },
   { type: "link", href: "/calendar", label: "Calendar", icon: "📅" },
