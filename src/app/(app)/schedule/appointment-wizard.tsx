@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
+import { TimeField } from "@/components/ui/time-field";
 import {
   type CalendarRow,
   type EventType,
@@ -321,7 +322,7 @@ export function AppointmentWizard({
                 <input type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
               </Field>
               <Field label="Time">
-                <input type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} />
+                <TimeField value={apptTime} onChange={(v) => setApptTime(v)} />
               </Field>
               <Field label="Assigned To">
                 <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>

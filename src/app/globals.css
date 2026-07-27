@@ -2357,3 +2357,15 @@ body {
   gap: 8px;
   margin-top: 6px;
 }
+
+.time-field-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.time-field-row select {
+  width: auto;
+}
+.time-field-colon {
+  color: var(--ink-soft);
+}

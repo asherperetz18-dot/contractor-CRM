@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { saveCompanyProfile, type CompanyProfileInput } from "@/lib/actions/settings";
-import type { CompanyProfile } from "@/lib/data/types";
+import type { CompanyProfile, TimeFormat } from "@/lib/data/types";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
@@ -49,6 +49,7 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     license_state: p?.license_state ?? "",
     license_type: p?.license_type ?? "",
     timezone: p?.timezone ?? "Pacific",
+    time_format: p?.time_format ?? "12h",
   };
 }
 
@@ -200,6 +201,30 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
           Used for SMS reminder windows, task due-date bucketing, and
           financial date fallbacks. All times shown to your team are in this
           timezone.
+        </p>
+
+        <div className="cp-divider" />
+        <div className="cp-tz-head">
+          <span>🕐 Time Format</span>
+        </div>
+        <div className="segmented">
+          <button
+            type="button"
+            className={"segmented-btn" + (form.time_format === "12h" ? " active" : "")}
+            onClick={() => set("time_format", "12h" as TimeFormat)}
+          >
+            Standard (1:00 PM)
+          </button>
+          <button
+            type="button"
+            className={"segmented-btn" + (form.time_format === "24h" ? " active" : "")}
+            onClick={() => set("time_format", "24h" as TimeFormat)}
+          >
+            Military (13:00)
+          </button>
+        </div>
+        <p className="cp-hint">
+          Controls how appointment time pickers throughout the app show and let you enter times.
         </p>
 
         {error && <p className="error-note">{error}</p>}

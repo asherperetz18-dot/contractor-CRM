@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
+import { TimeField } from "@/components/ui/time-field";
 import {
   EVENT_STATUSES,
   QUICK_TEXT_DEFAULTS,
@@ -204,10 +205,9 @@ export function EventForm({
           minute: "2-digit",
         })
       : "";
-    const lines = [
-      `Appointment: ${form.title || "Untitled"}`,
-      `📅 ${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`,
-    ];
+    const lines = [`Appointment: ${form.title || "Untitled"}`];
+    if (lead) lines.push(`Client: ${leadDisplayName(lead)}`);
+    lines.push(`📅 ${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`);
     if (address) lines.push(`📍 ${mapsUrl(address)}`);
 
     const result = await sendSms(null, rep.phone, lines.join("\n"));
@@ -360,7 +360,7 @@ export function EventForm({
               <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
             </Field>
             <Field label="Time">
-              <input type="time" value={form.time} onChange={(e) => set("time", e.target.value)} />
+              <TimeField value={form.time} onChange={(v) => set("time", v)} />
             </Field>
             <Field label="Assigned To">
               <select value={form.assigned_to} onChange={(e) => set("assigned_to", e.target.value)}>

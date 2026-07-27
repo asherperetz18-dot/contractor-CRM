@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { TimeFormat } from "@/lib/data/types";
 
 export type CompanyProfileInput = {
   name: string;
@@ -16,6 +17,7 @@ export type CompanyProfileInput = {
   license_state: string;
   license_type: string;
   timezone: string;
+  time_format: TimeFormat;
 };
 
 export async function saveCompanyProfile(input: CompanyProfileInput) {
@@ -33,11 +35,13 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       license_state: input.license_state || null,
       license_type: input.license_type || null,
       timezone: input.timezone,
+      time_format: input.time_format,
     })
     .eq("id", 1);
 
   if (error) return { error: error.message };
   revalidatePath("/settings/company-profile");
+  revalidatePath("/", "layout");
   return {};
 }
 

@@ -12,6 +12,8 @@ import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
+import { TimeFormatProvider } from "@/components/time-format-context";
+import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
 
 export default async function AppLayout({
@@ -24,12 +26,17 @@ export default async function AppLayout({
 
   const supabase = await createClient();
   const [{ data: companyProfile }, { data: visibilityRows }] = await Promise.all([
-    supabase.from("company_profile").select("name, logo_url").eq("id", 1).single(),
+    supabase.from("company_profile").select("name, logo_url, time_format").eq("id", 1).single(),
     supabase.from("role_page_visibility").select("id, role, page_key, visible"),
   ]);
-  const company = companyProfile as { name: string | null; logo_url: string | null } | null;
+  const company = companyProfile as {
+    name: string | null;
+    logo_url: string | null;
+    time_format: TimeFormat | null;
+  } | null;
   const logoUrl = company?.logo_url ?? null;
   const companyName = company?.name?.trim();
+  const timeFormat: TimeFormat = company?.time_format ?? "12h";
   const overrides = (visibilityRows as RolePageVisibilityRow[]) ?? [];
   const filteredNav = filterNavForProfile(NAV, profile, overrides);
 
@@ -38,6 +45,7 @@ export default async function AppLayout({
   const pageBlocked = !!pageKey && !canSeePage(profile, pageKey, overrides);
 
   return (
+    <TimeFormatProvider value={timeFormat}>
     <div className="app-shell">
       <div className="app-root">
         <div className="global-topbar">
@@ -125,5 +133,6 @@ export default async function AppLayout({
         </div>
       </div>
     </div>
+    </TimeFormatProvider>
   );
 }

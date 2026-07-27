@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
+import { TimeField } from "@/components/ui/time-field";
 import {
   type CalendarRow,
   type Lead,
@@ -404,12 +405,9 @@ export function LeadForm({
                   />
                 </Field>
                 <Field label="Time">
-                  <input
-                    type="time"
+                  <TimeField
                     value={booking.time}
-                    onChange={(e) =>
-                      setBooking((b) => ({ ...b, time: e.target.value }))
-                    }
+                    onChange={(v) => setBooking((b) => ({ ...b, time: v }))}
                   />
                 </Field>
                 <Field label="Calendar">

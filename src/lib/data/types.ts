@@ -160,7 +160,12 @@ export type CompanyProfile = {
   no_show_followup_enabled: boolean;
   no_show_grace_minutes: number;
   no_show_lookback_hours: number;
+  time_format: TimeFormat;
 };
+
+// Company-wide display preference for appointment time pickers -- native
+// <input type="time"> is locale-driven, so a custom picker enforces this.
+export type TimeFormat = "12h" | "24h";
 
 // Maps the company_profile.timezone custom label to a real IANA zone, for
 // the handful of features (no-show follow-up windows, SMS reminders) that
