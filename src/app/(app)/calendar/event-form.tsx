@@ -25,6 +25,7 @@ import {
 } from "@/lib/data/types";
 import { createEvent, deleteEvent, updateEvent } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
+import { sendSms } from "@/lib/actions/sms";
 import { TasksPanel } from "../pipeline/tasks-panel";
 
 type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Notes";
@@ -106,6 +107,10 @@ export function EventForm({
     companyName: string;
     quickTexts: SmsQuickText[];
   } | null>(null);
+  const [repTextStatus, setRepTextStatus] = useState<"idle" | "pending" | "sent" | "error">(
+    "idle"
+  );
+  const [repTextError, setRepTextError] = useState("");
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -174,6 +179,45 @@ export function EventForm({
       setQuickTextOptions(options);
     }
     setShowQuickText((v) => !v);
+  }
+
+  async function sendRepInfo() {
+    const rep = reps.find((r) => r.id === form.assigned_to);
+    if (!rep) return;
+    if (!rep.phone) {
+      setRepTextStatus("error");
+      setRepTextError(`${rep.name || rep.email || "This rep"} doesn't have a phone number on file.`);
+      return;
+    }
+    setRepTextStatus("pending");
+    setRepTextError("");
+
+    const address = lead?.address || jobs.find((j) => j.id === form.job_id)?.address || null;
+    const dateLabel = new Date(`${form.date}T00:00:00`).toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const timeLabel = form.time
+      ? new Date(`1970-01-01T${form.time.slice(0, 5)}:00`).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "";
+    const lines = [
+      `Appointment: ${form.title || "Untitled"}`,
+      `📅 ${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`,
+    ];
+    if (address) lines.push(`📍 ${mapsUrl(address)}`);
+
+    const result = await sendSms(null, rep.phone, lines.join("\n"));
+    if (result?.error) {
+      setRepTextStatus("error");
+      setRepTextError(result.error);
+      return;
+    }
+    setRepTextStatus("sent");
+    setTimeout(() => setRepTextStatus("idle"), 2500);
   }
 
   function sendQuickText(text: SmsQuickText) {
@@ -327,6 +371,20 @@ export function EventForm({
                   </option>
                 ))}
               </select>
+              {form.assigned_to && (
+                <div className="rep-text-row">
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={sendRepInfo}
+                    disabled={repTextStatus === "pending"}
+                  >
+                    {repTextStatus === "pending" ? "Sending…" : "📲 Text Rep Info"}
+                  </button>
+                  {repTextStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
+                </div>
+              )}
+              {repTextStatus === "error" && <p className="error-note">{repTextError}</p>}
             </Field>
             <Field label="Related Job">
               <select value={form.job_id} onChange={(e) => set("job_id", e.target.value)}>

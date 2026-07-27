@@ -2350,3 +2350,10 @@ body {
   color: var(--ink-soft);
   cursor: default;
 }
+
+.rep-text-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
