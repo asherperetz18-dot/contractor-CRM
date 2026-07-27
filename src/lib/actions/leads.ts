@@ -156,6 +156,8 @@ export async function bookAppointmentForLead(
     time: string;
     eventType: string;
     assignedTo: string;
+    notes?: string;
+    projectType?: string;
   }
 ) {
   const supabase = await createClient();
@@ -169,6 +171,7 @@ export async function bookAppointmentForLead(
     time: details.time || null,
     event_type: details.eventType,
     assigned_to: details.assignedTo || null,
+    notes: details.notes || null,
     lead_id: leadId,
     created_by: user?.id ?? null,
   });
@@ -187,7 +190,11 @@ export async function bookAppointmentForLead(
 
   const { error: leadError } = await supabase
     .from("leads")
-    .update({ has_appt: true, stage: nextStage })
+    .update({
+      has_appt: true,
+      stage: nextStage,
+      ...(details.projectType ? { project_type: details.projectType } : {}),
+    })
     .eq("id", leadId);
   if (leadError) return { error: leadError.message };
 

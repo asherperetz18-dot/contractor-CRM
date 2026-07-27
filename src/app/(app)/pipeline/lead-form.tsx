@@ -85,6 +85,8 @@ export function LeadForm({
     time: "09:00",
     eventType: "Estimate",
     assignedTo: "",
+    projectType: "",
+    notes: "",
   });
 
   const set = <K extends keyof LeadInput>(k: K, v: LeadInput[K]) =>
@@ -164,6 +166,8 @@ export function LeadForm({
       time: booking.time,
       eventType: booking.eventType,
       assignedTo: booking.assignedTo,
+      notes: booking.notes,
+      projectType: booking.projectType,
     });
     setPending(false);
     if (result?.error) {
@@ -437,7 +441,24 @@ export function LeadForm({
                     ))}
                   </select>
                 </Field>
+                <Field label="Project Type">
+                  <input
+                    value={booking.projectType}
+                    onChange={(e) =>
+                      setBooking((b) => ({ ...b, projectType: e.target.value }))
+                    }
+                    placeholder="Kitchen, Roofing..."
+                  />
+                </Field>
               </div>
+              <Field label="Notes">
+                <textarea
+                  value={booking.notes}
+                  onChange={(e) => setBooking((b) => ({ ...b, notes: e.target.value }))}
+                  rows={2}
+                  placeholder="Anything the rep should know for this appointment"
+                />
+              </Field>
               <button
                 type="button"
                 className="btn-primary small"
@@ -451,7 +472,10 @@ export function LeadForm({
             <button
               type="button"
               className="btn-ghost small"
-              onClick={() => setShowBooking(true)}
+              onClick={() => {
+                setBooking((b) => ({ ...b, projectType: form.project_type }));
+                setShowBooking(true);
+              }}
               style={{ marginBottom: 14 }}
             >
               📅 Book Appointment
