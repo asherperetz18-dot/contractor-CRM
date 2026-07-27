@@ -125,6 +125,18 @@ export async function saveFollowUpSettings(input: {
   return {};
 }
 
+export async function saveRepInfoTemplate(body: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_profile")
+    .update({ rep_appointment_info_template: body.trim() || null })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/appointment-notifications");
+  revalidatePath("/calendar");
+  return {};
+}
+
 export async function saveCallScript(body: string) {
   const supabase = await createClient();
   const { error } = await supabase

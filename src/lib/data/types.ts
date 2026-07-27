@@ -161,7 +161,35 @@ export type CompanyProfile = {
   no_show_grace_minutes: number;
   no_show_lookback_hours: number;
   time_format: TimeFormat;
+  rep_appointment_info_template: string | null;
 };
+
+export const REP_APPOINTMENT_INFO_DEFAULT =
+  "Appointment: {title}\nClient: {client_name}\n📅 {when}\n📍 {address_link}";
+
+// Fills the rep-facing "Text Rep Info" template. client_name is left blank
+// (never the phone number) when the lead has no real name on file -- some
+// leads only ever captured a phone number, which gets stored as the
+// first_name, and that must never masquerade as a name in this text. Any
+// template line built around a variable that came back empty (e.g.
+// "Client: {client_name}" or "location line: {address_link}") is dropped
+// entirely, whatever label or emoji prefixes it.
+const REP_TEMPLATE_EMPTY = "@@EMPTY@@";
+
+export function fillRepInfoTemplate(
+  template: string,
+  vars: { title: string; clientName: string; when: string; addressLink: string }
+): string {
+  const filled = template
+    .replace(/\{title\}/g, vars.title || REP_TEMPLATE_EMPTY)
+    .replace(/\{client_name\}/g, vars.clientName || REP_TEMPLATE_EMPTY)
+    .replace(/\{when\}/g, vars.when || REP_TEMPLATE_EMPTY)
+    .replace(/\{address_link\}/g, vars.addressLink || REP_TEMPLATE_EMPTY);
+  return filled
+    .split("\n")
+    .filter((line) => !line.includes(REP_TEMPLATE_EMPTY))
+    .join("\n");
+}
 
 // Company-wide display preference for appointment time pickers -- native
 // <input type="time"> is locale-driven, so a custom picker enforces this.

@@ -8,7 +8,9 @@ export default async function AppointmentNotificationsPage() {
   const [{ data: companyProfile }, { data: quickTexts }] = await Promise.all([
     supabase
       .from("company_profile")
-      .select("no_show_followup_enabled, no_show_grace_minutes, no_show_lookback_hours")
+      .select(
+        "no_show_followup_enabled, no_show_grace_minutes, no_show_lookback_hours, rep_appointment_info_template"
+      )
       .eq("id", 1)
       .single(),
     supabase.from("sms_quick_texts").select("*").order("key", { ascending: true }),
@@ -22,6 +24,10 @@ export default async function AppointmentNotificationsPage() {
             CompanyProfile,
             "no_show_followup_enabled" | "no_show_grace_minutes" | "no_show_lookback_hours"
           > | null
+        }
+        repInfoTemplate={
+          (companyProfile as Pick<CompanyProfile, "rep_appointment_info_template"> | null)
+            ?.rep_appointment_info_template ?? null
         }
         quickTexts={(quickTexts as SmsQuickText[]) ?? []}
       />

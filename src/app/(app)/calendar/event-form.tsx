@@ -9,10 +9,13 @@ import { TimeField } from "@/components/ui/time-field";
 import {
   EVENT_STATUSES,
   QUICK_TEXT_DEFAULTS,
+  REP_APPOINTMENT_INFO_DEFAULT,
   fillQuickTextVariables,
+  fillRepInfoTemplate,
   leadDisplayName,
   mapsUrl,
   money,
+  normalizePhone,
   type CalendarRow,
   type DocumentRecord,
   type Event,
@@ -205,12 +208,22 @@ export function EventForm({
           minute: "2-digit",
         })
       : "";
-    const lines = [`Appointment: ${form.title || "Untitled"}`];
-    if (lead) lines.push(`Client: ${leadDisplayName(lead)}`);
-    lines.push(`📅 ${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`);
-    if (address) lines.push(`📍 ${mapsUrl(address)}`);
 
-    const result = await sendSms(null, rep.phone, lines.join("\n"));
+    // Some leads only ever captured a phone number, which gets stored as
+    // the "name" -- never expose that as if it were a client name.
+    const rawName = lead ? leadDisplayName(lead) : "";
+    const looksLikePhone = lead?.phone && normalizePhone(rawName) === normalizePhone(lead.phone);
+    const clientName = looksLikePhone ? "" : rawName;
+
+    const { repInfoTemplate } = await getQuickTextOptions();
+    const body = fillRepInfoTemplate(repInfoTemplate || REP_APPOINTMENT_INFO_DEFAULT, {
+      title: form.title || "Untitled",
+      clientName,
+      when: `${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`,
+      addressLink: address ? mapsUrl(address) : "",
+    });
+
+    const result = await sendSms(null, rep.phone, body);
     if (result?.error) {
       setRepTextStatus("error");
       setRepTextError(result.error);

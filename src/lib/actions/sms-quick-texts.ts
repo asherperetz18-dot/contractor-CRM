@@ -25,15 +25,25 @@ async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
 export async function getQuickTextOptions(): Promise<{
   companyName: string;
   quickTexts: SmsQuickText[];
+  repInfoTemplate: string | null;
 }> {
   const supabase = await createClient();
   const [{ data: company }, { data: texts }] = await Promise.all([
-    supabase.from("company_profile").select("name").eq("id", 1).single(),
+    supabase
+      .from("company_profile")
+      .select("name, rep_appointment_info_template")
+      .eq("id", 1)
+      .single(),
     supabase.from("sms_quick_texts").select("*"),
   ]);
+  const companyRow = company as {
+    name: string | null;
+    rep_appointment_info_template: string | null;
+  } | null;
   return {
-    companyName: (company as { name: string | null } | null)?.name ?? "",
+    companyName: companyRow?.name ?? "",
     quickTexts: (texts as SmsQuickText[]) ?? [],
+    repInfoTemplate: companyRow?.rep_appointment_info_template ?? null,
   };
 }
 

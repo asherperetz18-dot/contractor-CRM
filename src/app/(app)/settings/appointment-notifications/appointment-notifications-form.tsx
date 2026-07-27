@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   QUICK_TEXT_DEFAULTS,
+  REP_APPOINTMENT_INFO_DEFAULT,
   type CompanyProfile,
   type SmsQuickText,
   type SmsQuickTextKey,
 } from "@/lib/data/types";
-import { saveFollowUpSettings } from "@/lib/actions/settings";
+import { saveFollowUpSettings, saveRepInfoTemplate } from "@/lib/actions/settings";
 import { saveQuickText } from "@/lib/actions/sms-quick-texts";
 
 const QUICK_TEXT_ORDER: SmsQuickTextKey[] = ["confirm", "reschedule", "on_my_way", "running_late"];
@@ -68,12 +69,14 @@ function QuickTextCard({ text }: { text: SmsQuickText }) {
 
 export function AppointmentNotificationsForm({
   followUp,
+  repInfoTemplate,
   quickTexts,
 }: {
   followUp: Pick<
     CompanyProfile,
     "no_show_followup_enabled" | "no_show_grace_minutes" | "no_show_lookback_hours"
   > | null;
+  repInfoTemplate: string | null;
   quickTexts: SmsQuickText[];
 }) {
   const router = useRouter();
@@ -88,6 +91,26 @@ export function AppointmentNotificationsForm({
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+
+  const [repTemplate, setRepTemplate] = useState(repInfoTemplate ?? "");
+  const [repTemplatePending, setRepTemplatePending] = useState(false);
+  const [repTemplateSaved, setRepTemplateSaved] = useState(false);
+  const [repTemplateError, setRepTemplateError] = useState("");
+
+  async function saveRepTemplate() {
+    setRepTemplatePending(true);
+    setRepTemplateError("");
+    setRepTemplateSaved(false);
+    const result = await saveRepInfoTemplate(repTemplate);
+    setRepTemplatePending(false);
+    if (result.error) {
+      setRepTemplateError(result.error);
+      return;
+    }
+    setRepTemplateSaved(true);
+    startTransition(() => router.refresh());
+    setTimeout(() => setRepTemplateSaved(false), 2000);
+  }
 
   async function saveFollowUp() {
     setPending(true);
@@ -176,6 +199,43 @@ export function AppointmentNotificationsForm({
           <div>
             <button className="btn-primary" onClick={saveFollowUp} disabled={pending}>
               {pending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="cp-card" style={{ marginTop: 20 }}>
+        <div className="cp-card-head">📲 Text Rep Info</div>
+        <p className="cp-card-sub">
+          Sent to the assigned rep when they click &quot;Text Rep Info&quot; on an appointment.
+          Leave a variable out to remove that line entirely — e.g. delete{" "}
+          <code className="mono">{"{client_name}"}</code> if you never want a client name/number
+          included.
+        </p>
+        <p className="hint-note">
+          Available variables: <code className="mono">{"{title}"}</code>,{" "}
+          <code className="mono">{"{client_name}"}</code>, <code className="mono">{"{when}"}</code>
+          , <code className="mono">{"{address_link}"}</code>
+        </p>
+        <textarea
+          value={repTemplate}
+          onChange={(e) => setRepTemplate(e.target.value)}
+          rows={4}
+          style={{ width: "100%", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }}
+          placeholder={REP_APPOINTMENT_INFO_DEFAULT}
+        />
+        {!repInfoTemplate && !repTemplate && (
+          <p className="hint-note" style={{ marginTop: 4 }}>
+            Showing default — edit above to override. The client&apos;s name (never their phone
+            number) is only included when the lead has a real name on file.
+          </p>
+        )}
+        {repTemplateError && <p className="error-note">{repTemplateError}</p>}
+        <div className="modal-actions">
+          <div>{repTemplateSaved && <span className="cp-saved">✓ Saved</span>}</div>
+          <div>
+            <button className="btn-primary small" onClick={saveRepTemplate} disabled={repTemplatePending}>
+              {repTemplatePending ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
