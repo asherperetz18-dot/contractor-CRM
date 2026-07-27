@@ -26,6 +26,7 @@ export function ReplyInboxView({
   const searchParams = useSearchParams();
   const targetLeadId = searchParams.get("leadId");
   const targetPhone = searchParams.get("phone");
+  const targetBody = searchParams.get("body");
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [consumedTargetKey, setConsumedTargetKey] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export function ReplyInboxView({
   if (targetKey && targetKey !== consumedTargetKey) {
     setConsumedTargetKey(targetKey);
     setSelectedKey(targetKey);
+    if (targetBody) setReply(targetBody);
   }
 
   useEffect(() => {

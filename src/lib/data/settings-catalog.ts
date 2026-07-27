@@ -120,8 +120,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       {
         title: "Appointment Notifications",
-        desc: "Appointment notification templates — the WhatsApp appointment notices, the Send SMS quick-text templates (Confirm, Reschedule, On my way, Running...",
+        desc: "Automatic no-show/cancelled follow-up rules, and the Send SMS quick-text templates (Confirm, Reschedule, On my way, Running late)",
         icon: "🔔",
+        href: "/settings/appointment-notifications",
       },
       { title: "Google Calendar", desc: "OAuth connection and sync settings for Google Calendar", icon: "📆" },
     ],

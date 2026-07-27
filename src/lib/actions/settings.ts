@@ -102,6 +102,25 @@ export async function regenerateWebhookSecret() {
   return { secret };
 }
 
+export async function saveFollowUpSettings(input: {
+  enabled: boolean;
+  graceMinutes: number;
+  lookbackHours: number;
+}) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_profile")
+    .update({
+      no_show_followup_enabled: input.enabled,
+      no_show_grace_minutes: Math.max(0, Math.round(input.graceMinutes)) || 60,
+      no_show_lookback_hours: Math.max(1, Math.round(input.lookbackHours)) || 168,
+    })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+  revalidatePath("/settings/appointment-notifications");
+  return {};
+}
+
 export async function saveCallScript(body: string) {
   const supabase = await createClient();
   const { error } = await supabase

@@ -157,7 +157,53 @@ export type CompanyProfile = {
   timezone: string;
   logo_url: string | null;
   call_script: string | null;
+  no_show_followup_enabled: boolean;
+  no_show_grace_minutes: number;
+  no_show_lookback_hours: number;
 };
+
+// Maps the company_profile.timezone custom label to a real IANA zone, for
+// the handful of features (no-show follow-up windows, SMS reminders) that
+// need to reason about "now" in the company's local time.
+export const TIMEZONE_IANA: Record<string, string> = {
+  Pacific: "America/Los_Angeles",
+  Mountain: "America/Denver",
+  Central: "America/Chicago",
+  Eastern: "America/New_York",
+  Alaska: "America/Anchorage",
+  Hawaii: "Pacific/Honolulu",
+};
+
+export type SmsQuickTextKey = "confirm" | "reschedule" | "on_my_way" | "running_late";
+
+export type SmsQuickText = {
+  key: SmsQuickTextKey;
+  label: string;
+  description: string;
+  body: string | null;
+};
+
+export const QUICK_TEXT_DEFAULTS: Record<SmsQuickTextKey, string> = {
+  confirm:
+    "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} — reply YES to confirm.",
+  reschedule:
+    "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} appointment — what time works better for you?",
+  on_my_way:
+    "Hi {first_name}, this is {rep_name} with {company_name} — on my way to your {when} appointment now!",
+  running_late:
+    "Hi {first_name}, this is {rep_name} with {company_name}. Running a little behind for our {when} appointment, I'll be there shortly — sorry for the delay!",
+};
+
+export function fillQuickTextVariables(
+  template: string,
+  vars: { firstName: string; when: string; repName: string; companyName: string }
+): string {
+  return template
+    .replace(/\{first_name\}/g, vars.firstName || "there")
+    .replace(/\{when\}/g, vars.when)
+    .replace(/\{rep_name\}/g, vars.repName || "your rep")
+    .replace(/\{company_name\}/g, vars.companyName);
+}
 
 // Stages are admin-managed (Settings -> Pipeline Stages), not a fixed
 // set, so this is just a plain string matching a pipeline_stages.name.

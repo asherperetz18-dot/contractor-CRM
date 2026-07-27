@@ -7,6 +7,8 @@ import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import {
   EVENT_STATUSES,
+  QUICK_TEXT_DEFAULTS,
+  fillQuickTextVariables,
   leadDisplayName,
   mapsUrl,
   money,
@@ -19,14 +21,34 @@ import {
   type Lead,
   type LeadTask,
   type Profile,
+  type SmsQuickText,
 } from "@/lib/data/types";
 import { createEvent, deleteEvent, updateEvent } from "@/lib/actions/events";
+import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { TasksPanel } from "../pipeline/tasks-panel";
 
 type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Notes";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function friendlyWhen(dateStr: string, timeStr: string): string {
+  const d = new Date(`${dateStr}T${timeStr || "00:00"}:00`);
+  if (isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  const dayLabel = sameDay(d, today)
+    ? "today"
+    : sameDay(d, tomorrow)
+      ? "tomorrow"
+      : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const timeLabel = timeStr
+    ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase()
+    : "";
+  return timeLabel ? `${dayLabel} at ${timeLabel}` : dayLabel;
 }
 
 function toInput(event?: Event, initialDate?: string): EventInput {
@@ -76,6 +98,11 @@ export function EventForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("Appointment");
+  const [showQuickText, setShowQuickText] = useState(false);
+  const [quickTextOptions, setQuickTextOptions] = useState<{
+    companyName: string;
+    quickTexts: SmsQuickText[];
+  } | null>(null);
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -129,9 +156,34 @@ export function EventForm({
     );
   }
 
-  function textPhone(phone: string) {
+  function textPhone(phone: string, body?: string) {
     onCancel();
-    router.push(lead ? `/reply-inbox?leadId=${lead.id}` : `/reply-inbox?phone=${encodeURIComponent(phone)}`);
+    const params = new URLSearchParams();
+    if (lead) params.set("leadId", lead.id);
+    else params.set("phone", phone);
+    if (body) params.set("body", body);
+    router.push(`/reply-inbox?${params.toString()}`);
+  }
+
+  async function toggleQuickText() {
+    if (!showQuickText && !quickTextOptions) {
+      const options = await getQuickTextOptions();
+      setQuickTextOptions(options);
+    }
+    setShowQuickText((v) => !v);
+  }
+
+  function sendQuickText(text: SmsQuickText) {
+    if (!lead?.phone || !quickTextOptions) return;
+    const repName = reps.find((r) => r.id === form.assigned_to)?.name ?? "";
+    const filled = fillQuickTextVariables(text.body || QUICK_TEXT_DEFAULTS[text.key], {
+      firstName: lead.first_name ?? "",
+      when: friendlyWhen(form.date, form.time),
+      repName,
+      companyName: quickTextOptions.companyName,
+    });
+    setShowQuickText(false);
+    textPhone(lead.phone, filled);
   }
 
   return (
@@ -168,6 +220,35 @@ export function EventForm({
               >
                 💬
               </button>
+              <div className="quick-text-wrap">
+                <button
+                  type="button"
+                  className="icon-btn contact-quick-action"
+                  onClick={toggleQuickText}
+                  title="Quick Text"
+                  aria-label="Quick Text"
+                >
+                  Quick Text ▾
+                </button>
+                {showQuickText && (
+                  <div className="quick-text-menu">
+                    {quickTextOptions === null ? (
+                      <div className="quick-text-item quick-text-loading">Loading…</div>
+                    ) : (
+                      quickTextOptions.quickTexts.map((text) => (
+                        <button
+                          key={text.key}
+                          type="button"
+                          className="quick-text-item"
+                          onClick={() => sendQuickText(text)}
+                        >
+                          {text.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {lead.email && <div className="contact-card-line">✉ {lead.email}</div>}

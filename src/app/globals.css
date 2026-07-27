@@ -2316,3 +2316,37 @@ body {
   align-items: center;
   gap: 10px;
 }
+
+.quick-text-wrap {
+  position: relative;
+  display: inline-block;
+}
+.quick-text-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(20, 32, 46, 0.18);
+  padding: 6px 0;
+  z-index: 50;
+}
+.quick-text-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.quick-text-item:hover {
+  background: #faf8f3;
+}
+.quick-text-loading {
+  color: var(--ink-soft);
+  cursor: default;
+}

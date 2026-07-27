@@ -1,0 +1,15 @@
+name: No-Show Follow-Up Check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger no-show follow-up check
+        run: |
+          curl -sf -X POST "https://aibuildpros.com/api/cron/no-show-followups" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
