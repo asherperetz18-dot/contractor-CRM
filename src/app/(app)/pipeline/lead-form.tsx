@@ -4,8 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
+import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
 import {
+  leadDisplayName,
+  mapsUrl,
+  stageColor,
   type CalendarRow,
   type Lead,
   type LeadInput,
@@ -23,6 +27,8 @@ import {
 } from "@/lib/actions/leads";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
+
+type Tab = "Overview" | "Tasks" | "Notes";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -85,6 +91,20 @@ export function LeadForm({
     !!(lead?.second_contact_first_name || lead?.second_contact_phone)
   );
   const [showBooking, setShowBooking] = useState(false);
+  const [tab, setTab] = useState<Tab>("Overview");
+
+  const stageIndex = stages.findIndex((s) => s.name === form.stage);
+  const stageTotal = stages.length;
+
+  function callPhone(phone: string) {
+    window.dispatchEvent(new CustomEvent("crm:call", { detail: { phone, leadId: lead?.id } }));
+  }
+
+  function textPhone() {
+    if (!lead) return;
+    onCancel();
+    router.push(`/reply-inbox?leadId=${lead.id}`);
+  }
   const [booking, setBooking] = useState({
     date: todayISO(),
     time: "09:00",
@@ -184,7 +204,7 @@ export function LeadForm({
   }
 
   return (
-    <Modal title={lead ? "Edit Contact" : "New Contact"} onClose={onCancel}>
+    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={onCancel}>
       <fieldset disabled={readOnly || pending} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="form-grid">
           <Field label="Contact Type">
@@ -261,6 +281,47 @@ export function LeadForm({
           </Field>
         </div>
 
+        {lead && (form.phone || form.address || form.email) && (
+          <div className="contact-card contact-card-actions-row" style={{ marginBottom: 14 }}>
+            {form.address && (
+              <a href={mapsUrl(form.address)} target="_blank" rel="noopener noreferrer">
+                📍 {form.address}
+              </a>
+            )}
+            {form.phone && (
+              <>
+                <button
+                  type="button"
+                  className="icon-btn contact-quick-action"
+                  onClick={() => callPhone(form.phone)}
+                  title="Call"
+                  aria-label="Call"
+                >
+                  📞 Call
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn contact-quick-action"
+                  onClick={() => textPhone()}
+                  title="Text"
+                  aria-label="Text"
+                >
+                  💬 Text
+                </button>
+              </>
+            )}
+            {form.email && (
+              <a
+                href={`mailto:${form.email}`}
+                className="icon-btn contact-quick-action"
+                title="Email"
+              >
+                ✉ Email
+              </a>
+            )}
+          </div>
+        )}
+
         {hasSecondContact ? (
           <div className="second-contact-block">
             <div className="second-contact-head">
@@ -311,6 +372,48 @@ export function LeadForm({
           )
         )}
 
+        {lead && stageTotal > 0 && (
+          <div className="stage-progress">
+            <div className="stage-progress-label">
+              <Badge color={stageColor(stages, form.stage)}>{form.stage}</Badge>
+              {stageIndex >= 0 && (
+                <span className="stage-progress-count">
+                  Stage {stageIndex + 1} of {stageTotal}
+                </span>
+              )}
+            </div>
+            <div className="stage-progress-bar">
+              {stages.map((s, i) => (
+                <span
+                  key={s.id}
+                  className={"stage-progress-seg" + (i === stageIndex ? " active" : "")}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {lead && (
+          <div className="chip-row no-margin ta-tabs">
+            {(["Overview", "Tasks", "Notes"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={"chip" + (tab === t ? " chip-active" : "")}
+                onClick={() => setTab(t)}
+              >
+                {t}
+                {t === "Tasks" && (tasks ?? []).filter((task) => !task.completed_at).length > 0
+                  ? ` (${(tasks ?? []).filter((task) => !task.completed_at).length})`
+                  : ""}
+                {t === "Notes" && (notes ?? []).length > 0 ? ` (${(notes ?? []).length})` : ""}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {(!lead || tab === "Overview") && (
+          <>
         <div className="form-grid" style={{ marginTop: 14 }}>
           <Field label="Address">
             <input
@@ -484,8 +587,10 @@ export function LeadForm({
             </button>
           )
         )}
+          </>
+        )}
 
-        {lead && (
+        {lead && tab === "Tasks" && (
           <TasksPanel
             leadId={lead.id}
             tasks={tasks ?? []}
@@ -495,7 +600,7 @@ export function LeadForm({
           />
         )}
 
-        {lead && (
+        {lead && tab === "Notes" && (
           <NotesTimeline
             leadId={lead.id}
             notes={notes ?? []}

@@ -1740,6 +1740,32 @@ body {
   margin-bottom: 14px;
   flex-wrap: wrap;
 }
+.stage-progress {
+  margin: 4px 0 14px;
+}
+.stage-progress-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.stage-progress-count {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.stage-progress-bar {
+  display: flex;
+  gap: 3px;
+}
+.stage-progress-seg {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.stage-progress-seg.active {
+  background: var(--blueprint);
+}
 .confirm-toggle {
   background: none;
   border: none;
