@@ -48,8 +48,8 @@ export function VoiceDialer() {
     timerRef.current = null;
   }
 
-  async function handleCall() {
-    const digits = phone.trim();
+  async function handleCall(overridePhone?: string) {
+    const digits = (overridePhone ?? phone).trim();
     if (!digits) {
       setErrorMsg("Enter a phone number to call.");
       return;
@@ -89,6 +89,19 @@ export function VoiceDialer() {
       setStatus("error");
     }
   }
+
+  useEffect(() => {
+    function onCallRequest(e: Event) {
+      const detail = (e as CustomEvent<{ phone: string }>).detail;
+      if (!detail?.phone) return;
+      setPhone(detail.phone);
+      setExpanded(true);
+      handleCall(detail.phone);
+    }
+    window.addEventListener("crm:call", onCallRequest);
+    return () => window.removeEventListener("crm:call", onCallRequest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleHangup() {
     callRef.current?.disconnect();
@@ -173,7 +186,7 @@ export function VoiceDialer() {
                 </button>
               </>
             ) : (
-              <button className="btn-primary" onClick={handleCall}>
+              <button className="btn-primary" onClick={() => handleCall()}>
                 Call
               </button>
             )}

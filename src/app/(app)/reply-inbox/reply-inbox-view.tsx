@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { leadDisplayName, normalizePhone, type Lead, type SmsMessage } from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
 
@@ -23,7 +23,12 @@ export function ReplyInboxView({
   canWrite: boolean;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetLeadId = searchParams.get("leadId");
+  const targetPhone = searchParams.get("phone");
+
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [consumedTargetKey, setConsumedTargetKey] = useState<string | null>(null);
   const [reply, setReply] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -47,12 +52,41 @@ export function ReplyInboxView({
       }
       convo.messages.push(m);
     }
+
+    if (targetLeadId && !map.has(targetLeadId)) {
+      const lead = leads.find((l) => l.id === targetLeadId) ?? null;
+      map.set(targetLeadId, {
+        key: targetLeadId,
+        leadId: targetLeadId,
+        name: lead ? leadDisplayName(lead) : targetPhone || "New conversation",
+        phone: lead?.phone || targetPhone || "",
+        messages: [],
+      });
+    } else if (!targetLeadId && targetPhone) {
+      const key = `phone:${normalizePhone(targetPhone)}`;
+      if (!map.has(key)) {
+        map.set(key, { key, leadId: null, name: targetPhone, phone: targetPhone, messages: [] });
+      }
+    }
+
     return [...map.values()].sort((a, b) => {
       const aLast = a.messages[a.messages.length - 1]?.created_at ?? "";
       const bLast = b.messages[b.messages.length - 1]?.created_at ?? "";
       return bLast.localeCompare(aLast);
     });
-  }, [messages, leads]);
+  }, [messages, leads, targetLeadId, targetPhone]);
+
+  const targetKey = targetLeadId ?? (targetPhone ? `phone:${normalizePhone(targetPhone)}` : null);
+  if (targetKey && targetKey !== consumedTargetKey) {
+    setConsumedTargetKey(targetKey);
+    setSelectedKey(targetKey);
+  }
+
+  useEffect(() => {
+    if (targetLeadId || targetPhone) {
+      router.replace("/reply-inbox", { scroll: false });
+    }
+  }, [targetLeadId, targetPhone, router]);
 
   const selected = conversations.find((c) => c.key === selectedKey) ?? conversations[0] ?? null;
 
@@ -101,7 +135,9 @@ export function ReplyInboxView({
                   onClick={() => setSelectedKey(c.key)}
                 >
                   <div className="ri-list-name">{c.name}</div>
-                  <div className="ri-list-snippet">{last?.body}</div>
+                  <div className="ri-list-snippet">
+                    {last?.body || "No messages yet"}
+                  </div>
                 </div>
               );
             })}
@@ -114,24 +150,28 @@ export function ReplyInboxView({
                   <div className="ri-thread-phone">{selected.phone}</div>
                 </div>
                 <div className="ri-thread-messages">
-                  {selected.messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={
-                        "ri-bubble " + (m.direction === "outbound" ? "ri-bubble-out" : "ri-bubble-in")
-                      }
-                    >
-                      <div>{m.body}</div>
-                      <div className="ri-bubble-time">
-                        {new Date(m.created_at).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
+                  {selected.messages.length === 0 ? (
+                    <p className="empty-hint">No messages yet — send the first one below.</p>
+                  ) : (
+                    selected.messages.map((m) => (
+                      <div
+                        key={m.id}
+                        className={
+                          "ri-bubble " + (m.direction === "outbound" ? "ri-bubble-out" : "ri-bubble-in")
+                        }
+                      >
+                        <div>{m.body}</div>
+                        <div className="ri-bubble-time">
+                          {new Date(m.created_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
                 {canWrite && (
                   <div className="ri-reply-bar">

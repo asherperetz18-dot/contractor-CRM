@@ -123,6 +123,15 @@ export function EventForm({
     router.push(`/contacts?openLead=${lead.id}`);
   }
 
+  function callPhone(phone: string) {
+    window.dispatchEvent(new CustomEvent("crm:call", { detail: { phone } }));
+  }
+
+  function textPhone(phone: string) {
+    onCancel();
+    router.push(lead ? `/reply-inbox?leadId=${lead.id}` : `/reply-inbox?phone=${encodeURIComponent(phone)}`);
+  }
+
   return (
     <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={onCancel} wide>
       {lead && (
@@ -136,7 +145,29 @@ export function EventForm({
               </a>
             </div>
           )}
-          {lead.phone && <div className="contact-card-line">☎ {lead.phone}</div>}
+          {lead.phone && (
+            <div className="contact-card-line contact-card-actions-row">
+              <span>☎ {lead.phone}</span>
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={() => callPhone(lead.phone!)}
+                title="Call"
+                aria-label="Call"
+              >
+                📞
+              </button>
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={() => textPhone(lead.phone!)}
+                title="Text"
+                aria-label="Text"
+              >
+                💬
+              </button>
+            </div>
+          )}
           {lead.email && <div className="contact-card-line">✉ {lead.email}</div>}
           {lead.source && <div className="contact-card-line">Source: {lead.source}</div>}
         </div>

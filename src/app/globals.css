@@ -1690,6 +1690,19 @@ body {
   color: var(--ink-soft);
   margin-top: 2px;
 }
+.contact-card-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.contact-quick-action {
+  opacity: 0.55;
+  font-size: 13px;
+  padding: 2px;
+}
+.contact-quick-action:hover {
+  opacity: 1;
+}
 .ta-tabs {
   margin-bottom: 14px;
   flex-wrap: wrap;
