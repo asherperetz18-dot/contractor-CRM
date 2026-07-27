@@ -163,7 +163,12 @@ export function CallReportsView({
                   </td>
                   <td>
                     {c.recording_url ? (
-                      <audio controls src={c.recording_url} className="call-recording-player" />
+                      <audio
+                        controls
+                        preload="none"
+                        src={`/api/voice/recording/${c.id}`}
+                        className="call-recording-player"
+                      />
                     ) : (
                       "—"
                     )}
