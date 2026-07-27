@@ -1,31 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
+import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, type CompanyProfile } from "@/lib/data/types";
-
-function nowInZone(ianaZone: string): Date {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: ianaZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date());
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
-  return new Date(
-    Date.UTC(
-      Number(get("year")),
-      Number(get("month")) - 1,
-      Number(get("day")),
-      Number(get("hour")) % 24,
-      Number(get("minute")),
-      Number(get("second"))
-    )
-  );
-}
 
 export async function POST(req: NextRequest) {
   const cronSecret = getCronSecret();
@@ -83,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   let flagged = 0;
   for (const row of rows) {
-    const start = new Date(`${row.date}T${row.time || "00:00"}:00Z`);
+    const start = parseNaiveDateTime(row.date, row.time);
     if (start > cutoffLate || start < cutoffOld) continue;
 
     if (row.lead_id) {

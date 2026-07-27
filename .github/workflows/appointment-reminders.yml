@@ -1,0 +1,15 @@
+name: Appointment Reminder Check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger appointment reminder check
+        run: |
+          curl -sf -X POST "https://www.aibuildpros.com/api/cron/appointment-reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -41,6 +41,28 @@ export function validateTwilioSignature(
   return crypto.timingSafeEqual(expectedBuf, signatureBuf);
 }
 
+export async function sendTwilioSms(
+  to: string,
+  body: string,
+  env: NonNullable<ReturnType<typeof getTwilioEnv>>
+): Promise<{ sid?: string; error?: string }> {
+  const basicAuth = Buffer.from(`${env.accountSid}:${env.authToken}`).toString("base64");
+  const res = await fetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${env.accountSid}/Messages.json`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basicAuth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({ To: to, From: env.phoneNumber, Body: body }),
+    }
+  );
+  const json = (await res.json().catch(() => null)) as { sid?: string; message?: string } | null;
+  if (!res.ok) return { error: json?.message || "Failed to send message." };
+  return { sid: json?.sid };
+}
+
 export function getTwilioVoiceEnv() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const apiKeySid = process.env.TWILIO_API_KEY_SID;
