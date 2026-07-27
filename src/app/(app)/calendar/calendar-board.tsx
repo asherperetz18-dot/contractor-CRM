@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { useTimeFormat } from "@/components/time-format-context";
 import {
   EVENT_STATUSES,
   EVENT_STATUS_COLOR,
@@ -14,6 +15,7 @@ import {
   type Lead,
   type LeadTask,
   type Profile,
+  type TimeFormat,
 } from "@/lib/data/types";
 import { EventForm } from "./event-form";
 
@@ -23,12 +25,34 @@ const MONTH_NAMES = [
 ];
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+type ViewMode = "month" | "week" | "day";
+
 function ymd(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+function ymdFromDate(d: Date) {
+  return ymd(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function startOfWeek(dateStr: string): Date {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function formatEventTime(time: string | null, format: TimeFormat): string {
+  if (!time) return "";
+  const hhmm = time.slice(0, 5);
+  if (format === "24h") return hhmm;
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 function toggleInSet<T>(setter: (updater: (prev: Set<T>) => Set<T>) => void, value: T) {
@@ -61,8 +85,9 @@ export function CalendarBoard({
   calendars: CalendarRow[];
   canWrite: boolean;
 }) {
-  const today = new Date();
-  const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const timeFormat = useTimeFormat();
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [cursorDate, setCursorDate] = useState(todayISO());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -71,7 +96,9 @@ export function CalendarBoard({
   const [calendarFilter, setCalendarFilter] = useState<Set<string>>(new Set());
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
 
-  const { year, month } = cursor;
+  const cursor = new Date(`${cursorDate}T00:00:00`);
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
@@ -89,31 +116,68 @@ export function CalendarBoard({
     list.push(ev);
     eventsByDate.set(ev.date, list);
   }
+  for (const list of eventsByDate.values()) {
+    list.sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
+  }
 
-  const cells: Cell[] = [];
+  const monthCells: Cell[] = [];
   for (let i = 0; i < firstDow; i++) {
-    cells.push({ inMonth: false, day: daysInPrevMonth - firstDow + 1 + i, dateStr: null });
+    monthCells.push({ inMonth: false, day: daysInPrevMonth - firstDow + 1 + i, dateStr: null });
   }
   for (let d = 1; d <= daysInMonth; d++) {
-    cells.push({ inMonth: true, day: d, dateStr: ymd(year, month, d) });
+    monthCells.push({ inMonth: true, day: d, dateStr: ymd(year, month, d) });
   }
-  while (cells.length % 7 !== 0) {
-    cells.push({ inMonth: false, day: cells.length - (firstDow + daysInMonth) + 1, dateStr: null });
+  while (monthCells.length % 7 !== 0) {
+    monthCells.push({
+      inMonth: false,
+      day: monthCells.length - (firstDow + daysInMonth) + 1,
+      dateStr: null,
+    });
   }
 
-  function prevMonth() {
-    setCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }));
+  const weekStart = startOfWeek(cursorDate);
+  const weekCells: Cell[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return { inMonth: true, day: d.getDate(), dateStr: ymdFromDate(d) };
+  });
+
+  function shiftCursor(days: number) {
+    const d = new Date(`${cursorDate}T00:00:00`);
+    d.setDate(d.getDate() + days);
+    setCursorDate(ymdFromDate(d));
   }
-  function nextMonth() {
-    setCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }));
+  function goPrev() {
+    if (viewMode === "day") shiftCursor(-1);
+    else if (viewMode === "week") shiftCursor(-7);
+    else {
+      const d = new Date(year, month - 1, 1);
+      setCursorDate(ymdFromDate(d));
+    }
+  }
+  function goNext() {
+    if (viewMode === "day") shiftCursor(1);
+    else if (viewMode === "week") shiftCursor(7);
+    else {
+      const d = new Date(year, month + 1, 1);
+      setCursorDate(ymdFromDate(d));
+    }
   }
   function goToday() {
-    setCursor({ year: today.getFullYear(), month: today.getMonth() });
+    setCursorDate(todayISO());
     setSelectedDate(todayISO());
   }
   function openNewOnDate(dateStr: string) {
     setNewDate(dateStr);
     setShowNew(true);
+  }
+  function selectDate(dateStr: string) {
+    setSelectedDate(dateStr);
+    setCursorDate(dateStr);
+  }
+  function changeView(mode: ViewMode) {
+    if (mode === "day" && selectedDate) setCursorDate(selectedDate);
+    setViewMode(mode);
   }
 
   function repName(id: string | null) {
@@ -126,9 +190,115 @@ export function CalendarBoard({
   }
 
   const todayStr = todayISO();
-  const selectedEvents = selectedDate
-    ? [...(eventsByDate.get(selectedDate) ?? [])].sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""))
-    : [];
+  const selectedEvents = selectedDate ? eventsByDate.get(selectedDate) ?? [] : [];
+  const dayViewEvents = eventsByDate.get(cursorDate) ?? [];
+
+  const periodLabel =
+    viewMode === "day"
+      ? new Date(`${cursorDate}T00:00:00`).toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : viewMode === "week"
+        ? (() => {
+            const end = new Date(weekStart);
+            end.setDate(weekStart.getDate() + 6);
+            const sameMonth = weekStart.getMonth() === end.getMonth();
+            const startLabel = weekStart.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            });
+            const endLabel = end.toLocaleDateString("en-US", {
+              month: sameMonth ? undefined : "short",
+              day: "numeric",
+              year: "numeric",
+            });
+            return `${startLabel} – ${endLabel}`;
+          })()
+        : `${MONTH_NAMES[month]} ${year}`;
+
+  function renderGrid(cells: Cell[], gridClassName: string, maxPerCell: number) {
+    return (
+      <div className={`cal-grid ${gridClassName}`}>
+        {WEEKDAY_LABELS.map((w) => (
+          <div key={w} className="cal-weekday">
+            {w}
+          </div>
+        ))}
+        {cells.map((c, i) => {
+          const dayEvents = c.dateStr ? eventsByDate.get(c.dateStr) ?? [] : [];
+          const isToday = c.dateStr === todayStr;
+          const isSelected = !!c.dateStr && c.dateStr === selectedDate;
+          return (
+            <div
+              key={i}
+              className={
+                "cal-cell" +
+                (c.inMonth ? "" : " cal-cell-out") +
+                (isToday ? " cal-cell-today" : "") +
+                (isSelected ? " cal-cell-selected" : "")
+              }
+              onClick={() => c.dateStr && selectDate(c.dateStr)}
+              onDoubleClick={() => c.dateStr && canWrite && openNewOnDate(c.dateStr)}
+            >
+              <span className="cal-cell-day">{c.day}</span>
+              <div className="cal-cell-events">
+                {dayEvents.slice(0, maxPerCell).map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="cal-event-chip"
+                    style={{ borderLeftColor: stageColor(calendars, ev.event_type) }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditing(ev);
+                    }}
+                  >
+                    <span className="mono cal-event-time">{formatEventTime(ev.time, timeFormat)}</span>{" "}
+                    {ev.title}
+                  </div>
+                ))}
+                {dayEvents.length > maxPerCell && (
+                  <div className="cal-event-more">+{dayEvents.length - maxPerCell} more</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function renderAgenda(list: Event[]) {
+    if (list.length === 0) {
+      return (
+        <p className="hint-note" style={{ marginTop: 0 }}>
+          Nothing scheduled this day.
+        </p>
+      );
+    }
+    return (
+      <div className="schedule-list">
+        {list.map((ev) => (
+          <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
+            <div className="schedule-date">
+              <span className="mono schedule-time">{formatEventTime(ev.time, timeFormat)}</span>
+            </div>
+            <div className="schedule-body">
+              <div className="schedule-title">{ev.title}</div>
+              <div className="schedule-meta">
+                <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
+                <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
+                {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
+                {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -140,7 +310,7 @@ export function CalendarBoard({
         {canWrite && (
           <button
             className="btn-primary"
-            onClick={() => openNewOnDate(selectedDate || todayISO())}
+            onClick={() => openNewOnDate(selectedDate || cursorDate)}
           >
             + New Appointment
           </button>
@@ -224,68 +394,48 @@ export function CalendarBoard({
         <div className="cal-main">
           <div className="cal-toolbar">
             <div className="cal-nav">
-              <button className="icon-btn cal-nav-btn" onClick={prevMonth} aria-label="Previous month">
+              <button className="icon-btn cal-nav-btn" onClick={goPrev} aria-label="Previous">
                 ‹
               </button>
-              <span className="cal-month-label">
-                {MONTH_NAMES[month]} {year}
-              </span>
-              <button className="icon-btn cal-nav-btn" onClick={nextMonth} aria-label="Next month">
+              <span className="cal-month-label">{periodLabel}</span>
+              <button className="icon-btn cal-nav-btn" onClick={goNext} aria-label="Next">
                 ›
               </button>
             </div>
-            <button className="btn-ghost small" onClick={goToday}>
-              Today
-            </button>
-          </div>
-
-          <div className="cal-grid">
-            {WEEKDAY_LABELS.map((w) => (
-              <div key={w} className="cal-weekday">
-                {w}
+            <div className="cal-toolbar-right">
+              <div className="segmented cal-view-toggle">
+                {(["month", "week", "day"] as ViewMode[]).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={"segmented-btn" + (viewMode === m ? " active" : "")}
+                    onClick={() => changeView(m)}
+                  >
+                    {m[0].toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
               </div>
-            ))}
-            {cells.map((c, i) => {
-              const dayEvents = c.dateStr ? eventsByDate.get(c.dateStr) ?? [] : [];
-              const isToday = c.dateStr === todayStr;
-              const isSelected = !!c.dateStr && c.dateStr === selectedDate;
-              return (
-                <div
-                  key={i}
-                  className={
-                    "cal-cell" +
-                    (c.inMonth ? "" : " cal-cell-out") +
-                    (isToday ? " cal-cell-today" : "") +
-                    (isSelected ? " cal-cell-selected" : "")
-                  }
-                  onClick={() => c.dateStr && setSelectedDate(c.dateStr)}
-                  onDoubleClick={() => c.dateStr && canWrite && openNewOnDate(c.dateStr)}
-                >
-                  <span className="cal-cell-day">{c.day}</span>
-                  <div className="cal-cell-events">
-                    {dayEvents.slice(0, 3).map((ev) => (
-                      <div
-                        key={ev.id}
-                        className="cal-event-chip"
-                        style={{ borderLeftColor: stageColor(calendars, ev.event_type) }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditing(ev);
-                        }}
-                      >
-                        <span className="mono cal-event-time">{ev.time}</span> {ev.title}
-                      </div>
-                    ))}
-                    {dayEvents.length > 3 && (
-                      <div className="cal-event-more">+{dayEvents.length - 3} more</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+              <button className="btn-ghost small" onClick={goToday}>
+                Today
+              </button>
+            </div>
           </div>
 
-          {selectedDate && (
+          {viewMode === "month" && renderGrid(monthCells, "", 3)}
+          {viewMode === "week" && renderGrid(weekCells, "cal-grid-week", 8)}
+
+          {viewMode === "day" && (
+            <div className="cal-day-view">
+              {canWrite && (
+                <button className="btn-ghost small" onClick={() => openNewOnDate(cursorDate)}>
+                  + Add Appointment
+                </button>
+              )}
+              <div style={{ marginTop: 10 }}>{renderAgenda(dayViewEvents)}</div>
+            </div>
+          )}
+
+          {viewMode !== "day" && selectedDate && (
             <div className="cal-day-panel">
               <div className="cal-day-panel-head">
                 <span>{selectedDate}</span>
@@ -295,30 +445,7 @@ export function CalendarBoard({
                   </button>
                 )}
               </div>
-              {selectedEvents.length === 0 ? (
-                <p className="hint-note" style={{ marginTop: 0 }}>
-                  Nothing scheduled this day.
-                </p>
-              ) : (
-                <div className="schedule-list">
-                  {selectedEvents.map((ev) => (
-                    <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
-                      <div className="schedule-date">
-                        <span className="mono schedule-time">{ev.time}</span>
-                      </div>
-                      <div className="schedule-body">
-                        <div className="schedule-title">{ev.title}</div>
-                        <div className="schedule-meta">
-                          <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
-                          <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
-                          {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
-                          {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {renderAgenda(selectedEvents)}
             </div>
           )}
         </div>

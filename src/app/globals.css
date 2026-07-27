@@ -1488,6 +1488,16 @@ body {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cal-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cal-view-toggle {
+  margin: 0;
 }
 .cal-nav {
   display: flex;
@@ -1593,6 +1603,15 @@ body {
   border-radius: 8px;
   padding: 14px 16px;
   margin-top: 14px;
+}
+.cal-grid-week .cal-cell {
+  min-height: 340px;
+}
+.cal-day-view {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
 }
 .cal-day-panel-head {
   display: flex;
