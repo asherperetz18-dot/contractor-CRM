@@ -10,6 +10,7 @@ import {
   stageColor,
   type CalendarRow,
   type Lead,
+  type LeadNote,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
@@ -17,6 +18,7 @@ import { LeadForm } from "../pipeline/lead-form";
 
 export function ContactsTable({
   leads,
+  notes,
   reps,
   stages,
   calendars,
@@ -24,6 +26,7 @@ export function ContactsTable({
   canDelete,
 }: {
   leads: Lead[];
+  notes: LeadNote[];
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
@@ -159,6 +162,7 @@ export function ContactsTable({
           reps={reps}
           stages={stages}
           calendars={calendars}
+          notes={notes.filter((n) => n.lead_id === editing.id)}
           readOnly={!canWrite}
           canDelete={canDelete}
           onCancel={() => setEditing(null)}

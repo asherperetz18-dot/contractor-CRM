@@ -2388,3 +2388,39 @@ body {
 .time-field-colon {
   color: var(--ink-soft);
 }
+
+.notes-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.notes-timeline-item {
+  background: #faf8f3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.notes-timeline-body {
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+}
+.notes-timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.notes-timeline-tag {
+  font-size: 10px;
+}
+.notes-timeline-delete {
+  margin-left: auto;
+  opacity: 0.5;
+}
+.notes-timeline-delete:hover {
+  opacity: 1;
+}

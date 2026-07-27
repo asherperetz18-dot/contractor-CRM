@@ -5,6 +5,7 @@ import {
   canEditDispatch,
   type CalendarRow,
   type Lead,
+  type LeadNote,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
@@ -16,9 +17,13 @@ export default async function ContactsPage() {
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
 
-  const [{ data: leads }, { data: reps }, { data: stages }, { data: calendars }] =
+  const [{ data: leads }, { data: notes }, { data: reps }, { data: stages }, { data: calendars }] =
     await Promise.all([
       supabase.from("leads").select("*").order("created_at", { ascending: false }),
+      supabase
+        .from("lead_notes")
+        .select("id, lead_id, author_id, body, event_id, created_at")
+        .order("created_at", { ascending: false }),
       supabase
         .from("profiles")
         .select("id, name, email, phone, roles, status, can_delete_leads, created_at")
@@ -31,6 +36,7 @@ export default async function ContactsPage() {
   return (
     <ContactsTable
       leads={(leads as Lead[]) ?? []}
+      notes={(notes as LeadNote[]) ?? []}
       reps={(reps as Profile[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}

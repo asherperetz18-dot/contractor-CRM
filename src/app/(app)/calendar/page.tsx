@@ -6,7 +6,9 @@ import type {
   Event,
   Job,
   Lead,
+  LeadNote,
   LeadTask,
+  PipelineStageRow,
   Profile,
 } from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
@@ -23,8 +25,10 @@ export default async function CalendarPage() {
     { data: reps },
     { data: leads },
     { data: leadTasks },
+    { data: leadNotes },
     { data: documents },
     { data: calendars },
+    { data: stages },
   ] = await Promise.all([
     supabase.from("events").select("*"),
     supabase.from("jobs").select("*").order("name", { ascending: true }),
@@ -37,8 +41,13 @@ export default async function CalendarPage() {
     supabase
       .from("lead_tasks")
       .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at"),
+    supabase
+      .from("lead_notes")
+      .select("id, lead_id, author_id, body, event_id, created_at")
+      .order("created_at", { ascending: false }),
     supabase.from("documents").select("*").eq("type", "Estimate"),
     supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
+    supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
   ]);
 
   return (
@@ -48,8 +57,10 @@ export default async function CalendarPage() {
       reps={(reps as Profile[]) ?? []}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
+      leadNotes={(leadNotes as LeadNote[]) ?? []}
       documents={(documents as DocumentRecord[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
+      stages={(stages as PipelineStageRow[]) ?? []}
       canWrite={canWrite}
     />
   );

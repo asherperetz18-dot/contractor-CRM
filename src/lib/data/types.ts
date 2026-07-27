@@ -532,6 +532,19 @@ export type LeadTask = {
   created_at: string;
 };
 
+// Timestamped activity/notes timeline for a lead -- additive alongside the
+// single leads.notes field (which still drives the stale-notes warning).
+// Optionally tagged to the appointment it came from, e.g. an appointment's
+// outcome after being marked Showed.
+export type LeadNote = {
+  id: string;
+  lead_id: string;
+  author_id: string | null;
+  body: string;
+  event_id: string | null;
+  created_at: string;
+};
+
 export type LeadWarnings = {
   noAppts: boolean;
   noNotes: boolean;

@@ -13,6 +13,7 @@ import {
   stageColor,
   type CalendarRow,
   type Lead,
+  type LeadNote,
   type LeadTask,
   type LeadWarnings,
   type PipelineStage,
@@ -44,6 +45,7 @@ function loadHiddenStages(): Set<string> {
 export function PipelineBoard({
   leads,
   tasks,
+  notes,
   reps,
   stages,
   calendars,
@@ -52,6 +54,7 @@ export function PipelineBoard({
 }: {
   leads: Lead[];
   tasks: LeadTask[];
+  notes: LeadNote[];
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
@@ -145,6 +148,16 @@ export function PipelineBoard({
     }
     return map;
   }, [tasks]);
+
+  const notesByLead = useMemo(() => {
+    const map = new Map<string, LeadNote[]>();
+    for (const n of notes) {
+      const list = map.get(n.lead_id) ?? [];
+      list.push(n);
+      map.set(n.lead_id, list);
+    }
+    return map;
+  }, [notes]);
 
   const warningsByLead = useMemo(() => {
     const map = new Map<string, LeadWarnings>();
@@ -540,6 +553,7 @@ export function PipelineBoard({
           stages={stages}
           calendars={calendars}
           tasks={tasksByLead.get(editing.id) ?? []}
+          notes={notesByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}
           onCancel={() => setEditing(null)}

@@ -9,6 +9,7 @@ import {
   type CalendarRow,
   type Lead,
   type LeadInput,
+  type LeadNote,
   type LeadTask,
   type PipelineStageRow,
   type Profile,
@@ -21,6 +22,7 @@ import {
   updateLead,
 } from "@/lib/actions/leads";
 import { TasksPanel } from "./tasks-panel";
+import { NotesTimeline } from "./notes-timeline";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -55,6 +57,7 @@ export function LeadForm({
   stages,
   calendars,
   tasks,
+  notes,
   readOnly,
   canDelete,
   onCancel,
@@ -66,6 +69,7 @@ export function LeadForm({
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
   tasks?: LeadTask[];
+  notes?: LeadNote[];
   readOnly?: boolean;
   canDelete?: boolean;
   onCancel: () => void;
@@ -485,6 +489,16 @@ export function LeadForm({
           <TasksPanel
             leadId={lead.id}
             tasks={tasks ?? []}
+            reps={reps}
+            readOnly={readOnly}
+            onChanged={refresh}
+          />
+        )}
+
+        {lead && (
+          <NotesTimeline
+            leadId={lead.id}
+            notes={notes ?? []}
             reps={reps}
             readOnly={readOnly}
             onChanged={refresh}

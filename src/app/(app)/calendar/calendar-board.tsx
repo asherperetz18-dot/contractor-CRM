@@ -13,7 +13,9 @@ import {
   type EventStatus,
   type Job,
   type Lead,
+  type LeadNote,
   type LeadTask,
+  type PipelineStageRow,
   type Profile,
   type TimeFormat,
 } from "@/lib/data/types";
@@ -72,8 +74,10 @@ export function CalendarBoard({
   reps,
   leads,
   leadTasks,
+  leadNotes,
   documents,
   calendars,
+  stages,
   canWrite,
 }: {
   events: Event[];
@@ -81,8 +85,10 @@ export function CalendarBoard({
   reps: Profile[];
   leads: Lead[];
   leadTasks: LeadTask[];
+  leadNotes: LeadNote[];
   documents: DocumentRecord[];
   calendars: CalendarRow[];
+  stages: PipelineStageRow[];
   canWrite: boolean;
 }) {
   const timeFormat = useTimeFormat();
@@ -458,8 +464,10 @@ export function CalendarBoard({
           reps={reps}
           leads={leads}
           leadTasks={leadTasks}
+          leadNotes={leadNotes}
           documents={documents}
           calendars={calendars}
+          stages={stages}
           onCancel={() => setShowNew(false)}
           onSaved={() => {
             setShowNew(false);
@@ -474,8 +482,10 @@ export function CalendarBoard({
           reps={reps}
           leads={leads}
           leadTasks={leadTasks}
+          leadNotes={leadNotes}
           documents={documents}
           calendars={calendars}
+          stages={stages}
           readOnly={!canWrite}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}

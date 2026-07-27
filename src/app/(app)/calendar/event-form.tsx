@@ -23,14 +23,19 @@ import {
   type EventStatus,
   type Job,
   type Lead,
+  type LeadNote,
   type LeadTask,
+  type PipelineStageRow,
   type Profile,
   type SmsQuickText,
 } from "@/lib/data/types";
 import { createEvent, deleteEvent, updateEvent } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
+import { moveLeadStage } from "@/lib/actions/leads";
+import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
+import { NotesTimeline } from "../pipeline/notes-timeline";
 
 type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Notes";
 
@@ -81,8 +86,10 @@ export function EventForm({
   reps,
   leads,
   leadTasks,
+  leadNotes,
   documents,
   calendars,
+  stages,
   readOnly,
   onCancel,
   onSaved,
@@ -94,8 +101,10 @@ export function EventForm({
   reps: Profile[];
   leads?: Lead[];
   leadTasks?: LeadTask[];
+  leadNotes?: LeadNote[];
   documents?: DocumentRecord[];
   calendars: CalendarRow[];
+  stages?: PipelineStageRow[];
   readOnly?: boolean;
   onCancel: () => void;
   onSaved: () => void;
@@ -115,16 +124,52 @@ export function EventForm({
     "idle"
   );
   const [repTextError, setRepTextError] = useState("");
+  const [resultStage, setResultStage] = useState("");
+  const [resultNote, setResultNote] = useState("");
+  const [resultPending, setResultPending] = useState(false);
+  const [resultSaved, setResultSaved] = useState(false);
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
   const openTaskCount = linkedTasks.filter((t) => !t.completed_at).length;
+  const linkedNotes = lead ? (leadNotes ?? []).filter((n) => n.lead_id === lead.id) : [];
   const linkedEstimates = lead
     ? (documents ?? []).filter((d) => d.contact_id === lead.id)
     : [];
+  const showResultPanel = !!lead && !!event && form.status === "Showed";
 
   const set = <K extends keyof EventInput>(k: K, v: EventInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  async function saveResult() {
+    if (!lead || !event) return;
+    const chosenStage = resultStage || lead.stage;
+    if (!resultNote.trim() && chosenStage === lead.stage) return;
+    setResultPending(true);
+    setError("");
+    if (chosenStage !== lead.stage) {
+      const stageResult = await moveLeadStage(lead.id, chosenStage);
+      if (stageResult?.error) {
+        setResultPending(false);
+        setError(stageResult.error);
+        return;
+      }
+    }
+    if (resultNote.trim()) {
+      const noteResult = await addLeadNote(lead.id, resultNote.trim(), event.id);
+      if (noteResult?.error) {
+        setResultPending(false);
+        setError(noteResult.error);
+        return;
+      }
+    }
+    setResultPending(false);
+    setResultNote("");
+    setResultStage("");
+    setResultSaved(true);
+    setTimeout(() => setResultSaved(false), 2500);
+    router.refresh();
+  }
 
   async function handleSave() {
     if (!form.title.trim()) {
@@ -446,6 +491,58 @@ export function EventForm({
         </fieldset>
       )}
 
+      {(!lead || tab === "Appointment") && showResultPanel && (
+        <div className="second-contact-block">
+          <div className="second-contact-head">
+            <span>Appointment Result</span>
+          </div>
+          <p className="empty-hint" style={{ marginTop: 0 }}>
+            Showed up — where does this lead go next? Move the stage and/or log what happened
+            so it doesn&apos;t go cold.
+          </p>
+          <div className="form-grid">
+            <Field label="Move Lead to Stage">
+              <select
+                value={resultStage || lead!.stage}
+                onChange={(e) => setResultStage(e.target.value)}
+                disabled={readOnly || resultPending}
+              >
+                {(stages ?? []).map((s) => (
+                  <option key={s.id} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Result Note">
+            <textarea
+              value={resultNote}
+              onChange={(e) => setResultNote(e.target.value)}
+              rows={2}
+              placeholder="e.g. Needs a 2nd appointment to finalize scope..."
+              disabled={readOnly || resultPending}
+            />
+          </Field>
+          {!readOnly && (
+            <div className="modal-actions">
+              <div />
+              <div>
+                {resultSaved && <span className="cp-saved">✓ Saved</span>}
+                <button
+                  type="button"
+                  className="btn-primary small"
+                  onClick={saveResult}
+                  disabled={resultPending}
+                >
+                  {resultPending ? "Saving…" : "Save Result"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {lead && tab === "Lead" && (
         <div>
           <div className="form-grid">
@@ -516,6 +613,18 @@ export function EventForm({
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {lead && tab === "Notes" && (
+        <div>
+          <NotesTimeline
+            leadId={lead.id}
+            notes={linkedNotes}
+            reps={reps}
+            readOnly={readOnly}
+            onChanged={() => router.refresh()}
+          />
         </div>
       )}
 
