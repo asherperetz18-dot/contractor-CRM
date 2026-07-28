@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const MAX_FILE_BYTES = 1500 * 1024;
 const BUCKET = "lead-files";
 
 export async function uploadLeadFile(
@@ -14,7 +14,7 @@ export async function uploadLeadFile(
   const file = formData.get("file");
   if (!(file instanceof File) || !file.name) return { error: "No file selected." };
   if (file.size > MAX_FILE_BYTES) {
-    return { error: "File is too large — please use one under 20MB." };
+    return { error: "File is too large — please use one under 1500KB." };
   }
 
   const supabase = await createClient();
