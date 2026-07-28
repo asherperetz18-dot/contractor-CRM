@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
+import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import {
   leadDisplayName,
   mapsUrl,
@@ -101,6 +102,9 @@ export function LeadForm({
   );
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
+  const [lastSaved, setLastSaved] = useState(form);
+  const skipNextAutosave = useRef(true);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
   const [refundRequestedAt, setRefundRequestedAt] = useState<string | null>(
     lead?.refund_requested_at ?? null
@@ -162,6 +166,45 @@ export function LeadForm({
     startTransition(() => router.refresh());
   }
 
+  const autosaveDirty = form !== lastSaved;
+
+  useEffect(() => {
+    if (!lead || readOnly) return;
+    if (skipNextAutosave.current) {
+      skipNextAutosave.current = false;
+      return;
+    }
+    const valid =
+      form.contact_type === "Company"
+        ? form.company_name.trim() && form.phone.trim()
+        : form.first_name.trim() && form.last_name.trim() && form.phone.trim();
+    if (!valid) return;
+
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(async () => {
+      const payload = hasSecondContact
+        ? form
+        : {
+            ...form,
+            second_contact_first_name: "",
+            second_contact_last_name: "",
+            second_contact_phone: "",
+          };
+      const result = await updateLead(lead.id, payload);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setLastSaved(form);
+      refresh();
+    }, 1000);
+
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, hasSecondContact]);
+
   async function handleSave() {
     const valid =
       form.contact_type === "Company"
@@ -189,6 +232,8 @@ export function LeadForm({
       setError(result.error);
       return;
     }
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    setLastSaved(form);
     refresh();
     onSaved();
   }
@@ -458,9 +503,10 @@ export function LeadForm({
           <>
         <div className="form-grid" style={{ marginTop: 14 }}>
           <Field label="Address">
-            <input
+            <AddressAutocompleteInput
               value={form.address}
-              onChange={(e) => set("address", e.target.value)}
+              onChange={(v) => set("address", v)}
+              onZipChange={(v) => set("zip", v)}
               placeholder="Job site address"
             />
           </Field>
@@ -769,14 +815,17 @@ export function LeadForm({
                 Mark Won → Create Job
               </button>
             )}
+            {lead && !readOnly && (
+              <span className="empty-hint">{autosaveDirty ? "Saving…" : "✓ Saved"}</span>
+            )}
           </div>
           <div>
             <button type="button" className="btn-ghost" onClick={onCancel}>
-              {readOnly ? "Close" : "Cancel"}
+              {readOnly || lead ? "Close" : "Cancel"}
             </button>
             {!readOnly && (
               <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
-                {pending ? "Saving…" : "Save"}
+                {pending ? "Saving…" : lead ? "Save Now" : "Save"}
               </button>
             )}
           </div>
