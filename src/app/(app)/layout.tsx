@@ -3,10 +3,9 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
-import { logout } from "@/lib/actions/auth";
 import { NAV, filterNavForProfile } from "@/lib/nav";
-import { NavLink } from "./nav-link";
-import { NavGroup } from "./nav-group";
+import { MobileNav } from "./mobile-nav";
+import { MobileNavToggle } from "./mobile-nav-toggle";
 import { QuickCreateMenu } from "./quick-create-menu";
 import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
@@ -50,6 +49,7 @@ export default async function AppLayout({
       <div className="app-root">
         <div className="global-topbar">
           <div className="global-topbar-left">
+            <MobileNavToggle />
             {logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="Company logo" className="topbar-logo-img" />
@@ -69,53 +69,13 @@ export default async function AppLayout({
         <VoiceDialer />
 
         <div className="app-body">
-          <aside className="sidebar">
-            <div className="sidebar-head">
-              {logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoUrl} alt="Company logo" className="sidebar-logo-img" />
-              ) : (
-                <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
-              )}
-              <div className="sidebar-sub">v{version}</div>
-            </div>
-            <nav className="sidebar-nav">
-              {filteredNav.map((item) =>
-                item.type === "group" ? (
-                  <NavGroup key={item.label} group={item} />
-                ) : (
-                  <NavLink key={item.href} href={item.href}>
-                    <span className="nav-icon">{item.icon}</span>
-                    {item.label}
-                  </NavLink>
-                )
-              )}
-            </nav>
-            <div className="sidebar-foot">
-              <div className="role-label">Signed in as</div>
-              <div className="role-value">
-                {profile.roles.length === 0 && (
-                  <span className="role-badge">No role assigned</span>
-                )}
-                {profile.roles.map((role) => (
-                  <span
-                    key={role}
-                    className={
-                      "role-badge " +
-                      (role === "Office" ? "role-office" : "role-field")
-                    }
-                  >
-                    {role}
-                  </span>
-                ))}
-              </div>
-              <form action={logout}>
-                <button type="submit" className="sign-out-btn">
-                  Sign out
-                </button>
-              </form>
-            </div>
-          </aside>
+          <MobileNav
+            logoUrl={logoUrl}
+            companyName={companyName}
+            version={version}
+            filteredNav={filteredNav}
+            roles={profile.roles}
+          />
 
           <main className="main">
             {pageBlocked ? (

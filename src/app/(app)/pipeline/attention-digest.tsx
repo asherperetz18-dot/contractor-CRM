@@ -66,6 +66,7 @@ function DigestSection({
         (leads.length === 0 ? (
           <p className="empty-hint">Nothing here.</p>
         ) : (
+          <div className="table-scroll">
           <table className="data-table">
             <thead>
               <tr>
@@ -105,6 +106,7 @@ function DigestSection({
               ))}
             </tbody>
           </table>
+          </div>
         ))}
       {open && leads.length > 25 && (
         <p className="hint-note">Showing 25 of {leads.length}.</p>

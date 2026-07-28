@@ -166,8 +166,35 @@ body {
   flex-direction: column;
 }
 .sidebar-head {
+  position: relative;
   padding: 22px 18px 16px;
   border-bottom: 1px solid #26374a;
+}
+.mobile-nav-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.sidebar-close {
+  display: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: transparent;
+  border: none;
+  color: #c3ceda;
+  font-size: 16px;
+  cursor: pointer;
+}
+.sidebar-backdrop {
+  display: none;
 }
 .sidebar-title {
   font-family: var(--font-headers);
@@ -1381,6 +1408,11 @@ body {
   white-space: nowrap;
 }
 
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 8px;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1388,6 +1420,9 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+}
+.table-scroll .data-table {
+  min-width: 640px;
 }
 .data-table th {
   text-align: left;
@@ -1987,16 +2022,34 @@ body {
   .cal-event-chip {
     font-size: 9.5px;
   }
-  .app-body {
-    flex-direction: column;
+  .mobile-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sidebar-close {
+    display: block;
   }
   .sidebar {
-    width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    max-width: 82vw;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 70;
   }
-  .sidebar-nav {
-    display: flex;
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 16, 24, 0.5);
+    z-index: 65;
   }
   .global-search {
     display: none;
@@ -2027,6 +2080,23 @@ body {
 @media (max-width: 700px) {
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+  .cal-layout {
+    flex-direction: column;
+  }
+  .cal-filters {
+    width: 100%;
+    flex: 0 0 auto;
+    position: static;
+    max-height: none;
+  }
+  .module-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .stat-grid-5 {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

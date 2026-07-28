@@ -111,6 +111,7 @@ export function ContactsTable({
           <p className="empty-hint">Try a different search term.</p>
         </div>
       ) : (
+        <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -157,6 +158,7 @@ export function ContactsTable({
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
       {editing && (

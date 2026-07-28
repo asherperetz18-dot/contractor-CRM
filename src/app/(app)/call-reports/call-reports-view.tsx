@@ -122,6 +122,7 @@ export function CallReportsView({
           <p className="empty-hint">Calls placed through the in-app dialer will show up here.</p>
         </div>
       ) : (
+        <div className="table-scroll">
         <table className="data-table">
           <thead>
             <tr>
@@ -178,6 +179,7 @@ export function CallReportsView({
             })}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

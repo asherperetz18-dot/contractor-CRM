@@ -454,6 +454,7 @@ export function DialQueueView({
               <p className="empty-hint">Try different filters.</p>
             </div>
           ) : (
+            <div className="table-scroll">
             <table className="data-table">
               <thead>
                 <tr>
@@ -527,6 +528,7 @@ export function DialQueueView({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           {activeRows.length > 0 && (
