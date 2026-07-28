@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { leadDisplayName, normalizePhone, type Lead, type SmsMessage } from "@/lib/data/types";
+import {
+  leadDisplayName,
+  normalizePhone,
+  type Lead,
+  type Profile,
+  type SmsMessage,
+} from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
 
 type Conversation = {
@@ -16,10 +22,12 @@ type Conversation = {
 export function ReplyInboxView({
   messages,
   leads,
+  reps,
   canWrite,
 }: {
   messages: SmsMessage[];
   leads: Lead[];
+  reps: Profile[];
   canWrite: boolean;
 }) {
   const router = useRouter();
@@ -44,14 +52,24 @@ export function ReplyInboxView({
         // Fall back to matching by phone number when the message was never
         // linked to a lead record -- like caller ID matching a saved
         // contact even when the call system itself has no contact ID.
+        // Some conversations are with a rep's own phone (e.g. the "Text
+        // Rep Info" appointment nudges), not a lead, so check both.
         const lead = m.lead_id
           ? leads.find((l) => l.id === m.lead_id) ?? null
           : leads.find((l) => l.phone && normalizePhone(l.phone) === normalizePhone(counterpartyPhone)) ??
             null;
+        const rep = !lead
+          ? reps.find((r) => r.phone && normalizePhone(r.phone) === normalizePhone(counterpartyPhone)) ??
+            null
+          : null;
         convo = {
           key,
           leadId: m.lead_id ?? lead?.id ?? null,
-          name: lead ? leadDisplayName(lead) : counterpartyPhone,
+          name: lead
+            ? leadDisplayName(lead)
+            : rep
+              ? `👷 ${rep.name || rep.email}`
+              : counterpartyPhone,
           phone: lead?.phone || counterpartyPhone,
           messages: [],
         };
@@ -81,7 +99,7 @@ export function ReplyInboxView({
       const bLast = b.messages[b.messages.length - 1]?.created_at ?? "";
       return bLast.localeCompare(aLast);
     });
-  }, [messages, leads, targetLeadId, targetPhone]);
+  }, [messages, leads, reps, targetLeadId, targetPhone]);
 
   const targetKey = targetLeadId ?? (targetPhone ? `phone:${normalizePhone(targetPhone)}` : null);
   if (targetKey && targetKey !== consumedTargetKey) {

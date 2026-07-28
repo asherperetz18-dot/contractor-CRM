@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canEditDispatch, type Lead, type SmsMessage } from "@/lib/data/types";
+import { canEditDispatch, type Lead, type Profile, type SmsMessage } from "@/lib/data/types";
 import { ReplyInboxView } from "./reply-inbox-view";
 
 export default async function ReplyInboxPage() {
@@ -8,18 +8,23 @@ export default async function ReplyInboxPage() {
   const profile = await getCurrentProfile();
   const canWrite = canEditDispatch(profile);
 
-  const [{ data: messages }, { data: leads }] = await Promise.all([
+  const [{ data: messages }, { data: leads }, { data: reps }] = await Promise.all([
     supabase
       .from("sms_messages")
       .select("*")
       .order("created_at", { ascending: true }),
     supabase.from("leads").select("*"),
+    supabase
+      .from("profiles")
+      .select("id, name, email, phone, roles, status, created_at")
+      .not("phone", "is", null),
   ]);
 
   return (
     <ReplyInboxView
       messages={(messages as SmsMessage[]) ?? []}
       leads={(leads as Lead[]) ?? []}
+      reps={(reps as Profile[]) ?? []}
       canWrite={canWrite}
     />
   );
