@@ -107,6 +107,54 @@ export async function getValidAccessToken(): Promise<{
   return { accessToken: json.access_token, folderId: row.folder_id };
 }
 
+// Returns the Drive subfolder for this lead's attachments, creating it
+// (under the root "Contractor CRM Files" folder) the first time a file
+// is uploaded for that contact.
+export async function getOrCreateLeadDriveFolder(leadId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("leads")
+    .select("drive_folder_id, contact_type, company_name, first_name, last_name")
+    .eq("id", leadId)
+    .single();
+  const lead = data as {
+    drive_folder_id: string | null;
+    contact_type: string;
+    company_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
+  if (!lead) return null;
+  if (lead.drive_folder_id) return lead.drive_folder_id;
+
+  const drive = await getValidAccessToken();
+  if (!drive) return null;
+
+  const displayName =
+    lead.contact_type === "Company"
+      ? lead.company_name || "Unnamed Company"
+      : `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unnamed Lead";
+  const folderName = `${displayName} (${leadId.slice(0, 8)})`;
+
+  const folderRes = await fetch(`${DRIVE_API}/files?fields=id`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${drive.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: folderName,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [drive.folderId],
+    }),
+  });
+  if (!folderRes.ok) return null;
+  const folder = (await folderRes.json()) as { id: string };
+
+  await admin.from("leads").update({ drive_folder_id: folder.id }).eq("id", leadId);
+  return folder.id;
+}
+
 export async function uploadFileToDrive(
   file: File,
   accessToken: string,

@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { deleteFileFromDrive, getValidAccessToken, uploadFileToDrive } from "./google-drive";
+import {
+  deleteFileFromDrive,
+  getOrCreateLeadDriveFolder,
+  getValidAccessToken,
+  uploadFileToDrive,
+} from "./google-drive";
 
 const MAX_SUPABASE_FILE_BYTES = 1500 * 1024;
 const MAX_DRIVE_FILE_BYTES = 20 * 1024 * 1024;
@@ -28,7 +33,10 @@ export async function uploadLeadFile(
     if (file.size > MAX_DRIVE_FILE_BYTES) {
       return { error: "File is too large — please use one under 20MB." };
     }
-    const uploaded = await uploadFileToDrive(file, drive.accessToken, drive.folderId);
+    const leadFolderId = await getOrCreateLeadDriveFolder(leadId);
+    if (!leadFolderId) return { error: "Could not prepare this contact's Drive folder." };
+
+    const uploaded = await uploadFileToDrive(file, drive.accessToken, leadFolderId);
     if ("error" in uploaded) return { error: uploaded.error };
 
     const { error } = await supabase.from("lead_files").insert({
