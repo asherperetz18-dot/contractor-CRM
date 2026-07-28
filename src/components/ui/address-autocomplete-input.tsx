@@ -32,9 +32,14 @@ let loadPromise: Promise<void> | null = null;
 function loadGooglePlaces(apiKey: string): Promise<void> {
   if (window.google?.maps?.places) return Promise.resolve();
   if (loadPromise) return loadPromise;
+  // Deliberately not using loading=async here: that mode defers loading
+  // the "places" sub-library until an explicit importLibrary() call, which
+  // requires Google's inline bootstrap snippet to work (a bare <script> tag
+  // doesn't get that shim). Classic loading with libraries=places blocks
+  // until Autocomplete is actually ready before firing onload.
   loadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
     script.async = true;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("Failed to load Google Maps"));
@@ -72,7 +77,7 @@ export function AddressAutocompleteInput({
 
     loadGooglePlaces(apiKey)
       .then(() => {
-        if (cancelled || !inputRef.current || !window.google) return;
+        if (cancelled || !inputRef.current || !window.google?.maps?.places) return;
         const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
           types: ["address"],
           fields: ["formatted_address", "address_components"],
