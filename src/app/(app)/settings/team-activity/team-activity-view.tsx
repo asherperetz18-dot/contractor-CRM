@@ -33,14 +33,24 @@ export function TeamActivityView({
   users: Profile[];
 }) {
   const [range, setRange] = useState<RangeKey>("today");
+  const [userFilter, setUserFilter] = useState<string>("all");
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name || "Unknown";
   const userEmail = (id: string) => users.find((u) => u.id === id)?.email || "";
 
+  const sortedUsers = useMemo(
+    () => [...users].sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || "")),
+    [users]
+  );
+
   const filtered = useMemo(() => {
     const cutoff = startOfRange(range);
-    return events.filter((e) => new Date(e.created_at).getTime() >= cutoff);
-  }, [events, range]);
+    return events.filter(
+      (e) =>
+        new Date(e.created_at).getTime() >= cutoff &&
+        (userFilter === "all" || e.user_id === userFilter)
+    );
+  }, [events, range, userFilter]);
 
   const bySession = useMemo(() => {
     const map = new Map<string, ActivityEvent[]>();
@@ -136,6 +146,22 @@ export function TeamActivityView({
       .slice(0, 10);
   }, [bySession]);
 
+  const sessionDetail = useMemo(() => {
+    if (userFilter === "all") return null;
+    return [...bySession.entries()]
+      .map(([sessionId, evs]) => {
+        const sorted = [...evs].sort(
+          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        const start = sorted[0].created_at;
+        const end = sorted[sorted.length - 1].created_at;
+        const minutes = (new Date(end).getTime() - new Date(start).getTime()) / 60000;
+        const pages = sorted.filter((e) => e.kind === "pageview").map((e) => e.path);
+        return { sessionId, start, minutes, pages };
+      })
+      .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
+  }, [bySession, userFilter]);
+
   return (
     <div>
       <div className="ur-breadcrumb">
@@ -151,17 +177,31 @@ export function TeamActivityView({
           <h1 className="module-title">Team Activity</h1>
           <p className="module-sub">Usage across your team, based on page activity</p>
         </div>
-        <select
-          className="ur-company-filter"
-          value={range}
-          onChange={(e) => setRange(e.target.value as RangeKey)}
-        >
-          {(Object.keys(RANGE_LABELS) as RangeKey[]).map((r) => (
-            <option key={r} value={r}>
-              {RANGE_LABELS[r]}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: "flex", gap: 8 }}>
+          <select
+            className="ur-company-filter"
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+          >
+            <option value="all">All Team Members</option>
+            {sortedUsers.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name || u.email}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ur-company-filter"
+            value={range}
+            onChange={(e) => setRange(e.target.value as RangeKey)}
+          >
+            {(Object.keys(RANGE_LABELS) as RangeKey[]).map((r) => (
+              <option key={r} value={r}>
+                {RANGE_LABELS[r]}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="stat-grid stat-grid-5">
@@ -206,45 +246,80 @@ export function TeamActivityView({
         )}
       </div>
 
-      <div className="ta-panel">
-        <h3 className="ta-panel-title">Team Breakdown</h3>
-        {teamBreakdown.length === 0 ? (
-          <p className="empty-hint">No activity recorded in this range.</p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Active Minutes</th>
-                <th>Sessions</th>
-                <th>Pages</th>
-                <th className="right">Last Active</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teamBreakdown.map((row) => (
-                <tr key={row.userId}>
-                  <td>
-                    <div className="ur-name">{userName(row.userId)}</div>
-                    <div className="ur-add-phone">{userEmail(row.userId)}</div>
-                  </td>
-                  <td className="mono">{Math.round(row.minutes)}m</td>
-                  <td className="mono">{row.sessions}</td>
-                  <td className="mono">{row.pages}</td>
-                  <td className="right">
-                    {new Date(row.lastActive).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
-                  </td>
+      {userFilter === "all" ? (
+        <div className="ta-panel">
+          <h3 className="ta-panel-title">Team Breakdown</h3>
+          {teamBreakdown.length === 0 ? (
+            <p className="empty-hint">No activity recorded in this range.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Active Minutes</th>
+                  <th>Sessions</th>
+                  <th>Pages</th>
+                  <th className="right">Last Active</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {teamBreakdown.map((row) => (
+                  <tr key={row.userId}>
+                    <td>
+                      <div className="ur-name">{userName(row.userId)}</div>
+                      <div className="ur-add-phone">{userEmail(row.userId)}</div>
+                    </td>
+                    <td className="mono">{Math.round(row.minutes)}m</td>
+                    <td className="mono">{row.sessions}</td>
+                    <td className="mono">{row.pages}</td>
+                    <td className="right">
+                      {new Date(row.lastActive).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ) : (
+        <div className="ta-panel">
+          <h3 className="ta-panel-title">Session Detail — {userName(userFilter)}</h3>
+          {!sessionDetail || sessionDetail.length === 0 ? (
+            <p className="empty-hint">No activity recorded in this range.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Session Start</th>
+                  <th>Duration</th>
+                  <th>Pages Visited</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessionDetail.map((s) => (
+                  <tr key={s.sessionId}>
+                    <td>
+                      {new Date(s.start).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </td>
+                    <td className="mono">{Math.round(s.minutes)}m</td>
+                    <td>{s.pages.join(" → ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="ta-panel">
         <h3 className="ta-panel-title">Top Pages</h3>
