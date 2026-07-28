@@ -139,7 +139,9 @@ export function DialQueueView({
 
       if (q) {
         const name = leadDisplayName(l).toLowerCase();
-        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q)) return false;
+        const qDigits = q.replace(/\D/g, "");
+        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q) && !phoneMatch) return false;
       }
       return true;
     });
@@ -154,7 +156,9 @@ export function DialQueueView({
       if (!inDateRange(l.created_at, dateFilter)) return false;
       if (q) {
         const name = leadDisplayName(l).toLowerCase();
-        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q)) return false;
+        const qDigits = q.replace(/\D/g, "");
+        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q) && !phoneMatch) return false;
       }
       return true;
     });

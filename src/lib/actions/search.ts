@@ -1,7 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { leadDisplayName, stageColor, type Lead, type PipelineStageRow } from "@/lib/data/types";
+import {
+  leadDisplayName,
+  normalizePhone,
+  stageColor,
+  type Lead,
+  type PipelineStageRow,
+} from "@/lib/data/types";
 
 export type DirectoryHit = {
   id: string;
@@ -29,12 +35,20 @@ export async function searchDirectory(query: string): Promise<DirectoryHit[]> {
   const rows = (leads as Lead[]) ?? [];
   const stageRows = (stages as Pick<PipelineStageRow, "name" | "color">[]) ?? [];
 
+  // Phone numbers are stored with whatever formatting was typed in, so a
+  // plain substring match on the raw text misses e.g. searching digits
+  // only ("6263254475") against a stored "(626) 325-4475". Compare
+  // normalized digits too, alongside the existing free-text match.
+  const qDigits = q.replace(/\D/g, "");
+
   return rows
-    .filter((l) =>
-      `${leadDisplayName(l)} ${l.phone ?? ""} ${l.address ?? ""} ${l.email ?? ""}`
+    .filter((l) => {
+      const textMatch = `${leadDisplayName(l)} ${l.phone ?? ""} ${l.address ?? ""} ${l.email ?? ""}`
         .toLowerCase()
-        .includes(q)
-    )
+        .includes(q);
+      const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+      return textMatch || phoneMatch;
+    })
     .slice(0, 8)
     .map((l) => ({
       id: l.id,

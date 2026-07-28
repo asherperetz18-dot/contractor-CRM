@@ -7,6 +7,7 @@ import {
   leadDisplayName,
   mapsUrl,
   money,
+  normalizePhone,
   stageColor,
   type CalendarRow,
   type Lead,
@@ -71,12 +72,15 @@ export function ContactsTable({
   }
 
   const q = search.trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, "");
   const filtered = q
-    ? leads.filter((l) =>
-        `${leadDisplayName(l)} ${l.email ?? ""} ${l.phone ?? ""} ${l.address ?? ""}`
+    ? leads.filter((l) => {
+        const textMatch = `${leadDisplayName(l)} ${l.email ?? ""} ${l.phone ?? ""} ${l.address ?? ""}`
           .toLowerCase()
-          .includes(q)
-      )
+          .includes(q);
+        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+        return textMatch || phoneMatch;
+      })
     : leads;
 
   return (
