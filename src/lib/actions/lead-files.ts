@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deleteFileFromDrive, getValidAccessToken, uploadFileToDrive } from "./google-drive";
 
-const MAX_FILE_BYTES = 1500 * 1024;
+const MAX_SUPABASE_FILE_BYTES = 1500 * 1024;
+const MAX_DRIVE_FILE_BYTES = 20 * 1024 * 1024;
 const BUCKET = "lead-files";
 
 export async function uploadLeadFile(
@@ -13,15 +15,42 @@ export async function uploadLeadFile(
 ): Promise<{ error?: string }> {
   const file = formData.get("file");
   if (!(file instanceof File) || !file.name) return { error: "No file selected." };
-  if (file.size > MAX_FILE_BYTES) {
-    return { error: "File is too large — please use one under 1500KB." };
-  }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." };
+
+  const drive = await getValidAccessToken();
+
+  if (drive) {
+    if (file.size > MAX_DRIVE_FILE_BYTES) {
+      return { error: "File is too large — please use one under 20MB." };
+    }
+    const uploaded = await uploadFileToDrive(file, drive.accessToken, drive.folderId);
+    if ("error" in uploaded) return { error: uploaded.error };
+
+    const { error } = await supabase.from("lead_files").insert({
+      lead_id: leadId,
+      uploaded_by: user.id,
+      file_name: file.name,
+      file_path: uploaded.id,
+      file_url: uploaded.url,
+      file_size: file.size,
+      content_type: file.type || null,
+      storage_provider: "google_drive",
+    });
+    if (error) return { error: error.message };
+
+    revalidatePath("/pipeline");
+    revalidatePath("/contacts");
+    return {};
+  }
+
+  if (file.size > MAX_SUPABASE_FILE_BYTES) {
+    return { error: "File is too large — please use one under 1500KB, or connect Google Drive in Settings for larger files." };
+  }
 
   const admin = createAdminClient();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -44,6 +73,7 @@ export async function uploadLeadFile(
     file_url: publicUrl,
     file_size: file.size,
     content_type: file.type || null,
+    storage_provider: "supabase",
   });
   if (error) return { error: error.message };
 
@@ -52,13 +82,22 @@ export async function uploadLeadFile(
   return {};
 }
 
-export async function deleteLeadFile(id: string, filePath: string): Promise<{ error?: string }> {
+export async function deleteLeadFile(
+  id: string,
+  filePath: string,
+  storageProvider?: string
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.from("lead_files").delete().eq("id", id);
   if (error) return { error: error.message };
 
-  const admin = createAdminClient();
-  await admin.storage.from(BUCKET).remove([filePath]);
+  if (storageProvider === "google_drive") {
+    const drive = await getValidAccessToken();
+    if (drive) await deleteFileFromDrive(filePath, drive.accessToken);
+  } else {
+    const admin = createAdminClient();
+    await admin.storage.from(BUCKET).remove([filePath]);
+  }
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");

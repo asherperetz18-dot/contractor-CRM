@@ -55,7 +55,7 @@ export function LeadFilesPanel({
 
   async function handleDelete(file: LeadFile) {
     if (!confirm(`Delete "${file.file_name}"?`)) return;
-    await deleteLeadFile(file.id, file.file_path);
+    await deleteLeadFile(file.id, file.file_path, file.storage_provider);
     onChanged();
   }
 

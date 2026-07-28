@@ -574,6 +574,7 @@ export type LeadFile = {
   file_url: string;
   file_size: number | null;
   content_type: string | null;
+  storage_provider: string;
   created_at: string;
 };
 

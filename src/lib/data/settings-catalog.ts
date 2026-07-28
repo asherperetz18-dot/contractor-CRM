@@ -260,8 +260,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       { title: "AI Analysis", desc: "Positive and negative signal prompts used by the AI analyzer", icon: "🧠" },
       {
         title: "Cloud Storage",
-        desc: "Connect Dropbox or Google Drive to automatically sync project files and free up Supabase storage",
+        desc: "Connect Google Drive so lead file uploads sync there instead of this app's storage",
         icon: "☁",
+        href: "/settings/cloud-storage",
       },
       {
         title: "Facebook Lead Ads",

@@ -37,7 +37,9 @@ export default async function ContactsPage() {
       .order("created_at", { ascending: false }),
     supabase
       .from("lead_files")
-      .select("id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, created_at")
+      .select(
+        "id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, storage_provider, created_at"
+      )
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
