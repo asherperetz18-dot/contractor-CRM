@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Oswald, Inter, JetBrains_Mono } from "next/font/google";
+import { createAdminClient } from "@/lib/supabase/admin";
 import "./globals.css";
 
 const oswald = Oswald({
@@ -20,10 +21,21 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
-export const metadata: Metadata = {
-  title: "Contractor CRM",
-  description: "Contractor CRM",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_profile")
+    .select("logo_url")
+    .eq("id", 1)
+    .single();
+  const logoUrl = (data as { logo_url: string | null } | null)?.logo_url;
+
+  return {
+    title: "Contractor CRM",
+    description: "Contractor CRM",
+    icons: logoUrl ? { icon: logoUrl } : undefined,
+  };
+}
 
 export default function RootLayout({
   children,
