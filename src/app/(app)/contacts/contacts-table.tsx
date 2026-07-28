@@ -12,7 +12,9 @@ import {
   type Lead,
   type LeadFile,
   type LeadNote,
+  type LeadSourceRow,
   type PipelineStageRow,
+  type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
@@ -24,6 +26,8 @@ export function ContactsTable({
   reps,
   stages,
   calendars,
+  projectTypes,
+  sources,
   canWrite,
   canDelete,
 }: {
@@ -33,6 +37,8 @@ export function ContactsTable({
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
+  projectTypes: ProjectTypeRow[];
+  sources: LeadSourceRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -167,6 +173,8 @@ export function ContactsTable({
           reps={reps}
           stages={stages}
           calendars={calendars}
+          projectTypes={projectTypes}
+          sources={sources}
           notes={notes.filter((n) => n.lead_id === editing.id)}
           files={files.filter((f) => f.lead_id === editing.id)}
           readOnly={!canWrite}

@@ -17,8 +17,10 @@ import {
   type LeadFile,
   type LeadInput,
   type LeadNote,
+  type LeadSourceRow,
   type LeadTask,
   type PipelineStageRow,
+  type ProjectTypeRow,
   type Profile,
   type RefundStatus,
 } from "@/lib/data/types";
@@ -70,6 +72,8 @@ export function LeadForm({
   reps,
   stages,
   calendars,
+  projectTypes,
+  sources,
   tasks,
   notes,
   files,
@@ -83,6 +87,8 @@ export function LeadForm({
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
+  projectTypes: ProjectTypeRow[];
+  sources: LeadSourceRow[];
   tasks?: LeadTask[];
   notes?: LeadNote[];
   files?: LeadFile[];
@@ -514,18 +520,31 @@ export function LeadForm({
             <input value={form.zip} onChange={(e) => set("zip", e.target.value)} />
           </Field>
           <Field label="Project Type">
-            <input
-              value={form.project_type}
-              onChange={(e) => set("project_type", e.target.value)}
-              placeholder="Kitchen, Roofing..."
-            />
+            <select value={form.project_type} onChange={(e) => set("project_type", e.target.value)}>
+              <option value="">— none —</option>
+              {projectTypes.map((p) => (
+                <option key={p.id} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+              {form.project_type &&
+                !projectTypes.some((p) => p.name === form.project_type) && (
+                  <option value={form.project_type}>{form.project_type} (custom)</option>
+                )}
+            </select>
           </Field>
           <Field label="Source">
-            <input
-              value={form.source}
-              onChange={(e) => set("source", e.target.value)}
-              placeholder="Referral, website..."
-            />
+            <select value={form.source} onChange={(e) => set("source", e.target.value)}>
+              <option value="">— none —</option>
+              {sources.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+              {form.source && !sources.some((s) => s.name === form.source) && (
+                <option value={form.source}>{form.source} (custom)</option>
+              )}
+            </select>
           </Field>
           <Field label="Est. Value">
             <input
@@ -823,9 +842,9 @@ export function LeadForm({
             <button type="button" className="btn-ghost" onClick={onCancel}>
               {readOnly || lead ? "Close" : "Cancel"}
             </button>
-            {!readOnly && (
+            {!readOnly && !lead && (
               <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
-                {pending ? "Saving…" : lead ? "Save Now" : "Save"}
+                {pending ? "Saving…" : "Save"}
               </button>
             )}
           </div>

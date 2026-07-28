@@ -280,6 +280,20 @@ export type CalendarRow = {
   created_at: string;
 };
 
+export type ProjectTypeRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type LeadSourceRow = {
+  id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type EventStatus = "New" | "Confirmed" | "Showed" | "No-show" | "Cancelled";
 export const EVENT_STATUSES: EventStatus[] = [
   "New",

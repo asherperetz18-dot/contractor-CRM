@@ -15,10 +15,12 @@ import {
   type Lead,
   type LeadFile,
   type LeadNote,
+  type LeadSourceRow,
   type LeadTask,
   type LeadWarnings,
   type PipelineStage,
   type PipelineStageRow,
+  type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
 import { moveLeadStage } from "@/lib/actions/leads";
@@ -51,6 +53,8 @@ export function PipelineBoard({
   reps,
   stages,
   calendars,
+  projectTypes,
+  sources,
   canWrite,
   canDelete,
 }: {
@@ -61,6 +65,8 @@ export function PipelineBoard({
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
+  projectTypes: ProjectTypeRow[];
+  sources: LeadSourceRow[];
   canWrite: boolean;
   canDelete: boolean;
 }) {
@@ -552,6 +558,8 @@ export function PipelineBoard({
           reps={reps}
           stages={stages}
           calendars={calendars}
+          projectTypes={projectTypes}
+          sources={sources}
           onCancel={() => setShowNew(false)}
           onSaved={() => setShowNew(false)}
         />
@@ -565,6 +573,8 @@ export function PipelineBoard({
           reps={reps}
           stages={stages}
           calendars={calendars}
+          projectTypes={projectTypes}
+          sources={sources}
           tasks={tasksByLead.get(editing.id) ?? []}
           notes={notesByLead.get(editing.id) ?? []}
           files={filesByLead.get(editing.id) ?? []}

@@ -103,7 +103,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         desc: "Default lead cost and commission split percentages applied to new projects",
         icon: "%",
       },
-      { title: "Lead Sources", desc: "Create and manage lead source categories (Zillow, Referral, etc.)", icon: "📥" },
+      {
+        title: "Lead Sources",
+        desc: "Create and manage lead source categories (Zillow, Referral, etc.)",
+        icon: "📥",
+        href: "/settings/lead-sources",
+      },
       { title: "Marketing Messages", desc: "Reusable marketing texts & emails your team can send from any lead", icon: "✉" },
       { title: "Geofencing", desc: "Geofence radius, alerts, and check-in behavior", icon: "📡" },
     ],
@@ -160,7 +165,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     hint: "Project types & statuses, schedules, checklists, and dashboards",
     cards: [
       { title: "Welcome Dashboard Widgets", desc: "Choose which widgets appear by default on the Welcome Dashboard", icon: "🧱" },
-      { title: "Project Types", desc: "Manage project category list (Kitchen, Bath, Roof, etc.)", icon: "🏗" },
+      {
+        title: "Project Types",
+        desc: "Manage project category list (Kitchen, Bath, Roof, etc.)",
+        icon: "🏗",
+        href: "/settings/project-types",
+      },
       { title: "Project Statuses", desc: "Manage the production statuses a project can move through", icon: "📶" },
       { title: "Checklist Templates", desc: "Template CRUD for project checklists", icon: "☑" },
       { title: "Schedule Templates", desc: "Templates for project schedules and Gantt charts", icon: "📋" },

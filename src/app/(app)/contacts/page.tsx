@@ -7,7 +7,9 @@ import {
   type Lead,
   type LeadFile,
   type LeadNote,
+  type LeadSourceRow,
   type PipelineStageRow,
+  type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
 import { ContactsTable } from "./contacts-table";
@@ -25,6 +27,8 @@ export default async function ContactsPage() {
     { data: reps },
     { data: stages },
     { data: calendars },
+    { data: projectTypes },
+    { data: sources },
   ] = await Promise.all([
     supabase.from("leads").select("*").order("created_at", { ascending: false }),
     supabase
@@ -42,6 +46,8 @@ export default async function ContactsPage() {
       .order("name", { ascending: true }),
     supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
     supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
+    supabase.from("project_types").select("*").order("sort_order", { ascending: true }),
+    supabase.from("lead_sources").select("*").order("sort_order", { ascending: true }),
   ]);
 
   return (
@@ -52,6 +58,8 @@ export default async function ContactsPage() {
       reps={(reps as Profile[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
+      projectTypes={(projectTypes as ProjectTypeRow[]) ?? []}
+      sources={(sources as LeadSourceRow[]) ?? []}
       canWrite={canWrite}
       canDelete={canDelete}
     />
