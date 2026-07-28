@@ -41,10 +41,16 @@ export function ReplyInboxView({
       const key = m.lead_id ?? `phone:${normalizePhone(counterpartyPhone)}`;
       let convo = map.get(key);
       if (!convo) {
-        const lead = m.lead_id ? leads.find((l) => l.id === m.lead_id) ?? null : null;
+        // Fall back to matching by phone number when the message was never
+        // linked to a lead record -- like caller ID matching a saved
+        // contact even when the call system itself has no contact ID.
+        const lead = m.lead_id
+          ? leads.find((l) => l.id === m.lead_id) ?? null
+          : leads.find((l) => l.phone && normalizePhone(l.phone) === normalizePhone(counterpartyPhone)) ??
+            null;
         convo = {
           key,
-          leadId: m.lead_id,
+          leadId: m.lead_id ?? lead?.id ?? null,
           name: lead ? leadDisplayName(lead) : counterpartyPhone,
           phone: lead?.phone || counterpartyPhone,
           messages: [],
