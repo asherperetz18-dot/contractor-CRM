@@ -31,6 +31,27 @@ async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
   return {};
 }
 
+// Adding a brand-new option (e.g. while filling out a lead) is lower-risk
+// than renaming/deleting a shared list, so it's allowed for anyone who can
+// edit leads at all -- same roles as canEditDispatch().
+async function requireCanEditLeads(): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("roles")
+    .eq("id", user.id)
+    .single();
+  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
+  if (!roles.includes("Office") && !roles.includes("Admin") && !roles.includes("Sales")) {
+    return { error: "You don't have permission to add new options." };
+  }
+  return {};
+}
+
 function revalidate(table: OptionTable) {
   revalidatePath(settingsPathFor(table));
   revalidatePath("/pipeline");
@@ -40,8 +61,8 @@ function revalidate(table: OptionTable) {
 export async function createFieldOption(
   table: OptionTable,
   name: string
-): Promise<{ error?: string }> {
-  const guard = await requireOfficeOrAdmin();
+): Promise<{ error?: string; id?: string }> {
+  const guard = await requireCanEditLeads();
   if (guard.error) return guard;
 
   const trimmed = name.trim();
@@ -56,14 +77,18 @@ export async function createFieldOption(
     .single();
   const nextOrder = ((existing as { sort_order: number } | null)?.sort_order ?? 0) + 1;
 
-  const { error } = await supabase.from(table).insert({ name: trimmed, sort_order: nextOrder });
+  const { data, error } = await supabase
+    .from(table)
+    .insert({ name: trimmed, sort_order: nextOrder })
+    .select("id")
+    .single();
   if (error) {
     if (error.code === "23505") return { error: "That option already exists." };
     return { error: error.message };
   }
 
   revalidate(table);
-  return {};
+  return { id: (data as { id: string }).id };
 }
 
 export async function renameFieldOption(

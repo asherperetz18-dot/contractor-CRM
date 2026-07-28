@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
+import { PicklistSelect } from "@/components/ui/picklist-select";
 import {
   leadDisplayName,
   mapsUrl,
@@ -109,6 +110,10 @@ export function LeadForm({
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
   const [lastSaved, setLastSaved] = useState(form);
+  const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
+    projectTypes
+  );
+  const [sourceOptions, setSourceOptions] = useState<{ id: string; name: string }[]>(sources);
   const skipNextAutosave = useRef(true);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
@@ -520,31 +525,24 @@ export function LeadForm({
             <input value={form.zip} onChange={(e) => set("zip", e.target.value)} />
           </Field>
           <Field label="Project Type">
-            <select value={form.project_type} onChange={(e) => set("project_type", e.target.value)}>
-              <option value="">— none —</option>
-              {projectTypes.map((p) => (
-                <option key={p.id} value={p.name}>
-                  {p.name}
-                </option>
-              ))}
-              {form.project_type &&
-                !projectTypes.some((p) => p.name === form.project_type) && (
-                  <option value={form.project_type}>{form.project_type} (custom)</option>
-                )}
-            </select>
+            <PicklistSelect
+              table="project_types"
+              value={form.project_type}
+              options={projectTypeOptions}
+              onChange={(v) => set("project_type", v)}
+              onOptionAdded={(o) => setProjectTypeOptions((prev) => [...prev, o])}
+              disabled={readOnly || pending}
+            />
           </Field>
           <Field label="Source">
-            <select value={form.source} onChange={(e) => set("source", e.target.value)}>
-              <option value="">— none —</option>
-              {sources.map((s) => (
-                <option key={s.id} value={s.name}>
-                  {s.name}
-                </option>
-              ))}
-              {form.source && !sources.some((s) => s.name === form.source) && (
-                <option value={form.source}>{form.source} (custom)</option>
-              )}
-            </select>
+            <PicklistSelect
+              table="lead_sources"
+              value={form.source}
+              options={sourceOptions}
+              onChange={(v) => set("source", v)}
+              onOptionAdded={(o) => setSourceOptions((prev) => [...prev, o])}
+              disabled={readOnly || pending}
+            />
           </Field>
           <Field label="Est. Value">
             <input
