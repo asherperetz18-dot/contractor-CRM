@@ -18,6 +18,7 @@ function toRow(input: LeadInput) {
     project_type: input.project_type || null,
     stage: input.stage,
     value: Number(input.value) || 0,
+    lead_cost: input.lead_cost.trim() === "" ? null : Number(input.lead_cost) || 0,
     notes: input.notes || null,
     has_appt: input.has_appt,
     second_contact_first_name: input.second_contact_first_name || null,
@@ -107,6 +108,27 @@ export async function deleteLead(id: string) {
 export async function moveLeadStage(id: string, stage: PipelineStage) {
   const supabase = await createClient();
   const { error } = await supabase.from("leads").update({ stage }).eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/pipeline");
+  return {};
+}
+
+export async function requestLeadRefund(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("leads")
+    .update({ refund_status: "Requested", refund_requested_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/pipeline");
+  return {};
+}
+
+export async function resolveLeadRefund(id: string, status: "Received" | "Denied") {
+  const supabase = await createClient();
+  const { error } = await supabase.from("leads").update({ refund_status: status }).eq("id", id);
 
   if (error) return { error: error.message };
   revalidatePath("/pipeline");

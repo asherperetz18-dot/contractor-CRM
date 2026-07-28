@@ -448,6 +448,8 @@ export type JobInput = {
   notes: string;
 };
 
+export type RefundStatus = "None" | "Requested" | "Received" | "Denied";
+
 export type Lead = {
   id: string;
   contact_type: ContactType;
@@ -471,6 +473,9 @@ export type Lead = {
   won_at: string | null;
   notes_updated_at: string | null;
   address_type: AddressType;
+  lead_cost: number | null;
+  refund_status: RefundStatus;
+  refund_requested_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -507,6 +512,7 @@ export type LeadInput = {
   project_type: string;
   stage: PipelineStage;
   value: string;
+  lead_cost: string;
   notes: string;
   has_appt: boolean;
   second_contact_first_name: string;
@@ -542,6 +548,18 @@ export type LeadNote = {
   author_id: string | null;
   body: string;
   event_id: string | null;
+  created_at: string;
+};
+
+export type LeadFile = {
+  id: string;
+  lead_id: string;
+  uploaded_by: string | null;
+  file_name: string;
+  file_path: string;
+  file_url: string;
+  file_size: number | null;
+  content_type: string | null;
   created_at: string;
 };
 

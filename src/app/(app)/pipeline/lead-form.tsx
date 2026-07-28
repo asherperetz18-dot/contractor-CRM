@@ -9,26 +9,32 @@ import { TimeField } from "@/components/ui/time-field";
 import {
   leadDisplayName,
   mapsUrl,
+  money,
   stageColor,
   type CalendarRow,
   type Lead,
+  type LeadFile,
   type LeadInput,
   type LeadNote,
   type LeadTask,
   type PipelineStageRow,
   type Profile,
+  type RefundStatus,
 } from "@/lib/data/types";
 import {
   bookAppointmentForLead,
   convertLeadToJob,
   createLead,
   deleteLead,
+  requestLeadRefund,
+  resolveLeadRefund,
   updateLead,
 } from "@/lib/actions/leads";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
+import { LeadFilesPanel } from "./lead-files-panel";
 
-type Tab = "Overview" | "Tasks" | "Notes";
+type Tab = "Overview" | "Tasks" | "Notes" | "Files";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -48,6 +54,7 @@ function toInput(lead?: Lead): LeadInput {
     project_type: lead?.project_type ?? "",
     stage: lead?.stage ?? "Unsorted",
     value: lead ? String(lead.value ?? "") : "",
+    lead_cost: lead?.lead_cost != null ? String(lead.lead_cost) : "",
     notes: lead?.notes ?? "",
     has_appt: lead?.has_appt ?? false,
     second_contact_first_name: lead?.second_contact_first_name ?? "",
@@ -64,6 +71,7 @@ export function LeadForm({
   calendars,
   tasks,
   notes,
+  files,
   readOnly,
   canDelete,
   onCancel,
@@ -76,6 +84,7 @@ export function LeadForm({
   calendars: CalendarRow[];
   tasks?: LeadTask[];
   notes?: LeadNote[];
+  files?: LeadFile[];
   readOnly?: boolean;
   canDelete?: boolean;
   onCancel: () => void;
@@ -92,6 +101,11 @@ export function LeadForm({
   );
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
+  const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
+  const [refundRequestedAt, setRefundRequestedAt] = useState<string | null>(
+    lead?.refund_requested_at ?? null
+  );
+  const [refundPending, setRefundPending] = useState(false);
 
   const stageIndex = stages.findIndex((s) => s.name === form.stage);
   const stageTotal = stages.length;
@@ -104,6 +118,33 @@ export function LeadForm({
     if (!lead) return;
     onCancel();
     router.push(`/reply-inbox?leadId=${lead.id}`);
+  }
+
+  async function handleRequestRefund() {
+    if (!lead) return;
+    setRefundPending(true);
+    setError("");
+    const result = await requestLeadRefund(lead.id);
+    setRefundPending(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setRefundStatus("Requested");
+    setRefundRequestedAt(new Date().toISOString());
+  }
+
+  async function handleResolveRefund(status: "Received" | "Denied") {
+    if (!lead) return;
+    setRefundPending(true);
+    setError("");
+    const result = await resolveLeadRefund(lead.id, status);
+    setRefundPending(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setRefundStatus(status);
   }
   const [booking, setBooking] = useState({
     date: todayISO(),
@@ -395,7 +436,7 @@ export function LeadForm({
 
         {lead && (
           <div className="chip-row no-margin ta-tabs">
-            {(["Overview", "Tasks", "Notes"] as Tab[]).map((t) => (
+            {(["Overview", "Tasks", "Notes", "Files"] as Tab[]).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -407,6 +448,7 @@ export function LeadForm({
                   ? ` (${(tasks ?? []).filter((task) => !task.completed_at).length})`
                   : ""}
                 {t === "Notes" && (notes ?? []).length > 0 ? ` (${(notes ?? []).length})` : ""}
+                {t === "Files" && (files ?? []).length > 0 ? ` (${(files ?? []).length})` : ""}
               </button>
             ))}
           </div>
@@ -447,6 +489,21 @@ export function LeadForm({
               inputMode="decimal"
             />
           </Field>
+          <Field label="Lead Cost">
+            <input
+              value={form.lead_cost}
+              onChange={(e) => set("lead_cost", e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+            />
+          </Field>
+          {form.lead_cost.trim() !== "" && (
+            <Field label="Est. Margin">
+              <div className="ta-readonly-value">
+                {money((Number(form.value) || 0) - (Number(form.lead_cost) || 0))}
+              </div>
+            </Field>
+          )}
           <Field label="Stage">
             <select value={form.stage} onChange={(e) => set("stage", e.target.value as LeadInput["stage"])}>
               {stages.map((s) => (
@@ -479,6 +536,84 @@ export function LeadForm({
             </select>
           </Field>
         </div>
+
+        {lead && (
+          <div className="second-contact-block">
+            <div className="second-contact-head">
+              <span>↩ Lead Refund (RTP)</span>
+              {refundStatus !== "None" && (
+                <Badge
+                  color={
+                    refundStatus === "Requested"
+                      ? "#C7691B"
+                      : refundStatus === "Received"
+                        ? "#2F855A"
+                        : "#C0392B"
+                  }
+                >
+                  {refundStatus}
+                </Badge>
+              )}
+            </div>
+            {refundStatus === "None" && (
+              <button
+                type="button"
+                className="btn-ghost small"
+                onClick={handleRequestRefund}
+                disabled={readOnly || refundPending}
+              >
+                {refundPending ? "Requesting…" : "Request lead refund"}
+              </button>
+            )}
+            {refundStatus === "Requested" && (
+              <div className="modal-actions">
+                <div>
+                  {refundRequestedAt && (
+                    <span className="empty-hint">
+                      Requested{" "}
+                      {new Date(refundRequestedAt).toLocaleDateString("en-US", {
+                        month: "2-digit",
+                        day: "2-digit",
+                        year: "numeric",
+                      })}
+                    </span>
+                  )}
+                </div>
+                {!readOnly && (
+                  <div>
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() => handleResolveRefund("Received")}
+                      disabled={refundPending}
+                    >
+                      Mark received
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() => handleResolveRefund("Denied")}
+                      disabled={refundPending}
+                    >
+                      Mark denied
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            {(refundStatus === "Received" || refundStatus === "Denied") && !readOnly && (
+              <button
+                type="button"
+                className="btn-ghost small"
+                onClick={handleRequestRefund}
+                disabled={refundPending}
+              >
+                Request again
+              </button>
+            )}
+          </div>
+        )}
+
         <Field label="Notes">
           <textarea
             value={form.notes}
@@ -604,6 +739,16 @@ export function LeadForm({
           <NotesTimeline
             leadId={lead.id}
             notes={notes ?? []}
+            reps={reps}
+            readOnly={readOnly}
+            onChanged={refresh}
+          />
+        )}
+
+        {lead && tab === "Files" && (
+          <LeadFilesPanel
+            leadId={lead.id}
+            files={files ?? []}
             reps={reps}
             readOnly={readOnly}
             onChanged={refresh}

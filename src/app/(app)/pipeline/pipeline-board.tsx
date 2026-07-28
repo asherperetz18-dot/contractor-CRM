@@ -13,6 +13,7 @@ import {
   stageColor,
   type CalendarRow,
   type Lead,
+  type LeadFile,
   type LeadNote,
   type LeadTask,
   type LeadWarnings,
@@ -46,6 +47,7 @@ export function PipelineBoard({
   leads,
   tasks,
   notes,
+  files,
   reps,
   stages,
   calendars,
@@ -55,6 +57,7 @@ export function PipelineBoard({
   leads: Lead[];
   tasks: LeadTask[];
   notes: LeadNote[];
+  files: LeadFile[];
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
@@ -158,6 +161,16 @@ export function PipelineBoard({
     }
     return map;
   }, [notes]);
+
+  const filesByLead = useMemo(() => {
+    const map = new Map<string, LeadFile[]>();
+    for (const f of files) {
+      const list = map.get(f.lead_id) ?? [];
+      list.push(f);
+      map.set(f.lead_id, list);
+    }
+    return map;
+  }, [files]);
 
   const warningsByLead = useMemo(() => {
     const map = new Map<string, LeadWarnings>();
@@ -554,6 +567,7 @@ export function PipelineBoard({
           calendars={calendars}
           tasks={tasksByLead.get(editing.id) ?? []}
           notes={notesByLead.get(editing.id) ?? []}
+          files={filesByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}
           onCancel={() => setEditing(null)}

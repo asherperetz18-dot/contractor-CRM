@@ -30,7 +30,8 @@ body {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body);
@@ -38,7 +39,7 @@ body {
 .app-root {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
 }
 .global-topbar {
   display: flex;
@@ -1442,6 +1443,10 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
 }
 .cal-filters-head {
   font-size: 11px;

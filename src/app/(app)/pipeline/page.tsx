@@ -5,6 +5,7 @@ import {
   canEditDispatch,
   type CalendarRow,
   type Lead,
+  type LeadFile,
   type LeadNote,
   type LeadTask,
   type PipelineStageRow,
@@ -22,6 +23,7 @@ export default async function PipelinePage() {
     { data: leads },
     { data: tasks },
     { data: notes },
+    { data: files },
     { data: reps },
     { data: stages },
     { data: calendars },
@@ -33,6 +35,10 @@ export default async function PipelinePage() {
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("lead_files")
+      .select("id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, created_at")
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
@@ -48,6 +54,7 @@ export default async function PipelinePage() {
       leads={(leads as Lead[]) ?? []}
       tasks={(tasks as LeadTask[]) ?? []}
       notes={(notes as LeadNote[]) ?? []}
+      files={(files as LeadFile[]) ?? []}
       reps={(reps as Profile[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}

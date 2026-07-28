@@ -106,6 +106,7 @@ export function AppointmentWizard({
         project_type: projectType,
         stage: leadStage,
         value,
+        lead_cost: "",
         notes: "",
         has_appt: createAppt,
         second_contact_first_name: "",
