@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
 import { canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
-import { NAV, filterNavForProfile } from "@/lib/nav";
+import { NAV, filterNavForProfile, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
 import { QuickCreateMenu } from "./quick-create-menu";
@@ -15,6 +15,15 @@ import { CompanySwitcher } from "./company-switcher";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
+
+function firstVisibleHref(nav: NavEntry[]): string | null {
+  for (const entry of nav) {
+    if (entry.type === "link") return entry.href;
+    const firstItem = entry.items.find((i) => i.href);
+    if (firstItem?.href) return firstItem.href;
+  }
+  return null;
+}
 
 export default async function AppLayout({
   children,
@@ -51,6 +60,15 @@ export default async function AppLayout({
   const pathname = (await headers()).get("x-pathname") ?? "/";
   const pageKey = pathToPageKey(pathname);
   const pageBlocked = !!pageKey && !canSeePage(profile, pageKey, overrides);
+
+  // Dashboard ("/") is where login lands everyone -- if a role has it
+  // hidden, send them straight to whatever their nav actually starts
+  // with instead of showing a blocked-page message as their first
+  // impression after signing in.
+  if (pageBlocked && pathname === "/") {
+    const fallback = firstVisibleHref(filteredNav);
+    if (fallback) redirect(fallback);
+  }
 
   return (
     <TimeFormatProvider value={timeFormat}>
