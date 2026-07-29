@@ -155,3 +155,84 @@ export async function toggleUserStatus(
   revalidatePath("/settings/users-roles");
   return {};
 }
+
+// Finding a user by email crosses the company boundary on purpose -- the
+// whole point is to add someone who's currently in a *different* company
+// (or no company at all) to this one, so profiles RLS (which only allows
+// seeing people you already share a company with) would otherwise block
+// discovering them at all. Only used to look someone up; the actual
+// company_members insert below still goes through the normal RLS-checked
+// client.
+export async function findUserByEmail(
+  email: string
+): Promise<{ error?: string; user?: { id: string; name: string | null; email: string } }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const trimmed = email.trim();
+  if (!trimmed) return { error: "Enter an email address." };
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("id, name, email")
+    .ilike("email", trimmed)
+    .maybeSingle();
+  const found = data as { id: string; name: string | null; email: string | null } | null;
+  if (!found?.email) return { error: "No user found with that email." };
+
+  const { data: existing } = await admin
+    .from("company_members")
+    .select("profile_id")
+    .eq("profile_id", found.id)
+    .eq("company_id", guard.companyId)
+    .maybeSingle();
+  if (existing) return { error: "This user is already a member of this company." };
+
+  return { user: { id: found.id, name: found.name, email: found.email } };
+}
+
+export async function addUserToCompany(
+  userId: string,
+  roles: AppRole[]
+): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("company_members").insert({
+    profile_id: userId,
+    company_id: guard.companyId,
+    roles,
+    can_delete_leads: false,
+    status: "Active",
+  });
+  if (error) {
+    if (error.code === "23505") return { error: "This user is already a member of this company." };
+    return { error: error.message };
+  }
+
+  revalidatePath("/settings/users-roles");
+  return {};
+}
+
+export async function removeUserFromCompany(userId: string): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const profile = await getCurrentProfile();
+  if (profile && userId === profile.id) {
+    return { error: "You can't remove yourself from this company." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_members")
+    .delete()
+    .eq("profile_id", userId)
+    .eq("company_id", guard.companyId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/settings/users-roles");
+  return {};
+}

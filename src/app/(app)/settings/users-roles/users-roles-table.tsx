@@ -8,7 +8,10 @@ import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { APP_ROLES, type AppRole, type Profile } from "@/lib/data/types";
 import {
+  addUserToCompany,
   createUser,
+  findUserByEmail,
+  removeUserFromCompany,
   toggleUserStatus,
   updateCanDeleteLeads,
   updateUserProfile,
@@ -33,6 +36,13 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [editPending, setEditPending] = useState(false);
   const [editError, setEditError] = useState("");
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [addEmail, setAddEmail] = useState("");
+  const [foundUser, setFoundUser] = useState<{ id: string; name: string | null; email: string } | null>(null);
+  const [addRoles, setAddRoles] = useState<AppRole[]>([]);
+  const [addPending, setAddPending] = useState(false);
+  const [addError, setAddError] = useState("");
 
   const q = search.trim().toLowerCase();
   const filtered = users.filter((u) => {
@@ -110,6 +120,48 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
     refresh();
   }
 
+  function closeAdd() {
+    setShowAdd(false);
+    setAddEmail("");
+    setFoundUser(null);
+    setAddRoles([]);
+    setAddError("");
+  }
+
+  async function handleFindUser() {
+    setAddPending(true);
+    setAddError("");
+    const result = await findUserByEmail(addEmail);
+    setAddPending(false);
+    if (result.error) {
+      setAddError(result.error);
+      return;
+    }
+    setFoundUser(result.user ?? null);
+  }
+
+  async function handleAddToCompany() {
+    if (!foundUser) return;
+    setAddPending(true);
+    setAddError("");
+    const result = await addUserToCompany(foundUser.id, addRoles);
+    setAddPending(false);
+    if (result?.error) {
+      setAddError(result.error);
+      return;
+    }
+    closeAdd();
+    refresh();
+  }
+
+  async function handleRemoveFromCompany(u: Profile) {
+    if (!confirm(`Remove ${u.name || u.email} from this company? They'll keep access to any other companies they belong to.`)) {
+      return;
+    }
+    await removeUserFromCompany(u.id);
+    refresh();
+  }
+
   return (
     <div>
       <div className="ur-breadcrumb">
@@ -127,9 +179,14 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
             Create team members, assign roles, and manage access
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setShowCreate(true)}>
-          + Create New User
-        </button>
+        <div className="chip-row no-margin">
+          <button className="btn-ghost" onClick={() => setShowAdd(true)}>
+            + Add Existing User
+          </button>
+          <button className="btn-primary" onClick={() => setShowCreate(true)}>
+            + Create New User
+          </button>
+        </div>
       </div>
 
       <div className="ur-filter-bar">
@@ -193,6 +250,15 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                       title="Edit name, email, phone"
                     >
                       ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => handleRemoveFromCompany(u)}
+                      aria-label="Remove from company"
+                      title="Remove from this company"
+                    >
+                      🏢✕
                     </button>
                   </div>
                 </td>
@@ -337,6 +403,84 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {showAdd && (
+        <Modal title="Add Existing User" onClose={closeAdd}>
+          <p className="hint-note">
+            Grant access to this company for someone who already has an
+            account — e.g. a teammate who works at another company you also
+            manage.
+          </p>
+          {!foundUser ? (
+            <>
+              <Field label="Email">
+                <input
+                  type="email"
+                  value={addEmail}
+                  onChange={(e) => setAddEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleFindUser();
+                    }
+                  }}
+                  placeholder="their@email.com"
+                  autoFocus
+                />
+              </Field>
+              {addError && <p className="error-note">{addError}</p>}
+              <div className="modal-actions">
+                <div />
+                <div>
+                  <button className="btn-ghost" onClick={closeAdd}>
+                    Cancel
+                  </button>
+                  <button className="btn-primary" onClick={handleFindUser} disabled={addPending}>
+                    {addPending ? "Searching…" : "Find User"}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="hint-note">
+                Found <strong>{foundUser.name || foundUser.email}</strong> ({foundUser.email}).
+                Choose their roles in this company:
+              </p>
+              <Field label="Roles">
+                <div className="segmented">
+                  {APP_ROLES.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      className={"segmented-btn" + (addRoles.includes(role) ? " active" : "")}
+                      onClick={() =>
+                        setAddRoles((prev) =>
+                          prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+                        )
+                      }
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              {addError && <p className="error-note">{addError}</p>}
+              <div className="modal-actions">
+                <div />
+                <div>
+                  <button className="btn-ghost" onClick={() => setFoundUser(null)} disabled={addPending}>
+                    Back
+                  </button>
+                  <button className="btn-primary" onClick={handleAddToCompany} disabled={addPending}>
+                    {addPending ? "Adding…" : "Add to Company"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </Modal>
       )}
 
