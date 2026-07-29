@@ -2,23 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { canEditDispatch } from "@/lib/data/types";
 import { getTwilioEnv } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Sales")) {
-    return { error: "Only Office or Sales users can send messages." };
-  }
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canEditDispatch(profile)) return { error: "Only Office or Sales users can send messages." };
   return {};
 }
 
@@ -29,6 +20,8 @@ export async function sendSms(
 ): Promise<{ error?: string }> {
   const guard = await requireCanSendSms();
   if (guard.error) return guard;
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
   const trimmedBody = body.trim();
   if (!trimmedBody) return { error: "Message cannot be empty." };
@@ -66,6 +59,7 @@ export async function sendSms(
     to_number: toNumber,
     body: trimmedBody,
     twilio_sid: json?.sid ?? null,
+    company_id: profile.company_id,
   });
   if (error) return { error: error.message };
 

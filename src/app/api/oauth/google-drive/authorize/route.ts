@@ -1,24 +1,15 @@
 import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/login", req.url));
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Admin")) {
+  const profile = await getCurrentProfile();
+  if (!profile) return NextResponse.redirect(new URL("/login", req.url));
+  if (!isAdminRole(profile)) {
     return NextResponse.redirect(new URL("/settings/cloud-storage", req.url));
   }
 
@@ -41,6 +32,16 @@ export async function GET(req: NextRequest) {
 
   const res = NextResponse.redirect(authorizeUrl);
   res.cookies.set("gdrive_oauth_state", state, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 600,
+    path: "/",
+  });
+  // The callback runs as its own request with no user session to derive
+  // "which company" from -- carry it through the same way as the CSRF
+  // state token.
+  res.cookies.set("gdrive_oauth_company_id", profile.company_id, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

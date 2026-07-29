@@ -9,6 +9,11 @@
 -- been used as a real tenant boundary. This reuses it. `leads.company_id`
 -- also already exists (unused, nullable) and is repurposed here rather
 -- than duplicated.
+--
+-- Wrapped in an explicit transaction so a failure partway through (e.g.
+-- an unexpected constraint name) rolls back cleanly instead of leaving
+-- the schema half-migrated.
+begin;
 
 -- One row per (profile, company) membership. Replaces profiles.roles /
 -- profiles.can_delete_leads / profiles.status as the source of truth for
@@ -50,28 +55,45 @@ alter table lead_notes add column company_id uuid references companies (id);
 alter table lead_files add column company_id uuid references companies (id);
 
 -- pipeline_stages/calendars/call_dispositions/project_types/lead_sources
--- currently enforce a global `unique (name)` -- once per-company, the
--- same name needs to be reusable across companies. Swap for a composite
--- uniqueness constraint scoped by company.
-alter table pipeline_stages drop constraint pipeline_stages_name_key;
+-- currently enforce a global `unique (name)`; role_page_visibility a
+-- global `unique (role, page_key)` -- once per-company, the same name
+-- needs to be reusable across companies. Drop whatever the existing
+-- unique constraint is actually named (looked up dynamically -- don't
+-- want to guess Postgres's auto-generated name against live data) and
+-- replace with a company-scoped version.
+do $$
+declare
+  t text;
+  con record;
+begin
+  foreach t in array array['pipeline_stages', 'calendars', 'call_dispositions', 'project_types', 'lead_sources', 'role_page_visibility']
+  loop
+    for con in select conname from pg_constraint where conrelid = t::regclass and contype = 'u'
+    loop
+      execute format('alter table %I drop constraint %I', t, con.conname);
+    end loop;
+  end loop;
+end $$;
+
 alter table pipeline_stages add constraint pipeline_stages_company_name_key unique (company_id, name);
-
-alter table calendars drop constraint calendars_name_key;
 alter table calendars add constraint calendars_company_name_key unique (company_id, name);
-
-alter table call_dispositions drop constraint call_dispositions_name_key;
 alter table call_dispositions add constraint call_dispositions_company_name_key unique (company_id, name);
-
-alter table project_types drop constraint project_types_name_key;
 alter table project_types add constraint project_types_company_name_key unique (company_id, name);
-
-alter table lead_sources drop constraint lead_sources_name_key;
 alter table lead_sources add constraint lead_sources_company_name_key unique (company_id, name);
-
-alter table role_page_visibility drop constraint role_page_visibility_role_page_key_key;
 alter table role_page_visibility add constraint role_page_visibility_company_role_page_key_key unique (company_id, role, page_key);
 
-alter table sms_quick_texts drop constraint sms_quick_texts_pkey;
+-- sms_quick_texts used `key text primary key` -- key alone can no longer
+-- be unique once shared across companies, so it needs a real surrogate
+-- primary key and a company-scoped uniqueness constraint instead.
+do $$
+declare
+  con record;
+begin
+  for con in select conname from pg_constraint where conrelid = 'sms_quick_texts'::regclass and contype = 'p'
+  loop
+    execute format('alter table sms_quick_texts drop constraint %I', con.conname);
+  end loop;
+end $$;
 alter table sms_quick_texts add column id uuid primary key default gen_random_uuid();
 alter table sms_quick_texts add constraint sms_quick_texts_company_key_key unique (company_id, key);
 
@@ -85,3 +107,5 @@ alter table company_profile add column company_id uuid references companies (id)
 
 alter table google_drive_connection drop column id cascade;
 alter table google_drive_connection add column company_id uuid references companies (id);
+
+commit;

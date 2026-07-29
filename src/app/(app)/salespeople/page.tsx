@@ -1,20 +1,23 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Lead, Profile } from "@/lib/data/types";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
+import type { Lead } from "@/lib/data/types";
 import { SalespeopleGrid } from "./salespeople-grid";
 
 export default async function SalespeoplePage() {
   const supabase = await createClient();
-  const [{ data: reps }, { data: leads }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, created_at")
-      .order("name", { ascending: true }),
-    supabase.from("leads").select("*"),
+  const profile = await getCurrentProfile();
+  const companyId = profile?.company_id ?? "";
+
+  const [allReps, { data: leads }] = await Promise.all([
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
+    supabase.from("leads").select("*").eq("company_id", companyId),
   ]);
+  const reps = [...allReps].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <SalespeopleGrid
-      reps={(reps as Profile[]) ?? []}
+      reps={reps}
       leads={(leads as Lead[]) ?? []}
     />
   );

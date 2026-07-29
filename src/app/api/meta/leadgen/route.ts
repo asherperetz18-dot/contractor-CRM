@@ -11,12 +11,14 @@ type MetaConfig = {
   meta_app_secret: string | null;
 };
 
+// No session here (public webhook) -- there's exactly one company today,
+// so this is the one company_profile row. Once a second company exists
+// this needs per-company page config/routing.
 async function getMetaConfig() {
   const admin = createAdminClient();
   const { data } = await admin
     .from("company_profile")
     .select("meta_page_id, meta_page_access_token, meta_verify_token, meta_app_secret")
-    .eq("id", 1)
     .single();
   return data as MetaConfig | null;
 }

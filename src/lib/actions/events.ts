@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 import type { EventInput } from "@/lib/data/types";
 
 function toRow(input: EventInput) {
@@ -26,15 +27,15 @@ function revalidateCalendarRoutes() {
 }
 
 export async function createEvent(input: EventInput, leadId?: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error } = await supabase.from("events").insert({
     ...toRow(input),
     lead_id: leadId || null,
-    created_by: user?.id ?? null,
+    created_by: profile.id,
+    company_id: profile.company_id,
   });
   if (error) return { error: error.message };
   revalidateCalendarRoutes();

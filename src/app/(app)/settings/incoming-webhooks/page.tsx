@@ -1,14 +1,16 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import { AdminGate } from "@/components/admin-gate";
 import { WebhookSettings } from "./webhook-settings";
 
 export default async function IncomingWebhooksPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data } = await supabase
     .from("company_profile")
     .select("webhook_secret")
-    .eq("id", 1)
+    .eq("company_id", companyId ?? "")
     .single();
 
   const h = await headers();

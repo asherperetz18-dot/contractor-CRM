@@ -26,11 +26,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing ?key=" }, { status: 401 });
   }
 
+  // No session here (public webhook) -- there's exactly one company today,
+  // so this is the one company_profile row and leads.insert() below gets
+  // company_id from the single-company trigger fallback. Once a second
+  // company exists this needs a per-company secret/route.
   const admin = createAdminClient();
   const { data: company } = await admin
     .from("company_profile")
     .select("webhook_secret")
-    .eq("id", 1)
     .single();
 
   const secret = (company as { webhook_secret: string | null } | null)?.webhook_secret;

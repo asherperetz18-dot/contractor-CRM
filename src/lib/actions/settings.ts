@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { TimeFormat } from "@/lib/data/types";
 
 export type CompanyProfileInput = {
@@ -21,6 +22,9 @@ export type CompanyProfileInput = {
 };
 
 export async function saveCompanyProfile(input: CompanyProfileInput) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
@@ -37,7 +41,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       timezone: input.timezone,
       time_format: input.time_format,
     })
-    .eq("id", 1);
+    .eq("company_id", companyId);
 
   if (error) return { error: error.message };
   revalidatePath("/settings/company-profile");
@@ -49,6 +53,9 @@ const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 
 export async function uploadLogo(formData: FormData) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "No file provided." };
   if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
@@ -75,7 +82,7 @@ export async function uploadLogo(formData: FormData) {
   const { error } = await supabase
     .from("company_profile")
     .update({ logo_url: publicUrl })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
 
   revalidatePath("/", "layout");
@@ -83,11 +90,14 @@ export async function uploadLogo(formData: FormData) {
 }
 
 export async function removeLogo() {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
     .update({ logo_url: null })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
 
   revalidatePath("/", "layout");
@@ -95,12 +105,15 @@ export async function removeLogo() {
 }
 
 export async function regenerateWebhookSecret() {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const secret = crypto.randomBytes(24).toString("hex");
   const { error } = await supabase
     .from("company_profile")
     .update({ webhook_secret: secret })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/incoming-webhooks");
   return { secret };
@@ -111,6 +124,9 @@ export async function saveFollowUpSettings(input: {
   graceMinutes: number;
   lookbackHours: number;
 }) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
@@ -119,18 +135,21 @@ export async function saveFollowUpSettings(input: {
       no_show_grace_minutes: Math.max(0, Math.round(input.graceMinutes)) || 60,
       no_show_lookback_hours: Math.max(1, Math.round(input.lookbackHours)) || 168,
     })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/appointment-notifications");
   return {};
 }
 
 export async function saveRepInfoTemplate(body: string) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
     .update({ rep_appointment_info_template: body.trim() || null })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/appointment-notifications");
   revalidatePath("/calendar");
@@ -138,11 +157,14 @@ export async function saveRepInfoTemplate(body: string) {
 }
 
 export async function saveCallScript(body: string) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
     .update({ call_script: body || null })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/call-scripts");
   revalidatePath("/dial-queue");
@@ -157,6 +179,9 @@ export type MetaConfigInput = {
 };
 
 export async function saveMetaConfig(input: MetaConfigInput) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_profile")
@@ -166,7 +191,7 @@ export async function saveMetaConfig(input: MetaConfigInput) {
       meta_verify_token: input.meta_verify_token || null,
       meta_app_secret: input.meta_app_secret || null,
     })
-    .eq("id", 1);
+    .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/facebook-lead-ads");
   return {};

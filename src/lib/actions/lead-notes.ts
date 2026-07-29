@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 
 export async function addLeadNote(
   leadId: string,
@@ -11,17 +12,16 @@ export async function addLeadNote(
   const trimmed = body.trim();
   if (!trimmed) return { error: "Note can't be empty." };
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error } = await supabase.from("lead_notes").insert({
     lead_id: leadId,
-    author_id: user.id,
+    author_id: profile.id,
     body: trimmed,
     event_id: eventId || null,
+    company_id: profile.company_id,
   });
   if (error) return { error: error.message };
 

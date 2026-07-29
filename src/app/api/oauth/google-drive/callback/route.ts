@@ -8,10 +8,11 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   const expectedState = req.cookies.get("gdrive_oauth_state")?.value;
+  const companyId = req.cookies.get("gdrive_oauth_company_id")?.value;
 
   const settingsUrl = new URL("/settings/cloud-storage", req.url);
 
-  if (!code || !state || !expectedState || state !== expectedState) {
+  if (!code || !state || !expectedState || state !== expectedState || !companyId) {
     settingsUrl.searchParams.set("error", "State mismatch — please try connecting again.");
     return NextResponse.redirect(settingsUrl);
   }
@@ -76,17 +77,21 @@ export async function GET(req: NextRequest) {
   const folder = (await folderRes.json()) as { id: string };
 
   const admin = createAdminClient();
-  await admin.from("google_drive_connection").upsert({
-    id: 1,
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    connected_email: email,
-    folder_id: folder.id,
-    connected_at: new Date().toISOString(),
-  });
+  await admin.from("google_drive_connection").upsert(
+    {
+      company_id: companyId,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      token_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
+      connected_email: email,
+      folder_id: folder.id,
+      connected_at: new Date().toISOString(),
+    },
+    { onConflict: "company_id" }
+  );
 
   const res = NextResponse.redirect(settingsUrl);
   res.cookies.delete("gdrive_oauth_state");
+  res.cookies.delete("gdrive_oauth_company_id");
   return res;
 }

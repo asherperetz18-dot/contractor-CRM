@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { CallDispositionRow } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { CallDispositionsTable } from "./call-dispositions-table";
 
 export default async function CallDispositionsPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data: dispositions } = await supabase
     .from("call_dispositions")
     .select("*")
+    .eq("company_id", companyId ?? "")
     .order("sort_order", { ascending: true });
 
   return (

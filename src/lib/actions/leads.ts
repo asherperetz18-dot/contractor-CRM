@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 import type { LeadInput, PipelineStage } from "@/lib/data/types";
 
 function toRow(input: LeadInput) {
@@ -41,11 +42,10 @@ export type BulkLeadRow = {
 };
 
 export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in.", imported: 0 };
 
+  const supabase = await createClient();
   const payload = rows.map((r) => ({
     contact_type: "Individual" as const,
     company_name: r.company_name || null,
@@ -58,7 +58,8 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     value: Number(r.value) || 0,
     stage,
     source: "CSV Import",
-    created_by: user?.id ?? null,
+    created_by: profile.id,
+    company_id: profile.company_id,
   }));
 
   const CHUNK = 500;
@@ -72,14 +73,13 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
 }
 
 export async function createLead(input: LeadInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("leads")
-    .insert({ ...toRow(input), created_by: user?.id ?? null })
+    .insert({ ...toRow(input), created_by: profile.id, company_id: profile.company_id })
     .select("id")
     .single();
 
@@ -142,11 +142,10 @@ export async function convertLeadToJob(lead: {
   last_name: string | null;
   address: string | null;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const name =
     `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() + " — Project";
 
@@ -155,7 +154,8 @@ export async function convertLeadToJob(lead: {
     name,
     address: lead.address || null,
     status: "Not Started",
-    created_by: user?.id ?? null,
+    created_by: profile.id,
+    company_id: profile.company_id,
   });
   if (jobError) return { error: jobError.message };
 
@@ -183,11 +183,10 @@ export async function bookAppointmentForLead(
     projectType?: string;
   }
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error: eventError } = await supabase.from("events").insert({
     title: details.title || null,
     date: details.date,
@@ -196,7 +195,8 @@ export async function bookAppointmentForLead(
     assigned_to: details.assignedTo || null,
     notes: details.notes || null,
     lead_id: leadId,
-    created_by: user?.id ?? null,
+    created_by: profile.id,
+    company_id: profile.company_id,
   });
   if (eventError) return { error: eventError.message };
 
@@ -231,17 +231,17 @@ export async function createLeadTask(
   leadId: string,
   input: { title: string; due_date: string; assigned_to: string }
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error } = await supabase.from("lead_tasks").insert({
     lead_id: leadId,
     title: input.title.trim(),
     due_date: input.due_date,
     assigned_to: input.assigned_to || null,
-    created_by: user?.id ?? null,
+    created_by: profile.id,
+    company_id: profile.company_id,
   });
   if (error) return { error: error.message };
   revalidatePath("/pipeline");

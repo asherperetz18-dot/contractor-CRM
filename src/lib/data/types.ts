@@ -144,7 +144,7 @@ export function pathToPageKey(pathname: string): PageKey | null {
 }
 
 export type CompanyProfile = {
-  id: number;
+  company_id: string;
   name: string | null;
   address: string | null;
   email: string | null;

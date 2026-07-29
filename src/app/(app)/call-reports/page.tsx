@@ -1,11 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import {
   canUseSalesCenter,
   type CallDispositionRow,
   type CallLog,
   type Lead,
-  type Profile,
 } from "@/lib/data/types";
 import { CallReportsView } from "./call-reports-view";
 
@@ -14,13 +14,11 @@ export default async function CallReportsPage() {
   const profile = await getCurrentProfile();
   const canWrite = canUseSalesCenter(profile);
 
-  const [{ data: callLogs }, { data: leads }, { data: reps }, { data: dispositions }] =
+  const [{ data: callLogs }, { data: leads }, reps, { data: dispositions }] =
     await Promise.all([
       supabase.from("call_logs").select("*").order("created_at", { ascending: false }),
       supabase.from("leads").select("*"),
-      supabase
-        .from("profiles")
-        .select("id, name, email, phone, roles, status, can_delete_leads, created_at"),
+      profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
       supabase.from("call_dispositions").select("*").order("sort_order", { ascending: true }),
     ]);
 
@@ -28,7 +26,7 @@ export default async function CallReportsPage() {
     <CallReportsView
       callLogs={(callLogs as CallLog[]) ?? []}
       leads={(leads as Lead[]) ?? []}
-      reps={(reps as Profile[]) ?? []}
+      reps={reps}
       dispositions={(dispositions as CallDispositionRow[]) ?? []}
       canWrite={canWrite}
     />

@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import type { ActivityEvent, Profile } from "@/lib/data/types";
+import type { ActivityEvent } from "@/lib/data/types";
+import { getCurrentCompanyId } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import { AdminGate } from "@/components/admin-gate";
 import { TeamActivityView } from "./team-activity-view";
 
@@ -19,7 +21,8 @@ const MAX_ROWS = 20000;
 
 async function fetchAllActivityEvents(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  since: string
+  since: string,
+  companyId: string
 ): Promise<ActivityEvent[]> {
   const rows: ActivityEvent[] = [];
   let offset = 0;
@@ -27,6 +30,7 @@ async function fetchAllActivityEvents(
     const { data, error } = await supabase
       .from("activity_events")
       .select("id, user_id, session_id, path, kind, created_at")
+      .eq("company_id", companyId)
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
@@ -42,16 +46,15 @@ export default async function TeamActivityPage() {
   const supabase = await createClient();
   const since = ninetyDaysAgoISO();
 
-  const [events, { data: users }] = await Promise.all([
-    fetchAllActivityEvents(supabase, since),
-    supabase
-      .from("profiles")
-      .select("id, name, email, roles, status, can_delete_leads, created_at"),
+  const companyId = await getCurrentCompanyId();
+  const [events, users] = await Promise.all([
+    companyId ? fetchAllActivityEvents(supabase, since, companyId) : Promise.resolve([]),
+    companyId ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
 
   return (
     <AdminGate>
-      <TeamActivityView events={events} users={(users as Profile[]) ?? []} />
+      <TeamActivityView events={events} users={users} />
     </AdminGate>
   );
 }

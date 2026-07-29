@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import type {
   CalendarRow,
   DocumentRecord,
@@ -9,7 +10,6 @@ import type {
   LeadNote,
   LeadTask,
   PipelineStageRow,
-  Profile,
 } from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
 
@@ -18,11 +18,12 @@ export default async function CalendarPage() {
   const profile = await getCurrentProfile();
   const canWrite =
     (profile?.roles.includes("Office") || profile?.roles.includes("Field")) ?? false;
+  const companyId = profile?.company_id ?? "";
 
   const [
     { data: events },
     { data: jobs },
-    { data: reps },
+    allReps,
     { data: leads },
     { data: leadTasks },
     { data: leadNotes },
@@ -30,31 +31,30 @@ export default async function CalendarPage() {
     { data: calendars },
     { data: stages },
   ] = await Promise.all([
-    supabase.from("events").select("*"),
-    supabase.from("jobs").select("*").order("name", { ascending: true }),
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, created_at")
-      .eq("status", "Active")
-      .order("name", { ascending: true }),
-    supabase.from("leads").select("*"),
+    supabase.from("events").select("*").eq("company_id", companyId),
+    supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
+    supabase.from("leads").select("*").eq("company_id", companyId),
     supabase
       .from("lead_tasks")
-      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at"),
+      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+      .eq("company_id", companyId),
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")
+      .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
-    supabase.from("documents").select("*").eq("type", "Estimate"),
-    supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
-    supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
+    supabase.from("documents").select("*").eq("type", "Estimate").eq("company_id", companyId),
+    supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
+  const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <CalendarBoard
       events={(events as Event[]) ?? []}
       jobs={(jobs as Job[]) ?? []}
-      reps={(reps as Profile[]) ?? []}
+      reps={reps}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}

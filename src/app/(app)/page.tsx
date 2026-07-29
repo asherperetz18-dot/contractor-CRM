@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import { leadDisplayName, money as moneyFmt } from "@/lib/data/types";
 import type { Event, Lead } from "@/lib/data/types";
 
@@ -13,6 +14,7 @@ function money(n: number) {
 
 export default async function DashboardPage() {
   const supabase = await createClient();
+  const companyId = (await getCurrentCompanyId()) ?? "";
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
@@ -21,27 +23,33 @@ export default async function DashboardPage() {
       supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
         .not("stage", "in", "(Won,Lost)"),
       supabase
         .from("jobs")
         .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
         .eq("status", "In Progress"),
       supabase
         .from("events")
         .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId)
         .gte("date", todayISO),
       supabase
         .from("leads")
         .select("value")
+        .eq("company_id", companyId)
         .not("stage", "in", "(Won,Lost)"),
       supabase
         .from("leads")
         .select("*")
+        .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .limit(5),
       supabase
         .from("events")
         .select("*")
+        .eq("company_id", companyId)
         .gte("date", todayISO)
         .order("date", { ascending: true })
         .order("time", { ascending: true })

@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { ProjectTypeRow } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { FieldOptionsTable } from "../field-options-table";
 
 export default async function ProjectTypesPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data: rows } = await supabase
     .from("project_types")
     .select("*")
+    .eq("company_id", companyId ?? "")
     .order("sort_order", { ascending: true });
 
   return (

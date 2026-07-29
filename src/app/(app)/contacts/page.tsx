@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import {
   canDeleteLeads,
   canEditDispatch,
@@ -10,7 +11,6 @@ import {
   type LeadSourceRow,
   type PipelineStageRow,
   type ProjectTypeRow,
-  type Profile,
 } from "@/lib/data/types";
 import { ContactsTable } from "./contacts-table";
 
@@ -24,7 +24,7 @@ export default async function ContactsPage() {
     { data: leads },
     { data: notes },
     { data: files },
-    { data: reps },
+    allReps,
     { data: stages },
     { data: calendars },
     { data: projectTypes },
@@ -41,23 +41,20 @@ export default async function ContactsPage() {
         "id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, storage_provider, created_at"
       )
       .order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, can_delete_leads, created_at")
-      .eq("status", "Active")
-      .order("name", { ascending: true }),
+    profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
     supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
     supabase.from("project_types").select("*").order("sort_order", { ascending: true }),
     supabase.from("lead_sources").select("*").order("sort_order", { ascending: true }),
   ]);
+  const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <ContactsTable
       leads={(leads as Lead[]) ?? []}
       notes={(notes as LeadNote[]) ?? []}
       files={(files as LeadFile[]) ?? []}
-      reps={(reps as Profile[]) ?? []}
+      reps={reps}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       projectTypes={(projectTypes as ProjectTypeRow[]) ?? []}

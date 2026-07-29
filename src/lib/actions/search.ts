@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import {
   leadDisplayName,
   normalizePhone,
@@ -24,12 +25,14 @@ export async function searchDirectory(query: string): Promise<DirectoryHit[]> {
   if (q.length < 2) return [];
 
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const [{ data: leads }, { data: stages }] = await Promise.all([
     supabase
       .from("leads")
       .select("id, contact_type, company_name, first_name, last_name, phone, email, address, stage")
+      .eq("company_id", companyId ?? "")
       .order("created_at", { ascending: false }),
-    supabase.from("pipeline_stages").select("name, color"),
+    supabase.from("pipeline_stages").select("name, color").eq("company_id", companyId ?? ""),
   ]);
 
   const rows = (leads as Lead[]) ?? [];

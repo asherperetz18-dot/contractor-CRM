@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import {
   canUseSalesCenter,
   type CallDispositionRow,
@@ -8,7 +9,6 @@ import {
   type DialList,
   type Lead,
   type PipelineStageRow,
-  type Profile,
 } from "@/lib/data/types";
 import { DialQueueView } from "./dial-queue-view";
 
@@ -20,7 +20,7 @@ export default async function DialQueuePage() {
   const [
     { data: leads },
     { data: stages },
-    { data: reps },
+    allReps,
     { data: dispositions },
     { data: callLogs },
     { data: dialLists },
@@ -28,25 +28,24 @@ export default async function DialQueuePage() {
   ] = await Promise.all([
     supabase.from("leads").select("*").order("created_at", { ascending: false }),
     supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, can_delete_leads, created_at")
-      .eq("status", "Active")
-      .order("name", { ascending: true }),
+    profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
     supabase.from("call_dispositions").select("*").order("sort_order", { ascending: true }),
     supabase
       .from("call_logs")
       .select("id, lead_id, rep_id, direction, from_number, to_number, status, duration_seconds, disposition, recording_url, twilio_call_sid, notes, created_at")
       .order("created_at", { ascending: false }),
     supabase.from("dial_lists").select("*").order("created_at", { ascending: false }),
-    supabase.from("company_profile").select("call_script").eq("id", 1).single(),
+    profile
+      ? supabase.from("company_profile").select("call_script").eq("company_id", profile.company_id).single()
+      : Promise.resolve({ data: null }),
   ]);
+  const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <DialQueueView
       leads={(leads as Lead[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
-      reps={(reps as Profile[]) ?? []}
+      reps={reps}
       dispositions={(dispositions as CallDispositionRow[]) ?? []}
       callLogs={(callLogs as CallLog[]) ?? []}
       dialLists={(dialLists as DialList[]) ?? []}

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 import { getTwilioVoiceEnv } from "@/lib/twilio-env";
 
 export async function logCall(input: {
@@ -11,25 +12,24 @@ export async function logCall(input: {
   twilioCallSid: string | null;
   status: string;
 }): Promise<{ id?: string; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const voiceEnv = getTwilioVoiceEnv();
 
   const { data, error } = await supabase
     .from("call_logs")
     .insert({
       lead_id: input.leadId,
-      rep_id: user.id,
+      rep_id: profile.id,
       direction: "outbound",
       from_number: voiceEnv?.phoneNumber ?? "",
       to_number: input.toNumber,
       status: input.status,
       duration_seconds: Math.max(0, Math.round(input.durationSeconds)),
       twilio_call_sid: input.twilioCallSid,
+      company_id: profile.company_id,
     })
     .select("id")
     .single();

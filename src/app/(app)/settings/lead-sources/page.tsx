@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { LeadSourceRow } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { FieldOptionsTable } from "../field-options-table";
 
 export default async function LeadSourcesPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data: rows } = await supabase
     .from("lead_sources")
     .select("*")
+    .eq("company_id", companyId ?? "")
     .order("sort_order", { ascending: true });
 
   return (

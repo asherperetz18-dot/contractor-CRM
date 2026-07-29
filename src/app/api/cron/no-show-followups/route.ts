@@ -14,11 +14,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // No session here (cron) -- there's exactly one company today, and this
+  // job scans events globally. Once a second company exists this needs to
+  // loop per-company (each with its own timezone/settings).
   const admin = createAdminClient();
   const { data: company } = await admin
     .from("company_profile")
     .select("timezone, no_show_followup_enabled, no_show_grace_minutes, no_show_lookback_hours")
-    .eq("id", 1)
     .single();
   const profile = company as Pick<
     CompanyProfile,

@@ -2,39 +2,26 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 import type { SmsQuickText, SmsQuickTextKey } from "@/lib/data/types";
-
-async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Admin")) {
-    return { error: "Only Office or Admin users can edit SMS quick-texts." };
-  }
-  return {};
-}
 
 export async function getQuickTextOptions(): Promise<{
   companyName: string;
   quickTexts: SmsQuickText[];
   repInfoTemplate: string | null;
 }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { companyName: "", quickTexts: [], repInfoTemplate: null };
+
   const supabase = await createClient();
   const [{ data: company }, { data: texts }] = await Promise.all([
     supabase
       .from("company_profile")
       .select("name, rep_appointment_info_template")
-      .eq("id", 1)
+      .eq("company_id", profile.company_id)
       .single(),
-    supabase.from("sms_quick_texts").select("*"),
+    supabase.from("sms_quick_texts").select("*").eq("company_id", profile.company_id),
   ]);
   const companyRow = company as {
     name: string | null;
@@ -51,14 +38,16 @@ export async function saveQuickText(
   key: SmsQuickTextKey,
   body: string
 ): Promise<{ error?: string }> {
-  const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can edit SMS quick-texts." };
 
   const supabase = await createClient();
   const { error } = await supabase
     .from("sms_quick_texts")
     .update({ body: body.trim() || null })
-    .eq("key", key);
+    .eq("key", key)
+    .eq("company_id", profile.company_id);
   if (error) return { error: error.message };
 
   revalidatePath("/settings/appointment-notifications");

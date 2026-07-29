@@ -1,13 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import { AdminGate } from "@/components/admin-gate";
 import { SettingsGrid } from "./settings-grid";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data: companyProfile } = await supabase
     .from("company_profile")
     .select("logo_url")
-    .eq("id", 1)
+    .eq("company_id", companyId ?? "")
     .single();
 
   return (

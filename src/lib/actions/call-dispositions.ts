@@ -2,23 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 
-async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Admin")) {
-    return { error: "Only Office or Admin users can manage call dispositions." };
-  }
-  return {};
+async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can manage call dispositions." };
+  return { companyId: profile.company_id };
 }
 
 function revalidateDispositionRoutes() {
@@ -32,7 +23,7 @@ export async function createDisposition(
   color: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const trimmed = name.trim();
   if (!trimmed) return { error: "Disposition name is required." };
@@ -41,6 +32,7 @@ export async function createDisposition(
   const { data: existing } = await supabase
     .from("call_dispositions")
     .select("sort_order")
+    .eq("company_id", guard.companyId)
     .order("sort_order", { ascending: false })
     .limit(1)
     .single();
@@ -51,6 +43,7 @@ export async function createDisposition(
     color: color || "#7C8798",
     sort_order: nextOrder,
     is_system: false,
+    company_id: guard.companyId,
   });
   if (error) {
     if (error.code === "23505") return { error: "A disposition with that name already exists." };
@@ -66,7 +59,7 @@ export async function renameDisposition(
   name: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const trimmed = name.trim();
   if (!trimmed) return { error: "Disposition name is required." };
@@ -91,7 +84,11 @@ export async function renameDisposition(
     return { error: error.message };
   }
 
-  await supabase.from("call_logs").update({ disposition: trimmed }).eq("disposition", current.name);
+  await supabase
+    .from("call_logs")
+    .update({ disposition: trimmed })
+    .eq("disposition", current.name)
+    .eq("company_id", guard.companyId);
 
   revalidateDispositionRoutes();
   return {};
@@ -102,7 +99,7 @@ export async function updateDispositionColor(
   color: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { error } = await supabase.from("call_dispositions").update({ color }).eq("id", id);
@@ -114,7 +111,7 @@ export async function updateDispositionColor(
 
 export async function deleteDisposition(id: string): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { data: row } = await supabase
@@ -129,7 +126,8 @@ export async function deleteDisposition(id: string): Promise<{ error?: string }>
   const { count } = await supabase
     .from("call_logs")
     .select("id", { count: "exact", head: true })
-    .eq("disposition", current.name);
+    .eq("disposition", current.name)
+    .eq("company_id", guard.companyId);
   if (count && count > 0) {
     return {
       error: `${count} call${count === 1 ? "" : "s"} still use this disposition. Reassign them first.`,
@@ -145,7 +143,7 @@ export async function deleteDisposition(id: string): Promise<{ error?: string }>
 
 export async function reorderDispositions(orderedIds: string[]): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const results = await Promise.all(

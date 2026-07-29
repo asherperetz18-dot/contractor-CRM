@@ -51,12 +51,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
   }
 
+  // No session here (cron) -- there's exactly one company today, and this
+  // job scans events globally. Once a second company exists this needs to
+  // loop per-company (each with its own timezone/settings).
   const admin = createAdminClient();
-  const { data: company } = await admin
-    .from("company_profile")
-    .select("timezone")
-    .eq("id", 1)
-    .single();
+  const { data: company } = await admin.from("company_profile").select("timezone").single();
   const profile = company as Pick<CompanyProfile, "timezone"> | null;
   const ianaZone = TIMEZONE_IANA[profile?.timezone ?? ""] ?? "America/Los_Angeles";
   const nowNaive = nowInZone(ianaZone);

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/data/profile";
+import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
 import { canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
@@ -11,6 +11,7 @@ import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
+import { CompanySwitcher } from "./company-switcher";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
@@ -24,9 +25,17 @@ export default async function AppLayout({
   if (!profile) redirect("/login");
 
   const supabase = await createClient();
-  const [{ data: companyProfile }, { data: visibilityRows }] = await Promise.all([
-    supabase.from("company_profile").select("name, logo_url, time_format").eq("id", 1).single(),
-    supabase.from("role_page_visibility").select("id, role, page_key, visible"),
+  const [{ data: companyProfile }, { data: visibilityRows }, companies] = await Promise.all([
+    supabase
+      .from("company_profile")
+      .select("name, logo_url, time_format")
+      .eq("company_id", profile.company_id)
+      .single(),
+    supabase
+      .from("role_page_visibility")
+      .select("id, role, page_key, visible")
+      .eq("company_id", profile.company_id),
+    getCurrentUserCompanies(),
   ]);
   const company = companyProfile as {
     name: string | null;
@@ -61,6 +70,7 @@ export default async function AppLayout({
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
+            <CompanySwitcher companies={companies} currentCompanyId={profile.company_id} canCreate={isAdminRole(profile)} />
             <QuickCreateMenu />
             {isAdminRole(profile) && <AdminToolsMenu />}
           </div>

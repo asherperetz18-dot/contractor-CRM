@@ -1,15 +1,17 @@
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { MetaConfigInput } from "@/lib/actions/settings";
 import { AdminGate } from "@/components/admin-gate";
 import { MetaSettings } from "./meta-settings";
 
 export default async function FacebookLeadAdsPage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data } = await supabase
     .from("company_profile")
     .select("meta_page_id, meta_page_access_token, meta_verify_token, meta_app_secret")
-    .eq("id", 1)
+    .eq("company_id", companyId ?? "")
     .single();
 
   const config = data as Partial<MetaConfigInput> | null;

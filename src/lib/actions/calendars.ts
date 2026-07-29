@@ -2,23 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 
-async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Admin")) {
-    return { error: "Only Office or Admin users can manage calendars." };
-  }
-  return {};
+async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can manage calendars." };
+  return { companyId: profile.company_id };
 }
 
 function revalidateCalendarRoutes() {
@@ -32,7 +23,7 @@ export async function createCalendar(
   color: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const trimmed = name.trim();
   if (!trimmed) return { error: "Calendar name is required." };
@@ -41,6 +32,7 @@ export async function createCalendar(
   const { data: existing } = await supabase
     .from("calendars")
     .select("sort_order")
+    .eq("company_id", guard.companyId)
     .order("sort_order", { ascending: false })
     .limit(1)
     .single();
@@ -51,6 +43,7 @@ export async function createCalendar(
     color: color || "#7C8798",
     sort_order: nextOrder,
     is_system: false,
+    company_id: guard.companyId,
   });
   if (error) {
     if (error.code === "23505") return { error: "A calendar with that name already exists." };
@@ -66,7 +59,7 @@ export async function renameCalendar(
   name: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const trimmed = name.trim();
   if (!trimmed) return { error: "Calendar name is required." };
@@ -91,8 +84,13 @@ export async function renameCalendar(
     return { error: error.message };
   }
 
-  // Keep existing appointments pointed at the renamed calendar.
-  await supabase.from("events").update({ event_type: trimmed }).eq("event_type", current.name);
+  // Keep existing appointments pointed at the renamed calendar (this
+  // company's only -- calendar names aren't unique across companies).
+  await supabase
+    .from("events")
+    .update({ event_type: trimmed })
+    .eq("event_type", current.name)
+    .eq("company_id", guard.companyId);
 
   revalidateCalendarRoutes();
   return {};
@@ -103,7 +101,7 @@ export async function updateCalendarColor(
   color: string
 ): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { error } = await supabase.from("calendars").update({ color }).eq("id", id);
@@ -115,7 +113,7 @@ export async function updateCalendarColor(
 
 export async function deleteCalendar(id: string): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { data: cal } = await supabase
@@ -130,7 +128,8 @@ export async function deleteCalendar(id: string): Promise<{ error?: string }> {
   const { count } = await supabase
     .from("events")
     .select("id", { count: "exact", head: true })
-    .eq("event_type", current.name);
+    .eq("event_type", current.name)
+    .eq("company_id", guard.companyId);
   if (count && count > 0) {
     return {
       error: `${count} appointment${count === 1 ? "" : "s"} still use this calendar. Move them first.`,
@@ -146,7 +145,7 @@ export async function deleteCalendar(id: string): Promise<{ error?: string }> {
 
 export async function reorderCalendars(orderedIds: string[]): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
-  if (guard.error) return guard;
+  if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const results = await Promise.all(

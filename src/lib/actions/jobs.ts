@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 import type { JobInput } from "@/lib/data/types";
 
 function toRow(input: JobInput) {
@@ -17,14 +18,13 @@ function toRow(input: JobInput) {
 }
 
 export async function createJob(input: JobInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error } = await supabase
     .from("jobs")
-    .insert({ ...toRow(input), created_by: user?.id ?? null });
+    .insert({ ...toRow(input), created_by: profile.id, company_id: profile.company_id });
 
   if (error) return { error: error.message };
   revalidatePath("/production");

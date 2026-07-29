@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -17,20 +18,9 @@ type ConnectionRow = {
 };
 
 async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("roles")
-    .eq("id", user.id)
-    .single();
-  const roles = (profile as { roles: string[] } | null)?.roles ?? [];
-  if (!roles.includes("Office") && !roles.includes("Admin")) {
-    return { error: "Only Office or Admin users can manage cloud storage." };
-  }
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can manage cloud storage." };
   return {};
 }
 
@@ -38,11 +28,14 @@ export async function getGoogleDriveStatus(): Promise<{
   connected: boolean;
   email?: string;
 }> {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { connected: false };
+
   const admin = createAdminClient();
   const { data } = await admin
     .from("google_drive_connection")
     .select("connected_email")
-    .eq("id", 1)
+    .eq("company_id", companyId)
     .maybeSingle();
   const row = data as { connected_email: string | null } | null;
   if (!row?.connected_email) return { connected: false };
@@ -53,8 +46,11 @@ export async function disconnectGoogleDrive(): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
   if (guard.error) return guard;
 
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
   const admin = createAdminClient();
-  await admin.from("google_drive_connection").delete().eq("id", 1);
+  await admin.from("google_drive_connection").delete().eq("company_id", companyId);
 
   revalidatePath("/settings/cloud-storage");
   return {};
@@ -62,7 +58,7 @@ export async function disconnectGoogleDrive(): Promise<{ error?: string }> {
 
 // Returns a live access token, refreshing it first if it's expired or
 // about to be. Returns null if Drive isn't connected at all.
-export async function getValidAccessToken(): Promise<{
+export async function getValidAccessToken(companyId: string): Promise<{
   accessToken: string;
   folderId: string;
 } | null> {
@@ -70,7 +66,7 @@ export async function getValidAccessToken(): Promise<{
   const { data } = await admin
     .from("google_drive_connection")
     .select("access_token, refresh_token, token_expires_at, folder_id")
-    .eq("id", 1)
+    .eq("company_id", companyId)
     .maybeSingle();
   const row = data as ConnectionRow | null;
   if (!row?.refresh_token || !row.folder_id) return null;
@@ -102,7 +98,7 @@ export async function getValidAccessToken(): Promise<{
   await admin
     .from("google_drive_connection")
     .update({ access_token: json.access_token, token_expires_at: newExpiresAt })
-    .eq("id", 1);
+    .eq("company_id", companyId);
 
   return { accessToken: json.access_token, folderId: row.folder_id };
 }
@@ -110,7 +106,10 @@ export async function getValidAccessToken(): Promise<{
 // Returns the Drive subfolder for this lead's attachments, creating it
 // (under the root "Contractor CRM Files" folder) the first time a file
 // is uploaded for that contact.
-export async function getOrCreateLeadDriveFolder(leadId: string): Promise<string | null> {
+export async function getOrCreateLeadDriveFolder(
+  leadId: string,
+  companyId: string
+): Promise<string | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("leads")
@@ -127,7 +126,7 @@ export async function getOrCreateLeadDriveFolder(leadId: string): Promise<string
   if (!lead) return null;
   if (lead.drive_folder_id) return lead.drive_folder_id;
 
-  const drive = await getValidAccessToken();
+  const drive = await getValidAccessToken(companyId);
   if (!drive) return null;
 
   const displayName =

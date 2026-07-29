@@ -1,14 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { CompanyProfile } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { CompanyProfileForm } from "./company-profile-form";
 
 export default async function CompanyProfilePage() {
   const supabase = await createClient();
+  const companyId = await getCurrentCompanyId();
   const { data } = await supabase
     .from("company_profile")
     .select("*")
-    .eq("id", 1)
+    .eq("company_id", companyId ?? "")
     .single();
 
   return (

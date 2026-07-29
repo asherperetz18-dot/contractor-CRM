@@ -22,12 +22,11 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
+  // Public route, no session -- there's exactly one company today, so
+  // this is the one company_profile row. Once a second company exists
+  // this needs a real per-tenant resolution (e.g. by hostname).
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("company_profile")
-    .select("logo_url")
-    .eq("id", 1)
-    .single();
+  const { data } = await admin.from("company_profile").select("logo_url").single();
   const logoUrl = (data as { logo_url: string | null } | null)?.logo_url;
 
   return {

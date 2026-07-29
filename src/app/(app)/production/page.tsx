@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { Job, Profile } from "@/lib/data/types";
+import { getCompanyMembers } from "@/lib/data/company";
+import type { Job } from "@/lib/data/types";
 import { ProductionBoard } from "./production-board";
 
 export default async function ProductionPage() {
@@ -8,20 +9,20 @@ export default async function ProductionPage() {
   const profile = await getCurrentProfile();
   const canWrite =
     (profile?.roles.includes("Office") || profile?.roles.includes("Field")) ?? false;
+  const companyId = profile?.company_id ?? "";
 
-  const [{ data: jobs }, { data: assignees }] = await Promise.all([
-    supabase.from("jobs").select("*").order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("id, name, email, phone, roles, status, created_at")
-      .eq("status", "Active")
-      .order("name", { ascending: true }),
+  const [{ data: jobs }, allAssignees] = await Promise.all([
+    supabase.from("jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
+  const assignees = allAssignees
+    .filter((r) => r.status === "Active")
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <ProductionBoard
       jobs={(jobs as Job[]) ?? []}
-      assignees={(assignees as Profile[]) ?? []}
+      assignees={assignees}
       canWrite={canWrite}
     />
   );

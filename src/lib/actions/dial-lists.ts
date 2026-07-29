@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/data/profile";
 
 export async function saveDialList(
   name: string,
@@ -11,16 +12,15 @@ export async function saveDialList(
   if (!trimmed) return { error: "List name is required." };
   if (leadIds.length === 0) return { error: "Select at least one contact first." };
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in." };
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
   const { error } = await supabase.from("dial_lists").insert({
     name: trimmed,
     lead_ids: leadIds,
-    created_by: user.id,
+    created_by: profile.id,
+    company_id: profile.company_id,
   });
   if (error) return { error: error.message };
 
