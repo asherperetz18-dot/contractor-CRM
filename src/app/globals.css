@@ -1901,6 +1901,9 @@ body {
 .modal-wide {
   max-width: 640px;
 }
+.modal-xwide {
+  max-width: 900px;
+}
 .ai-chat {
   display: flex;
   flex-direction: column;

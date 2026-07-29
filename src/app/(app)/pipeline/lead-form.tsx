@@ -302,7 +302,7 @@ export function LeadForm({
   }
 
   return (
-    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={onCancel}>
+    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={onCancel} xwide>
       <fieldset disabled={readOnly || pending} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="form-grid">
           <Field label="Contact Type">

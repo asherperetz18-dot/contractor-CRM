@@ -5,16 +5,18 @@ export function Modal({
   onClose,
   children,
   wide,
+  xwide,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
+  xwide?: boolean;
 }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className={"modal" + (wide ? " modal-wide" : "")}
+        className={"modal" + (xwide ? " modal-xwide" : wide ? " modal-wide" : "")}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
