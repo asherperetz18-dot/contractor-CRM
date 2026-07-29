@@ -21,7 +21,7 @@ async function buildContext(companyId: string): Promise<string> {
   const supabase = await createClient();
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  const [{ data: companyProfile }, members, { data: leads }, { data: stages }, { data: events }, { data: tasks }] =
+  const [{ data: companyProfile }, members, { data: leads }, { data: allLeadTotals }, { data: stages }, { data: events }, { data: tasks }] =
     await Promise.all([
       supabase.from("company_profile").select("name").eq("company_id", companyId).single(),
       getCompanyMembers(companyId),
@@ -33,6 +33,11 @@ async function buildContext(companyId: string): Promise<string> {
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .limit(MAX_LEADS_IN_CONTEXT),
+      // Unlimited, narrow columns -- true totals, independent of the
+      // MAX_LEADS_IN_CONTEXT cap on the detailed roster below. Without
+      // this, "how many open leads" answers from the truncated list and
+      // silently disagrees with the Dashboard's real count.
+      supabase.from("leads").select("stage, value").eq("company_id", companyId),
       supabase
         .from("pipeline_stages")
         .select("id, name, sort_order")
@@ -62,8 +67,11 @@ async function buildContext(companyId: string): Promise<string> {
   const companyName = (companyProfile as { name: string | null } | null)?.name || "this company";
 
   const allLeads = (leads as Lead[] | null) ?? [];
-  const openLeads = allLeads.filter((l) => l.stage !== "Won" && l.stage !== "Lost");
-  const openPipelineValue = openLeads.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+  const totalsRows = (allLeadTotals as { stage: string; value: number }[] | null) ?? [];
+  const openTotalsRows = totalsRows.filter((l) => l.stage !== "Won" && l.stage !== "Lost");
+  const totalLeadCount = totalsRows.length;
+  const openLeadCount = openTotalsRows.length;
+  const openPipelineValue = openTotalsRows.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 
   const leadLines = allLeads.map((l) => {
     const rep = l.assigned_to ? repName.get(l.assigned_to) || "Unassigned" : "Unassigned";
@@ -94,9 +102,9 @@ async function buildContext(companyId: string): Promise<string> {
     `Today's date: ${todayISO}`,
     `Pipeline stages (in order): ${stageLines || "none configured"}`,
     "",
-    `Summary: ${openLeads.length} open leads worth ${money(openPipelineValue)} total, out of ${allLeads.length} leads shown below (most recent ${MAX_LEADS_IN_CONTEXT}).`,
+    `Summary (accurate company-wide totals -- use these for any count/value question): ${openLeadCount} open leads worth ${money(openPipelineValue)} total, out of ${totalLeadCount} leads overall.`,
     "",
-    `LEADS (most recent ${allLeads.length}):`,
+    `LEADS -- detail roster, most recent ${allLeads.length} of ${totalLeadCount} total (older leads are omitted here; rely on the Summary above for totals, not a count of this list):`,
     leadLines.length ? leadLines.join("\n") : "(none)",
     "",
     `UPCOMING/RECENT APPOINTMENTS (yesterday through next 14 days):`,
