@@ -65,7 +65,7 @@ export function CompanySwitcher({
         onClick={() => setOpen((o) => !o)}
         title="Switch company"
       >
-        🏢 {current?.company_name || "Company"}
+        🏢 <span className="company-switcher-label">{current?.company_name || "Company"}</span>
       </button>
       {open && (
         <>

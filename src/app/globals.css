@@ -2140,6 +2140,12 @@ body {
   .global-search {
     display: none;
   }
+  .company-switcher-label {
+    display: none;
+  }
+  .company-switcher-btn {
+    padding: 7px 9px;
+  }
   .stat-grid {
     grid-template-columns: repeat(2, 1fr);
   }
