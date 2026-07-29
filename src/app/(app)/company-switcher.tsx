@@ -77,7 +77,7 @@ export function CompanySwitcher({
               setError("");
             }}
           />
-          <div className="quick-create-menu">
+          <div className="quick-create-menu company-switcher-menu">
             <div className="qc-group">
               <div className="qc-group-label">COMPANIES</div>
               {companies.map((c) => (

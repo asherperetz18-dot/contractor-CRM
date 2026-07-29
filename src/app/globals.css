@@ -2146,6 +2146,13 @@ body {
   .company-switcher-btn {
     padding: 7px 9px;
   }
+  .company-switcher-menu {
+    /* Icon-only trigger sits near the left edge here, so anchoring the
+       240px-wide dropdown to its right edge (the default) pushes most
+       of it off-screen to the left -- anchor from the left instead. */
+    right: auto;
+    left: 0;
+  }
   .stat-grid {
     grid-template-columns: repeat(2, 1fr);
   }
