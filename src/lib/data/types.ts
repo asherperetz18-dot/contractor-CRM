@@ -490,6 +490,7 @@ export type Lead = {
   lead_cost: number | null;
   refund_status: RefundStatus;
   refund_requested_at: string | null;
+  date_received: string;
   created_at: string;
   updated_at: string;
 };
@@ -527,6 +528,7 @@ export type LeadInput = {
   stage: PipelineStage;
   value: string;
   lead_cost: string;
+  date_received: string;
   notes: string;
   has_appt: boolean;
   second_contact_first_name: string;

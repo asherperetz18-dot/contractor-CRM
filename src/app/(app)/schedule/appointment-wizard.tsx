@@ -107,6 +107,7 @@ export function AppointmentWizard({
         stage: leadStage,
         value,
         lead_cost: "",
+        date_received: new Date().toISOString().slice(0, 10),
         notes: "",
         has_appt: createAppt,
         second_contact_first_name: "",

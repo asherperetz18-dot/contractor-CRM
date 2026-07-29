@@ -59,6 +59,7 @@ function toInput(lead?: Lead): LeadInput {
     stage: lead?.stage ?? "Unsorted",
     value: lead ? String(lead.value ?? "") : "",
     lead_cost: lead?.lead_cost != null ? String(lead.lead_cost) : "",
+    date_received: lead?.date_received ?? todayISO(),
     notes: lead?.notes ?? "",
     has_appt: lead?.has_appt ?? false,
     second_contact_first_name: lead?.second_contact_first_name ?? "",
@@ -542,6 +543,13 @@ export function LeadForm({
               onChange={(v) => set("source", v)}
               onOptionAdded={(o) => setSourceOptions((prev) => [...prev, o])}
               disabled={readOnly || pending}
+            />
+          </Field>
+          <Field label="Date Received">
+            <input
+              type="date"
+              value={form.date_received}
+              onChange={(e) => set("date_received", e.target.value)}
             />
           </Field>
           <Field label="Est. Value">

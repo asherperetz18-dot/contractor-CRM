@@ -19,6 +19,7 @@ function toRow(input: LeadInput) {
     stage: input.stage,
     value: Number(input.value) || 0,
     lead_cost: input.lead_cost.trim() === "" ? null : Number(input.lead_cost) || 0,
+    date_received: input.date_received || undefined,
     notes: input.notes || null,
     has_appt: input.has_appt,
     second_contact_first_name: input.second_contact_first_name || null,
