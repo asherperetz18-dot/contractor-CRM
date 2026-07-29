@@ -16,6 +16,7 @@ export default async function DialQueuePage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canUseSalesCenter(profile);
+  const companyId = profile?.company_id ?? "";
 
   const [
     { data: leads },
@@ -26,17 +27,18 @@ export default async function DialQueuePage() {
     { data: dialLists },
     { data: companyProfile },
   ] = await Promise.all([
-    supabase.from("leads").select("*").order("created_at", { ascending: false }),
-    supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
-    profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
-    supabase.from("call_dispositions").select("*").order("sort_order", { ascending: true }),
+    supabase.from("leads").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
+    supabase.from("call_dispositions").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase
       .from("call_logs")
       .select("id, lead_id, rep_id, direction, from_number, to_number, status, duration_seconds, disposition, recording_url, twilio_call_sid, notes, created_at")
+      .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
-    supabase.from("dial_lists").select("*").order("created_at", { ascending: false }),
+    supabase.from("dial_lists").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
     profile
-      ? supabase.from("company_profile").select("call_script").eq("company_id", profile.company_id).single()
+      ? supabase.from("company_profile").select("call_script").eq("company_id", companyId).single()
       : Promise.resolve({ data: null }),
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));

@@ -13,13 +13,14 @@ export default async function CallReportsPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canUseSalesCenter(profile);
+  const companyId = profile?.company_id ?? "";
 
   const [{ data: callLogs }, { data: leads }, reps, { data: dispositions }] =
     await Promise.all([
-      supabase.from("call_logs").select("*").order("created_at", { ascending: false }),
-      supabase.from("leads").select("*"),
-      profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
-      supabase.from("call_dispositions").select("*").order("sort_order", { ascending: true }),
+      supabase.from("call_logs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+      supabase.from("leads").select("*").eq("company_id", companyId),
+      profile ? getCompanyMembers(companyId) : Promise.resolve([]),
+      supabase.from("call_dispositions").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     ]);
 
   return (

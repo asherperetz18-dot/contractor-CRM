@@ -19,6 +19,7 @@ export default async function ContactsPage() {
   const profile = await getCurrentProfile();
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
+  const companyId = profile?.company_id ?? "";
 
   const [
     { data: leads },
@@ -30,22 +31,24 @@ export default async function ContactsPage() {
     { data: projectTypes },
     { data: sources },
   ] = await Promise.all([
-    supabase.from("leads").select("*").order("created_at", { ascending: false }),
+    supabase.from("leads").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")
+      .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
     supabase
       .from("lead_files")
       .select(
         "id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, storage_provider, created_at"
       )
+      .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
-    profile ? getCompanyMembers(profile.company_id) : Promise.resolve([]),
-    supabase.from("pipeline_stages").select("*").order("sort_order", { ascending: true }),
-    supabase.from("calendars").select("*").order("sort_order", { ascending: true }),
-    supabase.from("project_types").select("*").order("sort_order", { ascending: true }),
-    supabase.from("lead_sources").select("*").order("sort_order", { ascending: true }),
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
+    supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    supabase.from("project_types").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    supabase.from("lead_sources").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
