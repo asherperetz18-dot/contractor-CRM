@@ -19,6 +19,7 @@ type Mapping = {
   projectType: number;
   value: number;
   dateReceived: number;
+  source: number;
 };
 
 const BLANK_MAPPING: Mapping = {
@@ -32,6 +33,7 @@ const BLANK_MAPPING: Mapping = {
   projectType: -1,
   value: -1,
   dateReceived: -1,
+  source: -1,
 };
 
 // Excel/Sheets exports can hand back a date cell as free text ("7/28/2026"),
@@ -159,6 +161,7 @@ export function CsvImportPanel({
             "created date",
             "created",
           ]),
+          source: guessColumn(head, ["source", "lead source", "campaign"]),
         });
         if (wb.SheetNames.length > 1) {
           setError(
@@ -195,6 +198,7 @@ export function CsvImportPanel({
         project_type: cell(row, mapping.projectType),
         value: cell(row, mapping.value),
         date_received: toIsoDate(cell(row, mapping.dateReceived)),
+        source: cell(row, mapping.source),
       };
     });
   }
@@ -242,6 +246,7 @@ export function CsvImportPanel({
     ["projectType", "Project Type"],
     ["value", "Est. Value"],
     ["dateReceived", "Date Received"],
+    ["source", "Source"],
   ];
 
   return (
