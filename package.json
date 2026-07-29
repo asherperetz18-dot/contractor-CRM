@@ -1,6 +1,6 @@
 {
   "name": "contractor-crm",
-  "version": "0.34.6",
+  "version": "0.34.7",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -25,6 +25,32 @@ function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
 
+// The tracker pings every 30s while the tab is visible, so a real,
+// continuously-active stretch never has a gap much bigger than that
+// between consecutive events. A gap larger than this means the tab was
+// backgrounded/idle (no heartbeat fires), so that stretch shouldn't count
+// as active time -- otherwise a tab left open in the background for hours
+// inflates "active minutes" by the whole idle gap.
+const MAX_ACTIVE_GAP_MINUTES = 2;
+
+function sortByTime(events: ActivityEvent[]): ActivityEvent[] {
+  return [...events].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+}
+
+function activeMinutes(sortedEvents: ActivityEvent[]): number {
+  let total = 0;
+  for (let i = 1; i < sortedEvents.length; i++) {
+    const delta =
+      (new Date(sortedEvents[i].created_at).getTime() -
+        new Date(sortedEvents[i - 1].created_at).getTime()) /
+      60000;
+    if (delta > 0 && delta <= MAX_ACTIVE_GAP_MINUTES) total += delta;
+  }
+  return total;
+}
+
 export function TeamActivityView({
   events,
   users,
@@ -64,10 +90,11 @@ export function TeamActivityView({
 
   const sessionStats = useMemo(() => {
     return [...bySession.entries()].map(([sessionId, evs]) => {
-      const times = evs.map((e) => new Date(e.created_at).getTime());
-      const minutes = (Math.max(...times) - Math.min(...times)) / 60000;
-      const userId = evs[0].user_id;
-      const pageviews = evs.filter((e) => e.kind === "pageview").length;
+      const sorted = sortByTime(evs);
+      const times = sorted.map((e) => new Date(e.created_at).getTime());
+      const minutes = activeMinutes(sorted);
+      const userId = sorted[0].user_id;
+      const pageviews = sorted.filter((e) => e.kind === "pageview").length;
       return { sessionId, userId, minutes, pageviews, lastActive: Math.max(...times) };
     });
   }, [bySession]);
@@ -112,11 +139,7 @@ export function TeamActivityView({
   }, [sessionStats]);
 
   const topPages = useMemo(() => {
-    const bySessionOrdered = [...bySession.values()].map((evs) =>
-      [...evs].sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )
-    );
+    const bySessionOrdered = [...bySession.values()].map(sortByTime);
     const perPage = new Map<string, { views: number; timeTotal: number; timeCount: number }>();
     for (const evs of bySessionOrdered) {
       for (let i = 0; i < evs.length; i++) {
@@ -128,7 +151,7 @@ export function TeamActivityView({
         if (next) {
           const delta =
             (new Date(next.created_at).getTime() - new Date(e.created_at).getTime()) / 60000;
-          if (delta > 0 && delta <= 30) {
+          if (delta > 0 && delta <= MAX_ACTIVE_GAP_MINUTES) {
             row.timeTotal += delta;
             row.timeCount += 1;
           }
@@ -150,12 +173,9 @@ export function TeamActivityView({
     if (userFilter === "all") return null;
     return [...bySession.entries()]
       .map(([sessionId, evs]) => {
-        const sorted = [...evs].sort(
-          (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        );
+        const sorted = sortByTime(evs);
         const start = sorted[0].created_at;
-        const end = sorted[sorted.length - 1].created_at;
-        const minutes = (new Date(end).getTime() - new Date(start).getTime()) / 60000;
+        const minutes = activeMinutes(sorted);
         const pages = sorted.filter((e) => e.kind === "pageview").map((e) => e.path);
         return { sessionId, start, minutes, pages };
       })
