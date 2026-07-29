@@ -1797,6 +1797,43 @@ body {
 .dup-pair-card > .btn-ghost.small {
   margin-top: 10px;
 }
+.dup-preview-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.dup-preview-side {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  min-width: 0;
+}
+.dup-preview-side-label {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.dup-preview-group {
+  margin-bottom: 10px;
+}
+.dup-preview-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+.dup-preview-item {
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  word-break: break-word;
+}
+.dup-preview-item:last-child {
+  border-bottom: none;
+}
 .contact-card {
   background: #faf8f3;
   border: 1px solid var(--line);

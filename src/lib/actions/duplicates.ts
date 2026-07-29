@@ -88,6 +88,84 @@ export async function findDuplicateLeads(): Promise<{ error?: string; pairs?: Du
   return { pairs };
 }
 
+export type MergePreviewSide = {
+  leadId: string;
+  notes: { id: string; body: string; created_at: string }[];
+  files: { id: string; file_name: string; file_url: string; created_at: string }[];
+  calls: {
+    id: string;
+    direction: string;
+    status: string;
+    duration_seconds: number;
+    disposition: string;
+    created_at: string;
+  }[];
+  texts: { id: string; direction: string; body: string; created_at: string }[];
+  events: { id: string; title: string | null; date: string; time: string | null; event_type: string; status: string }[];
+};
+
+// Full record of what's actually attached to each contact -- shown before
+// a merge commits, since reassigning-then-deleting is irreversible and a
+// generic "this will move some stuff over" confirmation isn't enough to
+// judge whether that's safe.
+export async function getMergePreview(
+  leadIdA: string,
+  leadIdB: string
+): Promise<{ error?: string; sides?: Record<string, MergePreviewSide> }> {
+  const guard = await requireCanEditLeads();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: bothLeads } = await supabase
+    .from("leads")
+    .select("id")
+    .eq("company_id", guard.companyId)
+    .in("id", [leadIdA, leadIdB]);
+  if ((bothLeads?.length ?? 0) !== 2) return { error: "Contact not found." };
+
+  async function sideFor(leadId: string): Promise<MergePreviewSide> {
+    const [{ data: notes }, { data: files }, { data: calls }, { data: texts }, { data: events }] =
+      await Promise.all([
+        supabase
+          .from("lead_notes")
+          .select("id, body, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("lead_files")
+          .select("id, file_name, file_url, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("call_logs")
+          .select("id, direction, status, duration_seconds, disposition, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("sms_messages")
+          .select("id, direction, body, created_at")
+          .eq("lead_id", leadId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("events")
+          .select("id, title, date, time, event_type, status")
+          .eq("lead_id", leadId)
+          .order("date", { ascending: false }),
+      ]);
+    return {
+      leadId,
+      notes: (notes as MergePreviewSide["notes"]) ?? [],
+      files: (files as MergePreviewSide["files"]) ?? [],
+      calls: (calls as MergePreviewSide["calls"]) ?? [],
+      texts: (texts as MergePreviewSide["texts"]) ?? [],
+      events: (events as MergePreviewSide["events"]) ?? [],
+    };
+  }
+
+  const [sideA, sideB] = await Promise.all([sideFor(leadIdA), sideFor(leadIdB)]);
+  return { sides: { [leadIdA]: sideA, [leadIdB]: sideB } };
+}
+
 export async function dismissDuplicatePair(
   leadIdA: string,
   leadIdB: string
