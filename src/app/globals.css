@@ -457,6 +457,18 @@ body {
   background: #fff;
 }
 
+.company-switcher-btn {
+  width: auto;
+  height: auto;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .chip-row {
   display: flex;
   gap: 8px;
