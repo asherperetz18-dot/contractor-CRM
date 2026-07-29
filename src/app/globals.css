@@ -1760,6 +1760,43 @@ body {
 .modal-wide {
   max-width: 640px;
 }
+.dup-pair-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.dup-pair-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+.dup-pair-reasons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.dup-pair-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dup-pair-side {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dup-pair-side .btn-primary.small {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+.dup-pair-card > .btn-ghost.small {
+  margin-top: 10px;
+}
 .contact-card {
   background: #faf8f3;
   border: 1px solid var(--line);

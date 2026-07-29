@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
-import { canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
+import { canEditDispatch, canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
@@ -12,6 +12,7 @@ import { AdminToolsMenu } from "./admin-tools-menu";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { CompanySwitcher } from "./company-switcher";
+import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
@@ -89,6 +90,7 @@ export default async function AppLayout({
           </div>
           <div className="global-topbar-right">
             <CompanySwitcher companies={companies} currentCompanyId={profile.company_id} canCreate={isAdminRole(profile)} />
+            {canEditDispatch(profile) && <DuplicateContactsButton />}
             <QuickCreateMenu />
             {isAdminRole(profile) && <AdminToolsMenu />}
           </div>
