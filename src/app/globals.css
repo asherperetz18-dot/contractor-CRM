@@ -1760,6 +1760,66 @@ body {
 .modal-wide {
   max-width: 640px;
 }
+.ai-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 50vh;
+  min-height: 120px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.ai-chat-msg {
+  display: flex;
+}
+.ai-chat-msg-user {
+  justify-content: flex-end;
+}
+.ai-chat-msg-assistant {
+  justify-content: flex-start;
+}
+.ai-chat-bubble {
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+.ai-chat-msg-user .ai-chat-bubble {
+  background: var(--blueprint);
+  color: #fff;
+}
+.ai-chat-msg-assistant .ai-chat-bubble {
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+.ai-chat-thinking {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.ai-chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.ai-chat-input {
+  flex: 1;
+  resize: none;
+  min-height: 40px;
+  max-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+}
 .dup-pair-list {
   display: flex;
   flex-direction: column;
