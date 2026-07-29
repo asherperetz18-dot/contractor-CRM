@@ -18,7 +18,7 @@ export type NavGroupItem = {
 
 export type NavEntry = NavLinkItem | NavGroupItem;
 
-import { canSeePage, pathToPageKey, type Profile, type RolePageVisibilityRow } from "./data/types";
+import { canSeePage, isAdminRole, pathToPageKey, type Profile, type RolePageVisibilityRow } from "./data/types";
 
 export function filterNavForProfile(
   nav: NavEntry[],
@@ -27,6 +27,10 @@ export function filterNavForProfile(
 ): NavEntry[] {
   function allowed(href?: string): boolean {
     if (!href) return true;
+    // Not a role-visibility-managed page (e.g. Admin Settings) -- gated
+    // by isAdminRole directly instead, since AdminGate blocks the page
+    // itself for everyone else anyway.
+    if (href === "/settings") return isAdminRole(profile);
     const pageKey = pathToPageKey(href);
     if (!pageKey) return true;
     return canSeePage(profile, pageKey, overrides);
