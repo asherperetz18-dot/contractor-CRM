@@ -18,6 +18,7 @@ type Mapping = {
   address: number;
   projectType: number;
   value: number;
+  dateReceived: number;
 };
 
 const BLANK_MAPPING: Mapping = {
@@ -30,7 +31,28 @@ const BLANK_MAPPING: Mapping = {
   address: -1,
   projectType: -1,
   value: -1,
+  dateReceived: -1,
 };
+
+// Excel/Sheets exports can hand back a date cell as free text ("7/28/2026"),
+// an ISO string, or a raw serial number (days since 1899-12-30) depending on
+// how the sheet stored it -- normalize whatever we get into YYYY-MM-DD so
+// Postgres's date column parses it unambiguously rather than guessing.
+function toIsoDate(raw: string): string {
+  if (!raw) return "";
+  if (/^\d{4,6}(\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (serial > 20000 && serial < 80000) {
+      const parsed = XLSX.SSF.parse_date_code(serial);
+      if (parsed) {
+        return `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}`;
+      }
+    }
+  }
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return raw;
+}
 
 function guessColumn(headers: string[], candidates: string[]) {
   const norm = (s: string) => (s || "").toLowerCase().trim();
@@ -129,6 +151,14 @@ export function CsvImportPanel({
           address: guessColumn(head, ["address", "job address", "street"]),
           projectType: guessColumn(head, ["project", "project type", "scope"]),
           value: guessColumn(head, ["value", "amount", "est. value", "deal size"]),
+          dateReceived: guessColumn(head, [
+            "date received",
+            "received date",
+            "date",
+            "lead date",
+            "created date",
+            "created",
+          ]),
         });
         if (wb.SheetNames.length > 1) {
           setError(
@@ -164,6 +194,7 @@ export function CsvImportPanel({
         address: cell(row, mapping.address),
         project_type: cell(row, mapping.projectType),
         value: cell(row, mapping.value),
+        date_received: toIsoDate(cell(row, mapping.dateReceived)),
       };
     });
   }
@@ -210,6 +241,7 @@ export function CsvImportPanel({
     ["address", "Address"],
     ["projectType", "Project Type"],
     ["value", "Est. Value"],
+    ["dateReceived", "Date Received"],
   ];
 
   return (

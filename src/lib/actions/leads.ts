@@ -39,6 +39,7 @@ export type BulkLeadRow = {
   address: string;
   project_type: string;
   value: string;
+  date_received: string;
 };
 
 export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
@@ -56,6 +57,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     address: r.address || null,
     project_type: r.project_type || null,
     value: Number(r.value) || 0,
+    date_received: r.date_received || undefined,
     stage,
     source: "CSV Import",
     created_by: profile.id,
