@@ -1731,6 +1731,7 @@ body {
 .cal-cell {
   background: #fff;
   min-height: 90px;
+  min-width: 0;
   padding: 6px;
   cursor: pointer;
   display: flex;
@@ -2392,6 +2393,11 @@ body {
     flex: 0 0 auto;
     position: static;
     max-height: none;
+  }
+  .cal-status-chips {
+    /* Fixed row overflowed off the right edge with no scroll affordance,
+       hiding the last chip entirely -- wrap instead. */
+    flex-wrap: wrap;
   }
   .module-toolbar {
     flex-direction: column;
