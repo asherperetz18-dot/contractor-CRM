@@ -179,6 +179,10 @@ export function LeadForm({
   }
 
   const autosaveDirty = form !== lastSaved;
+  const formValid =
+    form.contact_type === "Company"
+      ? !!(form.company_name.trim() && form.phone.trim())
+      : !!(form.first_name.trim() && form.last_name.trim() && form.phone.trim());
 
   useEffect(() => {
     if (!lead || readOnly) return;
@@ -186,11 +190,7 @@ export function LeadForm({
       skipNextAutosave.current = false;
       return;
     }
-    const valid =
-      form.contact_type === "Company"
-        ? form.company_name.trim() && form.phone.trim()
-        : form.first_name.trim() && form.last_name.trim() && form.phone.trim();
-    if (!valid) return;
+    if (!formValid) return;
 
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(async () => {
@@ -218,11 +218,7 @@ export function LeadForm({
   }, [form, hasSecondContact]);
 
   async function handleSave() {
-    const valid =
-      form.contact_type === "Company"
-        ? form.company_name.trim() && form.phone.trim()
-        : form.first_name.trim() && form.last_name.trim() && form.phone.trim();
-    if (!valid) {
+    if (!formValid) {
       setError("Fill in the required fields (marked *) before saving.");
       return;
     }
@@ -841,7 +837,13 @@ export function LeadForm({
               </button>
             )}
             {lead && !readOnly && (
-              <span className="empty-hint">{autosaveDirty ? "Saving…" : "✓ Saved"}</span>
+              <span className="empty-hint">
+                {!formValid
+                  ? "Not saved — fill in required fields (marked *)"
+                  : autosaveDirty
+                    ? "Saving…"
+                    : "✓ Saved"}
+              </span>
             )}
           </div>
           <div>
