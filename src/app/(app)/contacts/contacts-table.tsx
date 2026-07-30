@@ -54,6 +54,13 @@ export function ContactsTable({
     setConsumedOpenId(openLeadId);
     const found = leads.find((l) => l.id === openLeadId);
     if (found) setEditing(found);
+  } else if (!openLeadId && consumedOpenId) {
+    // Param has been stripped from the URL (below) -- clear the guard so
+    // a future deep link to this same lead (e.g. searching for it again)
+    // can reopen it. Without this, consumedOpenId stays set forever and
+    // silently blocks every subsequent open of that lead until a full
+    // page refresh remounts the component.
+    setConsumedOpenId(null);
   }
 
   useEffect(() => {
