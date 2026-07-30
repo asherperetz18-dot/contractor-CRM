@@ -549,6 +549,7 @@ export type LeadTask = {
   lead_id: string;
   title: string;
   due_date: string;
+  due_time: string | null;
   completed_at: string | null;
   assigned_to: string | null;
   created_at: string;

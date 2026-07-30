@@ -232,7 +232,7 @@ export async function bookAppointmentForLead(
 
 export async function createLeadTask(
   leadId: string,
-  input: { title: string; due_date: string; assigned_to: string }
+  input: { title: string; due_date: string; due_time?: string; assigned_to: string }
 ) {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -242,6 +242,7 @@ export async function createLeadTask(
     lead_id: leadId,
     title: input.title.trim(),
     due_date: input.due_date,
+    due_time: input.due_time || null,
     assigned_to: input.assigned_to || null,
     created_by: profile.id,
     company_id: profile.company_id,

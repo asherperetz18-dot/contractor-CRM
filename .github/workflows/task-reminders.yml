@@ -1,0 +1,15 @@
+name: Task Due Reminder Check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger task due reminder check
+        run: |
+          curl -sf -X POST "https://www.aibuildpros.com/api/cron/task-reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

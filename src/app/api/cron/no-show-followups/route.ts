@@ -4,37 +4,21 @@ import { getCronSecret } from "@/lib/cron-env";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, type CompanyProfile } from "@/lib/data/types";
 
-export async function POST(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+type CompanyRow = Pick<
+  CompanyProfile,
+  "company_id" | "timezone" | "no_show_followup_enabled" | "no_show_grace_minutes" | "no_show_lookback_hours"
+>;
 
-  // No session here (cron) -- there's exactly one company today, and this
-  // job scans events globally. Once a second company exists this needs to
-  // loop per-company (each with its own timezone/settings).
-  const admin = createAdminClient();
-  const { data: company } = await admin
-    .from("company_profile")
-    .select("timezone, no_show_followup_enabled, no_show_grace_minutes, no_show_lookback_hours")
-    .single();
-  const profile = company as Pick<
-    CompanyProfile,
-    "timezone" | "no_show_followup_enabled" | "no_show_grace_minutes" | "no_show_lookback_hours"
-  > | null;
+async function processCompany(
+  admin: ReturnType<typeof createAdminClient>,
+  company: CompanyRow
+): Promise<{ checked: number; flagged: number }> {
+  if (!company.no_show_followup_enabled) return { checked: 0, flagged: 0 };
 
-  if (!profile?.no_show_followup_enabled) {
-    return NextResponse.json({ skipped: "disabled" });
-  }
-
-  const ianaZone = TIMEZONE_IANA[profile.timezone] ?? "America/Los_Angeles";
+  const ianaZone = TIMEZONE_IANA[company.timezone] ?? "America/Los_Angeles";
   const nowNaive = nowInZone(ianaZone);
-  const cutoffLate = new Date(nowNaive.getTime() - profile.no_show_grace_minutes * 60000);
-  const cutoffOld = new Date(nowNaive.getTime() - profile.no_show_lookback_hours * 3600000);
+  const cutoffLate = new Date(nowNaive.getTime() - company.no_show_grace_minutes * 60000);
+  const cutoffOld = new Date(nowNaive.getTime() - company.no_show_lookback_hours * 3600000);
 
   const lookbackDate = cutoffOld.toISOString().slice(0, 10);
   const todayDate = nowNaive.toISOString().slice(0, 10);
@@ -42,6 +26,7 @@ export async function POST(req: NextRequest) {
   const { data: candidates } = await admin
     .from("events")
     .select("id, date, time, status, lead_id, assigned_to, title")
+    .eq("company_id", company.company_id)
     .in("status", ["New", "Confirmed"])
     .is("followup_flagged_at", null)
     .gte("date", lookbackDate)
@@ -71,6 +56,7 @@ export async function POST(req: NextRequest) {
         title: `Follow up: no outcome set for "${row.title || "appointment"}" on ${row.date}`,
         due_date: todayDate,
         assigned_to: row.assigned_to,
+        company_id: company.company_id,
       });
     }
     await admin
@@ -80,5 +66,34 @@ export async function POST(req: NextRequest) {
     flagged += 1;
   }
 
-  return NextResponse.json({ checked: rows.length, flagged });
+  return { checked: rows.length, flagged };
+}
+
+export async function POST(req: NextRequest) {
+  const cronSecret = getCronSecret();
+  if (!cronSecret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // No session here (cron) -- loop every company so each uses its own
+  // timezone/settings and only ever touches its own events/tasks.
+  const admin = createAdminClient();
+  const { data: companies } = await admin
+    .from("company_profile")
+    .select("company_id, timezone, no_show_followup_enabled, no_show_grace_minutes, no_show_lookback_hours");
+  const companyRows = (companies as CompanyRow[] | null) ?? [];
+
+  let checked = 0;
+  let flagged = 0;
+  for (const company of companyRows) {
+    const result = await processCompany(admin, company);
+    checked += result.checked;
+    flagged += result.flagged;
+  }
+
+  return NextResponse.json({ companies: companyRows.length, checked, flagged });
 }

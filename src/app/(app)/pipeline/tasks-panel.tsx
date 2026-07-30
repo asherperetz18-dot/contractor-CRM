@@ -9,6 +9,14 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatDueTime(time: string | null) {
+  if (!time) return "";
+  return new Date(`1970-01-01T${time.slice(0, 5)}:00`).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function TasksPanel({
   leadId,
   tasks,
@@ -24,7 +32,8 @@ export function TasksPanel({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [pending, setPending] = useState(false);
-  const [form, setForm] = useState({ title: "", due_date: todayISO(), assigned_to: "" });
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ title: "", due_date: todayISO(), due_time: "", assigned_to: "" });
 
   const open = tasks.filter((t) => !t.completed_at);
   const done = tasks.filter((t) => t.completed_at);
@@ -37,9 +46,14 @@ export function TasksPanel({
   async function handleAdd() {
     if (!form.title.trim()) return;
     setPending(true);
-    await createLeadTask(leadId, form);
+    setError("");
+    const result = await createLeadTask(leadId, form);
     setPending(false);
-    setForm({ title: "", due_date: todayISO(), assigned_to: "" });
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setForm({ title: "", due_date: todayISO(), due_time: "", assigned_to: "" });
     setShowAdd(false);
     onChanged();
   }
@@ -97,7 +111,10 @@ export function TasksPanel({
                 {t.title}
                 {repName(t.assigned_to) && ` — ${repName(t.assigned_to)}`}
               </span>
-              <span className="mono">{t.due_date}</span>
+              <span className="mono">
+                {t.due_date}
+                {t.due_time && ` ${formatDueTime(t.due_time)}`}
+              </span>
               {!readOnly && (
                 <button
                   type="button"
@@ -128,6 +145,8 @@ export function TasksPanel({
         </ul>
       )}
 
+      {error && <p className="error-note">{error}</p>}
+
       {showAdd && !readOnly && (
         <div className="form-grid" style={{ marginTop: 10 }}>
           <Field label="Task">
@@ -144,6 +163,13 @@ export function TasksPanel({
               onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
             />
           </Field>
+          <Field label="Due Time (optional)">
+            <input
+              type="time"
+              value={form.due_time}
+              onChange={(e) => setForm((f) => ({ ...f, due_time: e.target.value }))}
+            />
+          </Field>
           <Field label="Assigned To">
             <select
               value={form.assigned_to}
@@ -157,6 +183,11 @@ export function TasksPanel({
               ))}
             </select>
           </Field>
+          {form.due_time && (
+            <p className="hint-note" style={{ gridColumn: "1 / -1", margin: 0 }}>
+              The assigned rep gets a text reminder 2 hours before this due time.
+            </p>
+          )}
           <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
             <button
               type="button"

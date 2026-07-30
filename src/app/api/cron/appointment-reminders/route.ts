@@ -36,28 +36,12 @@ function buildBody(kind: "night" | "hour", event: EventRow, lead: Lead): string 
   return lines.join("\n");
 }
 
-export async function POST(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) {
-    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
-  }
-
-  // No session here (cron) -- there's exactly one company today, and this
-  // job scans events globally. Once a second company exists this needs to
-  // loop per-company (each with its own timezone/settings).
-  const admin = createAdminClient();
-  const { data: company } = await admin.from("company_profile").select("timezone").single();
-  const profile = company as Pick<CompanyProfile, "timezone"> | null;
-  const ianaZone = TIMEZONE_IANA[profile?.timezone ?? ""] ?? "America/Los_Angeles";
+async function processCompany(
+  admin: ReturnType<typeof createAdminClient>,
+  twilioEnv: NonNullable<ReturnType<typeof getTwilioEnv>>,
+  company: Pick<CompanyProfile, "company_id" | "timezone">
+): Promise<{ checked: number; sent: number }> {
+  const ianaZone = TIMEZONE_IANA[company.timezone] ?? "America/Los_Angeles";
   const nowNaive = nowInZone(ianaZone);
 
   const todayDate = nowNaive.toISOString().slice(0, 10);
@@ -69,6 +53,7 @@ export async function POST(req: NextRequest) {
     .select(
       "id, date, time, status, event_type, lead_id, assigned_to, notes, reminder_night_before_sent_at, reminder_hour_before_sent_at"
     )
+    .eq("company_id", company.company_id)
     .in("status", ["New", "Confirmed"])
     .not("lead_id", "is", null)
     .not("assigned_to", "is", null)
@@ -77,12 +62,12 @@ export async function POST(req: NextRequest) {
     .or("reminder_night_before_sent_at.is.null,reminder_hour_before_sent_at.is.null");
 
   const rows = (candidates as EventRow[] | null) ?? [];
-  if (rows.length === 0) return NextResponse.json({ checked: 0, sent: 0 });
+  if (rows.length === 0) return { checked: 0, sent: 0 };
 
   const leadIds = [...new Set(rows.map((r) => r.lead_id!))];
   const repIds = [...new Set(rows.map((r) => r.assigned_to!))];
   const [{ data: leads }, { data: reps }] = await Promise.all([
-    admin.from("leads").select("*").in("id", leadIds),
+    admin.from("leads").select("*").eq("company_id", company.company_id).in("id", leadIds),
     admin.from("profiles").select("id, phone").in("id", repIds),
   ]);
   const leadById = new Map(((leads as Lead[]) ?? []).map((l) => [l.id, l]));
@@ -129,5 +114,37 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ checked: rows.length, sent });
+  return { checked: rows.length, sent };
+}
+
+export async function POST(req: NextRequest) {
+  const cronSecret = getCronSecret();
+  if (!cronSecret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = req.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const twilioEnv = getTwilioEnv();
+  if (!twilioEnv) {
+    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
+  }
+
+  // No session here (cron) -- loop every company so each uses its own
+  // timezone and only ever sees its own events/leads.
+  const admin = createAdminClient();
+  const { data: companies } = await admin.from("company_profile").select("company_id, timezone");
+  const companyRows = (companies as Pick<CompanyProfile, "company_id" | "timezone">[] | null) ?? [];
+
+  let checked = 0;
+  let sent = 0;
+  for (const company of companyRows) {
+    const result = await processCompany(admin, twilioEnv, company);
+    checked += result.checked;
+    sent += result.sent;
+  }
+
+  return NextResponse.json({ companies: companyRows.length, checked, sent });
 }
