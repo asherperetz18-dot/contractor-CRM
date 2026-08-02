@@ -47,8 +47,8 @@ export function SettingsGrid({ logoUrl }: { logoUrl: string | null }) {
       setLogoError("Please choose an image file.");
       return;
     }
-    if (file.size > 1.5 * 1024 * 1024) {
-      setLogoError("Image is too large — please use one under 1.5MB.");
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("Image is too large — please use one under 2MB.");
       return;
     }
     setLogoError("");

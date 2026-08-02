@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { useTimeFormat } from "@/components/time-format-context";
 import {
   stageColor,
   type CalendarRow,
@@ -12,9 +13,32 @@ import {
   type LeadTask,
   type PipelineStageRow,
   type Profile,
+  type TimeFormat,
 } from "@/lib/data/types";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
+
+function formatEventTime(time: string | null, format: TimeFormat): string {
+  if (!time) return "";
+  const hhmm = time.slice(0, 5);
+  if (format === "24h") return hhmm;
+  const [h, m] = hhmm.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function formatEventDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(d, today)) return "Today";
+  if (sameDay(d, tomorrow)) return "Tomorrow";
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
 
 export function ScheduleList({
   events,
@@ -39,6 +63,7 @@ export function ScheduleList({
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const timeFormat = useTimeFormat();
 
   const sorted = [...events].sort((a, b) =>
     (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""))
@@ -80,8 +105,8 @@ export function ScheduleList({
           {sorted.map((ev) => (
             <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
               <div className="schedule-date">
-                <span className="mono schedule-date-num">{ev.date}</span>
-                <span className="mono schedule-time">{ev.time}</span>
+                <span className="mono schedule-date-num">{formatEventDate(ev.date)}</span>
+                <span className="mono schedule-time">{formatEventTime(ev.time, timeFormat)}</span>
               </div>
               <div className="schedule-body">
                 <div className="schedule-title">{ev.title}</div>
