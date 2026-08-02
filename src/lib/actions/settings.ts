@@ -49,7 +49,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
   return {};
 }
 
-const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 
 export async function uploadLogo(formData: FormData) {
@@ -62,7 +62,7 @@ export async function uploadLogo(formData: FormData) {
     return { error: "Please choose an image file (PNG, JPEG, WebP, or SVG)." };
   }
   if (file.size > MAX_LOGO_BYTES) {
-    return { error: "Image is too large — please use one under 1.5MB." };
+    return { error: "Image is too large — please use one under 2MB." };
   }
 
   const admin = createAdminClient();
