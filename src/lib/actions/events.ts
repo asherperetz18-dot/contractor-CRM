@@ -58,3 +58,14 @@ export async function deleteEvent(id: string) {
   revalidateCalendarRoutes();
   return {};
 }
+
+export async function markRepInfoSent(id: string, which: "primary" | "second") {
+  const supabase = await createClient();
+  const sentAt = new Date().toISOString();
+  const update =
+    which === "primary" ? { rep_info_sent_at: sentAt } : { second_rep_info_sent_at: sentAt };
+  const { error } = await supabase.from("events").update(update).eq("id", id);
+  if (error) return { error: error.message };
+  revalidateCalendarRoutes();
+  return { sentAt };
+}

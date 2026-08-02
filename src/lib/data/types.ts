@@ -325,6 +325,8 @@ export type Event = {
   notes: string | null;
   customer_confirmed: boolean;
   rep_confirmed: boolean;
+  rep_info_sent_at: string | null;
+  second_rep_info_sent_at: string | null;
   created_at: string;
   updated_at: string;
 };

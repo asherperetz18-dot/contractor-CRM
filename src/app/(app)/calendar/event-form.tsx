@@ -29,7 +29,7 @@ import {
   type Profile,
   type SmsQuickText,
 } from "@/lib/data/types";
-import { createEvent, deleteEvent, updateEvent } from "@/lib/actions/events";
+import { createEvent, deleteEvent, markRepInfoSent, updateEvent } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage } from "@/lib/actions/leads";
@@ -125,10 +125,14 @@ export function EventForm({
     "idle"
   );
   const [repTextError, setRepTextError] = useState("");
+  const [repSentAt, setRepSentAt] = useState<string | null>(event?.rep_info_sent_at ?? null);
   const [secondRepTextStatus, setSecondRepTextStatus] = useState<
     "idle" | "pending" | "sent" | "error"
   >("idle");
   const [secondRepTextError, setSecondRepTextError] = useState("");
+  const [secondRepSentAt, setSecondRepSentAt] = useState<string | null>(
+    event?.second_rep_info_sent_at ?? null
+  );
   const [resultStage, setResultStage] = useState("");
   const [resultNote, setResultNote] = useState("");
   const [resultPending, setResultPending] = useState(false);
@@ -238,6 +242,7 @@ export function EventForm({
   async function sendRepInfo(repId: string, which: "primary" | "second") {
     const setStatus = which === "primary" ? setRepTextStatus : setSecondRepTextStatus;
     const setErrorMsg = which === "primary" ? setRepTextError : setSecondRepTextError;
+    const setSentAt = which === "primary" ? setRepSentAt : setSecondRepSentAt;
 
     const rep = reps.find((r) => r.id === repId);
     if (!rep) return;
@@ -283,8 +288,11 @@ export function EventForm({
       setErrorMsg(result.error);
       return;
     }
-    setStatus("sent");
-    setTimeout(() => setStatus("idle"), 2500);
+    setStatus("idle");
+    setSentAt(new Date().toISOString());
+    if (event?.id) {
+      await markRepInfoSent(event.id, which);
+    }
   }
 
   function sendQuickText(text: SmsQuickText) {
@@ -433,7 +441,13 @@ export function EventForm({
               <TimeField value={form.time} onChange={(v) => set("time", v)} />
             </Field>
             <Field label="Assigned To">
-              <select value={form.assigned_to} onChange={(e) => set("assigned_to", e.target.value)}>
+              <select
+                value={form.assigned_to}
+                onChange={(e) => {
+                  set("assigned_to", e.target.value);
+                  setRepSentAt(null);
+                }}
+              >
                 <option value="">Unassigned</option>
                 {reps.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -451,7 +465,11 @@ export function EventForm({
                   >
                     {repTextStatus === "pending" ? "Sending…" : "📲 Text Rep Info"}
                   </button>
-                  {repTextStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
+                  {repSentAt && (
+                    <span className="cp-saved" title={`Sent ${new Date(repSentAt).toLocaleString()}`}>
+                      ✓ Sent
+                    </span>
+                  )}
                 </div>
               )}
               {repTextStatus === "error" && <p className="error-note">{repTextError}</p>}
@@ -469,7 +487,10 @@ export function EventForm({
             <Field label="Second Assigned To">
               <select
                 value={form.second_assigned_to}
-                onChange={(e) => set("second_assigned_to", e.target.value)}
+                onChange={(e) => {
+                  set("second_assigned_to", e.target.value);
+                  setSecondRepSentAt(null);
+                }}
               >
                 <option value="">Unassigned</option>
                 {reps.map((r) => (
@@ -488,7 +509,14 @@ export function EventForm({
                   >
                     {secondRepTextStatus === "pending" ? "Sending…" : "📲 Text Rep Info"}
                   </button>
-                  {secondRepTextStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
+                  {secondRepSentAt && (
+                    <span
+                      className="cp-saved"
+                      title={`Sent ${new Date(secondRepSentAt).toLocaleString()}`}
+                    >
+                      ✓ Sent
+                    </span>
+                  )}
                 </div>
               )}
               {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
