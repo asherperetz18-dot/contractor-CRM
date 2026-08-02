@@ -955,6 +955,8 @@ body {
   margin-top: 8px;
 }
 .sidebar-logo-img {
+  display: block;
+  margin-bottom: 8px;
   max-height: 34px;
   max-width: 100%;
   object-fit: contain;

@@ -51,12 +51,11 @@ export function MobileNav({
           >
             ✕
           </button>
-          {logoUrl ? (
+          {logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="Company logo" className="sidebar-logo-img" />
-          ) : (
-            <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
           )}
+          <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
           <div className="sidebar-sub">v{version}</div>
         </div>
         <nav className="sidebar-nav">

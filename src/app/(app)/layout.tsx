@@ -100,14 +100,11 @@ export default async function AppLayout({
         <div className="global-topbar">
           <div className="global-topbar-left">
             <MobileNavToggle />
-            {logoUrl ? (
+            {logoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="Company logo" className="topbar-logo-img" />
-            ) : (
-              <span className="global-topbar-brand">
-                {companyName || "Contractor CRM"}
-              </span>
             )}
+            <span className="global-topbar-brand">{companyName || "Contractor CRM"}</span>
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
