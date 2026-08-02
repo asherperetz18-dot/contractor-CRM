@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Oswald, Inter, JetBrains_Mono } from "next/font/google";
-import { createAdminClient } from "@/lib/supabase/admin";
 import "./globals.css";
 
 const oswald = Oswald({
@@ -21,20 +20,15 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  // Public route, no session -- there's exactly one company today, so
-  // this is the one company_profile row. Once a second company exists
-  // this needs a real per-tenant resolution (e.g. by hostname).
-  const admin = createAdminClient();
-  const { data } = await admin.from("company_profile").select("logo_url").single();
-  const logoUrl = (data as { logo_url: string | null } | null)?.logo_url;
-
-  return {
-    title: "Contractor CRM",
-    description: "Contractor CRM",
-    icons: logoUrl ? { icon: logoUrl } : undefined,
-  };
-}
+// Kept static (no per-request DB/cookie lookup here) so public routes
+// like /login stay prerenderable. The per-company favicon (company
+// logo) is resolved in the authenticated (app) layout instead, which
+// already knows the signed-in user's current company and is dynamic
+// anyway.
+export const metadata: Metadata = {
+  title: "Contractor CRM",
+  description: "Contractor CRM",
+};
 
 export default function RootLayout({
   children,

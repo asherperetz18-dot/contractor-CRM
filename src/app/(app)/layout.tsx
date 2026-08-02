@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -17,6 +18,26 @@ import { AiAssistantButton } from "./ai-assistant-button";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
+
+// Per-company favicon (the browser tab icon), since this app is
+// multi-tenant on a single domain -- the root layout can't resolve this
+// without a session, so it lives here where profile.company_id is
+// already known. getCurrentProfile() is cache()-wrapped, so this is
+// deduped with the identical call in AppLayout below.
+export async function generateMetadata(): Promise<Metadata> {
+  const profile = await getCurrentProfile();
+  if (!profile) return {};
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("company_profile")
+    .select("logo_url")
+    .eq("company_id", profile.company_id)
+    .single();
+  const logoUrl = (data as { logo_url: string | null } | null)?.logo_url;
+
+  return logoUrl ? { icons: { icon: logoUrl } } : {};
+}
 
 function firstVisibleHref(nav: NavEntry[]): string | null {
   for (const entry of nav) {
