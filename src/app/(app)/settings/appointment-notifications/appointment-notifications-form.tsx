@@ -214,8 +214,9 @@ export function AppointmentNotificationsForm({
         </p>
         <p className="hint-note">
           Available variables: <code className="mono">{"{title}"}</code>,{" "}
-          <code className="mono">{"{client_name}"}</code>, <code className="mono">{"{when}"}</code>
-          , <code className="mono">{"{address_link}"}</code>
+          <code className="mono">{"{client_name}"}</code>,{" "}
+          <code className="mono">{"{project_type}"}</code>,{" "}
+          <code className="mono">{"{when}"}</code>, <code className="mono">{"{address_link}"}</code>
         </p>
         <textarea
           value={repTemplate}

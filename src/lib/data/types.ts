@@ -165,7 +165,7 @@ export type CompanyProfile = {
 };
 
 export const REP_APPOINTMENT_INFO_DEFAULT =
-  "Appointment: {title}\nClient: {client_name}\n📅 {when}\n📍 {address_link}";
+  "Appointment: {title}\nClient: {client_name}\n🔧 {project_type}\n📅 {when}\n📍 {address_link}";
 
 // Fills the rep-facing "Text Rep Info" template. client_name is left blank
 // (never the phone number) when the lead has no real name on file -- some
@@ -178,13 +178,14 @@ const REP_TEMPLATE_EMPTY = "@@EMPTY@@";
 
 export function fillRepInfoTemplate(
   template: string,
-  vars: { title: string; clientName: string; when: string; addressLink: string }
+  vars: { title: string; clientName: string; when: string; addressLink: string; projectType?: string }
 ): string {
   const filled = template
     .replace(/\{title\}/g, vars.title || REP_TEMPLATE_EMPTY)
     .replace(/\{client_name\}/g, vars.clientName || REP_TEMPLATE_EMPTY)
     .replace(/\{when\}/g, vars.when || REP_TEMPLATE_EMPTY)
-    .replace(/\{address_link\}/g, vars.addressLink || REP_TEMPLATE_EMPTY);
+    .replace(/\{address_link\}/g, vars.addressLink || REP_TEMPLATE_EMPTY)
+    .replace(/\{project_type\}/g, vars.projectType || REP_TEMPLATE_EMPTY);
   return filled
     .split("\n")
     .filter((line) => !line.includes(REP_TEMPLATE_EMPTY))

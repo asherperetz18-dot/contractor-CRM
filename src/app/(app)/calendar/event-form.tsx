@@ -266,6 +266,7 @@ export function EventForm({
       clientName,
       when: `${dateLabel}${timeLabel ? ` at ${timeLabel}` : ""}`,
       addressLink: address ? mapsUrl(address) : "",
+      projectType: lead?.project_type || "",
     });
 
     const result = await sendSms(null, rep.phone, body);
