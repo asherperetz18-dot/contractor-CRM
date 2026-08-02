@@ -10,10 +10,49 @@ type EventRow = {
   id: string;
   lead_id: string | null;
   company_id: string;
+  date: string;
+  time: string | null;
+  assigned_to: string | null;
+  second_assigned_to: string | null;
+  rep_info_sent_at: string | null;
+  second_rep_info_sent_at: string | null;
+  reminder_night_before_sent_at: string | null;
+  reminder_hour_before_sent_at: string | null;
 };
+
+const EVENT_COLUMNS =
+  "id, lead_id, company_id, date, time, assigned_to, second_assigned_to, rep_info_sent_at, second_rep_info_sent_at, reminder_night_before_sent_at, reminder_hour_before_sent_at";
 
 function escapeXml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// When did we last text this rep about this specific appointment? That is
+// almost certainly the message they're replying to, and it beats guessing
+// by date -- appointments routinely sit in the past still unconfirmed, so
+// a "next upcoming" match would skip them entirely.
+function lastTextedRepAt(ev: EventRow, repId: string): string | null {
+  const stamps = [
+    ev.assigned_to === repId ? ev.rep_info_sent_at : null,
+    ev.second_assigned_to === repId ? ev.second_rep_info_sent_at : null,
+    ev.reminder_night_before_sent_at,
+    ev.reminder_hour_before_sent_at,
+  ].filter((s): s is string => !!s);
+  return stamps.length ? stamps.sort()[stamps.length - 1] : null;
+}
+
+// Fallback when nothing was texted: the appointment nearest to now,
+// preferring one that hasn't happened yet.
+function pickNearest(rows: EventRow[]): EventRow | null {
+  const now = Date.now();
+  const withTime = rows.map((r) => ({
+    row: r,
+    at: new Date(`${r.date}T${(r.time ?? "00:00:00").slice(0, 8)}`).getTime(),
+  }));
+  const upcoming = withTime.filter((x) => x.at >= now).sort((a, b) => a.at - b.at);
+  if (upcoming.length) return upcoming[0].row;
+  const past = withTime.sort((a, b) => b.at - a.at);
+  return past[0]?.row ?? null;
 }
 
 export async function POST(req: NextRequest) {
@@ -56,7 +95,6 @@ export async function POST(req: NextRequest) {
 
   const isYesNo = YES_WORDS.has(normalizedBody) || NO_WORDS.has(normalizedBody);
   const confirmed = YES_WORDS.has(normalizedBody);
-  const todayISO = new Date().toISOString().slice(0, 10);
 
   let targetEvent: EventRow | null = null;
   let replyMessage: string | null = null;
@@ -68,14 +106,16 @@ export async function POST(req: NextRequest) {
   if (isYesNo && matchedRep) {
     const { data: candidateEvents } = await admin
       .from("events")
-      .select("id, lead_id, company_id")
+      .select(EVENT_COLUMNS)
       .or(`assigned_to.eq.${matchedRep.id},second_assigned_to.eq.${matchedRep.id}`)
-      .in("status", ["New", "Confirmed"])
-      .gte("date", todayISO)
-      .order("date", { ascending: true })
-      .order("time", { ascending: true })
-      .limit(1);
-    targetEvent = (candidateEvents as EventRow[] | null)?.[0] ?? null;
+      .in("status", ["New", "Confirmed"]);
+
+    const rows = (candidateEvents as EventRow[] | null) ?? [];
+    const texted = rows
+      .map((row) => ({ row, at: lastTextedRepAt(row, matchedRep.id) }))
+      .filter((x): x is { row: EventRow; at: string } => !!x.at)
+      .sort((a, b) => b.at.localeCompare(a.at));
+    targetEvent = texted[0]?.row ?? pickNearest(rows);
 
     if (targetEvent) {
       await admin.from("events").update({ rep_confirmed: confirmed }).eq("id", targetEvent.id);
@@ -97,14 +137,10 @@ export async function POST(req: NextRequest) {
   } else if (isYesNo && matchedLead) {
     const { data: candidateEvents } = await admin
       .from("events")
-      .select("id, lead_id, company_id")
+      .select(EVENT_COLUMNS)
       .eq("lead_id", matchedLead.id)
-      .in("status", ["New", "Confirmed"])
-      .gte("date", todayISO)
-      .order("date", { ascending: true })
-      .order("time", { ascending: true })
-      .limit(1);
-    targetEvent = (candidateEvents as EventRow[] | null)?.[0] ?? null;
+      .in("status", ["New", "Confirmed"]);
+    targetEvent = pickNearest((candidateEvents as EventRow[] | null) ?? []);
 
     if (targetEvent) {
       await admin.from("events").update({ customer_confirmed: confirmed }).eq("id", targetEvent.id);
