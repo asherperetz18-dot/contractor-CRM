@@ -327,6 +327,8 @@ export type Event = {
   rep_confirmed: boolean;
   rep_info_sent_at: string | null;
   second_rep_info_sent_at: string | null;
+  notes_updated_by: string | null;
+  notes_updated_at: string | null;
   created_at: string;
   updated_at: string;
 };

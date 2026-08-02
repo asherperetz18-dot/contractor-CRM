@@ -147,6 +147,14 @@ export function EventForm({
     : [];
   const showResultPanel = !!lead && !!event && form.status === "Showed";
 
+  function repName(id: string | null) {
+    if (!id) return null;
+    const rep = reps.find((r) => r.id === id);
+    return rep?.name || rep?.email || null;
+  }
+
+  const notesAuthorName = event?.notes_updated_by ? repName(event.notes_updated_by) : null;
+
   const set = <K extends keyof EventInput>(k: K, v: EventInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -553,6 +561,17 @@ export function EventForm({
           {!lead && (
             <Field label="Notes">
               <textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} />
+              {event?.notes_updated_at && (
+                <p className="empty-hint" style={{ marginTop: 4 }}>
+                  Last edited by {notesAuthorName || "Unknown"} ·{" "}
+                  {new Date(event.notes_updated_at).toLocaleString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+              )}
             </Field>
           )}
         </fieldset>
@@ -711,6 +730,17 @@ export function EventForm({
             rows={6}
             disabled={readOnly || pending}
           />
+          {event?.notes_updated_at && (
+            <p className="empty-hint" style={{ marginTop: 4 }}>
+              Last edited by {notesAuthorName || "Unknown"} ·{" "}
+              {new Date(event.notes_updated_at).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          )}
         </Field>
       )}
 

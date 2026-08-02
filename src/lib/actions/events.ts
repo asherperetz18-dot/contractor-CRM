@@ -32,8 +32,12 @@ export async function createEvent(input: EventInput, leadId?: string) {
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
+  const notesStamp = input.notes.trim()
+    ? { notes_updated_by: profile.id, notes_updated_at: new Date().toISOString() }
+    : {};
   const { error } = await supabase.from("events").insert({
     ...toRow(input),
+    ...notesStamp,
     lead_id: leadId || null,
     created_by: profile.id,
     company_id: profile.company_id,
@@ -44,8 +48,18 @@ export async function createEvent(input: EventInput, leadId?: string) {
 }
 
 export async function updateEvent(id: string, input: EventInput) {
+  const profile = await getCurrentProfile();
   const supabase = await createClient();
-  const { error } = await supabase.from("events").update(toRow(input)).eq("id", id);
+  const { data: existing } = await supabase.from("events").select("notes").eq("id", id).single();
+  const notesChanged = (existing?.notes ?? "") !== (input.notes || "");
+  const notesStamp =
+    notesChanged && profile
+      ? { notes_updated_by: profile.id, notes_updated_at: new Date().toISOString() }
+      : {};
+  const { error } = await supabase
+    .from("events")
+    .update({ ...toRow(input), ...notesStamp })
+    .eq("id", id);
   if (error) return { error: error.message };
   revalidateCalendarRoutes();
   return {};
