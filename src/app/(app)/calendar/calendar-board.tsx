@@ -112,7 +112,12 @@ export function CalendarBoard({
   const filteredEvents = events.filter((ev) => {
     if (statusFilter.size > 0 && !statusFilter.has(ev.status)) return false;
     if (calendarFilter.size > 0 && !calendarFilter.has(ev.event_type)) return false;
-    if (repFilter.size > 0 && (!ev.assigned_to || !repFilter.has(ev.assigned_to))) return false;
+    if (
+      repFilter.size > 0 &&
+      !(ev.assigned_to && repFilter.has(ev.assigned_to)) &&
+      !(ev.second_assigned_to && repFilter.has(ev.second_assigned_to))
+    )
+      return false;
     return true;
   });
 
@@ -297,6 +302,7 @@ export function CalendarBoard({
                 <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
                 <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
                 {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
+                {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                 {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
               </div>
             </div>

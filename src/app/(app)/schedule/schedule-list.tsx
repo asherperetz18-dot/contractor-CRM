@@ -113,6 +113,7 @@ export function ScheduleList({
                 <div className="schedule-meta">
                   <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
                   {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
+                  {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                   {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
                 </div>
               </div>
