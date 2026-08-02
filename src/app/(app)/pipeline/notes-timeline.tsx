@@ -22,7 +22,7 @@ export function NotesTimeline({
   const [error, setError] = useState("");
 
   function authorName(id: string | null) {
-    if (!id) return "Unknown";
+    if (!id) return "System";
     const rep = reps.find((r) => r.id === id);
     return rep?.name || rep?.email || "Unknown";
   }

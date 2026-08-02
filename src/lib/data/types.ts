@@ -165,7 +165,7 @@ export type CompanyProfile = {
 };
 
 export const REP_APPOINTMENT_INFO_DEFAULT =
-  "Appointment: {title}\nClient: {client_name}\n🔧 {project_type}\n📅 {when}\n📍 {address_link}";
+  "Appointment: {title}\nClient: {client_name}\n🔧 {project_type}\n📅 {when}\n📍 {address_link}\n\nReply YES to confirm or NO to decline.";
 
 // Fills the rep-facing "Text Rep Info" template. client_name is left blank
 // (never the phone number) when the lead has no real name on file -- some
@@ -219,7 +219,7 @@ export type SmsQuickText = {
 
 export const QUICK_TEXT_DEFAULTS: Record<SmsQuickTextKey, string> = {
   confirm:
-    "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} — reply YES to confirm.",
+    "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} — reply YES to confirm or NO to reschedule.",
   reschedule:
     "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} appointment — what time works better for you?",
   on_my_way:
