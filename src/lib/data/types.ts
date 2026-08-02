@@ -319,6 +319,7 @@ export type Event = {
   event_type: EventType;
   status: EventStatus;
   assigned_to: string | null;
+  second_assigned_to: string | null;
   job_id: string | null;
   lead_id: string | null;
   notes: string | null;
@@ -335,6 +336,7 @@ export type EventInput = {
   event_type: EventType;
   status: EventStatus;
   assigned_to: string;
+  second_assigned_to: string;
   job_id: string;
   notes: string;
   customer_confirmed: boolean;

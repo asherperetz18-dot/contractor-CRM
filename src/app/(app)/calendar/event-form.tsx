@@ -72,6 +72,7 @@ function toInput(event?: Event, initialDate?: string): EventInput {
     event_type: event?.event_type ?? "Estimate",
     status: event?.status ?? "New",
     assigned_to: event?.assigned_to ?? "",
+    second_assigned_to: event?.second_assigned_to ?? "",
     job_id: event?.job_id ?? "",
     notes: event?.notes ?? "",
     customer_confirmed: event?.customer_confirmed ?? false,
@@ -124,6 +125,10 @@ export function EventForm({
     "idle"
   );
   const [repTextError, setRepTextError] = useState("");
+  const [secondRepTextStatus, setSecondRepTextStatus] = useState<
+    "idle" | "pending" | "sent" | "error"
+  >("idle");
+  const [secondRepTextError, setSecondRepTextError] = useState("");
   const [resultStage, setResultStage] = useState("");
   const [resultNote, setResultNote] = useState("");
   const [resultPending, setResultPending] = useState(false);
@@ -230,16 +235,19 @@ export function EventForm({
     setShowQuickText((v) => !v);
   }
 
-  async function sendRepInfo() {
-    const rep = reps.find((r) => r.id === form.assigned_to);
+  async function sendRepInfo(repId: string, which: "primary" | "second") {
+    const setStatus = which === "primary" ? setRepTextStatus : setSecondRepTextStatus;
+    const setErrorMsg = which === "primary" ? setRepTextError : setSecondRepTextError;
+
+    const rep = reps.find((r) => r.id === repId);
     if (!rep) return;
     if (!rep.phone) {
-      setRepTextStatus("error");
-      setRepTextError(`${rep.name || rep.email || "This rep"} doesn't have a phone number on file.`);
+      setStatus("error");
+      setErrorMsg(`${rep.name || rep.email || "This rep"} doesn't have a phone number on file.`);
       return;
     }
-    setRepTextStatus("pending");
-    setRepTextError("");
+    setStatus("pending");
+    setErrorMsg("");
 
     const address = lead?.address || jobs.find((j) => j.id === form.job_id)?.address || null;
     const dateLabel = new Date(`${form.date}T00:00:00`).toLocaleDateString("en-US", {
@@ -271,12 +279,12 @@ export function EventForm({
 
     const result = await sendSms(null, rep.phone, body);
     if (result?.error) {
-      setRepTextStatus("error");
-      setRepTextError(result.error);
+      setStatus("error");
+      setErrorMsg(result.error);
       return;
     }
-    setRepTextStatus("sent");
-    setTimeout(() => setRepTextStatus("idle"), 2500);
+    setStatus("sent");
+    setTimeout(() => setStatus("idle"), 2500);
   }
 
   function sendQuickText(text: SmsQuickText) {
@@ -438,7 +446,7 @@ export function EventForm({
                   <button
                     type="button"
                     className="btn-ghost small"
-                    onClick={sendRepInfo}
+                    onClick={() => sendRepInfo(form.assigned_to, "primary")}
                     disabled={repTextStatus === "pending"}
                   >
                     {repTextStatus === "pending" ? "Sending…" : "📲 Text Rep Info"}
@@ -457,6 +465,33 @@ export function EventForm({
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label="Second Assigned To">
+              <select
+                value={form.second_assigned_to}
+                onChange={(e) => set("second_assigned_to", e.target.value)}
+              >
+                <option value="">Unassigned</option>
+                {reps.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name || r.email}
+                  </option>
+                ))}
+              </select>
+              {form.second_assigned_to && (
+                <div className="rep-text-row">
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={() => sendRepInfo(form.second_assigned_to, "second")}
+                    disabled={secondRepTextStatus === "pending"}
+                  >
+                    {secondRepTextStatus === "pending" ? "Sending…" : "📲 Text Rep Info"}
+                  </button>
+                  {secondRepTextStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
+                </div>
+              )}
+              {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
             </Field>
           </div>
 
@@ -605,7 +640,15 @@ export function EventForm({
               <tbody>
                 {linkedEstimates.map((d) => (
                   <tr key={d.id}>
-                    <td>{d.date}</td>
+                    <td>
+                      {d.date
+                        ? new Date(`${d.date}T00:00:00`).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : ""}
+                    </td>
                     <td>
                       <Badge color="#2D5F8A">{d.status}</Badge>
                     </td>

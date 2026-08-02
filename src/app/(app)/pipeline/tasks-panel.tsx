@@ -17,6 +17,18 @@ function formatDueTime(time: string | null) {
   });
 }
 
+function formatDueDate(dateStr: string) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d.getTime())) return dateStr;
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (sameDay(d, today)) return "Today";
+  if (sameDay(d, tomorrow)) return "Tomorrow";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export function TasksPanel({
   leadId,
   tasks,
@@ -112,7 +124,7 @@ export function TasksPanel({
                 {repName(t.assigned_to) && ` — ${repName(t.assigned_to)}`}
               </span>
               <span className="mono">
-                {t.due_date}
+                {formatDueDate(t.due_date)}
                 {t.due_time && ` ${formatDueTime(t.due_time)}`}
               </span>
               {!readOnly && (
@@ -139,7 +151,7 @@ export function TasksPanel({
               <span style={{ flex: 1, textDecoration: "line-through" }}>
                 {t.title}
               </span>
-              <span className="mono">{t.due_date}</span>
+              <span className="mono">{formatDueDate(t.due_date)}</span>
             </li>
           ))}
         </ul>

@@ -5,6 +5,7 @@ import { leadDisplayName, money as moneyFmt, type RolePageVisibilityRow } from "
 import type { Event, Lead } from "@/lib/data/types";
 import { NAV, filterNavForProfile } from "@/lib/nav";
 import { MobileDashboard, type MobileModule } from "./mobile-dashboard";
+import { UpcomingAppointments } from "./upcoming-appointments";
 
 function money(n: number) {
   return (Number(n) || 0).toLocaleString("en-US", {
@@ -213,18 +214,7 @@ export default async function DashboardPage() {
           </div>
           <div className="dash-panel">
             <h3>Upcoming appointments</h3>
-            {(nextEvents.data as Event[] | null)?.length ? (
-              <ul className="dash-list">
-                {(nextEvents.data as Event[]).map((ev) => (
-                  <li key={ev.id}>
-                    <span className="mono">{ev.date}</span>
-                    <span style={{ flex: 1 }}>{ev.title}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="empty-hint">Nothing scheduled.</p>
-            )}
+            <UpcomingAppointments events={(nextEvents.data as Event[] | null) ?? []} />
             <Link href="/schedule" className="btn-ghost small" style={{ display: "inline-block" }}>
               View Schedule
             </Link>

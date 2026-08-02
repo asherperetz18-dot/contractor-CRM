@@ -13,6 +13,7 @@ function toRow(input: EventInput) {
     event_type: input.event_type,
     status: input.status,
     assigned_to: input.assigned_to || null,
+    second_assigned_to: input.second_assigned_to || null,
     job_id: input.job_id || null,
     notes: input.notes || null,
     customer_confirmed: input.customer_confirmed,

@@ -148,6 +148,7 @@ export function AppointmentWizard({
             event_type: details.eventType,
             status: "New",
             assigned_to: details.assignedTo,
+            second_assigned_to: "",
             job_id: "",
             notes: "",
             customer_confirmed: false,
