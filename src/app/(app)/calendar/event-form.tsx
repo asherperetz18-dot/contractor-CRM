@@ -357,6 +357,9 @@ export function EventForm({
             </div>
           )}
           {lead.email && <div className="contact-card-line">✉ {lead.email}</div>}
+          {lead.project_type && (
+            <div className="contact-card-line">Project Type: {lead.project_type}</div>
+          )}
           {lead.source && <div className="contact-card-line">Source: {lead.source}</div>}
         </div>
       )}
