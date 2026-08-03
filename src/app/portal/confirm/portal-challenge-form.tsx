@@ -35,9 +35,11 @@ export function PortalChallengeForm() {
     <div className="portal-auth-wrap">
       <div className="portal-auth-card">
         <h1 className="portal-auth-title">Confirm it&apos;s you</h1>
+        {/* The example is deliberately fictional. Using a real customer's
+            address here would print the answer on the page for them. */}
         <p className="portal-auth-sub">
           For your security, enter the street number of your project address — just the number, for
-          example <strong>5555</strong> for 5555 Melrose Ave.
+          example <strong>1234</strong> for 1234 Main St.
         </p>
         <form onSubmit={handleSubmit}>
           <label className="portal-auth-label" htmlFor="portal-street">
