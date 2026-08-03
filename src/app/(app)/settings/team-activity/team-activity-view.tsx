@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import type { ActivityEvent, Profile } from "@/lib/data/types";
+import { PAGE_REGISTRY, type ActivityEvent, type Profile } from "@/lib/data/types";
 
 type RangeKey = "today" | "7" | "30" | "90";
 const RANGE_LABELS: Record<RangeKey, string> = {
@@ -49,6 +49,38 @@ function activeMinutes(sortedEvents: ActivityEvent[]): number {
     if (delta > 0 && delta <= MAX_ACTIVE_GAP_MINUTES) total += delta;
   }
   return total;
+}
+
+/**
+ * Active minutes attributed to the page they were spent on.
+ *
+ * Each counted stretch belongs to the page the user was already on when it
+ * started, which is why the earlier event's path is used rather than the
+ * later one's -- otherwise time would be credited to whatever page they
+ * happened to navigate to next.
+ */
+function minutesByPath(sortedEvents: ActivityEvent[], into: Map<string, number>) {
+  for (let i = 1; i < sortedEvents.length; i++) {
+    const delta =
+      (new Date(sortedEvents[i].created_at).getTime() -
+        new Date(sortedEvents[i - 1].created_at).getTime()) /
+      60000;
+    if (delta > 0 && delta <= MAX_ACTIVE_GAP_MINUTES) {
+      const path = sortedEvents[i - 1].path || "(unknown)";
+      into.set(path, (into.get(path) ?? 0) + delta);
+    }
+  }
+}
+
+function prettyPath(path: string): string {
+  if (path === "/") return "Dashboard";
+  const known = PAGE_REGISTRY.find((p) => p.href === path);
+  if (known) return known.label;
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((s) => s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
+    .join(" › ");
 }
 
 export function TeamActivityView({
@@ -140,33 +172,27 @@ export function TeamActivityView({
 
   const topPages = useMemo(() => {
     const bySessionOrdered = [...bySession.values()].map(sortByTime);
-    const perPage = new Map<string, { views: number; timeTotal: number; timeCount: number }>();
+    const views = new Map<string, number>();
+    // Total active time per page, accumulated across every session, rather
+    // than the old measure -- the gap to the single next event, which a
+    // 30s heartbeat capped at ~0.5m no matter how long someone really
+    // stayed, making the column look precise while saying nothing.
+    const minutes = new Map<string, number>();
     for (const evs of bySessionOrdered) {
-      for (let i = 0; i < evs.length; i++) {
-        const e = evs[i];
-        if (e.kind !== "pageview") continue;
-        const row = perPage.get(e.path) ?? { views: 0, timeTotal: 0, timeCount: 0 };
-        row.views += 1;
-        const next = evs[i + 1];
-        if (next) {
-          const delta =
-            (new Date(next.created_at).getTime() - new Date(e.created_at).getTime()) / 60000;
-          if (delta > 0 && delta <= MAX_ACTIVE_GAP_MINUTES) {
-            row.timeTotal += delta;
-            row.timeCount += 1;
-          }
-        }
-        perPage.set(e.path, row);
+      for (const e of evs) {
+        if (e.kind === "pageview") views.set(e.path, (views.get(e.path) ?? 0) + 1);
       }
+      minutesByPath(evs, minutes);
     }
-    return [...perPage.entries()]
-      .map(([path, row]) => ({
+    const paths = new Set([...views.keys(), ...minutes.keys()]);
+    return [...paths]
+      .map((path) => ({
         path,
-        views: row.views,
-        avgTime: row.timeCount ? row.timeTotal / row.timeCount : null,
+        views: views.get(path) ?? 0,
+        minutes: minutes.get(path) ?? 0,
       }))
-      .sort((a, b) => b.views - a.views)
-      .slice(0, 10);
+      .sort((a, b) => b.minutes - a.minutes || b.views - a.views)
+      .slice(0, 12);
   }, [bySession]);
 
   const sessionDetail = useMemo(() => {
@@ -350,17 +376,20 @@ export function TeamActivityView({
             <thead>
               <tr>
                 <th>Page</th>
-                <th>Views</th>
-                <th className="right">Avg Time</th>
+                <th>Opened</th>
+                <th className="right">Active Time</th>
               </tr>
             </thead>
             <tbody>
               {topPages.map((p) => (
                 <tr key={p.path}>
-                  <td>{p.path}</td>
+                  <td>
+                    {prettyPath(p.path)}
+                    <div className="ai-proposal-count">{p.path}</div>
+                  </td>
                   <td className="mono">{p.views}</td>
                   <td className="right mono">
-                    {p.avgTime === null ? "—" : `${p.avgTime.toFixed(1)}m`}
+                    {p.minutes >= 1 ? `${p.minutes.toFixed(0)}m` : `${Math.round(p.minutes * 60)}s`}
                   </td>
                 </tr>
               ))}
