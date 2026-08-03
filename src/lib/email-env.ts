@@ -15,6 +15,17 @@ export function getEmailEnv() {
   return { apiKey: stripBom(apiKey), from: stripBom(from) };
 }
 
+// An API key must go into an HTTP header, which only accepts single-byte
+// characters. Copying a key from a UI that shows it truncated ("re_abc…xyz")
+// smuggles in a U+2026 ellipsis and makes fetch throw a raw TypeError, so
+// this is checked up front and reported in terms of the actual mistake.
+function nonAsciiComplaint(label: string, value: string): string | null {
+  const bad = [...value].find((ch) => ch.charCodeAt(0) > 255);
+  if (!bad) return null;
+  const detail = bad === "…" ? " It contains a “…”, which usually means only the shortened, visible part of the value was copied." : "";
+  return `${label} has an invalid character.${detail} Re-copy the full value and save it again.`;
+}
+
 export type SendEmailResult = { id?: string; error?: string };
 
 export async function sendEmail(
@@ -31,20 +42,33 @@ export async function sendEmail(
     };
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: env.from, to: [to], subject, html, text }),
-  });
+  const keyProblem = nonAsciiComplaint("The email API key", env.apiKey);
+  if (keyProblem) return { error: keyProblem };
+  const fromProblem = nonAsciiComplaint("The sender address (EMAIL_FROM)", env.from);
+  if (fromProblem) return { error: fromProblem };
 
-  const json = (await res.json().catch(() => null)) as
-    | { id?: string; message?: string; name?: string }
-    | null;
-  if (!res.ok) {
-    return { error: json?.message || "Could not send the email." };
+  // Network faults and malformed values surface as a readable message
+  // instead of a 500 from an unhandled throw.
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ from: env.from, to: [to], subject, html, text }),
+    });
+
+    const json = (await res.json().catch(() => null)) as
+      | { id?: string; message?: string; name?: string }
+      | null;
+    if (!res.ok) {
+      return { error: json?.message || `Could not send the email (HTTP ${res.status}).` };
+    }
+    return { id: json?.id };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? `Could not send the email: ${e.message}` : "Could not send the email.",
+    };
   }
-  return { id: json?.id };
 }

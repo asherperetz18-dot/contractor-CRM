@@ -13,13 +13,20 @@ export function PortalLoginForm() {
     e.preventDefault();
     setPending(true);
     setError("");
-    const result = await requestPortalLink(email);
-    setPending(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await requestPortalLink(email);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setSent(true);
+    } catch {
+      // Without this the button sticks on "Sending…" forever whenever the
+      // action throws, leaving the visitor with no idea what happened.
+      setError("Something went wrong sending that link. Please try again.");
+    } finally {
+      setPending(false);
     }
-    setSent(true);
   }
 
   return (
