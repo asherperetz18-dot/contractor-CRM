@@ -484,6 +484,9 @@ export type Lead = {
   // The owning tenant. Distinct from company_name, which is the customer's
   // own business name when the contact is a Company rather than a person.
   company_id: string;
+  // When this customer's client-portal access lapses. Null means never
+  // granted. Renewable by office staff.
+  portal_access_expires_at: string | null;
   company_name: string | null;
   first_name: string | null;
   last_name: string | null;

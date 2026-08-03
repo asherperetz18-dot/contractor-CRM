@@ -10,7 +10,11 @@ import {
   createLoginToken,
   destroyPortalSession,
   getPortalViewer,
+  portalAccessActive,
+  portalAccessExpiry,
 } from "@/lib/portal/session";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 import { leadDisplayName, type Lead } from "@/lib/data/types";
 
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -39,12 +43,19 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   const admin = createAdminClient();
   const { data } = await admin
     .from("leads")
-    .select("id, company_id, first_name, last_name, company_name, contact_type, email")
+    .select(
+      "id, company_id, first_name, last_name, company_name, contact_type, email, portal_access_expires_at"
+    )
     .ilike("email", trimmed)
     .limit(1);
 
   const lead = (data as Lead[] | null)?.[0];
   if (!lead) return { sent: true };
+
+  // Self-service can't reopen expired access -- that's the office's call.
+  // Reported as success anyway, since a distinct "your access expired"
+  // reply would confirm to a stranger that this person is a customer.
+  if (!portalAccessActive(lead.portal_access_expires_at)) return { sent: true };
 
   const { token, error } = await createLoginToken(lead.id, lead.company_id);
   if (error || !token) return { sent: true };
@@ -107,7 +118,7 @@ async function companyNameFor(
  */
 export async function sendPortalLink(
   leadId: string
-): Promise<{ error?: string; channels?: string[] }> {
+): Promise<{ error?: string; channels?: string[]; expiresAt?: string }> {
   const admin = createAdminClient();
   const { data } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
   const lead = data as Lead | null;
@@ -119,6 +130,15 @@ export async function sendPortalLink(
   const companyName = await companyNameFor(admin, lead.company_id);
   const channels: string[] = [];
   const problems: string[] = [];
+
+  // Sending someone their portal link is the act of granting access, so it
+  // starts (or restarts) the 10-day clock. Otherwise a customer could be
+  // sent a link that refuses to let them in.
+  const grantedUntil = portalAccessExpiry();
+  await admin
+    .from("leads")
+    .update({ portal_access_expires_at: grantedUntil })
+    .eq("id", lead.id);
 
   if (lead.email) {
     const { token, error } = await createLoginToken(lead.id, lead.company_id);
@@ -181,7 +201,58 @@ export async function sendPortalLink(
   if (channels.length === 0) {
     return { error: problems.join("; ") || "Couldn't send the portal link." };
   }
-  return { channels };
+  return { channels, expiresAt: grantedUntil };
+}
+
+/**
+ * Office-side renewal of a customer's portal access. Sending them a link
+ * also renews, but this exists for the common case of extending access for
+ * someone who still has a working link or session.
+ */
+export async function renewPortalAccess(
+  leadId: string
+): Promise<{ error?: string; expiresAt?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) {
+    return { error: "You don't have permission to do that." };
+  }
+
+  const admin = createAdminClient();
+  const expiresAt = portalAccessExpiry();
+  const { error } = await admin
+    .from("leads")
+    .update({ portal_access_expires_at: expiresAt })
+    // Scoped to the caller's own company so a leadId from another tenant
+    // can't be extended.
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/pipeline");
+  revalidatePath("/contacts");
+  return { expiresAt };
+}
+
+/** Office-side: close a customer's portal off immediately. */
+export async function revokePortalAccess(leadId: string): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) {
+    return { error: "You don't have permission to do that." };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("leads")
+    .update({ portal_access_expires_at: null })
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id);
+  if (error) return { error: error.message };
+
+  // Live sessions are checked against this on every page load, so clearing
+  // the grant is enough -- no need to hunt down session rows.
+  revalidatePath("/pipeline");
+  revalidatePath("/contacts");
+  return {};
 }
 
 /** Second sign-in step: the street number of the project address. */

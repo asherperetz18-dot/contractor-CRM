@@ -13,6 +13,25 @@ const LOGIN_TOKEN_TTL_MINUTES = 30;
 const SESSION_TTL_DAYS = 30;
 const MAX_CHALLENGE_ATTEMPTS = 5;
 
+// How long a customer's portal access lasts after their last visit.
+// Access rolls forward while they're using it and only lapses once they
+// go quiet, so an active customer is never locked out mid-project.
+export const PORTAL_ACCESS_DAYS = 10;
+
+// Don't rewrite the expiry on literally every page load -- one bump an
+// hour keeps it rolling without a write per request.
+const ACCESS_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
+
+export function portalAccessExpiry(): string {
+  return new Date(Date.now() + PORTAL_ACCESS_DAYS * 86400000).toISOString();
+}
+
+/** Null means access was never granted, so the portal is closed to them. */
+export function portalAccessActive(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt).getTime() > Date.now();
+}
+
 /**
  * The street number from a free-text address, or null when there isn't one.
  * Most addresses in this data are just a city ("Malibu"), so callers must
@@ -99,11 +118,19 @@ export async function beginLogin(
   const admin = createAdminClient();
   const { data: lead } = await admin
     .from("leads")
-    .select("address")
+    .select("address, portal_access_expires_at")
     .eq("id", token.lead_id)
     .maybeSingle();
+  const leadRow = lead as {
+    address: string | null;
+    portal_access_expires_at: string | null;
+  } | null;
 
-  const expected = streetNumberOf((lead as { address: string | null } | null)?.address ?? null);
+  if (!portalAccessActive(leadRow?.portal_access_expires_at ?? null)) {
+    return { error: "Your portal access has expired. Please contact us to have it renewed." };
+  }
+
+  const expected = streetNumberOf(leadRow?.address ?? null);
 
   // Most addresses on file are just a city, with no number to ask for.
   // Those customers sign in on the link alone rather than being locked out.
@@ -268,7 +295,31 @@ export async function getPortalViewer(): Promise<PortalViewer | null> {
     .maybeSingle();
   if (!lead) return null;
 
-  return { lead: lead as Lead, companyId: session.company_id };
+  // Checked on every page load, not just at sign-in: when access lapses
+  // the customer is locked out immediately rather than keeping a working
+  // session for the remainder of its 30 days.
+  const leadRow = lead as Lead;
+  if (!portalAccessActive(leadRow.portal_access_expires_at)) return null;
+
+  // Rolling window: this visit pushes the lapse date back out, so access
+  // only dies after 10 quiet days rather than 10 days after it was granted.
+  const remaining = new Date(leadRow.portal_access_expires_at!).getTime() - Date.now();
+  const full = PORTAL_ACCESS_DAYS * 86400000;
+  if (full - remaining > ACCESS_TOUCH_INTERVAL_MS) {
+    const refreshed = portalAccessExpiry();
+    await admin
+      .from("leads")
+      .update({ portal_access_expires_at: refreshed })
+      .eq("id", leadRow.id);
+    leadRow.portal_access_expires_at = refreshed;
+  }
+
+  await admin
+    .from("portal_sessions")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("id", session.id);
+
+  return { lead: leadRow, companyId: session.company_id };
 }
 
 export async function destroyPortalSession(): Promise<void> {

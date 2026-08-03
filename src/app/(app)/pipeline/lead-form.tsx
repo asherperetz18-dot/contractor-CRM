@@ -34,7 +34,7 @@ import {
   resolveLeadRefund,
   updateLead,
 } from "@/lib/actions/leads";
-import { sendPortalLink } from "@/lib/actions/portal";
+import { renewPortalAccess, sendPortalLink } from "@/lib/actions/portal";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { LeadFilesPanel } from "./lead-files-panel";
@@ -128,6 +128,15 @@ export function LeadForm({
   >("idle");
   const [portalLinkError, setPortalLinkError] = useState("");
   const [portalLinkChannels, setPortalLinkChannels] = useState("");
+  const [portalExpiry, setPortalExpiry] = useState<string | null>(
+    lead?.portal_access_expires_at ?? null
+  );
+  const [portalRenewPending, setPortalRenewPending] = useState(false);
+
+  // "now" is captured once at mount -- reading the clock during render
+  // makes the same state render differently on re-renders.
+  const [openedAt] = useState(() => Date.now());
+  const portalActive = !!portalExpiry && new Date(portalExpiry).getTime() > openedAt;
 
   const stageIndex = stages.findIndex((s) => s.name === form.stage);
   const stageTotal = stages.length;
@@ -158,7 +167,24 @@ export function LeadForm({
     }
     setPortalLinkChannels((result?.channels ?? []).join(" & "));
     setPortalLinkStatus("sent");
+    // Sending a link is also what grants access, so reflect the new
+    // expiry straight away rather than waiting for a reload.
+    if (result?.expiresAt) setPortalExpiry(result.expiresAt);
     setTimeout(() => setPortalLinkStatus("idle"), 4000);
+  }
+
+  async function handleRenewPortal() {
+    if (!lead) return;
+    setPortalRenewPending(true);
+    setPortalLinkError("");
+    const result = await renewPortalAccess(lead.id);
+    setPortalRenewPending(false);
+    if (result?.error) {
+      setPortalLinkStatus("error");
+      setPortalLinkError(result.error);
+      return;
+    }
+    if (result?.expiresAt) setPortalExpiry(result.expiresAt);
   }
 
   async function handleRequestRefund() {
@@ -457,6 +483,31 @@ export function LeadForm({
           </div>
         )}
         {portalLinkStatus === "error" && <p className="error-note">{portalLinkError}</p>}
+
+        {lead && (
+          <div className="portal-status-row">
+            <span className="portal-status-label">Customer Portal</span>
+            {portalActive ? (
+              <span className="portal-status-ok">
+                ✓ Active — expires {new Date(portalExpiry!).toLocaleDateString()}
+              </span>
+            ) : portalExpiry ? (
+              <span className="portal-status-bad">⚠ Portal Expired</span>
+            ) : (
+              <span className="portal-status-none">Not sent yet</span>
+            )}
+            {portalExpiry && (
+              <button
+                type="button"
+                className="btn-ghost small"
+                onClick={handleRenewPortal}
+                disabled={portalRenewPending}
+              >
+                {portalRenewPending ? "Renewing…" : "Renew"}
+              </button>
+            )}
+          </div>
+        )}
 
         {hasSecondContact ? (
           <div className="second-contact-block">
