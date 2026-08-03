@@ -127,8 +127,24 @@ export async function sendPortalLink(
       const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
       const mail = buildPortalEmail(lead.first_name, companyName, link);
       const sent = await sendEmail(lead.email, mail.subject, mail.html, mail.text);
-      if (sent.error) problems.push(`email failed (${sent.error})`);
-      else channels.push("email");
+      if (sent.error) {
+        problems.push(`email failed (${sent.error})`);
+      } else {
+        channels.push("email");
+        // Logged alongside texts so "did they ever get anything?" is
+        // answerable from data. Without this an email send leaves no
+        // trace at all and there is nothing to check afterwards.
+        await admin.from("sms_messages").insert({
+          lead_id: lead.id,
+          direction: "outbound",
+          from_number: "email",
+          to_number: lead.email,
+          body: `[Portal sign-in link emailed] ${mail.subject}`,
+          twilio_sid: sent.id || null,
+          company_id: lead.company_id,
+          channel: "email",
+        });
+      }
     }
   }
 
