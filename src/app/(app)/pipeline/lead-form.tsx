@@ -34,7 +34,7 @@ import {
   resolveLeadRefund,
   updateLead,
 } from "@/lib/actions/leads";
-import { sendPortalLinkBySms } from "@/lib/actions/portal";
+import { sendPortalLink } from "@/lib/actions/portal";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { LeadFilesPanel } from "./lead-files-panel";
@@ -127,6 +127,7 @@ export function LeadForm({
     "idle" | "pending" | "sent" | "error"
   >("idle");
   const [portalLinkError, setPortalLinkError] = useState("");
+  const [portalLinkChannels, setPortalLinkChannels] = useState("");
 
   const stageIndex = stages.findIndex((s) => s.name === form.stage);
   const stageTotal = stages.length;
@@ -141,20 +142,23 @@ export function LeadForm({
     router.push(`/reply-inbox?leadId=${lead.id}`);
   }
 
-  // Texts the customer a magic link into their client portal. Useful
-  // because every lead has a phone but only ~91% have an email on file.
-  async function sendPortalLink() {
+  // Sends the customer a magic link into their client portal by email and
+  // text, whichever they have on file, and reports back which actually
+  // went out rather than a bare "Sent".
+  async function handleSendPortalLink() {
     if (!lead) return;
     setPortalLinkStatus("pending");
     setPortalLinkError("");
-    const result = await sendPortalLinkBySms(lead.id);
+    setPortalLinkChannels("");
+    const result = await sendPortalLink(lead.id);
     if (result?.error) {
       setPortalLinkStatus("error");
       setPortalLinkError(result.error);
       return;
     }
+    setPortalLinkChannels((result?.channels ?? []).join(" & "));
     setPortalLinkStatus("sent");
-    setTimeout(() => setPortalLinkStatus("idle"), 2500);
+    setTimeout(() => setPortalLinkStatus("idle"), 4000);
   }
 
   async function handleRequestRefund() {
@@ -434,18 +438,22 @@ export function LeadForm({
                 ✉ Email
               </a>
             )}
-            {form.phone && (
+            {(form.phone || form.email) && (
               <button
                 type="button"
                 className="icon-btn contact-quick-action"
-                onClick={sendPortalLink}
+                onClick={handleSendPortalLink}
                 disabled={portalLinkStatus === "pending"}
-                title="Text this contact a link to their project portal"
+                title="Send this contact a sign-in link to their project portal"
               >
                 {portalLinkStatus === "pending" ? "Sending…" : "🔗 Portal Link"}
               </button>
             )}
-            {portalLinkStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
+            {portalLinkStatus === "sent" && (
+              <span className="cp-saved">
+                ✓ Sent{portalLinkChannels ? ` by ${portalLinkChannels}` : ""}
+              </span>
+            )}
           </div>
         )}
         {portalLinkStatus === "error" && <p className="error-note">{portalLinkError}</p>}

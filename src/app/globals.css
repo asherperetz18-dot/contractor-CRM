@@ -3186,3 +3186,16 @@ body {
   cursor: pointer;
   font-size: inherit;
 }
+
+/* Clarifies that a Quick Text choice composes the message for review in
+   the Reply Inbox rather than sending it immediately. */
+.quick-text-hint {
+  font-size: 11px;
+  color: #8a8a8a;
+  border-top: 1px solid #eee9e2;
+  cursor: default;
+  font-style: italic;
+}
+.quick-text-hint:hover {
+  background: none;
+}

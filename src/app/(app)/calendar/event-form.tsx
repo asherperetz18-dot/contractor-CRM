@@ -371,16 +371,24 @@ export function EventForm({
                     {quickTextOptions === null ? (
                       <div className="quick-text-item quick-text-loading">Loading…</div>
                     ) : (
-                      quickTextOptions.quickTexts.map((text) => (
-                        <button
-                          key={text.key}
-                          type="button"
-                          className="quick-text-item"
-                          onClick={() => sendQuickText(text)}
-                        >
-                          {text.label}
-                        </button>
-                      ))
+                      <>
+                        {quickTextOptions.quickTexts.map((text) => (
+                          <button
+                            key={text.key}
+                            type="button"
+                            className="quick-text-item"
+                            onClick={() => sendQuickText(text)}
+                          >
+                            {text.label}
+                          </button>
+                        ))}
+                        {/* These compose the message and open the Reply
+                            Inbox rather than sending -- without saying so,
+                            it reads as "sent" and the text never goes. */}
+                        <div className="quick-text-item quick-text-hint">
+                          Opens the message ready to send
+                        </div>
+                      </>
                     )}
                   </div>
                 )}

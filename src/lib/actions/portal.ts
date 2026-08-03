@@ -56,76 +56,115 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   const companyName = (companyRow as { name: string | null } | null)?.name || "your contractor";
 
   const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
-  const subject = `Your ${companyName} project portal sign-in link`;
-  const text = [
-    `Hi ${lead.first_name || "there"},`,
-    ``,
-    `Here's your sign-in link for your project portal with ${companyName}:`,
-    link,
-    ``,
-    `This link works once and expires in 30 minutes.`,
-    `If you didn't request it, you can ignore this email.`,
-  ].join("\n");
-  const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${lead.first_name || "there"},</p>
-      <p>Here's your sign-in link for your project portal with <strong>${companyName}</strong>:</p>
-      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Open my project portal</a></p>
-      <p style="color:#666;font-size:13px">This link works once and expires in 30 minutes. If you didn't request it, you can ignore this email.</p>
-    </div>
-  `;
+  const mail = buildPortalEmail(lead.first_name, companyName, link);
 
-  const result = await sendEmail(trimmed, subject, html, text);
+  const result = await sendEmail(trimmed, mail.subject, mail.html, mail.text);
   if (result.error) return { sent: false, error: result.error };
   return { sent: true };
 }
 
-/**
- * Staff-side: text a customer their portal link straight from the CRM.
- * Useful because every lead has a phone but only ~91% have an email.
- */
-export async function sendPortalLinkBySms(leadId: string): Promise<{ error?: string }> {
-  const admin = createAdminClient();
+function buildPortalEmail(firstName: string | null, companyName: string, link: string) {
+  const greeting = firstName || "there";
+  return {
+    subject: `Your ${companyName} project portal sign-in link`,
+    text: [
+      `Hi ${greeting},`,
+      ``,
+      `Here's your sign-in link for your project portal with ${companyName}:`,
+      link,
+      ``,
+      `This link works once and expires in 30 minutes.`,
+      `If you didn't request it, you can ignore this email.`,
+    ].join("\n"),
+    html: `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
+      <p>Hi ${greeting},</p>
+      <p>Here's your sign-in link for your project portal with <strong>${companyName}</strong>:</p>
+      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Open my project portal</a></p>
+      <p style="color:#666;font-size:13px">This link works once and expires in 30 minutes. If you didn't request it, you can ignore this email.</p>
+    </div>
+  `,
+  };
+}
+
+async function companyNameFor(
+  admin: ReturnType<typeof createAdminClient>,
+  companyId: string
+): Promise<string> {
   const { data } = await admin
-    .from("leads")
-    .select("*")
-    .eq("id", leadId)
-    .maybeSingle();
-  const lead = data as Lead | null;
-  if (!lead) return { error: "Contact not found." };
-  if (!lead.phone) return { error: "This contact doesn't have a phone number on file." };
-
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) return { error: "Twilio isn't configured." };
-
-  const { token, error } = await createLoginToken(lead.id, lead.company_id);
-  if (error || !token) return { error: error || "Could not create a sign-in link." };
-
-  const { data: companyRow } = await admin
     .from("company_profile")
     .select("name")
-    .eq("company_id", lead.company_id)
+    .eq("company_id", companyId)
     .maybeSingle();
-  const companyName = (companyRow as { name: string | null } | null)?.name || "your contractor";
+  return (data as { name: string | null } | null)?.name || "your contractor";
+}
 
-  const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
-  const body = `${companyName}: here's your project portal — see your appointments, photos and messages.\n${link}\n\nLink expires in 30 minutes.`;
+/**
+ * Staff-side: send a customer their portal link by email and/or text,
+ * whichever they have on file. Reports back which channels actually went
+ * out, so "Sent" never overstates what happened.
+ */
+export async function sendPortalLink(
+  leadId: string
+): Promise<{ error?: string; channels?: string[] }> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
+  const lead = data as Lead | null;
+  if (!lead) return { error: "Contact not found." };
+  if (!lead.phone && !lead.email) {
+    return { error: "This contact has no phone or email on file." };
+  }
 
-  const result = await sendTwilioSms(lead.phone, body, twilioEnv);
-  if (result.error) return { error: result.error };
+  const companyName = await companyNameFor(admin, lead.company_id);
+  const channels: string[] = [];
+  const problems: string[] = [];
 
-  await admin.from("sms_messages").insert({
-    lead_id: lead.id,
-    direction: "outbound",
-    from_number: twilioEnv.phoneNumber,
-    to_number: lead.phone,
-    body,
-    twilio_sid: result.sid || null,
-    company_id: lead.company_id,
-    channel: "sms",
-  });
+  if (lead.email) {
+    const { token, error } = await createLoginToken(lead.id, lead.company_id);
+    if (error || !token) {
+      problems.push("couldn't create an email sign-in link");
+    } else {
+      const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
+      const mail = buildPortalEmail(lead.first_name, companyName, link);
+      const sent = await sendEmail(lead.email, mail.subject, mail.html, mail.text);
+      if (sent.error) problems.push(`email failed (${sent.error})`);
+      else channels.push("email");
+    }
+  }
 
-  return {};
+  const twilioEnv = getTwilioEnv();
+  if (lead.phone && twilioEnv) {
+    // A separate token per channel -- these are single-use, so one shared
+    // token would silently break whichever link the customer opened second.
+    const { token, error } = await createLoginToken(lead.id, lead.company_id);
+    if (error || !token) {
+      problems.push("couldn't create a text sign-in link");
+    } else {
+      const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
+      const body = `${companyName}: here's your project portal — see your appointments, photos and messages.\n${link}\n\nLink expires in 30 minutes.`;
+      const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
+      if (sent.error) {
+        problems.push(`text failed (${sent.error})`);
+      } else {
+        channels.push("text");
+        await admin.from("sms_messages").insert({
+          lead_id: lead.id,
+          direction: "outbound",
+          from_number: twilioEnv.phoneNumber,
+          to_number: lead.phone,
+          body,
+          twilio_sid: sent.sid || null,
+          company_id: lead.company_id,
+          channel: "sms",
+        });
+      }
+    }
+  }
+
+  if (channels.length === 0) {
+    return { error: problems.join("; ") || "Couldn't send the portal link." };
+  }
+  return { channels };
 }
 
 export async function portalSignOut(): Promise<void> {
