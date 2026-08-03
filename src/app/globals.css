@@ -3363,3 +3363,47 @@ body {
   font-size: 13px;
   color: #8a8a8a;
 }
+
+/* Client text history on the contact card. Rep-directed notifications are
+   deliberately absent -- those are recorded on the appointment instead. */
+.lead-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+.lead-msg {
+  max-width: 78%;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+.lead-msg-in {
+  align-self: flex-start;
+  background: #f0ede8;
+  border-bottom-left-radius: 3px;
+}
+.lead-msg-out {
+  align-self: flex-end;
+  background: #2D5F8A;
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+.lead-msg-body {
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.lead-msg-meta {
+  font-size: 10.5px;
+  opacity: 0.65;
+  margin-top: 3px;
+}
+.lead-thread-system {
+  align-self: center;
+  font-size: 11px;
+  color: #8a8a8a;
+  font-style: italic;
+  padding: 2px 0;
+}

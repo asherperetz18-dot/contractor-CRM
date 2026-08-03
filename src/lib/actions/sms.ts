@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canEditDispatch } from "@/lib/data/types";
+import { canEditDispatch, normalizePhone } from "@/lib/data/types";
 import { getTwilioEnv } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
@@ -65,4 +65,92 @@ export async function sendSms(
 
   revalidatePath("/reply-inbox");
   return {};
+}
+
+export type LeadMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string;
+  channel: string;
+  created_at: string;
+};
+
+/**
+ * The conversation with a specific client, for their contact card.
+ *
+ * Deliberately excludes rep-directed traffic. Most outbound SMS in this
+ * system ("Text Rep Info", appointment reminders) goes to a crew member's
+ * phone with no lead attached -- showing that on a client's card would
+ * read as "we texted the client" when nothing was sent to them.
+ */
+export async function getLeadMessages(
+  leadId: string
+): Promise<{ error?: string; messages?: LeadMessage[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: leadRow } = await supabase
+    .from("leads")
+    .select("phone, second_contact_phone")
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle();
+  if (!leadRow) return { error: "Contact not found." };
+
+  const { data: linked } = await supabase
+    .from("sms_messages")
+    .select("id, direction, body, channel, created_at")
+    .eq("company_id", profile.company_id)
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: true });
+
+  const messages = (linked as LeadMessage[]) ?? [];
+
+  // Older messages predate lead_id being stamped, so also match on the
+  // client's own number -- but only when that number isn't also a staff
+  // phone, or rep notifications about other jobs would surface here.
+  const lead = leadRow as { phone: string | null; second_contact_phone: string | null };
+  const clientNumbers = [lead.phone, lead.second_contact_phone]
+    .filter((p): p is string => !!p)
+    .map(normalizePhone);
+
+  if (clientNumbers.length > 0) {
+    const { data: staff } = await supabase.from("profiles").select("phone");
+    const staffNumbers = new Set(
+      ((staff as { phone: string | null }[]) ?? [])
+        .filter((s) => s.phone)
+        .map((s) => normalizePhone(s.phone!))
+    );
+    const safeNumbers = clientNumbers.filter((n) => !staffNumbers.has(n));
+
+    if (safeNumbers.length > 0) {
+      const { data: orphans } = await supabase
+        .from("sms_messages")
+        .select("id, direction, body, channel, created_at, from_number, to_number")
+        .eq("company_id", profile.company_id)
+        .is("lead_id", null)
+        .order("created_at", { ascending: true });
+
+      for (const row of (orphans as (LeadMessage & {
+        from_number: string;
+        to_number: string;
+      })[]) ?? []) {
+        const other =
+          row.direction === "inbound" ? normalizePhone(row.from_number) : normalizePhone(row.to_number);
+        if (safeNumbers.includes(other)) {
+          messages.push({
+            id: row.id,
+            direction: row.direction,
+            body: row.body,
+            channel: row.channel,
+            created_at: row.created_at,
+          });
+        }
+      }
+    }
+  }
+
+  messages.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return { messages };
 }

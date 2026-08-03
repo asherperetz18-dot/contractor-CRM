@@ -37,9 +37,10 @@ import {
 import { renewPortalAccess, sendPortalLink } from "@/lib/actions/portal";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
+import { MessagesPanel } from "./messages-panel";
 import { LeadFilesPanel } from "./lead-files-panel";
 
-type Tab = "Overview" | "Tasks" | "Notes" | "Files";
+type Tab = "Overview" | "Tasks" | "Notes" | "Texts" | "Files";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -582,7 +583,7 @@ export function LeadForm({
 
         {lead && (
           <div className="chip-row no-margin ta-tabs">
-            {(["Overview", "Tasks", "Notes", "Files"] as Tab[]).map((t) => (
+            {(["Overview", "Tasks", "Notes", "Texts", "Files"] as Tab[]).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -903,6 +904,10 @@ export function LeadForm({
             readOnly={readOnly}
             onChanged={refresh}
           />
+        )}
+
+        {lead && tab === "Texts" && (
+          <MessagesPanel leadId={lead.id} phone={form.phone} readOnly={readOnly} />
         )}
 
         {lead && tab === "Files" && (
