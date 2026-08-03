@@ -38,9 +38,12 @@ import {
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { renewPortalAccess, sendPortalLink } from "@/lib/actions/portal";
 
-// Protected system stage (see SYSTEM_STAGE_NAMES) -- can be reordered but
-// not renamed, so matching on the name is safe.
-const LOST_STAGE = "Lost";
+// One-click ways out of the active pipeline, in the order they appear.
+// Only rendered when the stage actually exists for the current company --
+// "Not Interested" is a custom stage that exists in some companies and not
+// others, and a button that moves a lead to a stage this company doesn't
+// have would just fail.
+const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
@@ -139,7 +142,7 @@ export function LeadForm({
     lead?.portal_access_expires_at ?? null
   );
   const [portalRenewPending, setPortalRenewPending] = useState(false);
-  const [markLostPending, setMarkLostPending] = useState(false);
+  const [quickExitPending, setQuickExitPending] = useState("");
   const [markLostError, setMarkLostError] = useState("");
 
   // "now" is captured once at mount -- reading the clock during render
@@ -182,25 +185,25 @@ export function LeadForm({
     setTimeout(() => setPortalLinkStatus("idle"), 4000);
   }
 
-  // Moves the contact straight to Lost without needing the stage dropdown
-  // and a save. Confirmed first because it pulls them out of the active
-  // pipeline, and logged so there's a record of who dropped it and when.
-  async function handleMarkLost() {
+  // Moves the contact straight out of the pipeline without going through
+  // the stage dropdown and a save. Confirmed first because it drops them
+  // from the active pipeline, and logged so there's a record of who did it.
+  async function handleQuickExit(stage: string) {
     if (!lead) return;
     const who = [form.first_name, form.last_name].filter(Boolean).join(" ") || "this contact";
-    if (!confirm(`Move ${who} to Lost? They'll drop out of the active pipeline.`)) return;
+    if (!confirm(`Move ${who} to ${stage}? They'll drop out of the active pipeline.`)) return;
 
-    setMarkLostPending(true);
+    setQuickExitPending(stage);
     setMarkLostError("");
-    const result = await moveLeadStage(lead.id, LOST_STAGE);
+    const result = await moveLeadStage(lead.id, stage);
     if (result?.error) {
-      setMarkLostPending(false);
+      setQuickExitPending("");
       setMarkLostError(result.error);
       return;
     }
-    await addLeadNote(lead.id, `Marked Lost from the contact card.`);
-    setMarkLostPending(false);
-    setForm((f) => ({ ...f, stage: LOST_STAGE }));
+    await addLeadNote(lead.id, `Moved to ${stage} from the contact card.`);
+    setQuickExitPending("");
+    setForm((f) => ({ ...f, stage }));
     refresh();
     onSaved();
   }
@@ -629,19 +632,26 @@ export function LeadForm({
                 {t === "Files" && (files ?? []).length > 0 ? ` (${(files ?? []).length})` : ""}
               </button>
             ))}
-            {/* One-click exit from the pipeline. Hidden once the contact is
-                already Lost so it can't be "lost" twice, and the stage
-                dropdown remains the way back. */}
-            {!readOnly && form.stage !== LOST_STAGE && (
-              <button
-                type="button"
-                className="chip chip-danger"
-                onClick={handleMarkLost}
-                disabled={markLostPending}
-                title="Move this contact to the Lost stage"
-              >
-                {markLostPending ? "Moving…" : "✕ Mark Lost"}
-              </button>
+            {/* One-click exits from the pipeline. Each is shown only if the
+                stage exists for this company and isn't the current one, so
+                a lead is never offered a move that would do nothing. */}
+            {!readOnly && (
+              <span className="chip-row-end">
+                {QUICK_EXIT_STAGES.filter(
+                  (s) => stages.some((ps) => ps.name === s) && form.stage !== s
+                ).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="chip chip-danger"
+                    onClick={() => handleQuickExit(s)}
+                    disabled={!!quickExitPending}
+                    title={`Move this contact to the ${s} stage`}
+                  >
+                    {quickExitPending === s ? "Moving…" : `✕ ${s}`}
+                  </button>
+                ))}
+              </span>
             )}
           </div>
         )}
