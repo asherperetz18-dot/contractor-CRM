@@ -3483,3 +3483,27 @@ body {
     min-height: 420px;
   }
 }
+
+/* Message composers sit outside a .field wrapper, so they were falling
+   back to the browser default textarea -- effectively invisible against a
+   white card, with only floating placeholder text to suggest you could
+   type there. Give them the same affordance as every other input. */
+.portal-composer textarea,
+.portal-reschedule textarea,
+.second-contact-block textarea {
+  border: 1px solid #d5cfc5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  background: #fefdfb;
+  resize: vertical;
+}
+.portal-composer textarea:focus,
+.portal-reschedule textarea:focus,
+.second-contact-block textarea:focus {
+  outline: 2px solid var(--blueprint, #2D5F8A);
+  outline-offset: 1px;
+  border-color: var(--blueprint, #2D5F8A);
+  background: #fff;
+}
