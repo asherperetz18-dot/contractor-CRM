@@ -3117,3 +3117,72 @@ body {
 .portal-composer textarea {
   width: 100%;
 }
+
+/* ── AI action proposals ───────────────────────────────────────────────
+   A suggested change the AI produced. Rendered as an explicit,
+   reviewable card -- never applied until someone clicks Approve. */
+.ai-proposal {
+  border: 1px solid #d9d3c9;
+  border-left: 3px solid #C2410C;
+  border-radius: 8px;
+  background: #fffdf9;
+  padding: 12px 14px;
+  margin: 8px 0 12px;
+}
+.ai-proposal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.ai-proposal-kind {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #C2410C;
+}
+.ai-proposal-count {
+  font-size: 12px;
+  color: #7a7a7a;
+}
+.ai-proposal-summary {
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.ai-proposal-targets {
+  font-size: 12px;
+  color: #6b6b6b;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.ai-proposal-warn {
+  color: #C7691B;
+  margin-top: 4px;
+}
+.ai-proposal-actions {
+  display: flex;
+  gap: 8px;
+}
+.ai-proposal-done {
+  margin: 0;
+  color: #2F855A;
+  font-weight: 600;
+  font-size: 13px;
+}
+.ai-proposal-dismissed {
+  margin: 0;
+  color: #8a8a8a;
+  font-size: 13px;
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #2D5F8A;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}

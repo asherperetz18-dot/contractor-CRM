@@ -3,10 +3,17 @@
 import { useState, useRef, useEffect } from "react";
 import { Modal } from "@/components/ui/modal";
 import { askAssistant, type ChatMessage } from "@/lib/actions/ai-assistant";
+import type { ProposalRow } from "@/lib/data/ai-proposals";
+import { AiProposalCard } from "./ai-proposal-card";
+
+// Proposals are pinned to the message index they arrived with, so they stay
+// anchored to the exchange that produced them as the chat grows.
+type ProposalsByIndex = Record<number, ProposalRow[]>;
 
 export function AiAssistantButton() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [proposals, setProposals] = useState<ProposalsByIndex>({});
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -30,7 +37,14 @@ export function AiAssistantButton() {
       setError(result.error);
       return;
     }
-    setMessages((prev) => [...prev, { role: "assistant", content: result.reply || "" }]);
+    setMessages((prev) => {
+      const next: ChatMessage[] = [...prev, { role: "assistant", content: result.reply || "" }];
+      if (result.proposals?.length) {
+        const index = next.length - 1;
+        setProposals((p) => ({ ...p, [index]: result.proposals! }));
+      }
+      return next;
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -65,8 +79,13 @@ export function AiAssistantButton() {
                 </p>
               )}
               {messages.map((m, i) => (
-                <div key={i} className={"ai-chat-msg ai-chat-msg-" + m.role}>
-                  <div className="ai-chat-bubble">{m.content}</div>
+                <div key={i}>
+                  <div className={"ai-chat-msg ai-chat-msg-" + m.role}>
+                    <div className="ai-chat-bubble">{m.content}</div>
+                  </div>
+                  {proposals[i]?.map((p) => (
+                    <AiProposalCard key={p.id} proposal={p} />
+                  ))}
                 </div>
               ))}
               {pending && (
