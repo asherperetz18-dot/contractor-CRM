@@ -3507,3 +3507,17 @@ body {
   border-color: var(--blueprint, #2D5F8A);
   background: #fff;
 }
+
+/* Destructive quick-action chip (e.g. Mark Lost) -- visually separated
+   from the navigation chips beside it so it isn't clicked by reflex. */
+.chip-danger {
+  margin-left: auto;
+  border-color: #e3b7b0;
+  color: #C0392B;
+  background: #fdf6f5;
+}
+.chip-danger:hover:not(:disabled) {
+  background: #C0392B;
+  border-color: #C0392B;
+  color: #fff;
+}

@@ -30,11 +30,17 @@ import {
   convertLeadToJob,
   createLead,
   deleteLead,
+  moveLeadStage,
   requestLeadRefund,
   resolveLeadRefund,
   updateLead,
 } from "@/lib/actions/leads";
+import { addLeadNote } from "@/lib/actions/lead-notes";
 import { renewPortalAccess, sendPortalLink } from "@/lib/actions/portal";
+
+// Protected system stage (see SYSTEM_STAGE_NAMES) -- can be reordered but
+// not renamed, so matching on the name is safe.
+const LOST_STAGE = "Lost";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
@@ -133,6 +139,8 @@ export function LeadForm({
     lead?.portal_access_expires_at ?? null
   );
   const [portalRenewPending, setPortalRenewPending] = useState(false);
+  const [markLostPending, setMarkLostPending] = useState(false);
+  const [markLostError, setMarkLostError] = useState("");
 
   // "now" is captured once at mount -- reading the clock during render
   // makes the same state render differently on re-renders.
@@ -172,6 +180,29 @@ export function LeadForm({
     // expiry straight away rather than waiting for a reload.
     if (result?.expiresAt) setPortalExpiry(result.expiresAt);
     setTimeout(() => setPortalLinkStatus("idle"), 4000);
+  }
+
+  // Moves the contact straight to Lost without needing the stage dropdown
+  // and a save. Confirmed first because it pulls them out of the active
+  // pipeline, and logged so there's a record of who dropped it and when.
+  async function handleMarkLost() {
+    if (!lead) return;
+    const who = [form.first_name, form.last_name].filter(Boolean).join(" ") || "this contact";
+    if (!confirm(`Move ${who} to Lost? They'll drop out of the active pipeline.`)) return;
+
+    setMarkLostPending(true);
+    setMarkLostError("");
+    const result = await moveLeadStage(lead.id, LOST_STAGE);
+    if (result?.error) {
+      setMarkLostPending(false);
+      setMarkLostError(result.error);
+      return;
+    }
+    await addLeadNote(lead.id, `Marked Lost from the contact card.`);
+    setMarkLostPending(false);
+    setForm((f) => ({ ...f, stage: LOST_STAGE }));
+    refresh();
+    onSaved();
   }
 
   async function handleRenewPortal() {
@@ -598,8 +629,23 @@ export function LeadForm({
                 {t === "Files" && (files ?? []).length > 0 ? ` (${(files ?? []).length})` : ""}
               </button>
             ))}
+            {/* One-click exit from the pipeline. Hidden once the contact is
+                already Lost so it can't be "lost" twice, and the stage
+                dropdown remains the way back. */}
+            {!readOnly && form.stage !== LOST_STAGE && (
+              <button
+                type="button"
+                className="chip chip-danger"
+                onClick={handleMarkLost}
+                disabled={markLostPending}
+                title="Move this contact to the Lost stage"
+              >
+                {markLostPending ? "Moving…" : "✕ Mark Lost"}
+              </button>
+            )}
           </div>
         )}
+        {markLostError && <p className="error-note">{markLostError}</p>}
 
         {(!lead || tab === "Overview") && (
           <>

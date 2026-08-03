@@ -121,10 +121,21 @@ export async function deleteLead(id: string) {
 
 export async function moveLeadStage(id: string, stage: PipelineStage) {
   const supabase = await createClient();
-  const { error } = await supabase.from("leads").update({ stage }).eq("id", id);
+  // Same reason as updateLead: an RLS-blocked update returns no error, it
+  // just matches nothing, so without asking for the row back this reports
+  // success while the stage never moved.
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ stage })
+    .eq("id", id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Couldn't move this contact — your role may not have permission." };
+  }
   revalidatePath("/pipeline");
+  revalidatePath("/contacts");
   return {};
 }
 
