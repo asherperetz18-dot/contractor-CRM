@@ -259,6 +259,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       { title: "AI Estimator", desc: "Prompt and model settings for the AI scope and estimate generator", icon: "🤖" },
       { title: "AI Analysis", desc: "Positive and negative signal prompts used by the AI analyzer", icon: "🧠" },
       {
+        title: "AI Activity Log",
+        desc: "Every change the AI assistant suggested, who approved or dismissed it, and what it changed",
+        icon: "📋",
+        href: "/settings/ai-activity",
+      },
+      {
         title: "Cloud Storage",
         desc: "Connect Google Drive so lead file uploads sync there instead of this app's storage",
         icon: "☁",
