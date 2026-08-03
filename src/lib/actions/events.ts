@@ -81,6 +81,32 @@ export async function updateEvent(
   return {};
 }
 
+/**
+ * Moves an appointment to a new date (and optionally time) without
+ * touching anything else on it -- used by calendar drag-and-drop, where
+ * the full edit payload isn't in hand.
+ */
+export async function rescheduleEvent(id: string, date: string, time?: string | null) {
+  const supabase = await createClient();
+  const patch: { date: string; time?: string | null } = { date };
+  if (time !== undefined) patch.time = time;
+
+  // Asks for the row back: an RLS-blocked update returns no error and
+  // matches nothing, which would leave the chip sitting in its new slot
+  // while the database still had the old date.
+  const { data, error } = await supabase
+    .from("events")
+    .update(patch)
+    .eq("id", id)
+    .select("id, date, time");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Couldn't move that appointment — your role may not have permission." };
+  }
+  revalidateCalendarRoutes();
+  return {};
+}
+
 export async function deleteEvent(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("events").delete().eq("id", id);

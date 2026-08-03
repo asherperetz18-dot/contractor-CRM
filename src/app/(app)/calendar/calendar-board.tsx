@@ -19,6 +19,8 @@ import {
   type Profile,
   type TimeFormat,
 } from "@/lib/data/types";
+import { useRouter } from "next/navigation";
+import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
 
 const MONTH_NAMES = [
@@ -101,6 +103,33 @@ export function CalendarBoard({
   const [statusFilter, setStatusFilter] = useState<Set<EventStatus>>(new Set());
   const [calendarFilter, setCalendarFilter] = useState<Set<string>>(new Set());
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
+  const router = useRouter();
+  const [draggingId, setDraggingId] = useState("");
+  const [dragOverDate, setDragOverDate] = useState("");
+  const [moveError, setMoveError] = useState("");
+  // Applied immediately on drop so the chip appears in its new day right
+  // away, rather than snapping back until the server round-trip lands.
+  const [pendingMove, setPendingMove] = useState<{ id: string; date: string } | null>(null);
+
+  async function handleDropOnDate(eventId: string, date: string) {
+    const moving = events.find((e) => e.id === eventId);
+    setDraggingId("");
+    setDragOverDate("");
+    if (!moving || moving.date === date) return;
+
+    setMoveError("");
+    setPendingMove({ id: eventId, date });
+    // Date only -- the month grid has no time slots, so the appointment
+    // keeps its existing time.
+    const result = await rescheduleEvent(eventId, date);
+    if (result?.error) {
+      setPendingMove(null);
+      setMoveError(result.error);
+      return;
+    }
+    router.refresh();
+    setPendingMove(null);
+  }
 
   const cursor = new Date(`${cursorDate}T00:00:00`);
   const year = cursor.getFullYear();
@@ -123,9 +152,12 @@ export function CalendarBoard({
 
   const eventsByDate = new Map<string, Event[]>();
   for (const ev of filteredEvents) {
-    const list = eventsByDate.get(ev.date) ?? [];
+    // While a drop is in flight, group the moved appointment under its new
+    // day so it doesn't visibly snap back before the refresh arrives.
+    const date = pendingMove && pendingMove.id === ev.id ? pendingMove.date : ev.date;
+    const list = eventsByDate.get(date) ?? [];
     list.push(ev);
-    eventsByDate.set(ev.date, list);
+    eventsByDate.set(date, list);
   }
   for (const list of eventsByDate.values()) {
     list.sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
@@ -232,6 +264,8 @@ export function CalendarBoard({
 
   function renderGrid(cells: Cell[], gridClassName: string, maxPerCell: number) {
     return (
+      <>
+      {moveError && <p className="error-note">{moveError}</p>}
       <div className={`cal-grid ${gridClassName}`}>
         {WEEKDAY_LABELS.map((w) => (
           <div key={w} className="cal-weekday">
@@ -249,18 +283,48 @@ export function CalendarBoard({
                 "cal-cell" +
                 (c.inMonth ? "" : " cal-cell-out") +
                 (isToday ? " cal-cell-today" : "") +
-                (isSelected ? " cal-cell-selected" : "")
+                (isSelected ? " cal-cell-selected" : "") +
+                (dragOverDate && dragOverDate === c.dateStr ? " cal-cell-drop" : "")
               }
               onClick={() => c.dateStr && selectDate(c.dateStr)}
               onDoubleClick={() => c.dateStr && canWrite && openNewOnDate(c.dateStr)}
+              onDragOver={(e) => {
+                if (!canWrite || !c.dateStr || !draggingId) return;
+                // Required for the drop to be allowed at all.
+                e.preventDefault();
+                if (dragOverDate !== c.dateStr) setDragOverDate(c.dateStr);
+              }}
+              onDragLeave={() => {
+                if (dragOverDate === c.dateStr) setDragOverDate("");
+              }}
+              onDrop={(e) => {
+                if (!canWrite || !c.dateStr) return;
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/plain") || draggingId;
+                if (id) handleDropOnDate(id, c.dateStr);
+              }}
             >
               <span className="cal-cell-day">{c.day}</span>
               <div className="cal-cell-events">
                 {dayEvents.slice(0, maxPerCell).map((ev) => (
                   <div
                     key={ev.id}
-                    className="cal-event-chip"
+                    className={
+                      "cal-event-chip" +
+                      (canWrite ? " cal-event-draggable" : "") +
+                      (draggingId === ev.id ? " cal-event-dragging" : "")
+                    }
                     style={{ borderLeftColor: stageColor(calendars, ev.event_type) }}
+                    draggable={canWrite}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", ev.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggingId(ev.id);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingId("");
+                      setDragOverDate("");
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setEditing(ev);
@@ -278,6 +342,7 @@ export function CalendarBoard({
           );
         })}
       </div>
+      </>
     );
   }
 

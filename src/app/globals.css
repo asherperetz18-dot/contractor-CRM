@@ -3525,3 +3525,21 @@ body {
   border-color: #C0392B;
   color: #fff;
 }
+
+/* Calendar drag-and-drop: move an appointment to another day by dragging
+   its chip. Month/week grids have no time slots, so this changes the date
+   and leaves the time as it was. */
+.cal-event-draggable {
+  cursor: grab;
+}
+.cal-event-draggable:active {
+  cursor: grabbing;
+}
+.cal-event-dragging {
+  opacity: 0.4;
+}
+.cal-cell-drop {
+  background: #e8f0fb;
+  outline: 2px solid #2D5F8A;
+  outline-offset: -2px;
+}
