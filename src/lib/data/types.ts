@@ -59,6 +59,7 @@ export type PageKey =
   | "appt-setter-assignments"
   | "power-dialer"
   | "call-reports"
+  | "text-reports"
   | "production"
   | "documents"
   | "calendar"
@@ -85,6 +86,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   },
   { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Your Sales Center" },
   { key: "call-reports", label: "Call Reports", href: "/call-reports", group: "Your Sales Center" },
+  { key: "text-reports", label: "Text Reports", href: "/text-reports", group: "Your Sales Center" },
   { key: "production", label: "Production", href: "/production", group: "General" },
   { key: "documents", label: "Estimates & Invoices", href: "/documents", group: "General" },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
@@ -99,10 +101,15 @@ export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Field", "Sales", "Call Cent
 // Platform default when no explicit override row exists for a role/page --
 // "untouched cells follow the default," same wording as the real product.
 // Every role defaults to full access except the Call Center role, which
-// defaults to just Dashboard + Power Dialer + Call Reports.
+// defaults to just Dashboard + Power Dialer + Call/Text Reports.
 export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   if (role === "Call Center") {
-    return pageKey === "dashboard" || pageKey === "power-dialer" || pageKey === "call-reports";
+    return (
+      pageKey === "dashboard" ||
+      pageKey === "power-dialer" ||
+      pageKey === "call-reports" ||
+      pageKey === "text-reports"
+    );
   }
   return true;
 }

@@ -75,6 +75,7 @@ export const NAV: NavEntry[] = [
     items: [
       { label: "Power Dialer", href: "/dial-queue" },
       { label: "Call Reports", href: "/call-reports" },
+      { label: "Text Reports", href: "/text-reports" },
     ],
   },
   { type: "link", href: "/production", label: "Production", icon: "▦" },

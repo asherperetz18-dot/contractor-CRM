@@ -137,6 +137,10 @@ export function EventForm({
   const [resultNote, setResultNote] = useState("");
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
+  // Tracks whether the user actually toggled each confirmation badge, so a
+  // form left open while a rep/client texts YES doesn't save the stale
+  // value back over their reply.
+  const [confirmTouched, setConfirmTouched] = useState({ customer: false, rep: false });
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -195,7 +199,9 @@ export function EventForm({
     }
     setPending(true);
     setError("");
-    const result = event ? await updateEvent(event.id, form) : await createEvent(form);
+    const result = event
+      ? await updateEvent(event.id, form, confirmTouched)
+      : await createEvent(form);
     setPending(false);
     if (result?.error) {
       setError(result.error);
@@ -536,7 +542,10 @@ export function EventForm({
               <button
                 type="button"
                 className="confirm-toggle"
-                onClick={() => set("customer_confirmed", !form.customer_confirmed)}
+                onClick={() => {
+                  setConfirmTouched((t) => ({ ...t, customer: true }));
+                  set("customer_confirmed", !form.customer_confirmed);
+                }}
                 disabled={readOnly || pending}
               >
                 <Badge color={form.customer_confirmed ? "#2F855A" : "#C7691B"}>
@@ -548,7 +557,10 @@ export function EventForm({
               <button
                 type="button"
                 className="confirm-toggle"
-                onClick={() => set("rep_confirmed", !form.rep_confirmed)}
+                onClick={() => {
+                  setConfirmTouched((t) => ({ ...t, rep: true }));
+                  set("rep_confirmed", !form.rep_confirmed);
+                }}
                 disabled={readOnly || pending}
               >
                 <Badge color={form.rep_confirmed ? "#2F855A" : "#C7691B"}>

@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import type { EventInput } from "@/lib/data/types";
 
+// Confirmation flags are deliberately NOT in here -- they can be changed
+// out-of-band by an inbound YES/NO text reply while the edit form sits
+// open, so they're written separately and only when actually intended.
 function toRow(input: EventInput) {
   return {
     title: input.title || null,
@@ -16,10 +19,10 @@ function toRow(input: EventInput) {
     second_assigned_to: input.second_assigned_to || null,
     job_id: input.job_id || null,
     notes: input.notes || null,
-    customer_confirmed: input.customer_confirmed,
-    rep_confirmed: input.rep_confirmed,
   };
 }
+
+export type ConfirmationTouched = { customer: boolean; rep: boolean };
 
 function revalidateCalendarRoutes() {
   revalidatePath("/calendar");
@@ -38,6 +41,8 @@ export async function createEvent(input: EventInput, leadId?: string) {
   const { error } = await supabase.from("events").insert({
     ...toRow(input),
     ...notesStamp,
+    customer_confirmed: input.customer_confirmed,
+    rep_confirmed: input.rep_confirmed,
     lead_id: leadId || null,
     created_by: profile.id,
     company_id: profile.company_id,
@@ -47,7 +52,11 @@ export async function createEvent(input: EventInput, leadId?: string) {
   return {};
 }
 
-export async function updateEvent(id: string, input: EventInput) {
+export async function updateEvent(
+  id: string,
+  input: EventInput,
+  confirmationTouched?: ConfirmationTouched
+) {
   const profile = await getCurrentProfile();
   const supabase = await createClient();
   const { data: existing } = await supabase.from("events").select("notes").eq("id", id).single();
@@ -56,9 +65,16 @@ export async function updateEvent(id: string, input: EventInput) {
     notesChanged && profile
       ? { notes_updated_by: profile.id, notes_updated_at: new Date().toISOString() }
       : {};
+  // Only write a confirmation flag the user actually toggled. Otherwise a
+  // form opened before a rep/client texted YES would save the stale value
+  // and silently undo their reply.
+  const confirmations = {
+    ...(confirmationTouched?.customer ? { customer_confirmed: input.customer_confirmed } : {}),
+    ...(confirmationTouched?.rep ? { rep_confirmed: input.rep_confirmed } : {}),
+  };
   const { error } = await supabase
     .from("events")
-    .update({ ...toRow(input), ...notesStamp })
+    .update({ ...toRow(input), ...notesStamp, ...confirmations })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidateCalendarRoutes();
