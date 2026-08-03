@@ -3199,3 +3199,131 @@ body {
 .quick-text-hint:hover {
   background: none;
 }
+
+/* ── Client Portal passcode gate ───────────────────────────────────────
+   Shown after the customer opens their sign-in link. Branded with the
+   company's own logo/name, which is only knowable here because the link
+   already identifies which customer (and company) is signing in. */
+.portal-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #1b2739;
+  background-image: radial-gradient(ellipse at top, #253449 0%, #16202f 70%);
+}
+.portal-gate-card {
+  width: 100%;
+  max-width: 405px;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+.portal-gate-accent {
+  height: 5px;
+  background: linear-gradient(90deg, #1f6feb 0%, #4c9aff 55%, #9fc7ff 100%);
+}
+.portal-gate-body {
+  padding: 30px 30px 26px;
+  text-align: center;
+}
+.portal-gate-logo {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  border-radius: 10px;
+  margin-bottom: 18px;
+}
+.portal-gate-title {
+  font-family: var(--font-oswald), sans-serif;
+  font-size: 21px;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  color: #16202f;
+  margin: 0 0 8px;
+}
+.portal-gate-sub {
+  color: #5f6b7a;
+  font-size: 13px;
+  margin: 0 0 22px;
+}
+.portal-gate-label {
+  display: block;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #16202f;
+  margin-bottom: 3px;
+}
+.portal-gate-hint {
+  text-align: left;
+  font-size: 12px;
+  color: #6d7b8d;
+  margin: 0 0 8px;
+}
+.portal-gate-input-wrap {
+  position: relative;
+}
+.portal-gate-input-wrap input {
+  width: 100%;
+  padding: 11px 42px 11px 13px;
+  border: 1.5px solid #b9cbe4;
+  border-radius: 6px;
+  background: #f7fafd;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+.portal-gate-input-wrap input:focus {
+  outline: none;
+  border-color: #1f6feb;
+  background: #fff;
+}
+.portal-gate-reveal {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px 6px;
+  opacity: 0.6;
+}
+.portal-gate-reveal:hover {
+  opacity: 1;
+}
+.portal-gate-error {
+  text-align: left;
+  color: #C0392B;
+  font-size: 12.5px;
+  margin: 9px 0 0;
+}
+.portal-gate-submit {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2f4257;
+  color: #fff;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.portal-gate-submit:hover:not(:disabled) {
+  background: #1f6feb;
+}
+.portal-gate-submit:disabled {
+  background: #93a3b5;
+  cursor: not-allowed;
+}
+.portal-gate-foot {
+  margin: 20px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: #7b8899;
+}

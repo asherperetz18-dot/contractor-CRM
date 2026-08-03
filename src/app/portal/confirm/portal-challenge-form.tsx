@@ -4,15 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { answerPortalChallenge } from "@/lib/actions/portal";
 
-export function PortalChallengeForm() {
+export function PortalChallengeForm({
+  companyName,
+  logoUrl,
+}: {
+  companyName: string;
+  logoUrl: string | null;
+}) {
   const router = useRouter();
   const [answer, setAnswer] = useState("");
+  const [reveal, setReveal] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [remaining, setRemaining] = useState<number | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!answer.trim()) return;
     setPending(true);
     setError("");
     try {
@@ -32,41 +40,71 @@ export function PortalChallengeForm() {
   }
 
   return (
-    <div className="portal-auth-wrap">
-      <div className="portal-auth-card">
-        <h1 className="portal-auth-title">Confirm it&apos;s you</h1>
-        {/* The example is deliberately fictional. Using a real customer's
-            address here would print the answer on the page for them. */}
-        <p className="portal-auth-sub">
-          For your security, enter the street number of your project address — just the number, for
-          example <strong>1234</strong> for 1234 Main St.
-        </p>
-        <form onSubmit={handleSubmit}>
-          <label className="portal-auth-label" htmlFor="portal-street">
-            Street number
-          </label>
-          <input
-            id="portal-street"
-            inputMode="numeric"
-            autoComplete="off"
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            placeholder="5555"
-            required
-            autoFocus
-          />
-          {error && (
-            <p className="error-note">
-              {error}
-              {remaining !== null && remaining > 0 && (
-                <> {remaining} attempt{remaining === 1 ? "" : "s"} left.</>
-              )}
-            </p>
+    <div className="portal-gate">
+      <div className="portal-gate-card">
+        <div className="portal-gate-accent" aria-hidden="true" />
+        <div className="portal-gate-body">
+          {logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt="" className="portal-gate-logo" />
           )}
-          <button type="submit" className="btn-primary portal-auth-submit" disabled={pending}>
-            {pending ? "Checking…" : "Open my portal"}
-          </button>
-        </form>
+          <h1 className="portal-gate-title">{companyName}</h1>
+          <p className="portal-gate-sub">Please enter your passcode to access the portal</p>
+
+          <form onSubmit={handleSubmit}>
+            <label className="portal-gate-label" htmlFor="portal-passcode">
+              Passcode
+            </label>
+            {/* The example is deliberately generic -- naming a real
+                address here would print someone's answer on their screen. */}
+            <p className="portal-gate-hint">Enter your house number from the project address</p>
+
+            <div className="portal-gate-input-wrap">
+              <input
+                id="portal-passcode"
+                type={reveal ? "text" : "password"}
+                inputMode="numeric"
+                autoComplete="off"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                required
+                autoFocus
+              />
+              <button
+                type="button"
+                className="portal-gate-reveal"
+                onClick={() => setReveal((v) => !v)}
+                aria-label={reveal ? "Hide passcode" : "Show passcode"}
+                title={reveal ? "Hide passcode" : "Show passcode"}
+              >
+                {reveal ? "🙈" : "👁"}
+              </button>
+            </div>
+
+            {error && (
+              <p className="portal-gate-error">
+                {error}
+                {remaining !== null && remaining > 0 && (
+                  <> {remaining} attempt{remaining === 1 ? "" : "s"} left.</>
+                )}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="portal-gate-submit"
+              disabled={pending || !answer.trim()}
+            >
+              <span aria-hidden="true">🔒</span> {pending ? "Checking…" : "Access Portal"}
+            </button>
+          </form>
+
+          <p className="portal-gate-foot">
+            Your passcode is the house number from your project address.
+            <br />
+            If you&apos;re having trouble, please contact us.
+          </p>
+        </div>
       </div>
     </div>
   );

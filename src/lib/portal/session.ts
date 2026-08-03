@@ -124,6 +124,19 @@ export async function beginLogin(
 }
 
 /**
+ * Which company the parked sign-in link belongs to, so the passcode screen
+ * can be branded. Resolvable here (unlike the email-entry screen) because
+ * the link already identifies the customer.
+ */
+export async function getPendingChallengeCompany(): Promise<string | null> {
+  const store = await cookies();
+  const raw = store.get(PORTAL_PENDING_COOKIE)?.value;
+  if (!raw) return null;
+  const { token } = await loadUsableToken(raw);
+  return token?.company_id ?? null;
+}
+
+/**
  * Checks the street number against the parked link and, if it matches,
  * signs the customer in. Wrong answers are counted against the token and
  * burn it after a handful, so a 3-5 digit number can't be walked through.
