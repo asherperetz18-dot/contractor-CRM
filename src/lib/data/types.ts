@@ -41,6 +41,19 @@ export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_lead
   return profile.roles.includes("Sales") && profile.can_delete_leads;
 }
 
+// Calendar, Schedule and Production: who can book, edit, drag and
+// complete work. Field crews need this alongside Office; Admin is the
+// full-access role. These pages each used to inline "Office || Field",
+// which silently left Admins unable to touch the calendar at all.
+export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Field")
+  );
+}
+
 // Your Sales Center (Power Dialer, Call Reports): Office, Sales, or the
 // Call-Center-only role can place calls, set dispositions, and manage lists.
 export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {

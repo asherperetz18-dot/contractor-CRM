@@ -11,13 +11,13 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
+import { canEditSchedule } from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
-  const canWrite =
-    (profile?.roles.includes("Office") || profile?.roles.includes("Field")) ?? false;
+  const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
 
   const [

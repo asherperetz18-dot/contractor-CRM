@@ -1,14 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import type { Job } from "@/lib/data/types";
+import { canEditSchedule, type Job } from "@/lib/data/types";
 import { ProductionBoard } from "./production-board";
 
 export default async function ProductionPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
-  const canWrite =
-    (profile?.roles.includes("Office") || profile?.roles.includes("Field")) ?? false;
+  const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
 
   const [{ data: jobs }, allAssignees] = await Promise.all([
