@@ -52,3 +52,5 @@ next-env.d.ts
 
 # One-off diagnostic/QA scripts from debugging sessions -- not product code.
 scripts/
+qa-tmp*.mjs
+scripts-tmp*.mjs
