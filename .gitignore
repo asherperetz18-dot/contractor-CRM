@@ -49,3 +49,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# One-off diagnostic/QA scripts from debugging sessions -- not product code.
+scripts/

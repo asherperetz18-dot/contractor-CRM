@@ -16,6 +16,16 @@ export const AI_ACTION_TYPES: AiActionType[] = [
 
 export type ProposalStatus = "pending" | "applied" | "rejected" | "failed";
 
+// A suggestion nobody acted on goes stale: the reasoning behind it is
+// forgotten, and the data it was based on has moved on. Targets are always
+// re-checked at apply time so an old one can't hit the wrong records, but
+// it shouldn't stay one click from being applied indefinitely.
+export const PROPOSAL_STALE_DAYS = 7;
+
+export function proposalIsStale(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() > PROPOSAL_STALE_DAYS * 86400000;
+}
+
 export type ProposalRow = {
   id: string;
   action_type: string;

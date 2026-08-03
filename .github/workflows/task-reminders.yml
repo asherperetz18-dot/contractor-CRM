@@ -11,5 +11,5 @@ jobs:
     steps:
       - name: Trigger task due reminder check
         run: |
-          curl -sf -X POST "https://www.aibuildpros.com/api/cron/task-reminders" \
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/task-reminders" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

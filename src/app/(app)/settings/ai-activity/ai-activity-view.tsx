@@ -1,8 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { AI_ACTION_LABEL, type ProposalStatus } from "@/lib/data/ai-proposals";
+import {
+  AI_ACTION_LABEL,
+  PROPOSAL_STALE_DAYS,
+  proposalIsStale,
+  type ProposalStatus,
+} from "@/lib/data/ai-proposals";
+import { applyProposal, rejectProposal } from "@/lib/actions/ai-actions";
 import type { Profile } from "@/lib/data/types";
 
 export type AiActivityRow = {
@@ -42,7 +49,22 @@ export function AiActivityView({
   members: Profile[];
   notReady: boolean;
 }) {
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<"All" | ProposalStatus>("All");
+  const [busyId, setBusyId] = useState("");
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+
+  async function decide(id: string, approve: boolean) {
+    setBusyId(id);
+    setRowError(null);
+    const result = approve ? await applyProposal(id) : await rejectProposal(id);
+    setBusyId("");
+    if (result?.error) {
+      setRowError({ id, message: result.error });
+      return;
+    }
+    router.refresh();
+  }
 
   const nameById = useMemo(
     () => new Map(members.map((m) => [m.id, m.name || m.email || "Unknown"])),
@@ -143,7 +165,42 @@ export function AiActivityView({
                         {r.error && <div className="error-note">{r.error}</div>}
                       </td>
                       <td>
-                        <Badge color={STATUS_COLOR[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+                        {r.status === "pending" && proposalIsStale(r.created_at) ? (
+                          <Badge color="#7C8798">Expired</Badge>
+                        ) : (
+                          <Badge color={STATUS_COLOR[r.status]}>{STATUS_LABEL[r.status]}</Badge>
+                        )}
+                        {/* Chat history isn't kept, so without these a
+                            pending suggestion is unreachable once the
+                            assistant window is closed. */}
+                        {r.status === "pending" && !proposalIsStale(r.created_at) && (
+                          <div className="ai-proposal-actions" style={{ marginTop: 6 }}>
+                            <button
+                              type="button"
+                              className="btn-primary small"
+                              onClick={() => decide(r.id, true)}
+                              disabled={busyId === r.id}
+                            >
+                              {busyId === r.id ? "…" : "Approve"}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost small"
+                              onClick={() => decide(r.id, false)}
+                              disabled={busyId === r.id}
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+                        {r.status === "pending" && proposalIsStale(r.created_at) && (
+                          <div className="ai-proposal-count" style={{ marginTop: 4 }}>
+                            Older than {PROPOSAL_STALE_DAYS} days — ask again for current data
+                          </div>
+                        )}
+                        {rowError?.id === r.id && (
+                          <p className="error-note">{rowError.message}</p>
+                        )}
                       </td>
                       <td>
                         {r.decided_by ? nameById.get(r.decided_by) || "Unknown" : "—"}

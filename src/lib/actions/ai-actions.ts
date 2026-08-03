@@ -7,6 +7,8 @@ import { isAdminRole, leadDisplayName, type Lead, type Profile } from "@/lib/dat
 import {
   AI_ACTION_TYPES,
   MAX_TARGETS_PER_PROPOSAL,
+  PROPOSAL_STALE_DAYS,
+  proposalIsStale,
   type AiActionType,
   type ProposalRow,
 } from "@/lib/data/ai-proposals";
@@ -115,10 +117,17 @@ export async function applyProposal(
     action_type: string;
     params: Record<string, unknown>;
     status: string;
+    created_at: string;
   } | null;
 
   if (!proposal) return { error: "Proposal not found." };
   if (proposal.status !== "pending") return { error: "This suggestion was already handled." };
+  // Enforced server-side, not just hidden in the UI.
+  if (proposalIsStale(proposal.created_at)) {
+    return {
+      error: `This suggestion is more than ${PROPOSAL_STALE_DAYS} days old. Ask the assistant again so it can work from current data.`,
+    };
+  }
   if (!AI_ACTION_TYPES.includes(proposal.action_type as AiActionType)) {
     return { error: "That action type isn't supported." };
   }

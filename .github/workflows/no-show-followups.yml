@@ -11,5 +11,5 @@ jobs:
     steps:
       - name: Trigger no-show follow-up check
         run: |
-          curl -sf -X POST "https://www.aibuildpros.com/api/cron/no-show-followups" \
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/no-show-followups" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
