@@ -3439,3 +3439,28 @@ body {
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Tables that aren't inside a .table-scroll wrapper have overflow:hidden,
+   so on a narrow screen their right-hand columns are clipped away with no
+   scrollbar and no indication anything is missing. Making the table its
+   own horizontal scroller fixes those without touching the ones already
+   wrapped (children keep their table display types, so columns stay
+   aligned inside the browser's anonymous table box). */
+@media (max-width: 700px) {
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .data-table th,
+  .data-table td {
+    white-space: nowrap;
+  }
+  .table-scroll .data-table {
+    display: table;
+  }
+  .table-scroll .data-table th,
+  .table-scroll .data-table td {
+    white-space: normal;
+  }
+}
