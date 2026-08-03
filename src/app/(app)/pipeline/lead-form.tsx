@@ -34,6 +34,7 @@ import {
   resolveLeadRefund,
   updateLead,
 } from "@/lib/actions/leads";
+import { sendPortalLinkBySms } from "@/lib/actions/portal";
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { LeadFilesPanel } from "./lead-files-panel";
@@ -122,6 +123,10 @@ export function LeadForm({
     lead?.refund_requested_at ?? null
   );
   const [refundPending, setRefundPending] = useState(false);
+  const [portalLinkStatus, setPortalLinkStatus] = useState<
+    "idle" | "pending" | "sent" | "error"
+  >("idle");
+  const [portalLinkError, setPortalLinkError] = useState("");
 
   const stageIndex = stages.findIndex((s) => s.name === form.stage);
   const stageTotal = stages.length;
@@ -134,6 +139,22 @@ export function LeadForm({
     if (!lead) return;
     onCancel();
     router.push(`/reply-inbox?leadId=${lead.id}`);
+  }
+
+  // Texts the customer a magic link into their client portal. Useful
+  // because every lead has a phone but only ~91% have an email on file.
+  async function sendPortalLink() {
+    if (!lead) return;
+    setPortalLinkStatus("pending");
+    setPortalLinkError("");
+    const result = await sendPortalLinkBySms(lead.id);
+    if (result?.error) {
+      setPortalLinkStatus("error");
+      setPortalLinkError(result.error);
+      return;
+    }
+    setPortalLinkStatus("sent");
+    setTimeout(() => setPortalLinkStatus("idle"), 2500);
   }
 
   async function handleRequestRefund() {
@@ -413,8 +434,21 @@ export function LeadForm({
                 ✉ Email
               </a>
             )}
+            {form.phone && (
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={sendPortalLink}
+                disabled={portalLinkStatus === "pending"}
+                title="Text this contact a link to their project portal"
+              >
+                {portalLinkStatus === "pending" ? "Sending…" : "🔗 Portal Link"}
+              </button>
+            )}
+            {portalLinkStatus === "sent" && <span className="cp-saved">✓ Sent</span>}
           </div>
         )}
+        {portalLinkStatus === "error" && <p className="error-note">{portalLinkError}</p>}
 
         {hasSecondContact ? (
           <div className="second-contact-block">
