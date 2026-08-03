@@ -35,9 +35,10 @@ import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
+import { MessagesPanel } from "../pipeline/messages-panel";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
-type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Notes";
+type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Texts" | "Notes";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -405,7 +406,7 @@ export function EventForm({
 
       {lead && (
         <div className="chip-row no-margin ta-tabs">
-          {(["Appointment", "Lead", "Tasks", "Estimates", "Notes"] as Tab[]).map((t) => (
+          {(["Appointment", "Lead", "Tasks", "Estimates", "Texts", "Notes"] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -728,6 +729,10 @@ export function EventForm({
             </table>
           )}
         </div>
+      )}
+
+      {lead && tab === "Texts" && (
+        <MessagesPanel leadId={lead.id} phone={lead.phone ?? ""} readOnly={readOnly} />
       )}
 
       {lead && tab === "Notes" && (
