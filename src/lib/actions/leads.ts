@@ -93,9 +93,19 @@ export async function createLead(input: LeadInput) {
 
 export async function updateLead(id: string, input: LeadInput) {
   const supabase = await createClient();
-  const { error } = await supabase.from("leads").update(toRow(input)).eq("id", id);
+  // Ask for the row back. When RLS blocks the write there is no error --
+  // the statement simply matches zero rows -- so without this the save
+  // reports success and the edit is silently thrown away.
+  const { data, error } = await supabase
+    .from("leads")
+    .update(toRow(input))
+    .eq("id", id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "That change couldn't be saved — your role may not have permission to edit this contact." };
+  }
   revalidatePath("/pipeline");
   return {};
 }

@@ -24,14 +24,20 @@ export function isAdminRole(profile: Pick<Profile, "roles"> | null) {
 
 // Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office
 // or Sales can create/edit; delete on leads is a separate, narrower check.
+// Admin is included throughout -- it is the full-access role, and omitting
+// it here meant an Admin-only user silently couldn't save a contact.
 export function canEditDispatch(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
-  return profile.roles.includes("Office") || profile.roles.includes("Sales");
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Sales")
+  );
 }
 
 export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_leads"> | null) {
   if (!profile) return false;
-  if (profile.roles.includes("Office")) return true;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
   return profile.roles.includes("Sales") && profile.can_delete_leads;
 }
 
@@ -41,6 +47,7 @@ export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
   return (
     profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
     profile.roles.includes("Sales") ||
     profile.roles.includes("Call Center")
   );
