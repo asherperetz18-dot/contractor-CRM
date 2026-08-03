@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email-env";
 import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
 import {
+  completeChallenge,
   createLoginToken,
   destroyPortalSession,
   getPortalViewer,
@@ -181,6 +182,13 @@ export async function sendPortalLink(
     return { error: problems.join("; ") || "Couldn't send the portal link." };
   }
   return { channels };
+}
+
+/** Second sign-in step: the street number of the project address. */
+export async function answerPortalChallenge(
+  answer: string
+): Promise<{ error?: string; remaining?: number }> {
+  return completeChallenge(answer);
 }
 
 export async function portalSignOut(): Promise<void> {
