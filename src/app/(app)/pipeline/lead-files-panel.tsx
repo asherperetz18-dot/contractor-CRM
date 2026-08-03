@@ -29,7 +29,9 @@ export function LeadFilesPanel({
   const [error, setError] = useState("");
 
   function uploaderName(id: string | null) {
-    if (!id) return "Unknown";
+    // Files uploaded by the customer through the client portal have no
+    // staff uploader, so a null here means "the client sent this in".
+    if (!id) return "Client (portal)";
     const rep = reps.find((r) => r.id === id);
     return rep?.name || rep?.email || "Unknown";
   }
