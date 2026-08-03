@@ -38,7 +38,7 @@ export function PortalLoginForm() {
           <>
             <p className="portal-auth-sub">
               If <strong>{email}</strong> matches a project with us, a sign-in link is on its way.
-              It works once and expires in 30 minutes.
+              It works once and expires in 7 days.
             </p>
             <button
               type="button"

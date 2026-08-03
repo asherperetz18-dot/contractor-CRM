@@ -9,7 +9,13 @@ export const PORTAL_COOKIE = "portal_session";
 // answers the street-number challenge.
 export const PORTAL_PENDING_COOKIE = "portal_pending";
 
-const LOGIN_TOKEN_TTL_MINUTES = 30;
+// Customers open these links hours or days after we send them -- a short
+// window meant most arrived dead. The link is no longer the only gate: the
+// street-number passcode covers leads that have one, portal access is a
+// separate office-controlled grant that can be revoked instantly, and the
+// link is still single-use, so it can't be replayed once redeemed.
+export const LOGIN_TOKEN_TTL_DAYS = 7;
+const LOGIN_TOKEN_TTL_MINUTES = LOGIN_TOKEN_TTL_DAYS * 24 * 60;
 const SESSION_TTL_DAYS = 30;
 const MAX_CHALLENGE_ATTEMPTS = 5;
 

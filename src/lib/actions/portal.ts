@@ -94,7 +94,7 @@ function buildPortalEmail(firstName: string | null, companyName: string, link: s
       `Here's your sign-in link for your project portal with ${companyName}:`,
       link,
       ``,
-      `This link works once and expires in 30 minutes.`,
+      `This link works once and expires in 7 days.`,
       `If you didn't request it, you can ignore this email.`,
     ].join("\n"),
     html: `
@@ -102,7 +102,7 @@ function buildPortalEmail(firstName: string | null, companyName: string, link: s
       <p>Hi ${greeting},</p>
       <p>Here's your sign-in link for your project portal with <strong>${companyName}</strong>:</p>
       <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Open my project portal</a></p>
-      <p style="color:#666;font-size:13px">This link works once and expires in 30 minutes. If you didn't request it, you can ignore this email.</p>
+      <p style="color:#666;font-size:13px">This link works once and expires in 7 days. If you didn't request it, you can ignore this email.</p>
     </div>
   `,
   };
@@ -187,7 +187,7 @@ export async function sendPortalLink(
       problems.push("couldn't create a text sign-in link");
     } else {
       const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
-      const body = `${companyName}: here's your project portal — see your appointments, photos and messages.\n${link}\n\nLink expires in 30 minutes.`;
+      const body = `${companyName}: here's your project portal — see your appointments, photos and messages.\n${link}\n\nLink expires in 7 days.`;
       const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
       if (sent.error) {
         problems.push(`text failed (${sent.error})`);
