@@ -481,6 +481,9 @@ export type RefundStatus = "None" | "Requested" | "Received" | "Denied";
 export type Lead = {
   id: string;
   contact_type: ContactType;
+  // The owning tenant. Distinct from company_name, which is the customer's
+  // own business name when the contact is a Company rather than a person.
+  company_id: string;
   company_name: string | null;
   first_name: string | null;
   last_name: string | null;
