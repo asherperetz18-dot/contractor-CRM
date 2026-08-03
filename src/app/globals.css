@@ -3464,3 +3464,22 @@ body {
     white-space: normal;
   }
 }
+
+/* Reply Inbox: the conversation list is a non-shrinking 280px column, so
+   side-by-side on a phone left the message thread about 8px wide -- texts
+   were unreadable and unanswerable on the device most likely to be used
+   in the field. Stack them instead. */
+@media (max-width: 700px) {
+  .ri-layout {
+    flex-direction: column;
+    height: auto;
+    min-height: 0;
+  }
+  .ri-list {
+    flex: 0 0 auto;
+    max-height: 220px;
+  }
+  .ri-thread {
+    min-height: 420px;
+  }
+}
