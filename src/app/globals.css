@@ -3407,3 +3407,35 @@ body {
   font-style: italic;
   padding: 2px 0;
 }
+
+/* ── Mobile fixes ──────────────────────────────────────────────────────
+   Stat tiles were pinned at four across on every screen size, leaving
+   ~76px per tile on a phone. */
+@media (max-width: 700px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+}
+
+/* Message bodies routinely contain portal links, which are long unbroken
+   strings. Without a break rule they refuse to wrap and push the whole
+   thread wider than the screen. */
+.lead-msg-body,
+.portal-msg-body {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.lead-thread,
+.portal-thread {
+  max-width: 100%;
+}
+.lead-msg,
+.portal-msg {
+  min-width: 0;
+}
+/* The reply box was rendering at ~178px on a phone. */
+.second-contact-block textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
