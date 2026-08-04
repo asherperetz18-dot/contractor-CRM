@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { LeadInput, PipelineStage } from "@/lib/data/types";
+import { normalizePhone, type LeadInput, type PipelineStage } from "@/lib/data/types";
 
 function toRow(input: LeadInput) {
   return {
@@ -41,7 +41,46 @@ export type BulkLeadRow = {
   value: string;
   date_received: string;
   source: string;
+  notes: string;
 };
+
+/**
+ * Which incoming rows already exist, matched on phone (normalised to the
+ * last 10 digits so formatting differences don't hide a match) or email.
+ *
+ * Reports rather than blocks -- a repeat enquiry from the same person is
+ * sometimes a genuinely new job, so the decision stays with the importer.
+ */
+export async function findImportDuplicates(
+  rows: { phone: string; email: string }[]
+): Promise<{ error?: string; duplicateRowIndexes?: number[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("phone, email, second_contact_phone")
+    .eq("company_id", profile.company_id);
+  if (error) return { error: error.message };
+
+  const phones = new Set<string>();
+  const emails = new Set<string>();
+  for (const l of (data as { phone: string | null; email: string | null; second_contact_phone: string | null }[]) ?? []) {
+    if (l.phone) phones.add(normalizePhone(l.phone));
+    if (l.second_contact_phone) phones.add(normalizePhone(l.second_contact_phone));
+    if (l.email) emails.add(l.email.trim().toLowerCase());
+  }
+
+  const duplicateRowIndexes: number[] = [];
+  rows.forEach((r, i) => {
+    const p = r.phone ? normalizePhone(r.phone) : "";
+    const e = r.email ? r.email.trim().toLowerCase() : "";
+    if ((p && phones.has(p)) || (e && emails.has(e))) duplicateRowIndexes.push(i);
+  });
+
+  return { duplicateRowIndexes };
+}
 
 export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
   const profile = await getCurrentProfile();
@@ -61,6 +100,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     date_received: r.date_received || undefined,
     stage,
     source: r.source || "CSV Import",
+    notes: r.notes || null,
     created_by: profile.id,
     company_id: profile.company_id,
   }));

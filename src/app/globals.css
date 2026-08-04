@@ -3543,3 +3543,36 @@ body {
   outline: 2px solid #2D5F8A;
   outline-offset: -2px;
 }
+
+/* CSV import duplicate check. Reports rather than blocks -- a repeat
+   enquiry from the same person can be a genuinely new job. */
+.csv-dupe-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+.csv-dupe-warn {
+  font-size: 13px;
+  color: #C7691B;
+  font-weight: 600;
+}
+.csv-dupe-ok {
+  font-size: 13px;
+  color: #2F855A;
+  font-weight: 600;
+}
+.csv-dupe-skip {
+  display: block;
+  font-size: 13px;
+  margin: 6px 0 10px;
+  cursor: pointer;
+}
+.csv-dupe-hint {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-style: italic;
+  margin-left: 22px;
+}

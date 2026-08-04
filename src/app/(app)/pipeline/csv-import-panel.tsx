@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import type { PipelineStage, PipelineStageRow } from "@/lib/data/types";
-import { bulkImportLeads } from "@/lib/actions/leads";
+import { bulkImportLeads, findImportDuplicates } from "@/lib/actions/leads";
 
 type Mapping = {
   firstName: number;
@@ -20,6 +20,7 @@ type Mapping = {
   value: number;
   dateReceived: number;
   source: number;
+  notes: number;
 };
 
 const BLANK_MAPPING: Mapping = {
@@ -34,6 +35,7 @@ const BLANK_MAPPING: Mapping = {
   value: -1,
   dateReceived: -1,
   source: -1,
+  notes: -1,
 };
 
 // Excel/Sheets exports can hand back a date cell as free text ("7/28/2026"),
@@ -113,6 +115,12 @@ export function CsvImportPanel({
   const [pending, setPending] = useState(false);
   const [importedCount, setImportedCount] = useState<number | null>(null);
   const [skippedCount, setSkippedCount] = useState<number | null>(null);
+  // Checked against existing contacts before importing, so a re-uploaded
+  // list doesn't quietly create a second copy of everyone.
+  const [dupeCount, setDupeCount] = useState<number | null>(null);
+  const [dupeChecking, setDupeChecking] = useState(false);
+  const [skipDupes, setSkipDupes] = useState(true);
+  const [dupeIndexes, setDupeIndexes] = useState<Set<number>>(new Set());
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -162,6 +170,7 @@ export function CsvImportPanel({
             "created",
           ]),
           source: guessColumn(head, ["source", "lead source", "campaign"]),
+          notes: guessColumn(head, ["notes", "note", "comments", "description", "message"]),
         });
         if (wb.SheetNames.length > 1) {
           setError(
@@ -199,6 +208,7 @@ export function CsvImportPanel({
         value: cell(row, mapping.value),
         date_received: toIsoDate(cell(row, mapping.dateReceived)),
         source: cell(row, mapping.source),
+        notes: cell(row, mapping.notes),
       };
     });
   }
@@ -207,6 +217,31 @@ export function CsvImportPanel({
     ? buildLeads().filter((l) => l.first_name || l.last_name || l.phone || l.email)
     : [];
 
+  // Run against the usable rows whenever the mapping changes, so the
+  // warning reflects the columns currently selected rather than whatever
+  // was mapped when the file was first loaded.
+  async function checkDuplicates() {
+    const usable = buildLeads().filter(
+      (l) => l.first_name || l.last_name || l.phone || l.email
+    );
+    if (!usable.length) {
+      setDupeCount(null);
+      setDupeIndexes(new Set());
+      return;
+    }
+    setDupeChecking(true);
+    const result = await findImportDuplicates(
+      usable.map((l) => ({ phone: l.phone, email: l.email }))
+    );
+    setDupeChecking(false);
+    if (result.error || !result.duplicateRowIndexes) {
+      setDupeCount(null);
+      return;
+    }
+    setDupeIndexes(new Set(result.duplicateRowIndexes));
+    setDupeCount(result.duplicateRowIndexes.length);
+  }
+
   async function runImport() {
     const hasNameSource = mapping.firstName >= 0 || mapping.fullName >= 0;
     if (!hasNameSource) {
@@ -214,12 +249,20 @@ export function CsvImportPanel({
       return;
     }
     const built = buildLeads();
-    const newLeads = built.filter(
+    let newLeads = built.filter(
       (l) => l.first_name || l.last_name || l.phone || l.email
     );
     if (!newLeads.length) {
       setError("No rows had a usable name, phone, or email — check your column mapping above.");
       return;
+    }
+    const dupesFound = dupeIndexes.size;
+    if (skipDupes && dupesFound > 0) {
+      newLeads = newLeads.filter((_, i) => !dupeIndexes.has(i));
+      if (!newLeads.length) {
+        setError("Every row already exists — nothing new to import.");
+        return;
+      }
     }
     setPending(true);
     setError("");
@@ -247,6 +290,7 @@ export function CsvImportPanel({
     ["value", "Est. Value"],
     ["dateReceived", "Date Received"],
     ["source", "Source"],
+    ["notes", "Notes"],
   ];
 
   return (
@@ -313,6 +357,43 @@ export function CsvImportPanel({
               ? ` — ${rows.length - usableLeads.length} have no name, phone, or email in the mapped columns. Check the mapping above if that looks wrong.`
               : "."}
           </p>
+
+          {/* Duplicate check is explicit rather than automatic: it scans
+              every existing contact, and re-running it on each keystroke of
+              the mapping would be wasteful on a 900-contact list. */}
+          <div className="csv-dupe-row">
+            <button
+              type="button"
+              className="btn-ghost small"
+              onClick={checkDuplicates}
+              disabled={dupeChecking || usableLeads.length === 0}
+            >
+              {dupeChecking ? "Checking…" : "Check for duplicates"}
+            </button>
+            {dupeCount !== null && (
+              <span className={dupeCount > 0 ? "csv-dupe-warn" : "csv-dupe-ok"}>
+                {dupeCount === 0
+                  ? "✓ No duplicates — none of these match an existing contact."
+                  : `⚠ ${dupeCount} of ${usableLeads.length} already exist (matched on phone or email).`}
+              </span>
+            )}
+          </div>
+          {dupeCount !== null && dupeCount > 0 && (
+            <label className="csv-dupe-skip">
+              <input
+                type="checkbox"
+                checked={skipDupes}
+                onChange={(e) => setSkipDupes(e.target.checked)}
+              />{" "}
+              Skip the {dupeCount} duplicate{dupeCount === 1 ? "" : "s"} and import{" "}
+              {usableLeads.length - dupeCount} new contact
+              {usableLeads.length - dupeCount === 1 ? "" : "s"}
+              <span className="csv-dupe-hint">
+                Uncheck to import everything anyway — useful if a repeat enquiry is a genuinely
+                new job.
+              </span>
+            </label>
+          )}
 
           {previewRows.length > 0 && (
             <div className="csv-preview">
