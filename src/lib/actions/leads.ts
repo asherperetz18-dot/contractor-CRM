@@ -82,6 +82,18 @@ export async function findImportDuplicates(
   return { duplicateRowIndexes };
 }
 
+// leads.date_received is NOT NULL. A blank or unrecognised date in the
+// spreadsheet used to be sent as null, which failed the insert -- and
+// because rows go up in chunks, one bad cell aborted the whole import.
+// Anything that isn't a real YYYY-MM-DD falls back to today.
+function importDate(raw: string): string {
+  const trimmed = (raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed) && !isNaN(new Date(trimmed).getTime())) {
+    return trimmed;
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
 export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in.", imported: 0 };
@@ -97,7 +109,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     address: r.address || null,
     project_type: r.project_type || null,
     value: Number(r.value) || 0,
-    date_received: r.date_received || undefined,
+    date_received: importDate(r.date_received),
     stage,
     source: r.source || "CSV Import",
     notes: r.notes || null,

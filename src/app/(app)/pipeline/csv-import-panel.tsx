@@ -55,7 +55,9 @@ function toIsoDate(raw: string): string {
   }
   const d = new Date(raw);
   if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  return raw;
+  // Returning the raw text here would pass junk like "n/a" through as if
+  // it were a date. Empty means "unknown", and the server fills in today.
+  return "";
 }
 
 function guessColumn(headers: string[], candidates: string[]) {
@@ -216,6 +218,10 @@ export function CsvImportPanel({
   const usableLeads = rows.length
     ? buildLeads().filter((l) => l.first_name || l.last_name || l.phone || l.email)
     : [];
+  // What will actually be created, once unusable rows and (if chosen)
+  // known duplicates are taken out.
+  const importCount =
+    skipDupes && dupeCount ? Math.max(0, usableLeads.length - dupeCount) : usableLeads.length;
 
   // Run against the usable rows whenever the mapping changes, so the
   // warning reflects the columns currently selected rather than whatever
@@ -450,7 +456,10 @@ export function CsvImportPanel({
             >
               {pending
                 ? "Importing…"
-                : `Import ${rows.length ? rows.length : ""} Contacts`}
+                : /* Reflect what will actually be created -- the raw row
+                     count ignored unusable rows and skipped duplicates,
+                     so the button promised more than it delivered. */
+                  `Import ${importCount || ""} Contact${importCount === 1 ? "" : "s"}`}
             </button>
           )}
         </div>
