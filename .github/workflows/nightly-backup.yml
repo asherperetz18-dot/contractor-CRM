@@ -1,0 +1,43 @@
+name: Nightly CRM Backup
+
+on:
+  schedule:
+    # 09:15 UTC ~= 02:15 Pacific -- after the day's work, before the next.
+    - cron: "15 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Export CRM data
+        run: |
+          set -euo pipefail
+          STAMP="$(date -u +%Y-%m-%d)"
+          # -f so an HTTP error fails the step instead of saving an error
+          # page as if it were a backup.
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/backup" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -o "crm-backup-${STAMP}.json"
+
+      - name: Verify the export is usable
+        run: |
+          set -euo pipefail
+          FILE="$(ls crm-backup-*.json)"
+          # A backup nobody checks is a backup nobody can trust: confirm it
+          # parses, reports no skipped tables, and actually contains leads.
+          TOTAL=$(jq -r '.totalRows' "$FILE")
+          LEADS=$(jq -r '.counts.leads // 0' "$FILE")
+          SKIPPED=$(jq -r '.skipped | length' "$FILE")
+          SIZE=$(wc -c < "$FILE")
+          echo "rows=$TOTAL leads=$LEADS skipped=$SKIPPED bytes=$SIZE"
+          if [ "$SKIPPED" -ne 0 ]; then echo "::error::tables were skipped"; exit 1; fi
+          if [ "$LEADS" -lt 1 ]; then echo "::error::no leads in backup"; exit 1; fi
+
+      - name: Upload backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-backup-${{ github.run_id }}
+          path: crm-backup-*.json
+          retention-days: 90
+          if-no-files-found: error

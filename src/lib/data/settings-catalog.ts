@@ -299,6 +299,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         desc: "Upload CSV exports from another system — auto-detected for known sources, visual mapping for everything else",
         icon: "📊",
       },
+      {
+        title: "Backup & Export",
+        desc: "Download a full copy of your CRM data, and check the nightly automatic backup",
+        icon: "💾",
+        href: "/settings/backup",
+      },
       { title: "Junk Contacts Cleanup", desc: "Rules and batch actions to clean up junk or duplicate contacts", icon: "🧹" },
       { title: "Bulk Delete", desc: "Bulk delete contacts, leads, appointments, and users", icon: "🗑" },
     ],
