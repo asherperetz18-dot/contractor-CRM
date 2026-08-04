@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  formatTimeRange,
   leadDisplayName,
   mapsUrl,
   type Event,
@@ -58,14 +59,6 @@ function formatDate(dateStr: string) {
     month: "long",
     day: "numeric",
   });
-}
-
-function formatTime(time: string | null) {
-  if (!time) return "";
-  const [h, m] = time.slice(0, 5).split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
 export function PortalHome({
@@ -238,7 +231,7 @@ export function PortalHome({
                   <div key={ev.id} className="portal-appt">
                     <div className="portal-appt-when">
                       <strong>{formatDate(ev.date)}</strong>
-                      {ev.time && <span> at {formatTime(ev.time)}</span>}
+                      {ev.time && <span> at {formatTimeRange(ev.time, ev.end_time)}</span>}
                     </div>
                     {repName(ev.assigned_to) && (
                       <div className="portal-appt-rep">With {repName(ev.assigned_to)}</div>
@@ -306,7 +299,7 @@ export function PortalHome({
                   <div key={ev.id} className="portal-appt portal-appt-past">
                     <div className="portal-appt-when">
                       {formatDate(ev.date)}
-                      {ev.time && ` at ${formatTime(ev.time)}`}
+                      {ev.time && ` at ${formatTimeRange(ev.time, ev.end_time)}`}
                     </div>
                     {ev.status === "Cancelled" && (
                       <div className="portal-appt-rep">Cancelled</div>

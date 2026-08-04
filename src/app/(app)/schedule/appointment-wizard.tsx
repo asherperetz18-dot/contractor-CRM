@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { TimeField } from "@/components/ui/time-field";
 import {
+  addHour,
   type CalendarRow,
   type EventType,
   type Lead,
@@ -62,6 +63,7 @@ export function AppointmentWizard({
   const [apptType, setApptType] = useState<EventType>("Estimate");
   const [apptDate, setApptDate] = useState(todayISO());
   const [apptTime, setApptTime] = useState("09:00");
+  const [apptEndTime, setApptEndTime] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
 
   const isNewContact = !!contactQuery.trim() && !matchedLeadId;
@@ -134,6 +136,7 @@ export function AppointmentWizard({
       title: apptTitle || `${apptType} — ${contactName}`,
       date: apptDate,
       time: apptTime,
+      endTime: apptEndTime,
       eventType: apptType,
       assignedTo,
     };
@@ -145,6 +148,7 @@ export function AppointmentWizard({
             title: details.title,
             date: details.date,
             time: details.time,
+            end_time: details.endTime,
             event_type: details.eventType,
             status: "New",
             assigned_to: details.assignedTo,
@@ -324,8 +328,30 @@ export function AppointmentWizard({
               <Field label="Date">
                 <input type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} />
               </Field>
-              <Field label="Time">
+              <Field label="Start Time">
                 <TimeField value={apptTime} onChange={(v) => setApptTime(v)} />
+              </Field>
+              <Field label="End Time">
+                {apptEndTime ? (
+                  <div className="end-time-row">
+                    <TimeField value={apptEndTime} onChange={(v) => setApptEndTime(v)} />
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() => setApptEndTime("")}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={() => setApptEndTime(addHour(apptTime))}
+                  >
+                    + Add end time
+                  </button>
+                )}
               </Field>
               <Field label="Assigned To">
                 <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>

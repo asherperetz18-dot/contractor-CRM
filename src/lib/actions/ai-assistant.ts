@@ -175,7 +175,7 @@ async function buildContext(companyId: string): Promise<string> {
   const eventLines = ((events as Event[] | null) ?? []).map((ev) => {
     const rep = ev.assigned_to ? repName.get(ev.assigned_to) || "Unassigned" : "Unassigned";
     const lead = ev.lead_id ? leadById.get(ev.lead_id) : null;
-    return `- ${ev.date} ${ev.time || ""} | ${ev.title || ev.event_type} | ${ev.event_type} | status: ${ev.status} | rep: ${rep}${
+    return `- ${ev.date} ${ev.time || ""}${ev.end_time ? `-${ev.end_time}` : ""} | ${ev.title || ev.event_type} | ${ev.event_type} | status: ${ev.status} | rep: ${rep}${
       lead ? ` | contact: ${leadDisplayName(lead)}` : ""
     }`;
   });

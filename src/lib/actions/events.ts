@@ -13,6 +13,7 @@ function toRow(input: EventInput) {
     title: input.title || null,
     date: input.date,
     time: input.time || null,
+    end_time: input.end_time || null,
     event_type: input.event_type,
     status: input.status,
     assigned_to: input.assigned_to || null,

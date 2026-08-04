@@ -3,7 +3,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
 import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
-import { TIMEZONE_IANA, leadDisplayName, mapsUrl, type CompanyProfile, type Lead } from "@/lib/data/types";
+import {
+  TIMEZONE_IANA,
+  formatTimeRange,
+  leadDisplayName,
+  mapsUrl,
+  type CompanyProfile,
+  type Lead,
+} from "@/lib/data/types";
 
 const NIGHT_BEFORE_HOUR = 18; // 6pm local time
 
@@ -11,6 +18,7 @@ type EventRow = {
   id: string;
   date: string;
   time: string | null;
+  end_time: string | null;
   status: string;
   event_type: string;
   lead_id: string | null;
@@ -21,12 +29,8 @@ type EventRow = {
 };
 
 function buildBody(kind: "night" | "hour", event: EventRow, lead: Lead): string {
-  const timeLabel = event.time
-    ? new Date(`1970-01-01T${event.time.slice(0, 5)}:00`).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
+  // ASCII hyphen: the en dash would push this SMS out of GSM-7.
+  const timeLabel = formatTimeRange(event.time, event.end_time, "12h", "-");
   const whenLabel = kind === "night" ? `tomorrow${timeLabel ? ` at ${timeLabel}` : ""}` : `in about an hour${timeLabel ? ` (${timeLabel})` : ""}`;
   const lines = [
     `Reminder: ${event.event_type} appointment with ${leadDisplayName(lead)} ${whenLabel}.`,
@@ -51,7 +55,7 @@ async function processCompany(
   const { data: candidates } = await admin
     .from("events")
     .select(
-      "id, date, time, status, event_type, lead_id, assigned_to, notes, reminder_night_before_sent_at, reminder_hour_before_sent_at"
+      "id, date, time, end_time, status, event_type, lead_id, assigned_to, notes, reminder_night_before_sent_at, reminder_hour_before_sent_at"
     )
     .eq("company_id", company.company_id)
     .in("status", ["New", "Confirmed"])

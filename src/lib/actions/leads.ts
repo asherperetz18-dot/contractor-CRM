@@ -253,6 +253,7 @@ export async function bookAppointmentForLead(
     title: string;
     date: string;
     time: string;
+    endTime?: string;
     eventType: string;
     assignedTo: string;
     notes?: string;
@@ -267,6 +268,7 @@ export async function bookAppointmentForLead(
     title: details.title || null,
     date: details.date,
     time: details.time || null,
+    end_time: details.endTime || null,
     event_type: details.eventType,
     assigned_to: details.assignedTo || null,
     notes: details.notes || null,

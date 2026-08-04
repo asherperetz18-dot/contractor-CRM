@@ -10,7 +10,9 @@ import {
   EVENT_STATUSES,
   QUICK_TEXT_DEFAULTS,
   REP_APPOINTMENT_INFO_DEFAULT,
+  addHour,
   fillQuickTextVariables,
+  formatTimeRange,
   fillRepInfoTemplate,
   leadDisplayName,
   mapsUrl,
@@ -44,7 +46,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function friendlyWhen(dateStr: string, timeStr: string): string {
+function friendlyWhen(dateStr: string, timeStr: string, endTimeStr: string): string {
   // event.time comes back from Postgres as "HH:MM:SS"; normalize to "HH:MM"
   // so it isn't ambiguous whether a trailing ":00" is ours or already there.
   const hhmm = timeStr ? timeStr.slice(0, 5) : "00:00";
@@ -59,8 +61,9 @@ function friendlyWhen(dateStr: string, timeStr: string): string {
     : sameDay(d, tomorrow)
       ? "tomorrow"
       : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  // ASCII hyphen: this goes out as an SMS (see formatTimeRange).
   const timeLabel = timeStr
-    ? d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase()
+    ? formatTimeRange(timeStr, endTimeStr || null, "12h", "-").toLowerCase()
     : "";
   return timeLabel ? `${dayLabel} at ${timeLabel}` : dayLabel;
 }
@@ -70,6 +73,7 @@ function toInput(event?: Event, initialDate?: string): EventInput {
     title: event?.title ?? "",
     date: event?.date ?? initialDate ?? todayISO(),
     time: event?.time ?? "09:00",
+    end_time: event?.end_time ?? "",
     event_type: event?.event_type ?? "Estimate",
     status: event?.status ?? "New",
     assigned_to: event?.assigned_to ?? "",
@@ -275,12 +279,7 @@ export function EventForm({
       month: "short",
       day: "numeric",
     });
-    const timeLabel = form.time
-      ? new Date(`1970-01-01T${form.time.slice(0, 5)}:00`).toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        })
-      : "";
+    const timeLabel = formatTimeRange(form.time, form.end_time, "12h", "-");
 
     // Some leads only ever captured a phone number, which gets stored as
     // the "name" -- never expose that as if it were a client name.
@@ -315,7 +314,7 @@ export function EventForm({
     const repName = reps.find((r) => r.id === form.assigned_to)?.name ?? "";
     const filled = fillQuickTextVariables(text.body || QUICK_TEXT_DEFAULTS[text.key], {
       firstName: lead.first_name ?? "",
-      when: friendlyWhen(form.date, form.time),
+      when: friendlyWhen(form.date, form.time, form.end_time),
       repName,
       companyName: quickTextOptions.companyName,
     });
@@ -460,8 +459,35 @@ export function EventForm({
             <Field label="Date">
               <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
             </Field>
-            <Field label="Time">
+            <Field label="Start Time">
               <TimeField value={form.time} onChange={(v) => set("time", v)} />
+            </Field>
+            <Field label="End Time">
+              {form.end_time ? (
+                <div className="end-time-row">
+                  <TimeField value={form.end_time} onChange={(v) => set("end_time", v)} />
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={() => set("end_time", "")}
+                    disabled={readOnly || pending}
+                  >
+                    Clear
+                  </button>
+                </div>
+              ) : (
+                /* Opt-in rather than defaulted: an end time nobody chose
+                   would be guesswork presented as fact on the customer's
+                   appointment. Defaults to an hour when they ask for one. */
+                <button
+                  type="button"
+                  className="btn-ghost small"
+                  onClick={() => set("end_time", addHour(form.time))}
+                  disabled={readOnly || pending}
+                >
+                  + Add end time
+                </button>
+              )}
             </Field>
             <Field label="Assigned To">
               <select

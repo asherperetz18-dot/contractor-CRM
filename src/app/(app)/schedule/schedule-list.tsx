@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
+  formatTimeRange,
   stageColor,
   type CalendarRow,
   type DocumentRecord,
@@ -13,20 +14,9 @@ import {
   type LeadTask,
   type PipelineStageRow,
   type Profile,
-  type TimeFormat,
 } from "@/lib/data/types";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
-
-function formatEventTime(time: string | null, format: TimeFormat): string {
-  if (!time) return "";
-  const hhmm = time.slice(0, 5);
-  if (format === "24h") return hhmm;
-  const [h, m] = hhmm.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
-}
 
 function formatEventDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -106,7 +96,7 @@ export function ScheduleList({
             <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
               <div className="schedule-date">
                 <span className="mono schedule-date-num">{formatEventDate(ev.date)}</span>
-                <span className="mono schedule-time">{formatEventTime(ev.time, timeFormat)}</span>
+                <span className="mono schedule-time">{formatTimeRange(ev.time, ev.end_time, timeFormat)}</span>
               </div>
               <div className="schedule-body">
                 <div className="schedule-title">{ev.title}</div>

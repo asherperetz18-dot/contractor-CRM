@@ -9,6 +9,7 @@ import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PicklistSelect } from "@/components/ui/picklist-select";
 import {
+  addHour as addHourTo,
   leadDisplayName,
   mapsUrl,
   money,
@@ -251,6 +252,7 @@ export function LeadForm({
   const [booking, setBooking] = useState({
     date: todayISO(),
     time: "09:00",
+    endTime: "",
     eventType: "Estimate",
     assignedTo: "",
     projectType: "",
@@ -369,6 +371,7 @@ export function LeadForm({
       title: `${booking.eventType} — ${contactName}`,
       date: booking.date,
       time: booking.time,
+      endTime: booking.endTime,
       eventType: booking.eventType,
       assignedTo: booking.assignedTo,
       notes: booking.notes,
@@ -863,11 +866,38 @@ export function LeadForm({
                     }
                   />
                 </Field>
-                <Field label="Time">
+                <Field label="Start Time">
                   <TimeField
                     value={booking.time}
                     onChange={(v) => setBooking((b) => ({ ...b, time: v }))}
                   />
+                </Field>
+                <Field label="End Time">
+                  {booking.endTime ? (
+                    <div className="end-time-row">
+                      <TimeField
+                        value={booking.endTime}
+                        onChange={(v) => setBooking((b) => ({ ...b, endTime: v }))}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        onClick={() => setBooking((b) => ({ ...b, endTime: "" }))}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() =>
+                        setBooking((b) => ({ ...b, endTime: addHourTo(b.time) }))
+                      }
+                    >
+                      + Add end time
+                    </button>
+                  )}
                 </Field>
                 <Field label="Calendar">
                   <select

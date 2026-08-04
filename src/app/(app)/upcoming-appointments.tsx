@@ -1,17 +1,7 @@
 "use client";
 
 import { useTimeFormat } from "@/components/time-format-context";
-import type { Event, TimeFormat } from "@/lib/data/types";
-
-function formatEventTime(time: string | null, format: TimeFormat): string {
-  if (!time) return "";
-  const hhmm = time.slice(0, 5);
-  if (format === "24h") return hhmm;
-  const [h, m] = hhmm.split(":").map(Number);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
-}
+import { formatTimeRange, type Event } from "@/lib/data/types";
 
 function formatEventDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -36,7 +26,7 @@ export function UpcomingAppointments({ events }: { events: Event[] }) {
         <li key={ev.id}>
           <span className="mono">
             {formatEventDate(ev.date)}
-            {ev.time ? ` · ${formatEventTime(ev.time, timeFormat)}` : ""}
+            {ev.time ? ` · ${formatTimeRange(ev.time, ev.end_time, timeFormat)}` : ""}
           </span>
           <span style={{ flex: 1 }}>{ev.title}</span>
         </li>

@@ -226,6 +226,46 @@ export function fillRepInfoTemplate(
     .join("\n");
 }
 
+/** One hour after the start, as a sensible first suggestion for an end time. */
+export function addHour(time: string): string {
+  const [h, m] = (time || "09:00").slice(0, 5).split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return "10:00";
+  return `${String((h + 1) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** "1:30 PM", or "" when there's no time. */
+export function formatClock(time: string | null, format: TimeFormat = "12h"): string {
+  if (!time) return "";
+  const hhmm = time.slice(0, 5);
+  if (format === "24h") return hhmm;
+  const [h, m] = hhmm.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return "";
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+/**
+ * "9:00 AM – 10:00 AM" when an end time exists, otherwise just the start.
+ * Shared so the calendar, schedule, portal and rep texts all agree.
+ */
+export function formatTimeRange(
+  time: string | null,
+  endTime: string | null,
+  format: TimeFormat = "12h",
+  // Text messages pass "-": the en dash isn't in GSM-7, so one of them
+  // flips the whole SMS to UCS-2 and halves how much fits per segment.
+  separator = "–"
+): string {
+  const start = formatClock(time, format);
+  if (!start) return "";
+  const end = formatClock(endTime, format);
+  // An end at or before the start is bad data, not a range -- show the
+  // start alone rather than something like "2:00 PM – 1:00 PM".
+  if (!end || (endTime ?? "") <= (time ?? "")) return start;
+  return `${start} ${separator} ${end}`;
+}
+
 // Company-wide display preference for appointment time pickers -- native
 // <input type="time"> is locale-driven, so a custom picker enforces this.
 export type TimeFormat = "12h" | "24h";
@@ -350,6 +390,9 @@ export type Event = {
   title: string | null;
   date: string;
   time: string | null;
+  // Null means no end time was recorded. Displays fall back to showing
+  // just the start rather than inventing a duration.
+  end_time: string | null;
   event_type: EventType;
   status: EventStatus;
   assigned_to: string | null;
@@ -371,6 +414,7 @@ export type EventInput = {
   title: string;
   date: string;
   time: string;
+  end_time: string;
   event_type: EventType;
   status: EventStatus;
   assigned_to: string;

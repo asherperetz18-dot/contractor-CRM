@@ -428,6 +428,21 @@ body {
   font-size: 12px;
   margin: 6px 0 0;
 }
+/* End-time picker plus its Clear button. The button's default top margin
+   would push it out of line with the time input. */
+.end-time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.end-time-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.end-time-row .btn-ghost.small {
+  margin: 0;
+  flex-shrink: 0;
+}
 .btn-danger-ghost {
   background: transparent;
   border: 1px solid #e2b4ac;
