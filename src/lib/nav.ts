@@ -66,6 +66,7 @@ export const NAV: NavEntry[] = [
       { label: "Contacts", href: "/contacts" },
       { label: "Salespeople", href: "/salespeople" },
       { label: "Appt. Setter Assignments", href: "/appt-setter-assignments" },
+      { label: "Lead Refunds", href: "/lead-refunds" },
     ],
   },
   {

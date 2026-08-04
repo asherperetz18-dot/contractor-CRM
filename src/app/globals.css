@@ -3576,3 +3576,10 @@ body {
   font-style: italic;
   margin-left: 22px;
 }
+
+/* Lead refund ageing -- a request sitting unanswered for a month is the
+   thing worth chasing, so it shouldn't read like every other row. */
+.refund-stale {
+  color: #C0392B;
+  font-weight: 700;
+}

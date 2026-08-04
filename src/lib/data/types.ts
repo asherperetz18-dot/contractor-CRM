@@ -77,6 +77,7 @@ export type PageKey =
   | "contacts"
   | "salespeople"
   | "appt-setter-assignments"
+  | "lead-refunds"
   | "power-dialer"
   | "call-reports"
   | "text-reports"
@@ -102,6 +103,12 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     key: "appt-setter-assignments",
     label: "Appt. Setter Assignments",
     href: "/appt-setter-assignments",
+    group: "Dispatch (Leads Mgmt.)",
+  },
+  {
+    key: "lead-refunds",
+    label: "Lead Refunds",
+    href: "/lead-refunds",
     group: "Dispatch (Leads Mgmt.)",
   },
   { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Your Sales Center" },
