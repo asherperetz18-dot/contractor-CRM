@@ -15,6 +15,7 @@ import { VoiceDialer } from "./voice-dialer";
 import { CompanySwitcher } from "./company-switcher";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { AiAssistantButton } from "./ai-assistant-button";
+import { DailyBriefButton } from "./daily-brief";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
@@ -110,6 +111,7 @@ export default async function AppLayout({
           <div className="global-topbar-right">
             <CompanySwitcher companies={companies} currentCompanyId={profile.company_id} canCreate={isAdminRole(profile)} />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
+            <DailyBriefButton isAdmin={isAdminRole(profile)} />
             <AiAssistantButton />
             <QuickCreateMenu />
             {isAdminRole(profile) && <AdminToolsMenu />}
