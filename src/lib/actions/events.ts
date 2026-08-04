@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { EventInput } from "@/lib/data/types";
+import type { EventInput, EventStatus } from "@/lib/data/types";
 
 // Confirmation flags are deliberately NOT in here -- they can be changed
 // out-of-band by an inbound YES/NO text reply while the edit form sits
@@ -103,6 +103,26 @@ export async function rescheduleEvent(id: string, date: string, time?: string | 
   if (error) return { error: error.message };
   if (!data || data.length === 0) {
     return { error: "Couldn't move that appointment — your role may not have permission." };
+  }
+  revalidateCalendarRoutes();
+  return {};
+}
+
+/**
+ * Records the outcome of an appointment -- and only that. Deliberately
+ * separate from updateEvent: logging a result shouldn't quietly commit
+ * whatever else was half-typed in the open form.
+ */
+export async function setEventResult(id: string, status: EventStatus) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("events")
+    .update({ status })
+    .eq("id", id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "Couldn't save that result — your role may not have permission." };
   }
   revalidateCalendarRoutes();
   return {};

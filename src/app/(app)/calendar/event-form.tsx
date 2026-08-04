@@ -9,9 +9,12 @@ import { TimeField } from "@/components/ui/time-field";
 import {
   EVENT_STATUSES,
   QUICK_TEXT_DEFAULTS,
+  FOLLOW_UP_STAGE,
   REP_APPOINTMENT_INFO_DEFAULT,
   addHour,
+  appointmentResultOverdue,
   endsNextDay,
+  hasAppointmentResult,
   fillQuickTextVariables,
   formatTimeRange,
   fillRepInfoTemplate,
@@ -32,7 +35,13 @@ import {
   type Profile,
   type SmsQuickText,
 } from "@/lib/data/types";
-import { createEvent, deleteEvent, markRepInfoSent, updateEvent } from "@/lib/actions/events";
+import {
+  createEvent,
+  deleteEvent,
+  markRepInfoSent,
+  setEventResult,
+  updateEvent,
+} from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage } from "@/lib/actions/leads";
@@ -41,10 +50,20 @@ import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
-type Tab = "Appointment" | "Lead" | "Tasks" | "Estimates" | "Texts" | "Notes";
+type Tab = "Appointment" | "Result" | "Lead" | "Tasks" | "Estimates" | "Texts" | "Notes";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Where a lead most likely belongs once the appointment is over. Only a
+ * starting suggestion -- the stage dropdown stays editable, because only
+ * the rep knows whether "Showed" meant a signature or a maybe.
+ */
+function suggestedStageFor(outcome: EventStatus, currentStage: string): string {
+  if (outcome === "No-show" || outcome === "Cancelled") return FOLLOW_UP_STAGE;
+  return currentStage;
 }
 
 function friendlyWhen(dateStr: string, timeStr: string, endTimeStr: string): string {
@@ -158,7 +177,11 @@ export function EventForm({
   const linkedEstimates = lead
     ? (documents ?? []).filter((d) => d.contact_id === lead.id)
     : [];
-  const showResultPanel = !!lead && !!event && form.status === "Showed";
+  // Captured once on open rather than read during render -- calling the
+  // clock mid-render is impure, and the badge doesn't need to tick.
+  const [openedAtMs] = useState(() => Date.now());
+  const resultOverdue = !!event && appointmentResultOverdue(event, openedAtMs);
+  const resultRecorded = !!event && hasAppointmentResult(form.status);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -171,12 +194,23 @@ export function EventForm({
   const set = <K extends keyof EventInput>(k: K, v: EventInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  async function saveResult() {
+  async function saveResult(outcome: EventStatus) {
     if (!lead || !event) return;
-    const chosenStage = resultStage || lead.stage;
-    if (!resultNote.trim() && chosenStage === lead.stage) return;
+    const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage);
     setResultPending(true);
     setError("");
+
+    // The outcome itself first: it's the thing the red badge and the
+    // follow-up cron both read, so it must land even if a later step
+    // fails. Everything after it is optional detail.
+    const statusResult = await setEventResult(event.id, outcome);
+    if (statusResult?.error) {
+      setResultPending(false);
+      setError(statusResult.error);
+      return;
+    }
+    set("status", outcome);
+
     if (chosenStage !== lead.stage) {
       const stageResult = await moveLeadStage(lead.id, chosenStage);
       if (stageResult?.error) {
@@ -412,20 +446,30 @@ export function EventForm({
 
       {lead && (
         <div className="chip-row no-margin ta-tabs">
-          {(["Appointment", "Lead", "Tasks", "Estimates", "Texts", "Notes"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={"chip" + (tab === t ? " chip-active" : "")}
-              onClick={() => setTab(t)}
-            >
-              {t}
-              {t === "Tasks" && openTaskCount > 0 ? ` (${openTaskCount})` : ""}
-              {t === "Estimates" && linkedEstimates.length > 0
-                ? ` (${linkedEstimates.length})`
-                : ""}
-            </button>
-          ))}
+          {(["Appointment", "Result", "Lead", "Tasks", "Estimates", "Texts", "Notes"] as Tab[]).map(
+            (t) => (
+              <button
+                key={t}
+                type="button"
+                className={
+                  "chip" +
+                  (tab === t ? " chip-active" : "") +
+                  // Only once the appointment has been and gone. A booking
+                  // made for next week isn't missing its result yet, and a
+                  // badge that's always red stops being read.
+                  (t === "Result" && resultOverdue ? " chip-overdue" : "")
+                }
+                onClick={() => setTab(t)}
+              >
+                {t}
+                {t === "Result" && resultOverdue ? " •" : ""}
+                {t === "Tasks" && openTaskCount > 0 ? ` (${openTaskCount})` : ""}
+                {t === "Estimates" && linkedEstimates.length > 0
+                  ? ` (${linkedEstimates.length})`
+                  : ""}
+              </button>
+            )
+          )}
         </div>
       )}
 
@@ -636,19 +680,47 @@ export function EventForm({
         </fieldset>
       )}
 
-      {(!lead || tab === "Appointment") && showResultPanel && (
-        <div className="second-contact-block">
-          <div className="second-contact-head">
-            <span>Appointment Result</span>
-          </div>
-          <p className="empty-hint" style={{ marginTop: 0 }}>
-            Showed up — where does this lead go next? Move the stage and/or log what happened
-            so it doesn&apos;t go cold.
-          </p>
+      {lead && event && tab === "Result" && (
+        <div>
+          {resultRecorded ? (
+            <p className="result-banner result-banner-done">
+              ✓ Result recorded: <strong>{form.status}</strong>. Pick a different outcome below
+              if that&apos;s wrong.
+            </p>
+          ) : resultOverdue ? (
+            <p className="result-banner result-banner-late">
+              This appointment has been and gone with no result. {repName(form.assigned_to)
+                ? `${repName(form.assigned_to)} gets a text reminder`
+                : "A reminder goes out"}{" "}
+              an hour afterwards, and if it&apos;s still blank at 8pm the lead moves itself to{" "}
+              {FOLLOW_UP_STAGE} so it doesn&apos;t go cold.
+            </p>
+          ) : (
+            <p className="empty-hint" style={{ marginTop: 0 }}>
+              What happened at this appointment? Log it here once it&apos;s done.
+            </p>
+          )}
+
+          <Field label="Outcome">
+            <div className="chip-row no-margin">
+              {(["Showed", "No-show", "Cancelled"] as EventStatus[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={"chip" + (form.status === s ? " chip-active" : "")}
+                  onClick={() => saveResult(s)}
+                  disabled={readOnly || resultPending}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </Field>
+
           <div className="form-grid">
             <Field label="Move Lead to Stage">
               <select
-                value={resultStage || lead!.stage}
+                value={resultStage || lead.stage}
                 onChange={(e) => setResultStage(e.target.value)}
                 disabled={readOnly || resultPending}
               >
@@ -669,19 +741,15 @@ export function EventForm({
               disabled={readOnly || resultPending}
             />
           </Field>
-          {!readOnly && (
+          <p className="hint-note">
+            Choosing an outcome above saves it along with the stage and note. No-show and
+            Cancelled suggest {FOLLOW_UP_STAGE}; change the stage first if it belongs elsewhere.
+          </p>
+          {resultSaved && (
             <div className="modal-actions">
               <div />
               <div>
-                {resultSaved && <span className="cp-saved">✓ Saved</span>}
-                <button
-                  type="button"
-                  className="btn-primary small"
-                  onClick={saveResult}
-                  disabled={resultPending}
-                >
-                  {resultPending ? "Saving…" : "Save Result"}
-                </button>
+                <span className="cp-saved">✓ Saved</span>
               </div>
             </div>
           )}

@@ -473,10 +473,55 @@ export type Event = {
   rep_info_sent_at: string | null;
   second_rep_info_sent_at: string | null;
   notes_updated_by: string | null;
+  followup_flagged_at: string | null;
+  result_reminder_sent_at: string | null;
+  followup_moved_at: string | null;
   notes_updated_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+// An appointment that still reads "New" or "Confirmed" after it has been
+// and gone never had its outcome recorded. Keeping this as the one
+// definition of "has a result" -- rather than a separate result column
+// that could disagree with the status shown on the calendar -- is what
+// lets the modal badge and the follow-up cron stay in step.
+export const RESOLVED_EVENT_STATUSES: EventStatus[] = ["Showed", "No-show", "Cancelled"];
+
+/**
+ * Where a lead lands when an appointment came and went without an outcome.
+ * Seeded into every company's pipeline, but an admin can rename it -- if
+ * no stage by this name exists, the automation leaves the lead alone
+ * rather than inventing somewhere to put it.
+ */
+export const FOLLOW_UP_STAGE = "Appointment Follow Up";
+
+export function hasAppointmentResult(status: EventStatus): boolean {
+  return RESOLVED_EVENT_STATUSES.includes(status);
+}
+
+/** Breathing room after an appointment ends before a missing result is late. */
+export const RESULT_GRACE_MINUTES = 60;
+
+/**
+ * Whether this appointment is overdue a result. Takes `nowMs` rather than
+ * reading the clock so it can be called during render without tripping the
+ * purity rule, and so tests can pin the time.
+ *
+ * An appointment with no time at all is treated as ending at midnight --
+ * it's overdue the day after, not the moment the date arrives.
+ */
+export function appointmentResultOverdue(
+  event: Pick<Event, "date" | "time" | "end_time" | "status">,
+  nowMs: number,
+  graceMinutes: number = RESULT_GRACE_MINUTES
+): boolean {
+  if (hasAppointmentResult(event.status)) return false;
+  const clock = event.end_time || event.time;
+  const endsAt = new Date(`${event.date}T${clock ? clock.slice(0, 5) : "23:59"}:00`);
+  if (isNaN(endsAt.getTime())) return false;
+  return nowMs > endsAt.getTime() + graceMinutes * 60_000;
+}
 
 export type EventInput = {
   title: string;

@@ -428,6 +428,35 @@ body {
   font-size: 12px;
   margin: 6px 0 0;
 }
+/* An appointment that's been and gone with no outcome logged. Red only
+   after the fact -- see appointmentResultOverdue. */
+.chip.chip-overdue {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+.chip.chip-overdue.chip-active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.result-banner {
+  font-size: 12.5px;
+  line-height: 1.5;
+  border-radius: 6px;
+  padding: 9px 12px;
+  margin: 0 0 14px;
+}
+.result-banner-late {
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+.result-banner-done {
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
 /* End-time picker plus its Clear button. The button's default top margin
    would push it out of line with the time input. */
 .end-time-row {
