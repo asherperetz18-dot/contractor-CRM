@@ -126,6 +126,9 @@ export function EventForm({
   const [quickTextOptions, setQuickTextOptions] = useState<{
     companyName: string;
     quickTexts: SmsQuickText[];
+    website: string | null;
+    facebookUrl: string | null;
+    instagramUrl: string | null;
   } | null>(null);
   const [repTextStatus, setRepTextStatus] = useState<"idle" | "pending" | "sent" | "error">(
     "idle"
@@ -318,6 +321,9 @@ export function EventForm({
       when: friendlyWhen(form.date, form.time, form.end_time),
       repName,
       companyName: quickTextOptions.companyName,
+      website: quickTextOptions.website,
+      facebookUrl: quickTextOptions.facebookUrl,
+      instagramUrl: quickTextOptions.instagramUrl,
     });
     setShowQuickText(false);
     textPhone(lead.phone, filled);

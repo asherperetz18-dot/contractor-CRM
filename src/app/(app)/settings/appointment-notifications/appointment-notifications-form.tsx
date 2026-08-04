@@ -10,10 +10,37 @@ import {
   type SmsQuickText,
   type SmsQuickTextKey,
 } from "@/lib/data/types";
+import { nonGsmCharacters, smsCost } from "@/lib/sms-segments";
 import { saveFollowUpSettings, saveRepInfoTemplate } from "@/lib/actions/settings";
 import { saveQuickText } from "@/lib/actions/sms-quick-texts";
 
 const QUICK_TEXT_ORDER: SmsQuickTextKey[] = ["confirm", "reschedule", "on_my_way", "running_late"];
+
+/**
+ * What this message costs to send. Worth showing: the cost of a text is
+ * driven by which characters are in it, not just how long it is, and a
+ * single em dash or emoji silently doubles the segment count.
+ */
+function SegmentMeter({ body }: { body: string }) {
+  const cost = smsCost(body);
+  const offenders = nonGsmCharacters(body);
+  return (
+    <p className="hint-note" style={{ marginTop: 4 }}>
+      {cost.units} characters · <strong>{cost.segments} SMS segment
+      {cost.segments === 1 ? "" : "s"}</strong> · {cost.remaining} left before the next one
+      {offenders.length > 0 && (
+        <>
+          {" "}
+          — <code className="mono">{offenders.join(" ")}</code>{" "}
+          {offenders.length === 1 ? "isn't" : "aren't"} in the standard SMS alphabet, which
+          cuts each segment from 160 characters to 70. Swapping{" "}
+          {offenders.length === 1 ? "it" : "them"} out is usually the cheapest edit you can
+          make.
+        </>
+      )}
+    </p>
+  );
+}
 
 function QuickTextCard({ text }: { text: SmsQuickText }) {
   const router = useRouter();
@@ -49,6 +76,7 @@ function QuickTextCard({ text }: { text: SmsQuickText }) {
         style={{ width: "100%", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }}
         placeholder={QUICK_TEXT_DEFAULTS[text.key]}
       />
+      <SegmentMeter body={value || QUICK_TEXT_DEFAULTS[text.key]} />
       {!text.body && !value && (
         <p className="hint-note" style={{ marginTop: 4 }}>
           Showing default — edit above to override.
@@ -225,6 +253,7 @@ export function AppointmentNotificationsForm({
           style={{ width: "100%", fontFamily: "inherit", fontSize: 13, lineHeight: 1.5 }}
           placeholder={REP_APPOINTMENT_INFO_DEFAULT}
         />
+        <SegmentMeter body={repTemplate || REP_APPOINTMENT_INFO_DEFAULT} />
         {!repInfoTemplate && !repTemplate && (
           <p className="hint-note" style={{ marginTop: 4 }}>
             Showing default — edit above to override. The client&apos;s name (never their phone
@@ -252,7 +281,17 @@ export function AppointmentNotificationsForm({
         <p className="hint-note">
           Available variables: <code className="mono">{"{first_name}"}</code>,{" "}
           <code className="mono">{"{when}"}</code>, <code className="mono">{"{rep_name}"}</code>,{" "}
-          <code className="mono">{"{company_name}"}</code>
+          <code className="mono">{"{company_name}"}</code>,{" "}
+          <code className="mono">{"{links}"}</code>,{" "}
+          <code className="mono">{"{website}"}</code>,{" "}
+          <code className="mono">{"{facebook}"}</code>,{" "}
+          <code className="mono">{"{instagram}"}</code>
+        </p>
+        <p className="hint-note">
+          <code className="mono">{"{links}"}</code> puts your website, Facebook and Instagram on
+          one line, skipping any you haven&apos;t filled in under{" "}
+          <Link href="/settings/company-profile">Company Profile</Link>. A line whose only
+          variable comes back empty is dropped from the message entirely.
         </p>
       </div>
 

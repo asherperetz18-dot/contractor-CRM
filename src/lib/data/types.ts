@@ -184,6 +184,8 @@ export type CompanyProfile = {
   email: string | null;
   phone: string | null;
   website: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
   license_holder_name: string | null;
   license_number: string | null;
   license_state: string | null;
@@ -306,26 +308,77 @@ export type SmsQuickText = {
   body: string | null;
 };
 
+// Hyphens, not em dashes. The em dash isn't in GSM-7, and a single one
+// re-encodes the whole message as UCS-2 -- which drops capacity from 160
+// characters per segment to 70, so a 156-character confirmation costs
+// three segments instead of one.
 export const QUICK_TEXT_DEFAULTS: Record<SmsQuickTextKey, string> = {
   confirm:
-    "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} — reply YES to confirm or NO to reschedule.",
+    "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} - reply YES to confirm or NO to reschedule.\n{links}",
   reschedule:
-    "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} appointment — what time works better for you?",
+    "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} appointment - what time works better for you?",
   on_my_way:
-    "Hi {first_name}, this is {rep_name} with {company_name} — on my way to your {when} appointment now!",
+    "Hi {first_name}, this is {rep_name} with {company_name} - on my way to your {when} appointment now!",
   running_late:
-    "Hi {first_name}, this is {rep_name} with {company_name}. Running a little behind for our {when} appointment, I'll be there shortly — sorry for the delay!",
+    "Hi {first_name}, this is {rep_name} with {company_name}. Running a little behind for our {when} appointment, I'll be there shortly - sorry for the delay!",
 };
+
+/**
+ * A company link as it should appear in a text: no scheme, no "www.", no
+ * trailing slash. Phones linkify "aibuildpros.com" perfectly well, and the
+ * prefix costs 12 characters per link that come straight out of the
+ * segment budget. A bare Instagram handle ("@aibuildpros") is expanded to
+ * a real domain so it's tappable.
+ */
+export function smsLink(raw: string | null, handleDomain?: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return "";
+  if (handleDomain && trimmed.startsWith("@")) {
+    return `${handleDomain}/${trimmed.slice(1)}`;
+  }
+  return trimmed
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
+    .replace(/\/+$/, "");
+}
 
 export function fillQuickTextVariables(
   template: string,
-  vars: { firstName: string; when: string; repName: string; companyName: string }
+  vars: {
+    firstName: string;
+    when: string;
+    repName: string;
+    companyName: string;
+    website?: string | null;
+    facebookUrl?: string | null;
+    instagramUrl?: string | null;
+  }
 ): string {
-  return template
+  const website = smsLink(vars.website ?? "");
+  const facebook = smsLink(vars.facebookUrl ?? "", "facebook.com");
+  const instagram = smsLink(vars.instagramUrl ?? "", "instagram.com");
+  // Only the links actually filled in on the company profile. " | " rather
+  // than a middot: the middot isn't in GSM-7 and would re-encode the whole
+  // message (the pipe costs 2 septets, which is the cheap way to do this).
+  const links = [website, facebook, instagram].filter(Boolean).join(" | ");
+
+  const filled = template
     .replace(/\{first_name\}/g, vars.firstName || "there")
     .replace(/\{when\}/g, vars.when)
     .replace(/\{rep_name\}/g, vars.repName || "your rep")
-    .replace(/\{company_name\}/g, vars.companyName);
+    .replace(/\{company_name\}/g, vars.companyName)
+    .replace(/\{links\}/g, links || REP_TEMPLATE_EMPTY)
+    .replace(/\{website\}/g, website || REP_TEMPLATE_EMPTY)
+    .replace(/\{facebook\}/g, facebook || REP_TEMPLATE_EMPTY)
+    .replace(/\{instagram\}/g, instagram || REP_TEMPLATE_EMPTY);
+
+  // Same rule as the rep template: a line whose link was never filled in
+  // drops out whole, so nobody gets a text ending in a bare "Instagram:".
+  return filled
+    .split("\n")
+    .filter((line) => !line.includes(REP_TEMPLATE_EMPTY))
+    .join("\n")
+    .trimEnd();
 }
 
 // Stages are admin-managed (Settings -> Pipeline Stages), not a fixed

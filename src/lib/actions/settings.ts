@@ -13,6 +13,8 @@ export type CompanyProfileInput = {
   email: string;
   phone: string;
   website: string;
+  facebook_url: string;
+  instagram_url: string;
   license_holder_name: string;
   license_number: string;
   license_state: string;
@@ -34,6 +36,8 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       email: input.email || null,
       phone: input.phone || null,
       website: input.website || null,
+      facebook_url: input.facebook_url || null,
+      instagram_url: input.instagram_url || null,
       license_holder_name: input.license_holder_name || null,
       license_number: input.license_number || null,
       license_state: input.license_state || null,

@@ -44,6 +44,8 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     email: p?.email ?? "",
     phone: p?.phone ?? "",
     website: p?.website ?? "",
+    facebook_url: p?.facebook_url ?? "",
+    instagram_url: p?.instagram_url ?? "",
     license_holder_name: p?.license_holder_name ?? "",
     license_number: p?.license_number ?? "",
     license_state: p?.license_state ?? "",
@@ -141,6 +143,24 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
             placeholder="yourcompany.com"
           />
         </Field>
+        <Field label="Facebook Page">
+          <input
+            value={form.facebook_url}
+            onChange={(e) => set("facebook_url", e.target.value)}
+            placeholder="facebook.com/yourcompany"
+          />
+        </Field>
+        <Field label="Instagram">
+          <input
+            value={form.instagram_url}
+            onChange={(e) => set("instagram_url", e.target.value)}
+            placeholder="@yourcompany"
+          />
+        </Field>
+        <p className="hint-note">
+          Used by the <code className="mono">{"{links}"}</code> variable in appointment
+          texts. Leave any of them blank and it&apos;s simply left out of the message.
+        </p>
         <Field label="License Holder Name">
           <input
             value={form.license_holder_name}
