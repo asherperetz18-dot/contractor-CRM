@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -15,10 +16,12 @@ export default async function CallReportsPage() {
   const canWrite = canUseSalesCenter(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [{ data: callLogs }, { data: leads }, reps, { data: dispositions }] =
+  const [{ data: callLogs }, leads, reps, { data: dispositions }] =
     await Promise.all([
       supabase.from("call_logs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
-      supabase.from("leads").select("*").eq("company_id", companyId),
+      selectAll<Lead>((f, t) =>
+        supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+      ),
       profile ? getCompanyMembers(companyId) : Promise.resolve([]),
       supabase.from("call_dispositions").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     ]);

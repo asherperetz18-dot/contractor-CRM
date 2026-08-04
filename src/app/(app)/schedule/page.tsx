@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import type {
@@ -23,7 +24,7 @@ export default async function SchedulePage() {
     { data: events },
     { data: jobs },
     allReps,
-    { data: leads },
+    leads,
     { data: stages },
     { data: leadTasks },
     { data: documents },
@@ -32,7 +33,9 @@ export default async function SchedulePage() {
     supabase.from("events").select("*").eq("company_id", companyId),
     supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
-    supabase.from("leads").select("*").eq("company_id", companyId),
+    selectAll<Lead>((f, t) =>
+      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+    ),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase
       .from("lead_tasks")

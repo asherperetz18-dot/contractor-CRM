@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -19,7 +20,7 @@ export default async function DialQueuePage() {
   const companyId = profile?.company_id ?? "";
 
   const [
-    { data: leads },
+    leads,
     { data: stages },
     allReps,
     { data: dispositions },
@@ -27,7 +28,14 @@ export default async function DialQueuePage() {
     { data: dialLists },
     { data: companyProfile },
   ] = await Promise.all([
-    supabase.from("leads").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    selectAll<Lead>((f, t) =>
+      supabase
+        .from("leads")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("call_dispositions").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),

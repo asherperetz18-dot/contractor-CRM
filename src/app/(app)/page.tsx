@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { leadDisplayName, money as moneyFmt, type RolePageVisibilityRow } from "@/lib/data/types";
 import type { Event, Lead } from "@/lib/data/types";
@@ -65,11 +66,16 @@ export default async function DashboardPage() {
       .select("id", { count: "exact", head: true })
       .eq("company_id", companyId)
       .gte("date", todayISO),
-    supabase
-      .from("leads")
-      .select("value")
-      .eq("company_id", companyId)
-      .not("stage", "in", "(Won,Lost)"),
+    // Paginated: this sums every open lead's value, and the 1000-row cap
+    // would silently understate the headline pipeline figure.
+    selectAll<{ value: number | null }>((f, t) =>
+      supabase
+        .from("leads")
+        .select("value")
+        .eq("company_id", companyId)
+        .not("stage", "in", "(Won,Lost)")
+        .range(f, t)
+    ),
     supabase
       .from("leads")
       .select("*")
@@ -118,7 +124,7 @@ export default async function DashboardPage() {
       .eq("company_id", companyId),
   ]);
 
-  const totalPipelineValue = (pipelineValue.data ?? []).reduce(
+  const totalPipelineValue = pipelineValue.reduce(
     (sum: number, row: Record<string, unknown>) => sum + (Number(row.value) || 0),
     0
   );

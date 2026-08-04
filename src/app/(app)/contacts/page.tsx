@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -22,7 +23,7 @@ export default async function ContactsPage() {
   const companyId = profile?.company_id ?? "";
 
   const [
-    { data: leads },
+    leads,
     { data: notes },
     { data: files },
     allReps,
@@ -31,7 +32,14 @@ export default async function ContactsPage() {
     { data: projectTypes },
     { data: sources },
   ] = await Promise.all([
-    supabase.from("leads").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+    selectAll<Lead>((f, t) =>
+      supabase
+        .from("leads")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")

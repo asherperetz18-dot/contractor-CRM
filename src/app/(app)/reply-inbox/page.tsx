@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { canEditDispatch, type Lead, type SmsMessage } from "@/lib/data/types";
@@ -10,13 +11,15 @@ export default async function ReplyInboxPage() {
   const canWrite = canEditDispatch(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [{ data: messages }, { data: leads }, allReps] = await Promise.all([
+  const [{ data: messages }, leads, allReps] = await Promise.all([
     supabase
       .from("sms_messages")
       .select("*")
       .eq("company_id", companyId)
       .order("created_at", { ascending: true }),
-    supabase.from("leads").select("*").eq("company_id", companyId),
+    selectAll<Lead>((f, t) =>
+      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
   const reps = allReps.filter((r) => r.phone);

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import type { Lead } from "@/lib/data/types";
@@ -9,9 +10,11 @@ export default async function SalespeoplePage() {
   const profile = await getCurrentProfile();
   const companyId = profile?.company_id ?? "";
 
-  const [allReps, { data: leads }] = await Promise.all([
+  const [allReps, leads] = await Promise.all([
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
-    supabase.from("leads").select("*").eq("company_id", companyId),
+    selectAll<Lead>((f, t) =>
+      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+    ),
   ]);
   const reps = [...allReps].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
