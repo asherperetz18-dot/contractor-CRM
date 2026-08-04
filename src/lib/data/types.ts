@@ -260,10 +260,25 @@ export function formatTimeRange(
   const start = formatClock(time, format);
   if (!start) return "";
   const end = formatClock(endTime, format);
-  // An end at or before the start is bad data, not a range -- show the
-  // start alone rather than something like "2:00 PM – 1:00 PM".
-  if (!end || (endTime ?? "") <= (time ?? "")) return start;
-  return `${start} ${separator} ${end}`;
+  if (!end) return start;
+  // Times come back from Postgres as "HH:MM:SS" but go in as "HH:MM";
+  // compare on the same slice so the two forms line up.
+  const startKey = (time ?? "").slice(0, 5);
+  const endKey = (endTime ?? "").slice(0, 5);
+  // Same reading at both ends is a zero-length appointment, not a range.
+  if (endKey === startKey) return start;
+  return `${start} ${separator} ${end}${endsNextDay(time, endTime) ? " (next day)" : ""}`;
+}
+
+/**
+ * True when the end reads earlier than the start. Only a wall-clock time is
+ * stored -- no date -- so that can only mean the appointment runs past
+ * midnight. Labelled wherever it shows rather than hidden: if it was a
+ * typo, the label is how anyone notices.
+ */
+export function endsNextDay(time: string | null, endTime: string | null): boolean {
+  if (!time || !endTime) return false;
+  return endTime.slice(0, 5) < time.slice(0, 5);
 }
 
 // Company-wide display preference for appointment time pickers -- native

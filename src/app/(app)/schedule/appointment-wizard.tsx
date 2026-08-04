@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/field";
 import { TimeField } from "@/components/ui/time-field";
 import {
   addHour,
+  endsNextDay,
   type CalendarRow,
   type EventType,
   type Lead,
@@ -333,16 +334,21 @@ export function AppointmentWizard({
               </Field>
               <Field label="End Time">
                 {apptEndTime ? (
-                  <div className="end-time-row">
-                    <TimeField value={apptEndTime} onChange={(v) => setApptEndTime(v)} />
-                    <button
-                      type="button"
-                      className="btn-ghost small"
-                      onClick={() => setApptEndTime("")}
-                    >
-                      Clear
-                    </button>
-                  </div>
+                  <>
+                    <div className="end-time-row">
+                      <TimeField value={apptEndTime} onChange={(v) => setApptEndTime(v)} />
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        onClick={() => setApptEndTime("")}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {endsNextDay(apptTime, apptEndTime) && (
+                      <p className="hint-note">Ends the next day.</p>
+                    )}
+                  </>
                 ) : (
                   <button
                     type="button"

@@ -10,6 +10,7 @@ import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-i
 import { PicklistSelect } from "@/components/ui/picklist-select";
 import {
   addHour as addHourTo,
+  endsNextDay,
   leadDisplayName,
   mapsUrl,
   money,
@@ -874,19 +875,24 @@ export function LeadForm({
                 </Field>
                 <Field label="End Time">
                   {booking.endTime ? (
-                    <div className="end-time-row">
-                      <TimeField
-                        value={booking.endTime}
-                        onChange={(v) => setBooking((b) => ({ ...b, endTime: v }))}
-                      />
-                      <button
-                        type="button"
-                        className="btn-ghost small"
-                        onClick={() => setBooking((b) => ({ ...b, endTime: "" }))}
-                      >
-                        Clear
-                      </button>
-                    </div>
+                    <>
+                      <div className="end-time-row">
+                        <TimeField
+                          value={booking.endTime}
+                          onChange={(v) => setBooking((b) => ({ ...b, endTime: v }))}
+                        />
+                        <button
+                          type="button"
+                          className="btn-ghost small"
+                          onClick={() => setBooking((b) => ({ ...b, endTime: "" }))}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      {endsNextDay(booking.time, booking.endTime) && (
+                        <p className="hint-note">Ends the next day.</p>
+                      )}
+                    </>
                   ) : (
                     <button
                       type="button"

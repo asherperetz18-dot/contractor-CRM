@@ -11,6 +11,7 @@ import {
   QUICK_TEXT_DEFAULTS,
   REP_APPOINTMENT_INFO_DEFAULT,
   addHour,
+  endsNextDay,
   fillQuickTextVariables,
   formatTimeRange,
   fillRepInfoTemplate,
@@ -464,17 +465,22 @@ export function EventForm({
             </Field>
             <Field label="End Time">
               {form.end_time ? (
-                <div className="end-time-row">
-                  <TimeField value={form.end_time} onChange={(v) => set("end_time", v)} />
-                  <button
-                    type="button"
-                    className="btn-ghost small"
-                    onClick={() => set("end_time", "")}
-                    disabled={readOnly || pending}
-                  >
-                    Clear
-                  </button>
-                </div>
+                <>
+                  <div className="end-time-row">
+                    <TimeField value={form.end_time} onChange={(v) => set("end_time", v)} />
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() => set("end_time", "")}
+                      disabled={readOnly || pending}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {endsNextDay(form.time, form.end_time) && (
+                    <p className="hint-note">Ends the next day.</p>
+                  )}
+                </>
               ) : (
                 /* Opt-in rather than defaulted: an end time nobody chose
                    would be guesswork presented as fact on the customer's
