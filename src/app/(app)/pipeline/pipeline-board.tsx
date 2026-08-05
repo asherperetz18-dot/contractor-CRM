@@ -59,6 +59,7 @@ export function PipelineBoard({
   sources,
   canWrite,
   canDelete,
+  isAdmin,
 }: {
   leads: Lead[];
   tasks: LeadTask[];
@@ -71,6 +72,7 @@ export function PipelineBoard({
   sources: LeadSourceRow[];
   canWrite: boolean;
   canDelete: boolean;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -599,6 +601,7 @@ export function PipelineBoard({
           files={filesByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}
+          isAdmin={isAdmin}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

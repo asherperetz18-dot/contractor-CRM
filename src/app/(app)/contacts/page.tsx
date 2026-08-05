@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   canDeleteLeads,
+  isStrictAdmin,
   canEditDispatch,
   type CalendarRow,
   type Lead,
@@ -20,6 +21,7 @@ export default async function ContactsPage() {
   const profile = await getCurrentProfile();
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
+  const isAdmin = isStrictAdmin(profile);
   const companyId = profile?.company_id ?? "";
 
   const [
@@ -72,6 +74,7 @@ export default async function ContactsPage() {
       sources={(sources as LeadSourceRow[]) ?? []}
       canWrite={canWrite}
       canDelete={canDelete}
+      isAdmin={isAdmin}
     />
   );
 }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PicklistSelect } from "@/components/ui/picklist-select";
+import { LeadViewTrail } from "./lead-view-trail";
 import {
   addHour as addHourTo,
   endsNextDay,
@@ -94,6 +95,7 @@ export function LeadForm({
   files,
   readOnly,
   canDelete,
+  isAdmin,
   onCancel,
   onSaved,
   onDeleted,
@@ -109,6 +111,8 @@ export function LeadForm({
   files?: LeadFile[];
   readOnly?: boolean;
   canDelete?: boolean;
+  /** Admin role only -- gates the who-opened-this trail. */
+  isAdmin?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -618,6 +622,8 @@ export function LeadForm({
             </div>
           </div>
         )}
+
+        {lead && <LeadViewTrail leadId={lead.id} isAdmin={!!isAdmin} />}
 
         {lead && (
           <div className="chip-row no-margin ta-tabs">

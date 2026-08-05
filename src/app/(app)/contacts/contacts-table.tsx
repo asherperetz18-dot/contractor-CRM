@@ -31,6 +31,7 @@ export function ContactsTable({
   sources,
   canWrite,
   canDelete,
+  isAdmin,
 }: {
   leads: Lead[];
   notes: LeadNote[];
@@ -42,6 +43,7 @@ export function ContactsTable({
   sources: LeadSourceRow[];
   canWrite: boolean;
   canDelete: boolean;
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -190,6 +192,7 @@ export function ContactsTable({
           files={files.filter((f) => f.lead_id === editing.id)}
           readOnly={!canWrite}
           canDelete={canDelete}
+          isAdmin={isAdmin}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}
