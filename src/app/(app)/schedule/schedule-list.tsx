@@ -13,6 +13,7 @@ import {
   type Event,
   type Job,
   type Lead,
+  type LeadNote,
   type LeadTask,
   type PipelineStageRow,
   type Profile,
@@ -39,6 +40,7 @@ export function ScheduleList({
   leads,
   stages,
   leadTasks,
+  leadNotes,
   documents,
   calendars,
   canWrite,
@@ -49,6 +51,7 @@ export function ScheduleList({
   leads: Lead[];
   stages: PipelineStageRow[];
   leadTasks: LeadTask[];
+  leadNotes: LeadNote[];
   documents: DocumentRecord[];
   calendars: CalendarRow[];
   canWrite: boolean;
@@ -141,8 +144,10 @@ export function ScheduleList({
           reps={reps}
           leads={leads}
           leadTasks={leadTasks}
+          leadNotes={leadNotes}
           documents={documents}
           calendars={calendars}
+          stages={stages}
           readOnly={!canWrite}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}

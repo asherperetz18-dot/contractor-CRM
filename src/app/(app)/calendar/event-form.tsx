@@ -162,6 +162,8 @@ export function EventForm({
     event?.second_rep_info_sent_at ?? null
   );
   const [resultStage, setResultStage] = useState("");
+  // Selected outcome, not yet written. Empty means "unchanged".
+  const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
@@ -182,6 +184,11 @@ export function EventForm({
   const [openedAtMs] = useState(() => Date.now());
   const resultOverdue = !!event && appointmentResultOverdue(event, openedAtMs);
   const resultRecorded = !!event && hasAppointmentResult(form.status);
+  // Something to save: a new outcome, a note, or a stage change.
+  const resultDirty =
+    !!pendingOutcome ||
+    resultNote.trim().length > 0 ||
+    (!!resultStage && !!lead && resultStage !== lead.stage);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -194,8 +201,21 @@ export function EventForm({
   const set = <K extends keyof EventInput>(k: K, v: EventInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  async function saveResult(outcome: EventStatus) {
+  // Picking an outcome used to save on the spot, which threw away
+  // anything typed afterwards -- and the note field sits below the
+  // buttons, so that was everything. Selection is held here until Save
+  // Result is pressed.
+  function pickOutcome(outcome: EventStatus) {
+    setPendingOutcome(outcome);
+    setResultSaved(false);
+    // No-show and Cancelled belong in follow-up; only suggest it while
+    // the user hasn't chosen a stage themselves.
+    if (!resultStage && lead) setResultStage(suggestedStageFor(outcome, lead.stage));
+  }
+
+  async function saveResult() {
     if (!lead || !event) return;
+    const outcome = (pendingOutcome || form.status) as EventStatus;
     const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage);
     setResultPending(true);
     setError("");
@@ -230,8 +250,8 @@ export function EventForm({
     setResultPending(false);
     setResultNote("");
     setResultStage("");
+    setPendingOutcome("");
     setResultSaved(true);
-    setTimeout(() => setResultSaved(false), 2500);
     router.refresh();
   }
 
@@ -707,8 +727,10 @@ export function EventForm({
                 <button
                   key={s}
                   type="button"
-                  className={"chip" + (form.status === s ? " chip-active" : "")}
-                  onClick={() => saveResult(s)}
+                  className={
+                    "chip" + ((pendingOutcome || form.status) === s ? " chip-active" : "")
+                  }
+                  onClick={() => pickOutcome(s)}
                   disabled={readOnly || resultPending}
                 >
                   {s}
@@ -742,14 +764,21 @@ export function EventForm({
             />
           </Field>
           <p className="hint-note">
-            Choosing an outcome above saves it along with the stage and note. No-show and
-            Cancelled suggest {FOLLOW_UP_STAGE}; change the stage first if it belongs elsewhere.
+            Nothing here is saved until you press Save Result. No-show and Cancelled suggest{" "}
+            {FOLLOW_UP_STAGE}; change the stage if it belongs elsewhere.
           </p>
-          {resultSaved && (
+          {!readOnly && (
             <div className="modal-actions">
-              <div />
+              <div>{resultSaved && <span className="cp-saved">✓ Result saved</span>}</div>
               <div>
-                <span className="cp-saved">✓ Saved</span>
+                <button
+                  type="button"
+                  className="btn-primary small"
+                  onClick={saveResult}
+                  disabled={resultPending || !resultDirty}
+                >
+                  {resultPending ? "Saving…" : "Save Result"}
+                </button>
               </div>
             </div>
           )}

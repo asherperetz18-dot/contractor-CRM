@@ -8,6 +8,7 @@ import type {
   Event,
   Job,
   Lead,
+  LeadNote,
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
@@ -27,6 +28,7 @@ export default async function SchedulePage() {
     leads,
     { data: stages },
     { data: leadTasks },
+    { data: leadNotes },
     { data: documents },
     { data: calendars },
   ] = await Promise.all([
@@ -41,6 +43,11 @@ export default async function SchedulePage() {
       .from("lead_tasks")
       .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
       .eq("company_id", companyId),
+    supabase
+      .from("lead_notes")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false }),
     supabase.from("documents").select("*").eq("type", "Estimate").eq("company_id", companyId),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
@@ -54,6 +61,7 @@ export default async function SchedulePage() {
       leads={(leads as Lead[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
+      leadNotes={(leadNotes as LeadNote[]) ?? []}
       documents={(documents as DocumentRecord[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
