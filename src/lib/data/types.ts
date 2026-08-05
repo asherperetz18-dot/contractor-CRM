@@ -840,9 +840,29 @@ export function money(n: number | string) {
 
 export function daysSince(dateStr: string | null) {
   if (!dateStr) return 0;
-  const d = new Date(dateStr);
+  // A bare "YYYY-MM-DD" parses as UTC midnight, which anywhere west of
+  // UTC makes a lead received this afternoon look a day old. Pin it to
+  // local midnight so the count matches the calendar the user is reading.
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr);
   if (isNaN(d.getTime())) return 0;
   return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+/**
+ * A received date short enough for a pipeline card: "Jul 29", but
+ * "Jul 29 '25" once it isn't this year.
+ *
+ * The year is not decoration. Leads imported from a spreadsheet keep the
+ * date they actually came in, and some of those are over a year old --
+ * a bare "Jul 29" on one of those reads as a lead that arrived last week.
+ */
+export function shortReceivedDate(dateStr: string | null, now: Date = new Date()): string {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
+  if (isNaN(d.getTime())) return "";
+  const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (d.getFullYear() === now.getFullYear()) return label;
+  return `${label} '${String(d.getFullYear()).slice(-2)}`;
 }
 
 export function mapsUrl(address: string) {

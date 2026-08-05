@@ -10,6 +10,7 @@ import {
   leadDisplayName,
   mapsUrl,
   money,
+  shortReceivedDate,
   stageColor,
   type CalendarRow,
   type Lead,
@@ -213,7 +214,7 @@ export function PipelineBoard({
 
   const ageFiltered = statusFiltered.filter((l) => {
     if (ageFilter === "All") return true;
-    const age = daysSince(l.created_at);
+    const age = daysSince(l.date_received);
     if (ageFilter === "7") return age <= 7;
     if (ageFilter === "30") return age <= 30;
     return age > 14;
@@ -227,7 +228,7 @@ export function PipelineBoard({
   const wonValue = repFiltered
     .filter((l) => l.stage === "Won")
     .reduce((s, l) => s + (Number(l.value) || 0), 0);
-  const staleCount = openLeads.filter((l) => daysSince(l.created_at) > 14).length;
+  const staleCount = openLeads.filter((l) => daysSince(l.date_received) > 14).length;
   const noApptCount = openLeads.filter((l) => !l.has_appt).length;
 
   const followUpsDue = openLeads.filter((l) => hasFollowUpDue(tasksByLead.get(l.id) ?? []));
@@ -240,7 +241,7 @@ export function PipelineBoard({
     let cmp: number;
     if (sortBy === "Name") cmp = leadDisplayName(a).localeCompare(leadDisplayName(b));
     else if (sortBy === "Amount") cmp = (Number(a.value) || 0) - (Number(b.value) || 0);
-    else cmp = daysSince(a.created_at) - daysSince(b.created_at);
+    else cmp = daysSince(a.date_received) - daysSince(b.date_received);
     return sortDir === "asc" ? cmp : -cmp;
   });
 
@@ -489,7 +490,7 @@ export function PipelineBoard({
               </div>
               <div className="pipeline-col-body">
                 {items.map((l) => {
-                  const stale = daysSince(l.created_at);
+                  const stale = daysSince(l.date_received);
                   return (
                     <div
                       className={
@@ -537,6 +538,19 @@ export function PipelineBoard({
                       <div className="lead-card-foot">
                         <span className="mono">{money(l.value)}</span>
                         <span>{repName(l.assigned_to)}</span>
+                      </div>
+                      <div className="lead-card-foot">
+                        <span
+                          className={"lead-card-date" + (stale > 14 ? " lead-card-date-old" : "")}
+                          title={`Received ${l.date_received} — ${stale} day${stale === 1 ? "" : "s"} ago`}
+                        >
+                          {shortReceivedDate(l.date_received)}
+                        </span>
+                        {/* Clamped: a lead dated in the future is a typo,
+                            and "-3d old" reads as a bug. */}
+                        <span className="lead-card-age">
+                          {stale <= 0 ? "today" : `${stale}d`}
+                        </span>
                       </div>
                       {stale > 14 && !["Won", "Lost"].includes(l.stage) && (
                         <div className="lead-card-foot">

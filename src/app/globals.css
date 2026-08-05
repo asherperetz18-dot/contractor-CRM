@@ -653,6 +653,17 @@ body {
   font-size: 10.5px;
   font-weight: 600;
 }
+/* Date the lead came in, on the card so its age is readable without
+   opening it. Quieter than the value/rep row above it. */
+.lead-card-date,
+.lead-card-age {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+.lead-card-date-old {
+  color: var(--danger);
+  font-weight: 600;
+}
 .segmented {
   display: flex;
   border: 1px solid var(--line);
