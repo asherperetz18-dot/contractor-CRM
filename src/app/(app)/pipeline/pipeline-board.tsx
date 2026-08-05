@@ -75,7 +75,11 @@ export function PipelineBoard({
   const [, startTransition] = useTransition();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("Open");
   const [sortBy, setSortBy] = useState<SortBy>("Days");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // Ascending by default. Paired with the Days sort that means newest
+  // leads sit at the top of each column, which is the order they need
+  // working in -- descending buried today's arrivals under year-old
+  // imported ones.
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [repFilter, setRepFilter] = useState<string>("All Reps");
   const [ageFilter, setAgeFilter] = useState<AgeFilter>("All");
   const [noApptOnly, setNoApptOnly] = useState(false);
