@@ -26,18 +26,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing ?key=" }, { status: 401 });
   }
 
-  // No session here (public webhook) -- there's exactly one company today,
-  // so this is the one company_profile row and leads.insert() below gets
-  // company_id from the single-company trigger fallback. Once a second
-  // company exists this needs a per-company secret/route.
+  // No session here (public webhook), so the key has to do two jobs: prove
+  // the caller is allowed in, and say which company's pipeline the lead
+  // belongs to. Looking the company up BY the secret does both.
+  //
+  // This used to read "the one company_profile row" with .single() and
+  // compare secrets in JS. The moment a second company existed, .single()
+  // started erroring on multiple rows, so every key -- including valid
+  // ones -- came back "Invalid key".
   const admin = createAdminClient();
   const { data: company } = await admin
     .from("company_profile")
-    .select("webhook_secret")
-    .single();
+    .select("company_id")
+    .eq("webhook_secret", key)
+    .maybeSingle();
 
-  const secret = (company as { webhook_secret: string | null } | null)?.webhook_secret;
-  if (!secret || key !== secret) {
+  const companyId = (company as { company_id: string } | null)?.company_id;
+  if (!companyId) {
     return NextResponse.json({ error: "Invalid key" }, { status: 401 });
   }
 
@@ -76,6 +81,9 @@ export async function POST(req: NextRequest) {
       value: Number(body.value) || 0,
       stage: "Unsorted",
       source: body.source || "Website",
+      // Required since leads.company_id became NOT NULL. Without it every
+      // authenticated call still failed, just at the insert instead.
+      company_id: companyId,
     })
     .select("id")
     .single();
