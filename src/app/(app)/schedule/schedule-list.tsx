@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
+  EVENT_STATUS_COLOR,
+  appointmentResultOverdue,
   formatTimeRange,
   stageColor,
   type CalendarRow,
@@ -54,6 +56,9 @@ export function ScheduleList({
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
   const timeFormat = useTimeFormat();
+  // Captured once rather than read during render, so the same list does
+  // not render differently on a re-render.
+  const [openedAtMs] = useState(() => Date.now());
 
   const sorted = [...events].sort((a, b) =>
     (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""))
@@ -102,6 +107,13 @@ export function ScheduleList({
                 <div className="schedule-title">{ev.title}</div>
                 <div className="schedule-meta">
                   <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
+                  {/* The outcome, which the Calendar list has always shown
+                      and this one didn't -- leaving no way to scan a week
+                      and see which appointments actually happened. */}
+                  <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
+                  {appointmentResultOverdue(ev, openedAtMs) && (
+                    <span className="stale-tag">● no result yet</span>
+                  )}
                   {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
                   {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                   {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
