@@ -15,6 +15,8 @@ export type CompanyProfileInput = {
   website: string;
   facebook_url: string;
   instagram_url: string;
+  new_lead_alert_phones: string;
+  new_lead_alert_daily_cap: number;
   license_holder_name: string;
   license_number: string;
   license_state: string;
@@ -38,6 +40,8 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       website: input.website || null,
       facebook_url: input.facebook_url || null,
       instagram_url: input.instagram_url || null,
+      new_lead_alert_phones: input.new_lead_alert_phones || null,
+      new_lead_alert_daily_cap: input.new_lead_alert_daily_cap,
       license_holder_name: input.license_holder_name || null,
       license_number: input.license_number || null,
       license_state: input.license_state || null,

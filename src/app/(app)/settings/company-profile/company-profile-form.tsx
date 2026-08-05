@@ -46,6 +46,8 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     website: p?.website ?? "",
     facebook_url: p?.facebook_url ?? "",
     instagram_url: p?.instagram_url ?? "",
+    new_lead_alert_phones: p?.new_lead_alert_phones ?? "",
+    new_lead_alert_daily_cap: p?.new_lead_alert_daily_cap ?? 50,
     license_holder_name: p?.license_holder_name ?? "",
     license_number: p?.license_number ?? "",
     license_state: p?.license_state ?? "",
@@ -160,6 +162,28 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
         <p className="hint-note">
           Used by the <code className="mono">{"{links}"}</code> variable in appointment
           texts. Leave any of them blank and it&apos;s simply left out of the message.
+        </p>
+
+        <Field label="New Lead Alert Numbers">
+          <input
+            value={form.new_lead_alert_phones}
+            onChange={(e) => set("new_lead_alert_phones", e.target.value)}
+            placeholder="424-768-2268, 213-880-6622"
+          />
+        </Field>
+        <Field label="Max Alerts Per Day">
+          <input
+            type="number"
+            min={0}
+            value={form.new_lead_alert_daily_cap}
+            onChange={(e) => set("new_lead_alert_daily_cap", Number(e.target.value) || 0)}
+          />
+        </Field>
+        <p className="hint-note">
+          Texted the moment a lead arrives from Meta, Zapier or a website form — the ones
+          nobody is watching a screen for. Separate numbers with commas; leave blank to send
+          nothing. The daily limit is a safety net: a Zapier replay can push hundreds of leads
+          through in a minute, and without a ceiling that is hundreds of texts.
         </p>
         <Field label="License Holder Name">
           <input

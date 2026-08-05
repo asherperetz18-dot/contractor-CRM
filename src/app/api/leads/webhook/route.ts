@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { notifyNewLead } from "@/lib/notify-new-lead";
 
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -92,5 +93,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, id: (data as { id: string }).id });
+  // After the insert, and never allowed to fail it: the lead is safely
+  // saved by this point, and a Twilio problem must not return an error
+  // that makes Zapier or Meta retry a lead that landed fine.
+  const alert = await notifyNewLead(admin, {
+    companyId,
+    firstName,
+    lastName,
+    phone,
+    email,
+    address: body.address || null,
+    projectType: body.project_type || body.projectType || null,
+    source: body.source || "Website",
+    notes: body.message || body.notes || null,
+  }).catch(() => ({ sent: 0, skipped: "alert failed" }));
+
+  return NextResponse.json({ ok: true, id: (data as { id: string }).id, alerted: alert.sent });
 }
