@@ -1661,6 +1661,58 @@ body {
 .table-scroll {
   overflow-x: auto;
 }
+/* Who's online ------------------------------------------------------- */
+.presence-btn {
+  position: relative;
+}
+.presence-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #2f855a;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+}
+.presence-menu {
+  min-width: 230px;
+}
+.presence-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.presence-empty {
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.presence-dot {
+  font-size: 9px;
+}
+.presence-dot-active {
+  color: #2f855a;
+}
+.presence-dot-away {
+  color: #d69e2e;
+}
+.presence-name {
+  flex: 1 1 auto;
+}
+.presence-when {
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
 /* Reassign-work handover dialog -------------------------------------- */
 .rw-counts {
   margin: 0 0 14px;

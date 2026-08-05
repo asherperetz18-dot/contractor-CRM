@@ -10,6 +10,7 @@ import { MobileNavToggle } from "./mobile-nav-toggle";
 import { QuickCreateMenu } from "./quick-create-menu";
 import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
+import { LiveUsersButton } from "./live-users-button";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { CompanySwitcher } from "./company-switcher";
@@ -111,6 +112,7 @@ export default async function AppLayout({
           <div className="global-topbar-right">
             <CompanySwitcher companies={companies} currentCompanyId={profile.company_id} canCreate={isAdminRole(profile)} />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
+            {isStrictAdmin(profile) && <LiveUsersButton />}
             <DailyBriefButton isAdmin={isAdminRole(profile)} />
             <AiAssistantButton />
             <QuickCreateMenu />
