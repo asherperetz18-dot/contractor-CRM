@@ -114,9 +114,27 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
   const a = brief?.attention;
   const attentionItems = a
     ? [
-        { n: a.overdueTasks, label: "overdue task", href: "/pipeline" },
-        { n: a.unconfirmedSoon, label: "unconfirmed appointment in the next 2 days", href: "/schedule" },
-        { n: a.staleRefunds, label: "refund request open 30+ days", href: "/lead-refunds" },
+        // Both forms spelled out. Appending "s" to the label worked for
+        // "overdue task" but turned the others into "...next 2 dayss",
+        // because the word that needs pluralising isn't the last one.
+        {
+          n: a.overdueTasks,
+          one: "overdue task",
+          many: "overdue tasks",
+          href: "/pipeline",
+        },
+        {
+          n: a.unconfirmedSoon,
+          one: "unconfirmed appointment in the next 2 days",
+          many: "unconfirmed appointments in the next 2 days",
+          href: "/schedule",
+        },
+        {
+          n: a.staleRefunds,
+          one: "refund request open 30+ days",
+          many: "refund requests open 30+ days",
+          href: "/lead-refunds",
+        },
       ].filter((x) => x.n > 0)
     : [];
 
@@ -158,10 +176,9 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
                   <div className="brief-section-title">Needs Attention</div>
                   <ul>
                     {attentionItems.map((x) => (
-                      <li key={x.label}>
+                      <li key={x.one}>
                         <a href={x.href}>
-                          <strong>{x.n}</strong> {x.label}
-                          {x.n === 1 ? "" : "s"}
+                          <strong>{x.n}</strong> {x.n === 1 ? x.one : x.many}
                         </a>
                       </li>
                     ))}
