@@ -405,6 +405,16 @@ export function isClosedStage(stage: string): boolean {
   return CLOSED_PIPELINE_STAGES.includes(stage);
 }
 
+// Stages that take a lead out of the working pipeline entirely. Chasing a
+// deal you already won isn't a follow-up, so counts of outstanding work
+// skip these -- and both the pipeline's Follow-ups Due panel and the
+// Daily Brief read it from here so they can't drift apart again.
+export const SETTLED_LEAD_STAGES = ["Won", "Lost"];
+
+export function isSettledStage(stage: string): boolean {
+  return SETTLED_LEAD_STAGES.includes(stage);
+}
+
 // Stage names that app logic depends on directly (auto-advance on
 // booking, pipeline value/won stats) -- protected from rename/delete
 // in the Pipeline Stages admin UI, but still reorderable.

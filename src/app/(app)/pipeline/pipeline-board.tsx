@@ -7,6 +7,7 @@ import {
   daysSince,
   hasFollowUpDue,
   isColdLead,
+  isSettledStage,
   leadDisplayName,
   mapsUrl,
   money,
@@ -211,7 +212,7 @@ export function PipelineBoard({
     repFilter === "All Reps" ? leads : leads.filter((l) => repName(l.assigned_to) === repFilter);
 
   const statusFiltered = repFiltered.filter((l) => {
-    if (statusFilter === "Open") return !["Won", "Lost"].includes(l.stage);
+    if (statusFilter === "Open") return !isSettledStage(l.stage);
     if (statusFilter === "Won") return l.stage === "Won";
     return l.stage === "Lost";
   });
@@ -226,7 +227,7 @@ export function PipelineBoard({
 
   const apptFiltered = noApptOnly ? ageFiltered.filter((l) => !l.has_appt) : ageFiltered;
 
-  const openLeads = repFiltered.filter((l) => !["Won", "Lost"].includes(l.stage));
+  const openLeads = repFiltered.filter((l) => !isSettledStage(l.stage));
   const pipelineValue = openLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
   const avgDealSize = openLeads.length ? pipelineValue / openLeads.length : 0;
   const wonValue = repFiltered
@@ -249,7 +250,7 @@ export function PipelineBoard({
     return sortDir === "asc" ? cmp : -cmp;
   });
 
-  const openStageNames = stages.map((s) => s.name).filter((s) => !["Won", "Lost"].includes(s));
+  const openStageNames = stages.map((s) => s.name).filter((s) => !isSettledStage(s));
   const visibleStageNames = openStageNames.filter((s) => !hiddenStages.has(s));
   const visibleColumnCount = openStageNames.length - hiddenStages.size;
 
@@ -556,7 +557,7 @@ export function PipelineBoard({
                           {stale <= 0 ? "today" : `${stale}d`}
                         </span>
                       </div>
-                      {stale > 14 && !["Won", "Lost"].includes(l.stage) && (
+                      {stale > 14 && !isSettledStage(l.stage) && (
                         <div className="lead-card-foot">
                           <span className="stale-tag">● {stale} days — stale</span>
                         </div>

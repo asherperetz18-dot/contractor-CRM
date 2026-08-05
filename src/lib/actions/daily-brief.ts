@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { isAdminRole, isSettledStage } from "@/lib/data/types";
 
 export type BriefPeriod = "today" | "week" | "month";
 
@@ -91,13 +91,13 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
       .eq("company_id", companyId),
     supabase
       .from("lead_tasks")
-      .select("id, due_date, completed_at")
+      .select("id, lead_id, due_date, completed_at")
       .eq("company_id", companyId),
     supabase.from("profiles").select("id, name, email"),
   ]);
 
   const leadRows = (leads ?? []) as {
-    created_at: string; stage: string; value: number | null; won_at: string | null;
+    id: string; created_at: string; stage: string; value: number | null; won_at: string | null;
     source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
   }[];
   const eventRows = (events ?? []) as {
@@ -105,7 +105,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   }[];
   const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
   const textRows = (texts ?? []) as { created_at: string; direction: string }[];
-  const taskRows = (tasks ?? []) as { due_date: string; completed_at: string | null }[];
+  const taskRows = (tasks ?? []) as { lead_id: string; due_date: string; completed_at: string | null }[];
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
 
   function statsFor(period: BriefPeriod): BriefStats {
@@ -130,9 +130,17 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     };
   }
 
+  const settledLeadIds = new Set(leadRows.filter((l) => isSettledStage(l.stage)).map((l) => l.id));
   const openRefunds = leadRows.filter((l) => l.refund_status === "Requested");
   const attention: BriefAttention = {
-    overdueTasks: taskRows.filter((t) => !t.completed_at && t.due_date < todayISO).length,
+    // Skips tasks hanging off a lead that is already Won or Lost. Three
+    // of these were auto-created "no outcome set" follow-ups on
+    // appointments whose leads were later won -- counting them made the
+    // brief disagree with the pipeline's Follow-ups Due panel, which has
+    // always ignored settled leads.
+    overdueTasks: taskRows.filter(
+      (t) => !t.completed_at && t.due_date < todayISO && !settledLeadIds.has(t.lead_id)
+    ).length,
     // Appointments in the next couple of days the customer hasn't confirmed
     // -- the ones most likely to become a wasted trip.
     unconfirmedSoon: eventRows.filter(
