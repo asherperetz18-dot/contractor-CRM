@@ -396,6 +396,15 @@ export function fillQuickTextVariables(
 // set, so this is just a plain string matching a pipeline_stages.name.
 export type PipelineStage = string;
 
+// Stages where the outcome is already decided. Work sitting in one of
+// these is history: reassigning it would credit a deal to someone who
+// didn't close it, which is why handovers default to open work only.
+export const CLOSED_PIPELINE_STAGES = ["Won", "Lost", "Not Interested", "DNC"];
+
+export function isClosedStage(stage: string): boolean {
+  return CLOSED_PIPELINE_STAGES.includes(stage);
+}
+
 // Stage names that app logic depends on directly (auto-advance on
 // booking, pipeline value/won stats) -- protected from rename/delete
 // in the Pipeline Stages admin UI, but still reorderable.

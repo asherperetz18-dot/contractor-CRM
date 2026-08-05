@@ -1661,6 +1661,31 @@ body {
 .table-scroll {
   overflow-x: auto;
 }
+/* Reassign-work handover dialog -------------------------------------- */
+.rw-counts {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.rw-counts span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.rw-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.rw-choice input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
 /* Role Visibility grid ---------------------------------------------- */
 .rv-banner {
   border: 1px solid var(--line);

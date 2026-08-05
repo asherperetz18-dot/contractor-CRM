@@ -17,6 +17,7 @@ import {
   updateUserProfile,
   updateUserRoles,
 } from "@/lib/actions/users";
+import { ReassignWorkModal, type ReassignMode } from "./reassign-work-modal";
 
 type StatusTab = "Active" | "Archived" | "All";
 
@@ -33,6 +34,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [reassign, setReassign] = useState<{ user: Profile; mode: ReassignMode } | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [editPending, setEditPending] = useState(false);
   const [editError, setEditError] = useState("");
@@ -74,8 +76,24 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
     refresh();
   }
 
+  // Archiving someone who still owns live work strands it exactly as
+  // removal does, so the handover prompt runs first either way. Turning
+  // an archived user back on has nothing to hand over.
   async function handleToggleStatus(u: Profile) {
+    if (u.status === "Active") {
+      setReassign({ user: u, mode: "archive" });
+      return;
+    }
     await toggleUserStatus(u.id, u.status);
+    refresh();
+  }
+
+  async function finishReassign() {
+    const target = reassign;
+    setReassign(null);
+    if (!target) return;
+    if (target.mode === "archive") await toggleUserStatus(target.user.id, target.user.status);
+    if (target.mode === "remove") await removeUserFromCompany(target.user.id);
     refresh();
   }
 
@@ -154,12 +172,8 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
     refresh();
   }
 
-  async function handleRemoveFromCompany(u: Profile) {
-    if (!confirm(`Remove ${u.name || u.email} from this company? They'll keep access to any other companies they belong to.`)) {
-      return;
-    }
-    await removeUserFromCompany(u.id);
-    refresh();
+  function handleRemoveFromCompany(u: Profile) {
+    setReassign({ user: u, mode: "remove" });
   }
 
   return (
@@ -250,6 +264,15 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                       title="Edit name, email, phone"
                     >
                       ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setReassign({ user: u, mode: "standalone" })}
+                      aria-label="Reassign work"
+                      title="Hand this person's leads, appointments and tasks to someone else"
+                    >
+                      ⇄
                     </button>
                     <button
                       type="button"
@@ -482,6 +505,18 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
             </>
           )}
         </Modal>
+      )}
+
+      {reassign && (
+        <ReassignWorkModal
+          user={reassign.user}
+          // Never offer to hand work to the person losing it, or to
+          // someone archived who can't act on it.
+          others={users.filter((u) => u.id !== reassign.user.id && u.status === "Active")}
+          mode={reassign.mode}
+          onCancel={() => setReassign(null)}
+          onConfirmed={finishReassign}
+        />
       )}
 
       {editingUser && (
