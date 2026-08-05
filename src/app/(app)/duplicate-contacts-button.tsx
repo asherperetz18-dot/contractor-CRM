@@ -200,7 +200,7 @@ export function DuplicateContactsButton() {
   return (
     <>
       <button
-        className="icon-btn topbar-icon-btn"
+        className="icon-btn topbar-icon-btn topbar-desktop-only"
         onClick={openTool}
         aria-label="Check for duplicate contacts"
         title="Check for duplicate contacts"

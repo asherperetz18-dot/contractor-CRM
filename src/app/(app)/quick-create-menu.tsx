@@ -38,7 +38,8 @@ export function QuickCreateMenu() {
         className="btn-primary quick-create-btn"
         onClick={() => setOpen((o) => !o)}
       >
-        + Quick Create
+        <span className="qc-label-long">+ Quick Create</span>
+        <span className="qc-label-short" aria-hidden="true">+</span>
       </button>
       {open && (
         <>

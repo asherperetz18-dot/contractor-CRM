@@ -10,6 +10,10 @@
   --paper: #f5f3ee;
   --line: #ddd8cc;
 
+  /* 10px padding + a 36px control + 10px padding + the 1px border. Used
+     to hang topbar dropdowns off the viewport on phones. */
+  --topbar-h: 57px;
+
   --font-headers: var(--font-oswald), sans-serif;
   --font-body: var(--font-inter), sans-serif;
   --font-data: var(--font-jetbrains-mono), monospace;
@@ -3939,5 +3943,84 @@ body {
   }
   .brief-columns {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Topbar on phones ---------------------------------------------------
+   Every topbar dropdown is anchored to its trigger's right edge. That is
+   fine on a desktop where the triggers sit near the right of a wide bar,
+   but on a phone the buttons are packed across the middle of the screen,
+   so a 240px menu opened from one of them runs straight off the left edge
+   -- the "who's online" list lost the names it exists to show. Pin them to
+   the viewport instead, where they fit whichever button opened them. */
+@media (max-width: 700px) {
+  :root {
+    /* Icon buttons shrink to 32px here, but the Quick Create button is
+       still the tallest control and sets the bar height. Measured, not
+       assumed: 10px padding + a 34px button + 10px + the 1px border. */
+    --topbar-h: 56px;
+  }
+  .quick-create-menu,
+  .company-switcher-menu,
+  .gsearch-panel {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    min-width: 0;
+    max-height: calc(100vh - var(--topbar-h) - 16px);
+  }
+  .presence-menu {
+    min-width: 0;
+  }
+
+  /* The company name was being overlapped by the icon cluster. The
+     sidebar header and the company switcher both name it already. */
+  .global-topbar-brand {
+    display: none;
+  }
+  /* Bulk duplicate-merging is a sit-down job. Keeping its button up here
+     was the difference between the two icon clusters fitting and
+     overlapping on a 320px screen. Still on the Contacts page. */
+  .topbar-desktop-only {
+    display: none;
+  }
+  .global-topbar {
+    gap: 6px;
+    padding: 10px 10px;
+  }
+  .global-topbar-right {
+    gap: 6px;
+  }
+  .global-topbar-left {
+    gap: 8px;
+  }
+  .topbar-icon-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  /* "+ Quick Create" is 106px of a 367px bar. With eight controls up
+     there the left and right clusters were overlapping by 24px and the
+     last icon sat a pixel off-screen. Drop it to just the plus. */
+  .qc-label-long {
+    display: none;
+  }
+  .qc-label-short {
+    display: inline;
+    font-size: 18px;
+    line-height: 1;
+  }
+  .quick-create-btn {
+    padding: 7px 12px;
+    white-space: nowrap;
+  }
+  /* Badge sits on a smaller button now. */
+  .presence-badge {
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    font-size: 9px;
   }
 }
