@@ -1661,6 +1661,144 @@ body {
 .table-scroll {
   overflow-x: auto;
 }
+/* Role Visibility grid ---------------------------------------------- */
+.rv-banner {
+  border: 1px solid var(--line);
+  background: #f7f9fb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+}
+.rv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.rv-search {
+  flex: 0 1 240px;
+  min-width: 160px;
+}
+.rv-toolbar-note {
+  margin: 0;
+  flex: 1 1 auto;
+}
+.rv-saved {
+  display: block;
+  margin: 0 0 10px;
+}
+/* Vertical scrolling as well as horizontal, so the header can stick
+   while working down a long page list. */
+.rv-scroll {
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid var(--line);
+}
+.rv-table {
+  border: none;
+  border-radius: 0;
+}
+.rv-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #fff;
+}
+/* The Page column stays put while scrolling sideways -- with a wide grid
+   it is otherwise impossible to tell which row you are ticking. */
+.rv-page-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  min-width: 210px;
+}
+.rv-table thead .rv-page-col {
+  z-index: 4;
+}
+.rv-table .table-group-row td {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.rv-role-head,
+.rv-page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rv-role-head {
+  align-items: center;
+}
+.rv-bulk {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 10px;
+  color: var(--ink-soft);
+  text-transform: none;
+  letter-spacing: 0;
+}
+.rv-bulk button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--blueprint);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.rv-bulk button:disabled {
+  color: var(--ink-soft);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+.rv-cell {
+  position: relative;
+  white-space: nowrap;
+}
+.rv-cell-dirty {
+  background: #fff8e6;
+}
+/* Marks a cell that isn't on the platform default, so "why can they see
+   that?" is answerable without opening anything. */
+.rv-dot {
+  font-size: 8px;
+  color: var(--ink-soft);
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.rv-dot-dirty {
+  color: var(--accent, #c0730f);
+}
+.rv-empty {
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+.rv-savebar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.06);
+}
+.rv-savebar .btn-primary,
+.rv-savebar .btn-ghost {
+  margin: 0 0 0 8px;
+}
+
 .table-group-row td {
   background: #faf8f3;
   font-size: 11px;
