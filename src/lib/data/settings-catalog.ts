@@ -4,6 +4,9 @@ export type SettingsCardDef = {
   icon: string;
   href?: string;
   key?: "logo";
+  // Hidden from anyone without the Admin role itself. Office users
+  // configure the company; they do not get to read the team.
+  adminOnly?: boolean;
 };
 
 export type SettingsSectionDef = {
@@ -66,6 +69,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         desc: "Active users, session time, and top pages across your team",
         icon: "📈",
         href: "/settings/team-activity",
+        adminOnly: true,
       },
       {
         title: "Role Visibility",

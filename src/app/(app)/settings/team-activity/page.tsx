@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import type { ActivityEvent } from "@/lib/data/types";
-import { getCurrentCompanyId } from "@/lib/data/profile";
+import { isStrictAdmin, type ActivityEvent } from "@/lib/data/types";
+import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { AdminGate } from "@/components/admin-gate";
 import { TeamActivityView } from "./team-activity-view";
@@ -43,6 +43,14 @@ async function fetchAllActivityEvents(
 }
 
 export default async function TeamActivityPage() {
+  // Checked before the fetch, not just around the render: this page reads
+  // every teammate's browsing history, and there's no reason to pull that
+  // for someone who isn't allowed to see it.
+  const profile = await getCurrentProfile();
+  if (!isStrictAdmin(profile)) {
+    return <AdminGate adminOnly>{null}</AdminGate>;
+  }
+
   const supabase = await createClient();
   const since = ninetyDaysAgoISO();
 
@@ -53,7 +61,7 @@ export default async function TeamActivityPage() {
   ]);
 
   return (
-    <AdminGate>
+    <AdminGate adminOnly>
       <TeamActivityView events={events} users={users} />
     </AdminGate>
   );

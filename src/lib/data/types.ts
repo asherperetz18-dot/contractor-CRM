@@ -22,6 +22,15 @@ export function isAdminRole(profile: Pick<Profile, "roles"> | null) {
   return profile.roles.includes("Office") || profile.roles.includes("Admin");
 }
 
+// The Admin role on its own, deliberately excluding Office. For pages
+// that expose people rather than configuration -- Team Activity reports
+// how long each named person spent on which screen, which is the
+// owner's business and not every Office user's.
+export function isStrictAdmin(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return profile.roles.includes("Admin");
+}
+
 // Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office
 // or Sales can create/edit; delete on leads is a separate, narrower check.
 // Admin is included throughout -- it is the full-access role, and omitting

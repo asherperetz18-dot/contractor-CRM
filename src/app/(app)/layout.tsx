@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
-import { canEditDispatch, canSeePage, isAdminRole, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
+import { canEditDispatch, canSeePage, isAdminRole, isStrictAdmin, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
@@ -114,7 +114,7 @@ export default async function AppLayout({
             <DailyBriefButton isAdmin={isAdminRole(profile)} />
             <AiAssistantButton />
             <QuickCreateMenu />
-            {isAdminRole(profile) && <AdminToolsMenu />}
+            {isAdminRole(profile) && <AdminToolsMenu isAdmin={isStrictAdmin(profile)} />}
           </div>
         </div>
         <ActivityTracker />

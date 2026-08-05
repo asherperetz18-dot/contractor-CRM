@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 
 const ITEMS = [
   { label: "Admin Settings", icon: "⚙", href: "/settings" },
-  { label: "Team Activity", icon: "📈", href: "/settings/team-activity" },
+  // Admin role only -- Office users configure the company, they don't
+  // get a readout of what each teammate has been doing all day.
+  { label: "Team Activity", icon: "📈", href: "/settings/team-activity", adminOnly: true },
 ];
 
-export function AdminToolsMenu() {
+export function AdminToolsMenu({ isAdmin }: { isAdmin: boolean }) {
+  const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
   const [open, setOpen] = useState(false);
   const router = useRouter();
 
@@ -28,7 +31,7 @@ export function AdminToolsMenu() {
           <div className="quick-create-menu">
             <div className="qc-group">
               <div className="qc-group-label">ADMIN TOOLS</div>
-              {ITEMS.map((it) => (
+              {items.map((it) => (
                 <div
                   key={it.label}
                   className="qc-item"

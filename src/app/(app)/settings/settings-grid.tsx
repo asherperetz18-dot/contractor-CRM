@@ -11,7 +11,13 @@ import {
 } from "@/lib/data/settings-catalog";
 import { removeLogo, uploadLogo } from "@/lib/actions/settings";
 
-export function SettingsGrid({ logoUrl }: { logoUrl: string | null }) {
+export function SettingsGrid({
+  logoUrl,
+  isAdmin,
+}: {
+  logoUrl: string | null;
+  isAdmin: boolean;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [query, setQuery] = useState("");
@@ -26,9 +32,11 @@ export function SettingsGrid({ logoUrl }: { logoUrl: string | null }) {
   const q = query.trim().toLowerCase();
   const filteredSections = SETTINGS_SECTIONS.map((sec) => ({
     ...sec,
-    cards: q
-      ? sec.cards.filter((c) => (c.title + " " + c.desc).toLowerCase().includes(q))
-      : sec.cards,
+    // Admin-only cards are dropped before the search filter, so they
+    // can't be surfaced by typing their name either.
+    cards: sec.cards
+      .filter((c) => !c.adminOnly || isAdmin)
+      .filter((c) => !q || (c.title + " " + c.desc).toLowerCase().includes(q)),
   })).filter((sec) => sec.cards.length > 0);
 
   function openCard(card: SettingsCardDef) {

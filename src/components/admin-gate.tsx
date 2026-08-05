@@ -1,10 +1,19 @@
-import { isAdminRole } from "@/lib/data/types";
+import { isAdminRole, isStrictAdmin } from "@/lib/data/types";
 import { getCurrentProfile } from "@/lib/data/profile";
 
-export async function AdminGate({ children }: { children: React.ReactNode }) {
+export async function AdminGate({
+  children,
+  // Narrows the gate from "Office or Admin" to Admin alone, for pages
+  // that report on the team rather than configure the company.
+  adminOnly,
+}: {
+  children: React.ReactNode;
+  adminOnly?: boolean;
+}) {
   const profile = await getCurrentProfile();
+  const allowed = adminOnly ? isStrictAdmin(profile) : isAdminRole(profile);
 
-  if (!isAdminRole(profile)) {
+  if (!allowed) {
     return (
       <>
         <div className="module-toolbar">
@@ -16,7 +25,9 @@ export async function AdminGate({ children }: { children: React.ReactNode }) {
         <div className="empty-state">
           <p className="empty-label">Admin access required</p>
           <p className="empty-hint">
-            Admin Settings is only available to users with the Office or Admin role.
+            {adminOnly
+              ? "This page is only available to users with the Admin role."
+              : "Admin Settings is only available to users with the Office or Admin role."}
           </p>
         </div>
       </>
