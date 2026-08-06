@@ -121,6 +121,13 @@ export function ReplyInboxView({
     setSelectedKey(targetKey);
     setPendingTarget({ leadId: targetLeadId, phone: targetPhone ?? "" });
     if (targetBody) setReply(targetBody);
+  } else if (selectedKey === null && conversations.length > 0) {
+    // else-if, not a second statement. setSelectedKey does not change
+    // selectedKey within this render, so running both meant the
+    // auto-select fired on the same pass as an explicit target and
+    // overwrote it -- landing on the newest thread instead of the one
+    // asked for.
+    setSelectedKey(conversations[0].key);
   }
 
   useEffect(() => {
@@ -129,13 +136,6 @@ export function ReplyInboxView({
     }
   }, [targetLeadId, targetPhone, router]);
 
-
-  // Opening the page with nothing chosen lands on the newest thread, as
-  // before -- but recorded as a real selection, so it cannot change under
-  // a message someone has already typed.
-  if (selectedKey === null && conversations.length > 0) {
-    setSelectedKey(conversations[0].key);
-  }
 
   // Deliberately no "?? conversations[0]" fallback here. That silently
   // pointed the composer at whichever thread was most recent whenever the
