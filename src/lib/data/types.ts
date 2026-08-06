@@ -203,6 +203,8 @@ export type CompanyProfile = {
   website: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
+  call_forward_number: string | null;
+  call_forward_timeout: number;
   new_lead_alert_phones: string | null;
   new_lead_alert_daily_cap: number;
   license_holder_name: string | null;

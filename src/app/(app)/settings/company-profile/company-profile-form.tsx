@@ -46,6 +46,8 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     website: p?.website ?? "",
     facebook_url: p?.facebook_url ?? "",
     instagram_url: p?.instagram_url ?? "",
+    call_forward_number: p?.call_forward_number ?? "",
+    call_forward_timeout: p?.call_forward_timeout ?? 25,
     new_lead_alert_phones: p?.new_lead_alert_phones ?? "",
     new_lead_alert_daily_cap: p?.new_lead_alert_daily_cap ?? 50,
     license_holder_name: p?.license_holder_name ?? "",
@@ -185,6 +187,29 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
           nothing. The daily limit is a safety net: a Zapier replay can push hundreds of leads
           through in a minute, and without a ceiling that is hundreds of texts.
         </p>
+        <Field label="Forward Incoming Calls To">
+          <input
+            value={form.call_forward_number}
+            onChange={(e) => set("call_forward_number", e.target.value)}
+            placeholder="+18183008242"
+          />
+        </Field>
+        <Field label="Ring For (seconds)">
+          <input
+            type="number"
+            min={5}
+            max={60}
+            value={form.call_forward_timeout}
+            onChange={(e) => set("call_forward_timeout", Number(e.target.value) || 25)}
+          />
+        </Field>
+        <p className="hint-note">
+          Calls to your CRM number ring this phone. Your handset shows the customer&apos;s own
+          number, so you can see who it is and call them back from your call log. Every call is
+          matched to its contact and recorded in Call Reports, answered or not. Leave blank and
+          callers hear a message asking them to text instead.
+        </p>
+
         <Field label="License Holder Name">
           <input
             value={form.license_holder_name}
