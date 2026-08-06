@@ -1,9 +1,10 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PAGE_REGISTRY, type ActivityEvent, type Profile } from "@/lib/data/types";
 import { LeadsTouched } from "./leads-touched";
+import { getLeadViewsInRange, type RangeLeadView } from "@/lib/actions/lead-touches";
 
 type RangeKey = "today" | "7" | "30" | "90";
 const RANGE_LABELS: Record<RangeKey, string> = {
@@ -95,6 +96,20 @@ export function TeamActivityView({
   const [userFilter, setUserFilter] = useState<string>("all");
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [openUser, setOpenUser] = useState<string | null>(null);
+  const [rangeViews, setRangeViews] = useState<RangeLeadView[]>([]);
+
+  // Lead-opens for the selected range, fetched once and reused by every
+  // expanded page row.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const result = await getLeadViewsInRange(new Date(startOfRange(range)).toISOString());
+      if (!cancelled) setRangeViews(result.views ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name || "Unknown";
   const userEmail = (id: string) => users.find((u) => u.id === id)?.email || "";
@@ -208,6 +223,40 @@ export function TeamActivityView({
    * were minutes or hours apart and credit this page with time nobody spent
    * on it.
    */
+  const leadsForVisit = useMemo(() => {
+    // Each lead-open belongs to whatever page that person was on -- opening
+    // a lead is a modal, so the only link back to a page is the visit that
+    // preceded it.
+    const viewsByUser = new Map<string, RangeLeadView[]>();
+    for (const v of rangeViews) {
+      const list = viewsByUser.get(v.userId) ?? [];
+      list.push(v);
+      viewsByUser.set(v.userId, list);
+    }
+
+    // The window has to close at the persons next page view of ANY kind.
+    // Closing it at their next visit to this same page instead swept up
+    // everything they opened on other pages in between -- one Contacts
+    // visit claimed 86 leads that were opened on the Pipeline.
+    const pageviewsByUser = new Map<string, number[]>();
+    for (const e of filtered) {
+      if (e.kind !== "pageview") continue;
+      const list = pageviewsByUser.get(e.user_id) ?? [];
+      list.push(new Date(e.created_at).getTime());
+      pageviewsByUser.set(e.user_id, list);
+    }
+    for (const list of pageviewsByUser.values()) list.sort((a, b) => a - b);
+
+    return (userId: string, atMs: number) => {
+      const stamps = pageviewsByUser.get(userId) ?? [];
+      const endMs = stamps.find((t) => t > atMs) ?? Infinity;
+      return (viewsByUser.get(userId) ?? []).filter((v) => {
+        const t = new Date(v.openedAt).getTime();
+        return t >= atMs && t < endMs;
+      });
+    };
+  }, [rangeViews, filtered]);
+
   const pageDetail = useMemo(() => {
     if (!openPath) return null;
 
@@ -601,19 +650,44 @@ export function TeamActivityView({
                                 </p>
                               ) : (
                                 <ul className="ta-visit-list">
-                                  {pageDetail.visits.map((v) => (
-                                    <li key={v.id}>
-                                      <span className="mono">
-                                        {new Date(v.created_at).toLocaleString(undefined, {
-                                          month: "short",
-                                          day: "numeric",
-                                          hour: "numeric",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
-                                      <span>{userName(v.user_id)}</span>
-                                    </li>
-                                  ))}
+                                  {pageDetail.visits.map((v) => {
+                                    const atMs = new Date(v.created_at).getTime();
+                                    const opened = leadsForVisit(v.user_id, atMs);
+                                    const shown = opened.slice(0, 8);
+                                    return (
+                                      <li key={v.id}>
+                                        <div className="ta-visit-head">
+                                          <span className="mono">
+                                            {new Date(v.created_at).toLocaleString(undefined, {
+                                              month: "short",
+                                              day: "numeric",
+                                              hour: "numeric",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                          <span>{userName(v.user_id)}</span>
+                                        </div>
+                                        {opened.length > 0 && (
+                                          <div className="ta-visit-leads">
+                                            {shown.map((o) => (
+                                              <Link
+                                                key={`${o.leadId}:${o.openedAt}`}
+                                                href={`/pipeline?leadId=${o.leadId}`}
+                                                className="touch-lead-chip"
+                                              >
+                                                {o.leadName}
+                                              </Link>
+                                            ))}
+                                            {opened.length > shown.length && (
+                                              <span className="touch-lead-more">
+                                                +{opened.length - shown.length} more
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               )}
                             </div>

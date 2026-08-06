@@ -4168,3 +4168,34 @@ body {
   max-width: 380px;
   overflow-wrap: anywhere;
 }
+
+/* Leads opened during a page visit ------------------------------------ */
+.ta-visit-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ta-visit-leads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.touch-lead-chip {
+  font-size: 11px;
+  background: #eef3f8;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1px 8px;
+  color: var(--blueprint);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.touch-lead-chip:hover {
+  background: #e2ebf4;
+}
+.touch-lead-more {
+  font-size: 11px;
+  color: var(--ink-soft);
+  align-self: center;
+}

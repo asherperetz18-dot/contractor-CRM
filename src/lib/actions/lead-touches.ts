@@ -137,3 +137,54 @@ export async function getLeadTouches(
   rows.sort((a, b) => b.at.localeCompare(a.at));
   return { touches: rows.slice(0, limit) };
 }
+
+export type RangeLeadView = {
+  userId: string;
+  leadId: string;
+  leadName: string;
+  openedAt: string;
+};
+
+/**
+ * Every lead-open in the window, for attaching lead names to the page
+ * visits in Team Activity. One query for the range rather than one per
+ * visit row.
+ */
+export async function getLeadViewsInRange(
+  sinceISO: string,
+  limit = 2000
+): Promise<{ error?: string; views?: RangeLeadView[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isStrictAdmin(profile)) return { error: "Admin access required." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_views")
+    .select("lead_id, user_id, opened_at")
+    .eq("company_id", profile.company_id)
+    .gte("opened_at", sinceISO)
+    .order("opened_at", { ascending: true })
+    .limit(limit);
+  if (error) return { error: error.message };
+
+  const rows = (data as { lead_id: string; user_id: string; opened_at: string }[] | null) ?? [];
+  if (rows.length === 0) return { views: [] };
+
+  const { data: leadRows } = await supabase
+    .from("leads")
+    .select("id, first_name, last_name, company_name, contact_type, phone")
+    .in("id", [...new Set(rows.map((r) => r.lead_id))]);
+  const nameById = new Map(
+    ((leadRows as Lead[] | null) ?? []).map((l) => [l.id, leadDisplayName(l)])
+  );
+
+  return {
+    views: rows.map((r) => ({
+      userId: r.user_id,
+      leadId: r.lead_id,
+      leadName: nameById.get(r.lead_id) ?? "(deleted contact)",
+      openedAt: r.opened_at,
+    })),
+  };
+}
