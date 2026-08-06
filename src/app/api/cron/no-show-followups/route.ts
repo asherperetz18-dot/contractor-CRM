@@ -143,9 +143,19 @@ async function processCompany(
       }
     }
 
-    // 3. End of day, still nothing: move the lead so it doesn't go cold.
-    const isEvening = nowNaive.getUTCHours() >= AUTO_MOVE_HOUR;
-    if (isEvening && !row.followup_moved_at && row.lead_id) {
+    // 3. The appointment's day is over and still nothing: move the lead so
+    // it doesn't go cold.
+    //
+    // Deliberately "that day has ended", not "it is currently after 8pm".
+    // The clock version only fired if a run happened to land in the four
+    // hours before midnight, and GitHub's scheduler drops runs under load
+    // -- a missed window meant the appointment aged out of the lookback
+    // and was never moved at all. This still gives the rep until the end
+    // of the day, and catches up on the next run whenever that is.
+    const dayIsOver =
+      row.date < todayDate ||
+      (row.date === todayDate && nowNaive.getUTCHours() >= AUTO_MOVE_HOUR);
+    if (dayIsOver && !row.followup_moved_at && row.lead_id) {
       const { data: lead } = await admin
         .from("leads")
         .select("stage")
