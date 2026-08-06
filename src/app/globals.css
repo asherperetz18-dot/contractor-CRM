@@ -4174,6 +4174,13 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 12px;
+  /* Fills the row so the name stays right-aligned as it was before the
+     leads were added underneath. */
+  width: 100%;
+}
+.ta-visit-list li {
+  flex-direction: column;
+  align-items: stretch;
 }
 .ta-visit-leads {
   display: flex;

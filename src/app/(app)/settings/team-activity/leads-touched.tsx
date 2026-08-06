@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getLeadTouches, TOUCH_LABEL, type LeadTouch } from "@/lib/actions/lead-touches";
+import { getLeadTouches, type LeadTouch } from "@/lib/actions/lead-touches";
+import { TOUCH_LABEL } from "@/lib/data/types";
 
 const KIND_COLOR: Record<LeadTouch["kind"], string> = {
   opened: "#7C8798",

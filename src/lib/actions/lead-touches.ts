@@ -1,10 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isStrictAdmin, leadDisplayName, type Lead } from "@/lib/data/types";
-
-export type TouchKind = "opened" | "note" | "task" | "appointment" | "call" | "text";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { isStrictAdmin, leadDisplayName, type Lead, type TouchKind } from "@/lib/data/types";
 
 export type LeadTouch = {
   id: string;
@@ -13,15 +11,6 @@ export type LeadTouch = {
   leadName: string;
   at: string;
   detail: string;
-};
-
-export const TOUCH_LABEL: Record<TouchKind, string> = {
-  opened: "Opened",
-  note: "Note",
-  task: "Task",
-  appointment: "Appointment",
-  call: "Call",
-  text: "Text",
 };
 
 /**
@@ -41,7 +30,11 @@ export async function getLeadTouches(
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
 
-  const supabase = await createClient();
+  // Admin client on purpose. Authorisation is enforced above -- signed
+  // in, Admin role, and every query below pinned to this company. Going
+  // through RLS as well means a policy mismatch shows up as an empty
+  // list rather than an error, which is unfalsifiable from the UI.
+  const supabase = createAdminClient();
   const companyId = profile.company_id;
 
   const [views, notes, tasks, events, calls, texts] = await Promise.all([
@@ -158,7 +151,7 @@ export async function getLeadViewsInRange(
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
 
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("lead_views")
     .select("lead_id, user_id, opened_at")

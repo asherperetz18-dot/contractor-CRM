@@ -399,6 +399,20 @@ export type PipelineStage = string;
 // Stages where the outcome is already decided. Work sitting in one of
 // these is history: reassigning it would credit a deal to someone who
 // didn't close it, which is why handovers default to open work only.
+export type TouchKind = "opened" | "note" | "task" | "appointment" | "call" | "text";
+
+// Lives here, not beside the action that produces it: a "use server"
+// module may only export async functions, so a const exported from one
+// reaches the client as a server reference rather than the value.
+export const TOUCH_LABEL: Record<TouchKind, string> = {
+  opened: "Opened",
+  note: "Note",
+  task: "Task",
+  appointment: "Appointment",
+  call: "Call",
+  text: "Text",
+};
+
 export const CLOSED_PIPELINE_STAGES = ["Won", "Lost", "Not Interested", "DNC"];
 
 export function isClosedStage(stage: string): boolean {
