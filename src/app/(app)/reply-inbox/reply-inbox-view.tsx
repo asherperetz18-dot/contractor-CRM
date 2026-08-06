@@ -38,6 +38,14 @@ export function ReplyInboxView({
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [consumedTargetKey, setConsumedTargetKey] = useState<string | null>(null);
+  // Kept in state rather than read from the URL each render: the effect
+  // below strips the query string immediately, and deriving the
+  // placeholder conversation from the params meant it vanished on the
+  // very next render -- taking the selected thread with it.
+  const [pendingTarget, setPendingTarget] = useState<{
+    leadId: string | null;
+    phone: string;
+  } | null>(null);
   const [reply, setReply] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -78,19 +86,25 @@ export function ReplyInboxView({
       convo.messages.push(m);
     }
 
-    if (targetLeadId && !map.has(targetLeadId)) {
-      const lead = leads.find((l) => l.id === targetLeadId) ?? null;
-      map.set(targetLeadId, {
-        key: targetLeadId,
-        leadId: targetLeadId,
-        name: lead ? leadDisplayName(lead) : targetPhone || "New conversation",
-        phone: lead?.phone || targetPhone || "",
+    if (pendingTarget?.leadId && !map.has(pendingTarget.leadId)) {
+      const lead = leads.find((l) => l.id === pendingTarget.leadId) ?? null;
+      map.set(pendingTarget.leadId, {
+        key: pendingTarget.leadId,
+        leadId: pendingTarget.leadId,
+        name: lead ? leadDisplayName(lead) : pendingTarget.phone || "New conversation",
+        phone: lead?.phone || pendingTarget.phone || "",
         messages: [],
       });
-    } else if (!targetLeadId && targetPhone) {
-      const key = `phone:${normalizePhone(targetPhone)}`;
+    } else if (pendingTarget && !pendingTarget.leadId && pendingTarget.phone) {
+      const key = `phone:${normalizePhone(pendingTarget.phone)}`;
       if (!map.has(key)) {
-        map.set(key, { key, leadId: null, name: targetPhone, phone: targetPhone, messages: [] });
+        map.set(key, {
+          key,
+          leadId: null,
+          name: pendingTarget.phone,
+          phone: pendingTarget.phone,
+          messages: [],
+        });
       }
     }
 
@@ -99,12 +113,13 @@ export function ReplyInboxView({
       const bLast = b.messages[b.messages.length - 1]?.created_at ?? "";
       return bLast.localeCompare(aLast);
     });
-  }, [messages, leads, reps, targetLeadId, targetPhone]);
+  }, [messages, leads, reps, pendingTarget]);
 
   const targetKey = targetLeadId ?? (targetPhone ? `phone:${normalizePhone(targetPhone)}` : null);
   if (targetKey && targetKey !== consumedTargetKey) {
     setConsumedTargetKey(targetKey);
     setSelectedKey(targetKey);
+    setPendingTarget({ leadId: targetLeadId, phone: targetPhone ?? "" });
     if (targetBody) setReply(targetBody);
   }
 
@@ -114,7 +129,19 @@ export function ReplyInboxView({
     }
   }, [targetLeadId, targetPhone, router]);
 
-  const selected = conversations.find((c) => c.key === selectedKey) ?? conversations[0] ?? null;
+
+  // Opening the page with nothing chosen lands on the newest thread, as
+  // before -- but recorded as a real selection, so it cannot change under
+  // a message someone has already typed.
+  if (selectedKey === null && conversations.length > 0) {
+    setSelectedKey(conversations[0].key);
+  }
+
+  // Deliberately no "?? conversations[0]" fallback here. That silently
+  // pointed the composer at whichever thread was most recent whenever the
+  // selected key stopped matching -- which is how a confirmation meant
+  // for one contact was sent to a different one entirely.
+  const selected = conversations.find((c) => c.key === selectedKey) ?? null;
 
   async function handleSend() {
     if (!selected) return;
@@ -204,11 +231,11 @@ export function ReplyInboxView({
                     <textarea
                       value={reply}
                       onChange={(e) => setReply(e.target.value)}
-                      placeholder="Type a reply..."
+                      placeholder={`Reply to ${selected.name}...`}
                       rows={2}
                     />
                     <button className="btn-primary" onClick={handleSend} disabled={pending}>
-                      {pending ? "Sending…" : "Send"}
+                      {pending ? "Sending…" : `Send to ${selected.name}`}
                     </button>
                   </div>
                 )}
