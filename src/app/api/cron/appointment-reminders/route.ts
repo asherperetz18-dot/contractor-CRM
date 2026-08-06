@@ -12,7 +12,11 @@ import {
   type Lead,
 } from "@/lib/data/types";
 
-const NIGHT_BEFORE_HOUR = 18; // 6pm local time
+// Advance notice window, in hours before the appointment. The lower
+// bound leaves the hour-before reminder its own job; the upper bound is
+// the evening before a next-day appointment.
+const ADVANCE_MIN_HOURS = 2;
+const ADVANCE_MAX_HOURS = 20;
 
 type EventRow = {
   id: string;
@@ -28,10 +32,23 @@ type EventRow = {
   reminder_hour_before_sent_at: string | null;
 };
 
-function buildBody(kind: "night" | "hour", event: EventRow, lead: Lead): string {
+function buildBody(
+  kind: "advance" | "hour",
+  event: EventRow,
+  lead: Lead,
+  todayDate: string
+): string {
   // ASCII hyphen: the en dash would push this SMS out of GSM-7.
   const timeLabel = formatTimeRange(event.time, event.end_time, "12h", "-");
-  const whenLabel = kind === "night" ? `tomorrow${timeLabel ? ` at ${timeLabel}` : ""}` : `in about an hour${timeLabel ? ` (${timeLabel})` : ""}`;
+  // The day word is derived, not assumed. The advance notice used to be
+  // hard-coded to "tomorrow" because it could only ever send the evening
+  // before; now that it sends whenever a run comes round, it has to say
+  // which day it actually means.
+  const dayWord = event.date === todayDate ? "today" : "tomorrow";
+  const whenLabel =
+    kind === "advance"
+      ? `${dayWord}${timeLabel ? ` at ${timeLabel}` : ""}`
+      : `in about an hour${timeLabel ? ` (${timeLabel})` : ""}`;
   const lines = [
     `Reminder: ${event.event_type} appointment with ${leadDisplayName(lead)} ${whenLabel}.`,
   ];
@@ -87,12 +104,23 @@ async function processCompany(
 
     const start = parseNaiveDateTime(row.date, row.time);
 
+    // Advance notice: sent once, any time from the evening before up to
+    // ~2 hours out. It used to require the run to land between 6pm and
+    // midnight on the day before -- a six-hour slot that the scheduler
+    // never actually hit, so this reminder had never fired once in the
+    // life of the app. Driven by time-until-appointment instead, so any
+    // run in a wide window does it.
+    const hoursUntilStart = (start.getTime() - nowNaive.getTime()) / 3600000;
     if (
-      row.date === tomorrowDate &&
       !row.reminder_night_before_sent_at &&
-      nowNaive.getUTCHours() >= NIGHT_BEFORE_HOUR
+      hoursUntilStart > ADVANCE_MIN_HOURS &&
+      hoursUntilStart <= ADVANCE_MAX_HOURS
     ) {
-      const result = await sendTwilioSms(repPhone, buildBody("night", row, lead), twilioEnv);
+      const result = await sendTwilioSms(
+        repPhone,
+        buildBody("advance", row, lead, todayDate),
+        twilioEnv
+      );
       if (!result.error) {
         await admin
           .from("events")
@@ -106,7 +134,7 @@ async function processCompany(
     if (row.date === todayDate && !row.reminder_hour_before_sent_at) {
       const minutesUntilStart = (start.getTime() - nowNaive.getTime()) / 60000;
       if (minutesUntilStart > 0 && minutesUntilStart <= 60) {
-        const result = await sendTwilioSms(repPhone, buildBody("hour", row, lead), twilioEnv);
+        const result = await sendTwilioSms(repPhone, buildBody("hour", row, lead, todayDate), twilioEnv);
         if (!result.error) {
           await admin
             .from("events")
