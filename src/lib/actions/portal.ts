@@ -129,6 +129,9 @@ export async function sendPortalLink(
   leadId: string
 ): Promise<{ error?: string; channels?: string[]; expiresAt?: string }> {
   const admin = createAdminClient();
+  // Whoever pressed Send Portal Link -- stamped on the logged messages so
+  // per-person activity credits them for it.
+  const sender = await getCurrentProfile();
   const { data } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
   const lead = data as Lead | null;
   if (!lead) return { error: "Contact not found." };
@@ -169,6 +172,7 @@ export async function sendPortalLink(
           direction: "outbound",
           from_number: "email",
           to_number: lead.email,
+          sent_by: sender?.id ?? null,
           body: `[Portal sign-in link emailed] ${mail.subject}`,
           twilio_sid: sent.id || null,
           company_id: lead.company_id,
@@ -198,6 +202,7 @@ export async function sendPortalLink(
           direction: "outbound",
           from_number: twilioEnv.phoneNumber,
           to_number: lead.phone,
+          sent_by: sender?.id ?? null,
           body,
           twilio_sid: sent.sid || null,
           company_id: lead.company_id,

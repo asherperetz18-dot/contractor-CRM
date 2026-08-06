@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { PAGE_REGISTRY, type ActivityEvent, type Profile } from "@/lib/data/types";
+import { LeadsTouched } from "./leads-touched";
 
 type RangeKey = "today" | "7" | "30" | "90";
 const RANGE_LABELS: Record<RangeKey, string> = {
@@ -92,6 +93,8 @@ export function TeamActivityView({
 }) {
   const [range, setRange] = useState<RangeKey>("today");
   const [userFilter, setUserFilter] = useState<string>("all");
+  const [openPath, setOpenPath] = useState<string | null>(null);
+  const [openUser, setOpenUser] = useState<string | null>(null);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name || "Unknown";
   const userEmail = (id: string) => users.find((u) => u.id === id)?.email || "";
@@ -195,18 +198,79 @@ export function TeamActivityView({
       .slice(0, 12);
   }, [bySession]);
 
-  const sessionDetail = useMemo(() => {
-    if (userFilter === "all") return null;
-    return [...bySession.entries()]
-      .map(([sessionId, evs]) => {
-        const sorted = sortByTime(evs);
-        const start = sorted[0].created_at;
-        const minutes = activeMinutes(sorted);
-        const pages = sorted.filter((e) => e.kind === "pageview").map((e) => e.path);
-        return { sessionId, start, minutes, pages };
-      })
-      .sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
-  }, [bySession, userFilter]);
+  /**
+   * Who spent the time on one page, and when — the breakdown behind a single
+   * Top Pages row.
+   *
+   * Note the minutes are read out of a full-session walk rather than measured
+   * over events filtered to this path. minutesByPath works on the gap between
+   * consecutive events, so filtering first would splice together visits that
+   * were minutes or hours apart and credit this page with time nobody spent
+   * on it.
+   */
+  const pageDetail = useMemo(() => {
+    if (!openPath) return null;
+
+    const perUser = new Map<string, { minutes: number; views: number }>();
+    for (const evs of bySession.values()) {
+      const sorted = sortByTime(evs);
+      const userId = sorted[0].user_id;
+
+      const sessionMinutes = new Map<string, number>();
+      minutesByPath(sorted, sessionMinutes);
+
+      const minutes = sessionMinutes.get(openPath) ?? 0;
+      const views = sorted.filter(
+        (e) => e.kind === "pageview" && e.path === openPath
+      ).length;
+      if (minutes === 0 && views === 0) continue;
+
+      const row = perUser.get(userId) ?? { minutes: 0, views: 0 };
+      row.minutes += minutes;
+      row.views += views;
+      perUser.set(userId, row);
+    }
+
+    const byUser = [...perUser.entries()]
+      .map(([userId, row]) => ({ userId, ...row }))
+      .sort((a, b) => b.minutes - a.minutes || b.views - a.views);
+
+    const visits = filtered
+      .filter((e) => e.kind === "pageview" && e.path === openPath)
+      .sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      .slice(0, 20);
+
+    return { byUser, visits };
+  }, [openPath, bySession, filtered]);
+
+  /** Each user's sessions, newest first — behind a Team row, and the whole
+   *  panel when the User filter is narrowed to one person. */
+  const sessionsByUser = useMemo(() => {
+    const map = new Map<
+      string,
+      { sessionId: string; start: string; minutes: number; pages: string[] }[]
+    >();
+    for (const [sessionId, evs] of bySession.entries()) {
+      const sorted = sortByTime(evs);
+      const userId = sorted[0].user_id;
+      const list = map.get(userId) ?? [];
+      list.push({
+        sessionId,
+        start: sorted[0].created_at,
+        minutes: activeMinutes(sorted),
+        pages: sorted.filter((e) => e.kind === "pageview").map((e) => e.path),
+      });
+      map.set(userId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => new Date(b.start).getTime() - new Date(a.start).getTime());
+    }
+    return map;
+  }, [bySession]);
+
+  const sessionDetail = userFilter === "all" ? null : sessionsByUser.get(userFilter) ?? [];
 
   return (
     <div>
@@ -309,25 +373,95 @@ export function TeamActivityView({
                 </tr>
               </thead>
               <tbody>
-                {teamBreakdown.map((row) => (
-                  <tr key={row.userId}>
-                    <td>
-                      <div className="ur-name">{userName(row.userId)}</div>
-                      <div className="ur-add-phone">{userEmail(row.userId)}</div>
-                    </td>
-                    <td className="mono">{Math.round(row.minutes)}m</td>
-                    <td className="mono">{row.sessions}</td>
-                    <td className="mono">{row.pages}</td>
-                    <td className="right">
-                      {new Date(row.lastActive).toLocaleString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </td>
-                  </tr>
-                ))}
+                {teamBreakdown.map((row) => {
+                  const open = openUser === row.userId;
+                  const toggle = () => setOpenUser(open ? null : row.userId);
+                  const sessions = sessionsByUser.get(row.userId) ?? [];
+                  return (
+                    <Fragment key={row.userId}>
+                      <tr
+                        className={`ta-drill${open ? " is-open" : ""}`}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={open}
+                        onClick={toggle}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            toggle();
+                          }
+                        }}
+                      >
+                        <td>
+                          <span className="ta-caret" aria-hidden="true">
+                            {open ? "▾" : "▸"}
+                          </span>
+                          <span className="ur-name">{userName(row.userId)}</span>
+                          <div className="ur-add-phone">{userEmail(row.userId)}</div>
+                        </td>
+                        <td className="mono">{Math.round(row.minutes)}m</td>
+                        <td className="mono">{row.sessions}</td>
+                        <td className="mono">{row.pages}</td>
+                        <td className="right">
+                          {new Date(row.lastActive).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                      </tr>
+
+                      {open && (
+                        <tr className="ta-drill-detail">
+                          <td colSpan={5}>
+                            <LeadsTouched
+                              userId={row.userId}
+                              userName={userName(row.userId)}
+                              sinceISO={new Date(startOfRange(range)).toISOString()}
+                            />
+                            <h4 className="ta-drill-title">
+                              Sessions — {userName(row.userId)}
+                            </h4>
+                            {sessions.length === 0 ? (
+                              <p className="empty-hint">No sessions in this range.</p>
+                            ) : (
+                              <table className="data-table ta-drill-table">
+                                <thead>
+                                  <tr>
+                                    <th>Session Start</th>
+                                    <th>Duration</th>
+                                    <th>Pages Visited</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sessions.map((s) => (
+                                    <tr key={s.sessionId}>
+                                      <td className="ta-nowrap">
+                                        {new Date(s.start).toLocaleString(undefined, {
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
+                                      </td>
+                                      <td className="mono">{Math.round(s.minutes)}m</td>
+                                      <td>
+                                        <div className="ta-page-trail">
+                                          {s.pages.join(" → ") || "—"}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -349,7 +483,7 @@ export function TeamActivityView({
               <tbody>
                 {sessionDetail.map((s) => (
                   <tr key={s.sessionId}>
-                    <td>
+                    <td className="ta-nowrap">
                       {new Date(s.start).toLocaleString(undefined, {
                         month: "short",
                         day: "numeric",
@@ -358,7 +492,9 @@ export function TeamActivityView({
                       })}
                     </td>
                     <td className="mono">{Math.round(s.minutes)}m</td>
-                    <td>{s.pages.join(" → ") || "—"}</td>
+                    <td>
+                      <div className="ta-page-trail">{s.pages.join(" → ") || "—"}</div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -381,18 +517,113 @@ export function TeamActivityView({
               </tr>
             </thead>
             <tbody>
-              {topPages.map((p) => (
-                <tr key={p.path}>
-                  <td>
-                    {prettyPath(p.path)}
-                    <div className="ai-proposal-count">{p.path}</div>
-                  </td>
-                  <td className="mono">{p.views}</td>
-                  <td className="right mono">
-                    {p.minutes >= 1 ? `${p.minutes.toFixed(0)}m` : `${Math.round(p.minutes * 60)}s`}
-                  </td>
-                </tr>
-              ))}
+              {topPages.map((p) => {
+                const open = openPath === p.path;
+                const toggle = () => setOpenPath(open ? null : p.path);
+                return (
+                  <Fragment key={p.path}>
+                    <tr
+                      className={`ta-drill${open ? " is-open" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={open}
+                      onClick={toggle}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggle();
+                        }
+                      }}
+                    >
+                      <td>
+                        <span className="ta-caret" aria-hidden="true">
+                          {open ? "▾" : "▸"}
+                        </span>
+                        {prettyPath(p.path)}
+                        <div className="ai-proposal-count">{p.path}</div>
+                      </td>
+                      <td className="mono">{p.views}</td>
+                      <td className="right mono">
+                        {p.minutes >= 1
+                          ? `${p.minutes.toFixed(0)}m`
+                          : `${Math.round(p.minutes * 60)}s`}
+                      </td>
+                    </tr>
+
+                    {open && pageDetail && (
+                      <tr className="ta-drill-detail">
+                        <td colSpan={3}>
+                          <div className="ta-drill-grid">
+                            <div>
+                              <h4 className="ta-drill-title">Who opened it</h4>
+                              {pageDetail.byUser.length === 0 ? (
+                                <p className="empty-hint">No activity in this range.</p>
+                              ) : (
+                                <table className="data-table ta-drill-table">
+                                  <thead>
+                                    <tr>
+                                      <th>User</th>
+                                      <th>Opened</th>
+                                      <th className="right">Active Time</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {pageDetail.byUser.map((row) => (
+                                      <tr key={row.userId}>
+                                        <td>
+                                          <div className="ur-name">{userName(row.userId)}</div>
+                                          <div className="ai-proposal-count">
+                                            {userEmail(row.userId)}
+                                          </div>
+                                        </td>
+                                        <td className="mono">{row.views}</td>
+                                        <td className="right mono">
+                                          {row.minutes >= 1
+                                            ? `${row.minutes.toFixed(0)}m`
+                                            : `${Math.round(row.minutes * 60)}s`}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+
+                            <div>
+                              <h4 className="ta-drill-title">
+                                Recent visits
+                                {pageDetail.visits.length === 20 && " (latest 20)"}
+                              </h4>
+                              {pageDetail.visits.length === 0 ? (
+                                <p className="empty-hint">
+                                  Time was spent here, but no page-open was recorded in
+                                  this range.
+                                </p>
+                              ) : (
+                                <ul className="ta-visit-list">
+                                  {pageDetail.visits.map((v) => (
+                                    <li key={v.id}>
+                                      <span className="mono">
+                                        {new Date(v.created_at).toLocaleString(undefined, {
+                                          month: "short",
+                                          day: "numeric",
+                                          hour: "numeric",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                      <span>{userName(v.user_id)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}

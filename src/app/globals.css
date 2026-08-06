@@ -388,6 +388,90 @@ body {
   margin-top: 4px;
   white-space: nowrap;
 }
+
+/* Expandable Top Pages rows */
+.ta-drill {
+  cursor: pointer;
+}
+.ta-drill:hover {
+  background: #f7f5f0;
+}
+.ta-drill:focus-visible {
+  outline: 2px solid var(--blueprint);
+  outline-offset: -2px;
+}
+.ta-drill.is-open {
+  background: #f7f5f0;
+}
+.ta-drill.is-open td {
+  border-bottom-color: transparent;
+}
+.ta-caret {
+  display: inline-block;
+  width: 14px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+.ta-drill-detail > td {
+  background: #f7f5f0;
+  padding: 0 12px 14px 26px;
+}
+.ta-drill-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 20px;
+}
+.ta-drill-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+.ta-drill-table {
+  background: #fff;
+}
+.ta-visit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.ta-visit-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.ta-visit-list li:last-child {
+  border-bottom: 0;
+}
+.ta-nowrap {
+  white-space: nowrap;
+}
+/* A long session can visit dozens of pages; wrap and cap the trail so one
+   busy row can't push the table sideways off the panel. */
+.ta-page-trail {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-height: 4.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .ta-drill-grid {
+    grid-template-columns: 1fr;
+  }
+  .ta-drill-detail > td {
+    padding-left: 12px;
+  }
+}
 .module-title {
   font-family: var(--font-headers);
   font-size: 24px;
@@ -4065,4 +4149,22 @@ body {
 .lead-trail-when {
   color: var(--ink-soft);
   white-space: nowrap;
+}
+
+/* Leads Touched drill-down ------------------------------------------- */
+.touch-tag {
+  display: inline-block;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.touch-detail {
+  color: var(--ink-soft);
+  font-size: 12px;
+  max-width: 380px;
+  overflow-wrap: anywhere;
 }

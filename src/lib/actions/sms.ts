@@ -59,6 +59,9 @@ export async function sendSms(
     to_number: toNumber,
     body: trimmedBody,
     twilio_sid: json?.sid ?? null,
+    // Who actually pressed send, so per-person activity can account for
+    // the reps who work mostly by text.
+    sent_by: profile.id,
     company_id: profile.company_id,
   });
   if (error) return { error: error.message };
