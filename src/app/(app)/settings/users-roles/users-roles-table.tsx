@@ -23,7 +23,14 @@ type StatusTab = "Active" | "Archived" | "All";
 
 const NEW_USER_BLANK = { name: "", email: "", phone: "", password: "" };
 
-export function UsersRolesTable({ users }: { users: Profile[] }) {
+export function UsersRolesTable({
+  users,
+  isAdmin,
+}: {
+  users: Profile[];
+  /** Admin role itself. Office may manage people but not mint Admins. */
+  isAdmin: boolean;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [search, setSearch] = useState("");
@@ -45,6 +52,10 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
   const [addRoles, setAddRoles] = useState<AppRole[]>([]);
   const [addPending, setAddPending] = useState(false);
   const [addError, setAddError] = useState("");
+
+  // Office can assign every role except Admin -- offering a chip that
+  // the server will reject is worse than not offering it.
+  const assignableRoles = isAdmin ? APP_ROLES : APP_ROLES.filter((r) => r !== "Admin");
 
   const q = search.trim().toLowerCase();
   const filtered = users.filter((u) => {
@@ -291,13 +302,23 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
                   <div className="ur-role-badges">
                     {APP_ROLES.map((role) => {
                       const active = u.roles.includes(role);
+                      // Shown but not operable, so it is clear the role
+                      // exists and who holds it -- just not yours to grant.
+                      const locked = role === "Admin" && !isAdmin;
                       return (
                         <button
                           key={role}
                           type="button"
                           className="ur-toggle-btn"
-                          onClick={() => handleToggleRole(u, role)}
-                          title={active ? `Remove ${role}` : `Add ${role}`}
+                          disabled={locked}
+                          onClick={() => !locked && handleToggleRole(u, role)}
+                          title={
+                            locked
+                              ? "Only an Admin can grant or remove the Admin role"
+                              : active
+                                ? `Remove ${role}`
+                                : `Add ${role}`
+                          }
                         >
                           <Badge color={active ? "#2D5F8A" : "#B9B3A3"}>
                             {role}
@@ -391,7 +412,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
           </div>
           <Field label="Roles">
             <div className="segmented">
-              {APP_ROLES.map((role) => (
+              {assignableRoles.map((role) => (
                 <button
                   key={role}
                   type="button"
@@ -474,7 +495,7 @@ export function UsersRolesTable({ users }: { users: Profile[] }) {
               </p>
               <Field label="Roles">
                 <div className="segmented">
-                  {APP_ROLES.map((role) => (
+                  {assignableRoles.map((role) => (
                     <button
                       key={role}
                       type="button"

@@ -4,17 +4,91 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, type AppRole } from "@/lib/data/types";
+import { isAdminRole, isStrictAdmin, type AppRole } from "@/lib/data/types";
 
 // User creation and profile edits (name/phone/email) go through the Admin
 // API (service role, bypasses RLS) because changing a user's auth email
 // requires it -- so the Office-or-Admin check has to happen here rather
 // than relying on RLS alone.
-async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: string }> {
+async function requireOfficeOrAdmin(): Promise<
+  { error: string } | { companyId: string; actorId: string; actorIsAdmin: boolean }
+> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!isAdminRole(profile)) return { error: "Only Office or Admin users can do this." };
-  return { companyId: profile.company_id };
+  return {
+    companyId: profile.company_id,
+    actorId: profile.id,
+    actorIsAdmin: isStrictAdmin(profile),
+  };
+}
+
+/**
+ * Granting or removing Admin is itself an admin action.
+ *
+ * Office runs the company day to day, but the Admin role also unlocks the
+ * views that report on people -- Team Activity, who's online, the
+ * who-opened-this-lead trail. An Office user able to mint Admins can
+ * promote themselves into all of it, so the check is on the change to
+ * that one role rather than on editing roles generally.
+ */
+function adminRoleChangeBlocked(
+  actorIsAdmin: boolean,
+  before: AppRole[],
+  after: AppRole[]
+): string | null {
+  const had = before.includes("Admin");
+  const has = after.includes("Admin");
+  if (had === has || actorIsAdmin) return null;
+  return has
+    ? "Only an Admin can grant the Admin role."
+    : "Only an Admin can remove the Admin role.";
+}
+
+/**
+ * True when this change would leave the company with nobody who can
+ * administer it -- there would then be no way back in short of editing
+ * the database by hand.
+ */
+/**
+ * Shared check for actions that take an Admin's access away wholesale --
+ * removing them from the company, or archiving them.
+ */
+async function adminTargetBlocked(
+  guard: { companyId: string; actorIsAdmin: boolean },
+  userId: string
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_members")
+    .select("roles")
+    .eq("profile_id", userId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle();
+  const roles = ((data as { roles: AppRole[] } | null)?.roles ?? []) as AppRole[];
+  if (!roles.includes("Admin")) return null;
+
+  if (!guard.actorIsAdmin) return "Only an Admin can do this to another Admin.";
+  if (await wouldStripLastAdmin(guard.companyId, userId, [])) {
+    return "This is the only Admin left in this company — give someone else Admin first.";
+  }
+  return null;
+}
+
+async function wouldStripLastAdmin(
+  companyId: string,
+  userId: string,
+  after: AppRole[]
+): Promise<boolean> {
+  if (after.includes("Admin")) return false;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_members")
+    .select("profile_id, roles, status")
+    .eq("company_id", companyId);
+  const rows = (data as { profile_id: string; roles: AppRole[]; status: string }[] | null) ?? [];
+  const admins = rows.filter((r) => r.status === "Active" && (r.roles ?? []).includes("Admin"));
+  return admins.length === 1 && admins[0].profile_id === userId;
 }
 
 export async function createUser(input: {
@@ -26,6 +100,11 @@ export async function createUser(input: {
 }): Promise<{ error?: string }> {
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
+
+  // Checked before the account is created, not after -- otherwise a
+  // rejected role would leave an orphaned auth user behind.
+  const roleBlock = adminRoleChangeBlocked(guard.actorIsAdmin, [], input.roles);
+  if (roleBlock) return { error: roleBlock };
 
   const admin = createAdminClient();
   const { data: created, error } = await admin.auth.admin.createUser({
@@ -105,17 +184,44 @@ export async function updateUserRoles(
   userId: string,
   roles: AppRole[]
 ): Promise<{ error?: string }> {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not signed in." };
+  // This used to check only that someone was signed in, leaving the rest
+  // to RLS -- and an RLS-blocked update matches zero rows without raising
+  // anything, so a rejected change reported success and silently did
+  // nothing.
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("company_members")
+    .select("roles")
+    .eq("profile_id", userId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle();
+  const before = ((existing as { roles: AppRole[] } | null)?.roles ?? []) as AppRole[];
+
+  const roleBlock = adminRoleChangeBlocked(guard.actorIsAdmin, before, roles);
+  if (roleBlock) return { error: roleBlock };
+
+  if (await wouldStripLastAdmin(guard.companyId, userId, roles)) {
+    return {
+      error: "This is the only Admin left in this company — give someone else Admin first.",
+    };
+  }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("company_members")
     .update({ roles })
     .eq("profile_id", userId)
-    .eq("company_id", profile.company_id);
+    .eq("company_id", guard.companyId)
+    .select("profile_id");
   if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "That change couldn't be saved — your role may not have permission." };
+  }
   revalidatePath("/settings/users-roles");
+  revalidatePath("/", "layout");
   return {};
 }
 
@@ -141,10 +247,18 @@ export async function toggleUserStatus(
   userId: string,
   currentStatus: string
 ): Promise<{ error?: string }> {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not signed in." };
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
 
   const nextStatus = currentStatus === "Active" ? "Archived" : "Active";
+  // Archiving an Admin takes their access away just as surely as removing
+  // the role, so it goes through the same two checks.
+  if (nextStatus === "Archived") {
+    const block = await adminTargetBlocked(guard, userId);
+    if (block) return { error: block };
+  }
+
+  const profile = { company_id: guard.companyId };
   const supabase = await createClient();
   const { error } = await supabase
     .from("company_members")
@@ -199,6 +313,9 @@ export async function addUserToCompany(
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
 
+  const roleBlock = adminRoleChangeBlocked(guard.actorIsAdmin, [], roles);
+  if (roleBlock) return { error: roleBlock };
+
   const supabase = await createClient();
   const { error } = await supabase.from("company_members").insert({
     profile_id: userId,
@@ -220,10 +337,14 @@ export async function removeUserFromCompany(userId: string): Promise<{ error?: s
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
 
-  const profile = await getCurrentProfile();
-  if (profile && userId === profile.id) {
+  if (userId === guard.actorId) {
     return { error: "You can't remove yourself from this company." };
   }
+
+  // Removing someone takes their roles with them, so the same two rules
+  // apply as to editing roles directly.
+  const block = await adminTargetBlocked(guard, userId);
+  if (block) return { error: block };
 
   const supabase = await createClient();
   const { error } = await supabase
