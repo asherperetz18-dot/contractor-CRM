@@ -354,7 +354,10 @@ export function EventForm({
       projectType: lead?.project_type || "",
     });
 
-    const result = await sendSms(null, rep.phone, body);
+    // Tagged "rep" and threaded under the lead: it belongs in that
+    // contact's history, but not in the Reply Inbox as a conversation
+    // with the rep.
+    const result = await sendSms(lead?.id ?? null, rep.phone, body, "rep");
     if (result?.error) {
       setStatus("error");
       setErrorMsg(result.error);

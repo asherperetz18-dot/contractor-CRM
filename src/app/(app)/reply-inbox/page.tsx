@@ -16,6 +16,11 @@ export default async function ReplyInboxPage() {
       .from("sms_messages")
       .select("*")
       .eq("company_id", companyId)
+      // Rep-facing texts are excluded. They were landing here as
+      // conversations keyed by the rep's phone, so a teammate appeared
+      // in the list looking like a client -- and replying in that thread
+      // sent the customer message straight to the rep.
+      .neq("channel", "rep")
       .order("created_at", { ascending: true }),
     selectAll<Lead>((f, t) =>
       supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)

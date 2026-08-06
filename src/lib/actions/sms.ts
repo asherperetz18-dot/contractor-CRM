@@ -13,10 +13,17 @@ async function requireCanSendSms(): Promise<{ error?: string }> {
   return {};
 }
 
+// channel separates who a message is FOR. Rep-facing texts live in the
+// same table as customer ones so they show in reports, but the Reply
+// Inbox must not present a teammate as if they were a client -- that is
+// how a customer confirmation ends up sent to a rep.
+export type SmsChannel = "sms" | "rep";
+
 export async function sendSms(
   leadId: string | null,
   toNumber: string,
-  body: string
+  body: string,
+  channel: SmsChannel = "sms"
 ): Promise<{ error?: string }> {
   const guard = await requireCanSendSms();
   if (guard.error) return guard;
@@ -59,6 +66,7 @@ export async function sendSms(
     to_number: toNumber,
     body: trimmedBody,
     twilio_sid: json?.sid ?? null,
+    channel,
     // Who actually pressed send, so per-person activity can account for
     // the reps who work mostly by text.
     sent_by: profile.id,
