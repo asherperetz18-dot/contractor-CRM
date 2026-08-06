@@ -13,6 +13,9 @@ export type Profile = {
   roles: AppRole[];
   status: UserStatus;
   can_delete_leads: boolean;
+  // Break-glass flag set in the database, not through the UI. Grants
+  // Admin in every company and makes the account undemotable in-app.
+  is_super_admin?: boolean;
   created_at: string;
 };
 
@@ -26,9 +29,14 @@ export function isAdminRole(profile: Pick<Profile, "roles"> | null) {
 // that expose people rather than configuration -- Team Activity reports
 // how long each named person spent on which screen, which is the
 // owner's business and not every Office user's.
-export function isStrictAdmin(profile: Pick<Profile, "roles"> | null) {
+export function isStrictAdmin(profile: Pick<Profile, "roles" | "is_super_admin"> | null) {
   if (!profile) return false;
-  return profile.roles.includes("Admin");
+  return profile.is_super_admin === true || profile.roles.includes("Admin");
+}
+
+/** Cannot be demoted, archived or removed through the app, by anyone. */
+export function isSuperAdmin(profile: Pick<Profile, "is_super_admin"> | null) {
+  return profile?.is_super_admin === true;
 }
 
 // Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office

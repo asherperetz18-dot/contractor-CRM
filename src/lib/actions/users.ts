@@ -50,6 +50,25 @@ function adminRoleChangeBlocked(
  * administer it -- there would then be no way back in short of editing
  * the database by hand.
  */
+const SUPER_ADMIN_LOCKED =
+  "This account is protected and can't be changed from here.";
+
+/**
+ * The safety catch. A super admin keeps access no matter what anyone
+ * does in the app -- including themselves, since the usual way to lock
+ * yourself out is a misclick, not malice. Undoing it is a deliberate
+ * database change.
+ */
+async function targetIsSuperAdmin(userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("profiles")
+    .select("is_super_admin")
+    .eq("id", userId)
+    .maybeSingle();
+  return (data as { is_super_admin: boolean | null } | null)?.is_super_admin === true;
+}
+
 /**
  * Shared check for actions that take an Admin's access away wholesale --
  * removing them from the company, or archiving them.
@@ -59,6 +78,8 @@ async function adminTargetBlocked(
   userId: string
 ): Promise<string | null> {
   const admin = createAdminClient();
+  if (await targetIsSuperAdmin(userId)) return SUPER_ADMIN_LOCKED;
+
   const { data } = await admin
     .from("company_members")
     .select("roles")
@@ -190,6 +211,10 @@ export async function updateUserRoles(
   // nothing.
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
+
+  // Roles are what grants access, so a protected account's roles are
+  // where a lockout would actually happen.
+  if (await targetIsSuperAdmin(userId)) return { error: SUPER_ADMIN_LOCKED };
 
   const admin = createAdminClient();
   const { data: existing } = await admin

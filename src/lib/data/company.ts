@@ -12,6 +12,7 @@ type CompanyMemberRow = {
     email: string | null;
     phone: string | null;
     created_at: string;
+    is_super_admin: boolean | null;
   } | null;
 };
 
@@ -23,7 +24,7 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("company_members")
-    .select("roles, status, can_delete_leads, profiles(id, name, email, phone, created_at)")
+    .select("roles, status, can_delete_leads, profiles(id, name, email, phone, created_at, is_super_admin)")
     .eq("company_id", companyId);
 
   return ((data ?? []) as unknown as CompanyMemberRow[])
@@ -38,6 +39,7 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
       roles: row.roles,
       status: row.status,
       can_delete_leads: row.can_delete_leads,
+      is_super_admin: row.profiles.is_super_admin === true,
       created_at: row.profiles.created_at,
     }));
 }

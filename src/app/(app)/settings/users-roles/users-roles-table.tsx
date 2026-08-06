@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
-import { APP_ROLES, type AppRole, type Profile } from "@/lib/data/types";
+import { APP_ROLES, isSuperAdmin, type AppRole, type Profile } from "@/lib/data/types";
 import {
   addUserToCompany,
   createUser,
@@ -304,7 +304,7 @@ export function UsersRolesTable({
                       const active = u.roles.includes(role);
                       // Shown but not operable, so it is clear the role
                       // exists and who holds it -- just not yours to grant.
-                      const locked = role === "Admin" && !isAdmin;
+                      const locked = (role === "Admin" && !isAdmin) || isSuperAdmin(u);
                       return (
                         <button
                           key={role}
@@ -313,8 +313,10 @@ export function UsersRolesTable({
                           disabled={locked}
                           onClick={() => !locked && handleToggleRole(u, role)}
                           title={
-                            locked
-                              ? "Only an Admin can grant or remove the Admin role"
+                            isSuperAdmin(u)
+                              ? "Protected account — roles can only be changed in the database"
+                              : locked
+                                ? "Only an Admin can grant or remove the Admin role"
                               : active
                                 ? `Remove ${role}`
                                 : `Add ${role}`
@@ -326,6 +328,9 @@ export function UsersRolesTable({
                         </button>
                       );
                     })}
+                    {isSuperAdmin(u) && (
+                      <Badge color="#6b46c1">Protected</Badge>
+                    )}
                     {u.roles.length === 0 && (
                       <span className="ur-add-phone">No roles</span>
                     )}
