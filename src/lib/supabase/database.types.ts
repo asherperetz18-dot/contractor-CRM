@@ -13,7 +13,9 @@ export type Database = {
   public: {
     Tables: Record<string, LooseTable>;
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    // Loose for the same reason the tables are: `never` here makes every
+    // .rpc() call reject its own arguments.
+    Functions: Record<string, { Args: Record<string, unknown>; Returns: unknown }>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

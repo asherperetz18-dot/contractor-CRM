@@ -1,10 +1,7 @@
-import { ComingSoon } from "../coming-soon";
+import { redirect } from "next/navigation";
 
+// The module moved to /estimates when it stopped being a placeholder.
+// Kept as a redirect so old links and bookmarks still land somewhere.
 export default function DocumentsPage() {
-  return (
-    <ComingSoon
-      title="Estimates & Invoices"
-      subtitle="Line-item documents linked to jobs and contacts"
-    />
-  );
+  redirect("/estimates");
 }

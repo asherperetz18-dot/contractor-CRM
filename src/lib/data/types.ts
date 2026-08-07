@@ -148,7 +148,11 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     group: "Your Sales Center",
   },
   { key: "production", label: "Production", href: "/production", group: "General" },
-  { key: "documents", label: "Estimates & Invoices", href: "/documents", group: "General" },
+  // Key stays "documents" so existing role_page_visibility overrides keep
+  // pointing at it; only the label and route move. Named "Contracts"
+  // rather than "Invoices" because a signed estimate becomes a contract --
+  // invoicing is a separate lifecycle and is not built yet.
+  { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
@@ -929,6 +933,156 @@ export function money(n: number | string) {
     currency: "USD",
     maximumFractionDigits: 0,
   });
+}
+
+// ── Estimates ────────────────────────────────────────────────────────
+
+export type EstimateStatus =
+  | "Draft"
+  | "Sent"
+  | "Viewed"
+  | "Signed"
+  | "Declined"
+  | "Expired";
+
+// Statuses a customer has already seen. Editing one of these supersedes it
+// with a new version rather than rewriting what they were shown.
+export const ISSUED_ESTIMATE_STATUSES: EstimateStatus[] = [
+  "Sent",
+  "Viewed",
+  "Signed",
+  "Declined",
+  "Expired",
+];
+
+export function isIssuedEstimate(status: EstimateStatus): boolean {
+  return ISSUED_ESTIMATE_STATUSES.includes(status);
+}
+
+export type EstimateItem = {
+  id: string;
+  estimate_id: string;
+  sort_order: number;
+  name: string;
+  description: string | null;
+  quantity: number;
+  unit: string | null;
+  unit_price_cents: number;
+  line_total_cents: number;
+  taxable: boolean;
+  cost_cents: number | null;
+};
+
+export type EstimateSigner = {
+  id: string;
+  estimate_id: string;
+  party: "company" | "customer";
+  name: string;
+  email: string | null;
+  phone: string | null;
+  sort_order: number;
+  signed_at: string | null;
+  signature_name: string | null;
+};
+
+export type Estimate = {
+  id: string;
+  company_id: string;
+  lead_id: string;
+  doc_number: string;
+  title: string;
+  status: EstimateStatus;
+  version: number;
+  supersedes_id: string | null;
+  assigned_to: string | null;
+  issued_at: string | null;
+  expires_at: string | null;
+  tax_rate_bp: number;
+  subtotal_cents: number;
+  tax_cents: number;
+  total_cents: number;
+  deposit_cents: number | null;
+  customer_message: string | null;
+  terms: string | null;
+  notes: string | null;
+  sent_at: string | null;
+  viewed_at: string | null;
+  signed_at: string | null;
+  declined_at: string | null;
+  declined_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Money crosses the wire as integer cents. Formatting to the cent (unlike
+// money(), which rounds to whole dollars for pipeline summaries) because a
+// document someone signs has to add up exactly.
+export function moneyCents(cents: number | null | undefined): string {
+  return ((Number(cents) || 0) / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// "$1,250.50", "1250.5", "1,250" -> 125050. Rounds rather than truncates so
+// a typed 0.005 does not silently vanish.
+export function centsFromInput(raw: string | number | null | undefined): number {
+  if (typeof raw === "number") return Math.round(raw * 100);
+  const cleaned = String(raw ?? "").replace(/[^0-9.-]/g, "");
+  if (!cleaned || cleaned === "-" || cleaned === ".") return 0;
+  return Math.round(Number(cleaned) * 100) || 0;
+}
+
+export function centsToInput(cents: number | null | undefined): string {
+  return ((Number(cents) || 0) / 100).toFixed(2);
+}
+
+export function lineTotalCents(quantity: number, unitPriceCents: number): number {
+  return Math.round((Number(quantity) || 0) * (Number(unitPriceCents) || 0));
+}
+
+// The single totals calculation, shared by the builder's live preview and
+// the server action that saves. Two implementations would eventually
+// disagree, and the number the rep saw is the number the customer signs.
+export function computeEstimateTotals(
+  items: Pick<EstimateItem, "quantity" | "unit_price_cents" | "taxable">[],
+  taxRateBp: number
+): { subtotalCents: number; taxCents: number; totalCents: number } {
+  let subtotalCents = 0;
+  let taxableCents = 0;
+  for (const item of items) {
+    const line = lineTotalCents(item.quantity, item.unit_price_cents);
+    subtotalCents += line;
+    if (item.taxable) taxableCents += line;
+  }
+  const taxCents = Math.round((taxableCents * (Number(taxRateBp) || 0)) / 10000);
+  return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
+}
+
+export function estimateExpired(e: Pick<Estimate, "expires_at" | "status">, now = new Date()): boolean {
+  if (e.status === "Signed" || e.status === "Declined") return false;
+  if (!e.expires_at) return false;
+  return new Date(`${e.expires_at}T23:59:59`).getTime() < now.getTime();
+}
+
+// "1 of 2 signed" -- a document is only a contract once every signer has
+// signed, and the pending names are what the rep needs to chase.
+export function signatureProgress(signers: Pick<EstimateSigner, "signed_at" | "name">[]): {
+  signed: number;
+  total: number;
+  complete: boolean;
+  pending: string[];
+} {
+  const signed = signers.filter((s) => !!s.signed_at).length;
+  return {
+    signed,
+    total: signers.length,
+    complete: signers.length > 0 && signed === signers.length,
+    pending: signers.filter((s) => !s.signed_at).map((s) => s.name),
+  };
 }
 
 export function daysSince(dateStr: string | null) {
