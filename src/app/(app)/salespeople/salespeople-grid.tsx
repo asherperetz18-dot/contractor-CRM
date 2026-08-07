@@ -18,7 +18,12 @@ export function SalespeopleGrid({
   reps: Profile[];
   leads: Lead[];
 }) {
-  const activeReps = reps.filter((r) => r.status === "Active");
+  // Sales role only. This page ranks selling performance, so an Admin or
+  // Office account sitting in it with zeroes reads as a rep who has sold
+  // nothing rather than as someone who was never selling.
+  const activeReps = reps.filter(
+    (r) => r.status === "Active" && r.roles.includes("Sales")
+  );
 
   const stats = activeReps
     .map((rep) => {
@@ -35,7 +40,7 @@ export function SalespeopleGrid({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Salespeople</h1>
-          <p className="module-sub">{activeReps.length} active</p>
+          <p className="module-sub">{activeReps.length} with the Sales role</p>
         </div>
       </div>
 

@@ -77,6 +77,7 @@ export const NAV: NavEntry[] = [
       { label: "Power Dialer", href: "/dial-queue" },
       { label: "Call Reports", href: "/call-reports" },
       { label: "Text Reports", href: "/text-reports" },
+      { label: "Appointment Reports", href: "/appointment-reports" },
     ],
   },
   { type: "link", href: "/production", label: "Production", icon: "▦" },
