@@ -28,6 +28,19 @@ export const PORTAL_ACCESS_DAYS = 10;
 // hour keeps it rolling without a write per request.
 const ACCESS_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
 
+/**
+ * Absolute origin for links mailed or texted to customers. Lives here
+ * rather than in actions/portal.ts because that file is "use server", where
+ * every export must be an async server action -- exporting a plain helper
+ * from one ships a broken server reference to the client.
+ */
+export function portalBaseUrl(): string {
+  const explicit = process.env.PORTAL_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  if (explicit) return explicit.trim().replace(/\/$/, "");
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+  return vercel ? `https://${vercel}` : "http://localhost:3000";
+}
+
 export function portalAccessExpiry(): string {
   return new Date(Date.now() + PORTAL_ACCESS_DAYS * 86400000).toISOString();
 }

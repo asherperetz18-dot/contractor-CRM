@@ -14,7 +14,12 @@ import {
   type EstimateItem,
   type EstimateSigner,
 } from "@/lib/data/types";
-import { markEstimateSent, saveEstimateItems, updateEstimateDetails } from "@/lib/actions/estimates";
+import {
+  markEstimateSent,
+  saveEstimateItems,
+  sendEstimateToCustomer,
+  updateEstimateDetails,
+} from "@/lib/actions/estimates";
 
 export type BuilderLead = {
   id: string;
@@ -132,11 +137,22 @@ export function EstimateBuilder({
     });
   }
 
-  function send() {
+  // Texting the portal link is the normal path; marking it sent without
+  // texting is the fallback for a customer with no mobile number, or one
+  // the rep is handing a printout to in person.
+  function send(deliver: "text" | "manual") {
     setError(null);
     startTransition(async () => {
-      const res = await markEstimateSent(estimate.id);
+      const res =
+        deliver === "text"
+          ? await sendEstimateToCustomer(estimate.id)
+          : await markEstimateSent(estimate.id);
       if (res.error) return setError(res.error);
+      setSaved(
+        deliver === "text" && "sentTo" in res && res.sentTo
+          ? `Texted to ${res.sentTo}`
+          : "Marked as sent"
+      );
       router.refresh();
     });
   }
@@ -162,13 +178,31 @@ export function EstimateBuilder({
           <button className="btn-ghost" onClick={() => router.push("/estimates")}>
             Back
           </button>
+          <button
+            className="btn-ghost"
+            onClick={() => router.push(`/estimates/${estimate.id}/preview`)}
+          >
+            Preview as Customer
+          </button>
           {!locked && (
             <>
               <button className="btn-ghost" onClick={() => save()} disabled={pending}>
                 {pending ? "Saving…" : "Save"}
               </button>
-              <button className="btn-primary" onClick={() => save(send)} disabled={pending}>
-                Save &amp; Send
+              <button
+                className="btn-ghost"
+                onClick={() => save(() => send("manual"))}
+                disabled={pending}
+                title="Mark as sent without texting -- for a customer with no mobile number"
+              >
+                Mark Sent
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => save(() => send("text"))}
+                disabled={pending}
+              >
+                Save &amp; Text to Customer
               </button>
             </>
           )}

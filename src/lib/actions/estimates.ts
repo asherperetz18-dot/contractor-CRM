@@ -2,6 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
   canEditDispatch,
@@ -33,6 +36,16 @@ type ItemsEstimateRow = {
   lead_id: string;
   status: EstimateStatus;
   tax_rate_bp: number;
+};
+
+type SendToCustomerRow = {
+  id: string;
+  lead_id: string;
+  company_id: string;
+  status: EstimateStatus;
+  total_cents: number;
+  doc_number: string;
+  title: string;
 };
 
 type SendEstimateRow = {
@@ -315,4 +328,111 @@ export async function deleteEstimate(estimateId: string): Promise<{ error?: stri
 
   revalidateEstimates(null);
   return {};
+}
+
+// Sends the estimate to the customer as a portal link by text.
+//
+// Reuses the client portal rather than inventing a second customer-facing
+// auth: the token, session, address challenge and access window all
+// already exist and are already hardened. The link deep-links straight to
+// the document instead of the portal home.
+export async function sendEstimateToCustomer(
+  estimateId: string
+): Promise<{ error?: string; sentTo?: string }> {
+  const guard = await requireEstimateEditor();
+  if ("error" in guard) return guard;
+
+  const admin = createAdminClient();
+  const { data: estimate } = await admin
+    .from("estimates")
+    .select("id, lead_id, company_id, status, total_cents, doc_number, title")
+    .eq("id", estimateId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<SendToCustomerRow>();
+  if (!estimate) return { error: "Estimate not found." };
+  if (estimate.status !== "Draft") return { error: "This estimate has already been sent." };
+  if (!estimate.total_cents) return { error: "Add at least one line item before sending." };
+
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, first_name, phone, company_id")
+    .eq("id", estimate.lead_id)
+    .maybeSingle<{ id: string; first_name: string | null; phone: string | null; company_id: string }>();
+  if (!lead) return { error: "Customer not found." };
+  if (!lead.phone) return { error: "This customer has no phone number on file." };
+
+  const twilioEnv = getTwilioEnv();
+  if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
+
+  const { data: companyRow } = await admin
+    .from("company_profile")
+    .select("name")
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{ name: string | null }>();
+  const companyName = companyRow?.name || "Your contractor";
+
+  // Sending the link is the act of granting access, same as the existing
+  // portal invite -- otherwise the customer gets a link that refuses them.
+  await admin
+    .from("leads")
+    .update({ portal_access_expires_at: portalAccessExpiry() })
+    .eq("id", lead.id);
+
+  const { token, error: tokenError } = await createLoginToken(lead.id, lead.company_id);
+  if (tokenError || !token) return { error: tokenError || "Could not create a sign-in link." };
+
+  const next = encodeURIComponent(`/portal/estimates/${estimateId}`);
+  const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}&next=${next}`;
+
+  // Plain hyphens and no emoji: an em dash or emoji flips the message to
+  // UCS-2 and cuts each segment from 160 characters to 70.
+  const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
+  const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
+  if (sent.error) return { error: `Text failed (${sent.error})` };
+
+  const now = new Date().toISOString();
+  await admin
+    .from("estimates")
+    .update({ status: "Sent", sent_at: now, issued_at: now, updated_at: now })
+    .eq("id", estimateId);
+
+  // The contractor signs too -- the reference product shows documents as
+  // "1 of 2 signed" with the rep already on them. Recording it at send
+  // time means the customer sees a document the contractor has stood
+  // behind, not a blank pair of signature lines.
+  const sender = await getCurrentProfile();
+  if (sender) {
+    await admin.from("estimate_signers").insert({
+      company_id: guard.companyId,
+      estimate_id: estimateId,
+      party: "company",
+      name: sender.name || sender.email || "Contractor",
+      email: sender.email,
+      sort_order: -1,
+      signed_at: now,
+      signature_name: sender.name || sender.email,
+    });
+  }
+
+  // Logged in the same thread the team already watches, so "did they ever
+  // get anything?" stays answerable from data.
+  await admin.from("sms_messages").insert({
+    lead_id: lead.id,
+    direction: "outbound",
+    from_number: twilioEnv.phoneNumber,
+    to_number: lead.phone,
+    sent_by: guard.userId,
+    body,
+    twilio_sid: sent.sid || null,
+    company_id: guard.companyId,
+    channel: "sms",
+  });
+
+  await admin
+    .from("leads")
+    .update({ value: estimate.total_cents / 100 })
+    .eq("id", lead.id);
+
+  revalidateEstimates(estimateId);
+  return { sentTo: lead.phone };
 }

@@ -12,9 +12,19 @@ export const metadata = {
   title: "Portal Access",
 };
 
-export default async function PortalConfirmPage() {
+export default async function PortalConfirmPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
+  const { next } = await searchParams;
+  // Same allowlist the verify route applies -- re-checked here because a
+  // query string can be edited directly in the address bar.
+  const safeNext =
+    next && /^\/portal\/[A-Za-z0-9/_-]*$/.test(next) ? next : "/portal/home";
+
   const viewer = await getPortalViewer();
-  if (viewer) redirect("/portal/home");
+  if (viewer) redirect(safeNext);
 
   const store = await cookies();
   if (!store.get(PORTAL_PENDING_COOKIE)) redirect("/portal");
@@ -37,5 +47,5 @@ export default async function PortalConfirmPage() {
     logoUrl = row?.logo_url ?? null;
   }
 
-  return <PortalChallengeForm companyName={companyName} logoUrl={logoUrl} />;
+  return <PortalChallengeForm companyName={companyName} logoUrl={logoUrl} next={safeNext} />;
 }

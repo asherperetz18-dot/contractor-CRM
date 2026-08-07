@@ -12,6 +12,7 @@ import {
   getPortalViewer,
   portalAccessActive,
   portalAccessExpiry,
+  portalBaseUrl,
 } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
@@ -20,21 +21,6 @@ import { leadDisplayName, type Lead } from "@/lib/data/types";
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
 const BUCKET = "lead-files";
 
-/**
- * Host used in customer-facing sign-in links.
- *
- * Deliberately its own setting rather than a generic "site URL": the
- * portal is meant to live on a customer-friendly hostname
- * (portal.aibuildpros.com) while staff use the CRM hostname, and these
- * links are the only thing that should follow the former. Server-side
- * only -- there's no reason to ship it to the browser.
- */
-function portalBaseUrl(): string {
-  const explicit = process.env.PORTAL_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL;
-  if (explicit) return explicit.trim().replace(/\/$/, "");
-  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  return vercel ? `https://${vercel}` : "http://localhost:3000";
-}
 
 /**
  * Emails a sign-in link to a customer.

@@ -7,9 +7,13 @@ import { answerPortalChallenge } from "@/lib/actions/portal";
 export function PortalChallengeForm({
   companyName,
   logoUrl,
+  next,
 }: {
   companyName: string;
   logoUrl: string | null;
+  // Where to land once the address challenge passes. An estimate link
+  // points at its own document instead of the portal home.
+  next: string;
 }) {
   const router = useRouter();
   const [answer, setAnswer] = useState("");
@@ -30,7 +34,7 @@ export function PortalChallengeForm({
         setRemaining(result.remaining ?? null);
         return;
       }
-      router.push("/portal/home");
+      router.push(next);
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
