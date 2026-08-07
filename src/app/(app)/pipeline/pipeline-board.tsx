@@ -336,7 +336,11 @@ export function PipelineBoard({
           sums over every open lead -- so those open a breakdown instead. */}
       <div className="stat-grid stat-grid-5">
         <div
-          className={"stat-card" + (showValueBreakdown ? " stat-card-active" : "")}
+          className={
+            "stat-card" +
+            (pipelineValue > 0 ? " stat-card-gold" : "") +
+            (showValueBreakdown ? " stat-card-active" : "")
+          }
           onClick={() => setShowValueBreakdown((v) => !v)}
           title="Show what makes up this total, stage by stage"
         >
