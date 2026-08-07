@@ -266,22 +266,65 @@ export async function updateUserRoles(
   return {};
 }
 
+/**
+ * Writes one permission flag on a membership row.
+ *
+ * The guard matters twice over. RLS already restricts company_members to
+ * Office/Admin, but a blocked UPDATE matches zero rows and raises no
+ * error -- so without the explicit check and the .select() row count, a
+ * rep toggling a permission would see it "save" and silently do nothing.
+ */
+async function updateMemberFlag(
+  userId: string,
+  patch: Record<string, boolean>
+): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_members")
+    .update(patch)
+    .eq("profile_id", userId)
+    .eq("company_id", guard.companyId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "That change couldn't be saved — your role may not have permission." };
+  }
+  revalidatePath("/settings/users-roles");
+  revalidatePath("/", "layout");
+  return {};
+}
+
 export async function updateCanDeleteLeads(
   userId: string,
   canDelete: boolean
 ): Promise<{ error?: string }> {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not signed in." };
+  return updateMemberFlag(userId, { can_delete_leads: canDelete });
+}
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("company_members")
-    .update({ can_delete_leads: canDelete })
-    .eq("profile_id", userId)
-    .eq("company_id", profile.company_id);
-  if (error) return { error: error.message };
-  revalidatePath("/settings/users-roles");
-  return {};
+export async function updateCanViewEstimates(
+  userId: string,
+  canView: boolean
+): Promise<{ error?: string }> {
+  // Turning off view takes create with it: a person who cannot open an
+  // estimate must not keep the right to write one.
+  return updateMemberFlag(
+    userId,
+    canView ? { can_view_estimates: true } : { can_view_estimates: false, can_create_estimates: false }
+  );
+}
+
+export async function updateCanCreateEstimates(
+  userId: string,
+  canCreate: boolean
+): Promise<{ error?: string }> {
+  // Granting create implies view, for the same reason.
+  return updateMemberFlag(
+    userId,
+    canCreate ? { can_create_estimates: true, can_view_estimates: true } : { can_create_estimates: false }
+  );
 }
 
 export async function toggleUserStatus(

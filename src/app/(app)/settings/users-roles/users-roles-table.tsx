@@ -14,6 +14,8 @@ import {
   removeUserFromCompany,
   toggleUserStatus,
   updateCanDeleteLeads,
+  updateCanCreateEstimates,
+  updateCanViewEstimates,
   updateUserProfile,
   updateUserRoles,
 } from "@/lib/actions/users";
@@ -118,6 +120,16 @@ export function UsersRolesTable({
 
   async function handleToggleCanDelete(u: Profile) {
     await updateCanDeleteLeads(u.id, !u.can_delete_leads);
+    refresh();
+  }
+
+  async function handleToggleViewEstimates(u: Profile) {
+    await updateCanViewEstimates(u.id, !u.can_view_estimates);
+    refresh();
+  }
+
+  async function handleToggleCreateEstimates(u: Profile) {
+    await updateCanCreateEstimates(u.id, !u.can_create_estimates);
     refresh();
   }
 
@@ -250,6 +262,8 @@ export function UsersRolesTable({
               <th>Phone</th>
               <th>Roles</th>
               <th>Can Delete Leads</th>
+              <th>View Estimates</th>
+              <th>Create Estimates</th>
               <th className="right">Status</th>
             </tr>
           </thead>
@@ -360,6 +374,57 @@ export function UsersRolesTable({
                     </button>
                   ) : (
                     <span className="ur-add-phone">—</span>
+                  )}
+                </td>
+                {/* Office and Admin hold both rights unconditionally, so
+                    they show as fixed rather than as a switch that would
+                    appear to do nothing when flipped. */}
+                <td>
+                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleViewEstimates(u)}
+                      title={
+                        u.can_view_estimates
+                          ? "Turn off access to estimates"
+                          : "Let this person open estimates"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_view_estimates ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  )}
+                </td>
+                <td>
+                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleCreateEstimates(u)}
+                      title={
+                        u.can_create_estimates
+                          ? "Turn off writing estimates"
+                          : "Let this person write estimates (also grants view)"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_create_estimates ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
                   )}
                 </td>
                 <td className="right">

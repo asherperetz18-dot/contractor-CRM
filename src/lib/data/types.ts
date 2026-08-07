@@ -13,6 +13,8 @@ export type Profile = {
   roles: AppRole[];
   status: UserStatus;
   can_delete_leads: boolean;
+  can_view_estimates: boolean;
+  can_create_estimates: boolean;
   // Break-glass flag set in the database, not through the UI. Grants
   // Admin in every company and makes the account undemotable in-app.
   is_super_admin?: boolean;
@@ -56,6 +58,28 @@ export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_lead
   if (!profile) return false;
   if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
   return profile.roles.includes("Sales") && profile.can_delete_leads;
+}
+
+// Estimates carry prices, margins and signed dollar commitments, so who
+// can open one and who can write one are granted per person rather than
+// inherited from a role. Office and Admin always hold both -- an owner
+// must not be able to switch themselves out of their own money.
+export function canViewEstimates(
+  profile: Pick<Profile, "roles" | "can_view_estimates"> | null
+) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  return profile.can_view_estimates;
+}
+
+export function canCreateEstimates(
+  profile: Pick<Profile, "roles" | "can_view_estimates" | "can_create_estimates"> | null
+) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  // Writing an estimate you are not allowed to open is incoherent, so
+  // create is meaningless without view and does not stand on its own.
+  return profile.can_create_estimates && profile.can_view_estimates;
 }
 
 // Calendar, Schedule and Production: who can book, edit, drag and

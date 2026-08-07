@@ -20,6 +20,7 @@ export type NavEntry = NavLinkItem | NavGroupItem;
 
 import {
   canSeePage,
+  canViewEstimates,
   isAdminRole,
   pathToPageKey,
   PAGE_REGISTRY,
@@ -31,7 +32,7 @@ import {
 
 export function filterNavForProfile(
   nav: NavEntry[],
-  profile: Pick<Profile, "roles"> | null,
+  profile: Pick<Profile, "roles" | "can_view_estimates"> | null,
   overrides: RolePageVisibilityRow[]
 ): NavEntry[] {
   function allowed(href?: string): boolean {
@@ -40,6 +41,10 @@ export function filterNavForProfile(
     // by isAdminRole directly instead, since AdminGate blocks the page
     // itself for everyone else anyway.
     if (href === "/settings") return isAdminRole(profile);
+    // Estimates carry a per-person permission on top of role visibility;
+    // showing a link that lands on "you don't have access" is worse than
+    // showing nothing.
+    if (href === "/estimates") return canViewEstimates(profile);
     const pageKey = pathToPageKey(href);
     if (!pageKey) return true;
     return canSeePage(profile, pageKey, overrides);

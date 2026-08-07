@@ -58,12 +58,14 @@ export function EstimatesView({
   leads,
   reps,
   canDelete,
+  canCreate,
 }: {
   estimates: Estimate[];
   signers: EstimateSigner[];
   leads: EstimateLead[];
   reps: EstimateRep[];
   canDelete: boolean;
+  canCreate: boolean;
 }) {
   const router = useRouter();
   const [bucket, setBucket] = useState<Bucket>("drafts");
@@ -114,9 +116,11 @@ export function EstimatesView({
               : `${estimates.length} document${estimates.length === 1 ? "" : "s"}`}
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setCreating(true)}>
-          + New Estimate
-        </button>
+        {canCreate && (
+          <button className="btn-primary" onClick={() => setCreating(true)}>
+            + New Estimate
+          </button>
+        )}
       </div>
 
       <div className="est-funnel">
@@ -140,7 +144,7 @@ export function EstimatesView({
         <div className="empty-state">
           <p className="empty-label">Nothing in {active.label.toLowerCase()}</p>
           <p className="empty-hint">
-            {bucket === "drafts"
+            {bucket === "drafts" && canCreate
               ? "Start one with + New Estimate and link it to a lead."
               : "Documents move here as they progress."}
           </p>

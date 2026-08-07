@@ -11,6 +11,8 @@ export type Profile = {
   roles: AppRole[];
   status: "Active" | "Archived";
   can_delete_leads: boolean;
+  can_view_estimates: boolean;
+  can_create_estimates: boolean;
   // Mirrors profiles.is_super_admin -- see isSuperAdmin in data/types.
   is_super_admin?: boolean;
   company_id: string;
@@ -77,7 +79,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     supabase.from("profiles").select("name, email, is_super_admin").eq("id", user.id).single(),
     supabase
       .from("company_members")
-      .select("roles, status, can_delete_leads")
+      .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates")
       .eq("profile_id", user.id)
       .eq("company_id", companyId)
       .single(),
@@ -91,6 +93,8 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     roles: AppRole[];
     status: "Active" | "Archived";
     can_delete_leads: boolean;
+    can_view_estimates: boolean;
+    can_create_estimates: boolean;
   } | null;
   if (!membership) return null;
 
@@ -101,6 +105,8 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     roles: membership.roles,
     status: membership.status,
     can_delete_leads: membership.can_delete_leads,
+    can_view_estimates: membership.can_view_estimates,
+    can_create_estimates: membership.can_create_estimates,
     is_super_admin: identity?.is_super_admin === true,
     company_id: companyId,
   };

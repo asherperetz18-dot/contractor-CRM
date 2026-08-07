@@ -7,7 +7,7 @@ import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
-  canEditDispatch,
+  canCreateEstimates,
   canDeleteLeads,
   computeEstimateTotals,
   isIssuedEstimate,
@@ -70,7 +70,8 @@ async function requireEstimateEditor(): Promise<
 > {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!canEditDispatch(profile)) return { error: "You don't have access to estimates." };
+  if (!canCreateEstimates(profile))
+    return { error: "You don't have permission to create or edit estimates." };
   return { companyId: profile.company_id, userId: profile.id };
 }
 

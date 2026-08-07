@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { Estimate, EstimateItem, EstimateSigner } from "@/lib/data/types";
+import { canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner } from "@/lib/data/types";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -28,6 +28,7 @@ export default async function EstimatePreviewPage({
   const { print } = await searchParams;
   const profile = await getCurrentProfile();
   if (!profile) return null;
+  if (!canViewEstimates(profile)) notFound();
 
   const supabase = await createClient();
   const { data: estimate } = await supabase

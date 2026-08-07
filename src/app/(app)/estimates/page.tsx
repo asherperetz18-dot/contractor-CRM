@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import type { Estimate, EstimateSigner } from "@/lib/data/types";
+import { canCreateEstimates, canDeleteLeads, canViewEstimates, type Estimate, type EstimateSigner } from "@/lib/data/types";
 import { EstimatesView, type EstimateLead, type EstimateRep } from "./estimates-view";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,21 @@ export const dynamic = "force-dynamic";
 export default async function EstimatesPage() {
   const profile = await getCurrentProfile();
   if (!profile) return null;
+
+  // RLS would return an empty list anyway, which reads as "you have no
+  // estimates" rather than "you aren't allowed to see these" -- and a
+  // silent empty page is how people conclude their data is missing.
+  if (!canViewEstimates(profile)) {
+    return (
+      <div className="empty-state">
+        <p className="empty-label">You don&apos;t have access to estimates</p>
+        <p className="empty-hint">
+          Ask an Office or Admin user to switch on View Estimates for you in Admin Settings &rarr;
+          Users &amp; Roles.
+        </p>
+      </div>
+    );
+  }
 
   const supabase = await createClient();
 
@@ -50,11 +65,8 @@ export default async function EstimatesPage() {
       signers={signers}
       leads={leads}
       reps={reps}
-      canDelete={
-        profile.roles.includes("Office") ||
-        profile.roles.includes("Admin") ||
-        (profile.roles.includes("Sales") && profile.can_delete_leads)
-      }
+      canDelete={canDeleteLeads(profile)}
+      canCreate={canCreateEstimates(profile)}
     />
   );
 }

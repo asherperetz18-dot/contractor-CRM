@@ -83,11 +83,13 @@ export function EstimateBuilder({
   items,
   signers,
   lead,
+  canEdit,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
   signers: EstimateSigner[];
   lead: BuilderLead | null;
+  canEdit: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
@@ -99,7 +101,9 @@ export function EstimateBuilder({
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const locked = isIssuedEstimate(estimate.status);
+  // View-only covers both cases: a document already sent, and a person
+  // with read access but no permission to write estimates.
+  const locked = isIssuedEstimate(estimate.status) || !canEdit;
   const sig = signatureProgress(signers);
 
   // Same computeEstimateTotals the server uses when it saves, so the number
@@ -233,9 +237,15 @@ export function EstimateBuilder({
 
       {locked && (
         <div className="est-locked-banner">
-          This estimate was sent to the customer on{" "}
-          {estimate.sent_at ? new Date(estimate.sent_at).toLocaleDateString("en-US") : "—"} and is
-          read-only. Create a new version to change it.
+          {!canEdit ? (
+            "You can view estimates but not change them. Ask an Office or Admin user for Create Estimates access."
+          ) : (
+            <>
+              This estimate was sent to the customer on{" "}
+              {estimate.sent_at ? new Date(estimate.sent_at).toLocaleDateString("en-US") : "—"} and
+              is read-only. Create a new version to change it.
+            </>
+          )}
           {sig.total > 0 && (
             <>
               {" "}

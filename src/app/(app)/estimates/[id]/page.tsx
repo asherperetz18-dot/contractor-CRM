@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { Estimate, EstimateItem, EstimateSigner } from "@/lib/data/types";
+import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner } from "@/lib/data/types";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ export default async function EstimateDetailPage({
   const { id } = await params;
   const profile = await getCurrentProfile();
   if (!profile) return null;
+  if (!canViewEstimates(profile)) notFound();
 
   const supabase = await createClient();
   const { data: estimate } = await supabase
@@ -48,6 +49,7 @@ export default async function EstimateDetailPage({
       items={(items ?? []) as EstimateItem[]}
       signers={(signers ?? []) as EstimateSigner[]}
       lead={lead ?? null}
+      canEdit={canCreateEstimates(profile)}
     />
   );
 }
