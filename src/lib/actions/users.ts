@@ -108,7 +108,22 @@ async function wouldStripLastAdmin(
     .select("profile_id, roles, status")
     .eq("company_id", companyId);
   const rows = (data as { profile_id: string; roles: AppRole[]; status: string }[] | null) ?? [];
-  const admins = rows.filter((r) => r.status === "Active" && (r.roles ?? []).includes("Admin"));
+  const active = rows.filter((r) => r.status === "Active");
+
+  // A super admin administers the company whatever their roles say, so
+  // one being a member means the company can never be left without an
+  // administrator -- and this check should not block an ordinary role
+  // edit on that basis.
+  const { data: supers } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("is_super_admin", true)
+    .in("id", active.map((r) => r.profile_id));
+  const superIds = new Set(((supers as { id: string }[] | null) ?? []).map((p) => p.id));
+  if (active.some((r) => superIds.has(r.profile_id) && r.profile_id !== userId)) return false;
+  if (superIds.has(userId)) return false;
+
+  const admins = active.filter((r) => (r.roles ?? []).includes("Admin"));
   return admins.length === 1 && admins[0].profile_id === userId;
 }
 
@@ -212,10 +227,11 @@ export async function updateUserRoles(
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
 
-  // Roles are what grants access, so a protected account's roles are
-  // where a lockout would actually happen.
-  if (await targetIsSuperAdmin(userId)) return { error: SUPER_ADMIN_LOCKED };
-
+  // Deliberately no super-admin block here. is_super_admin grants Admin
+  // access on its own, whatever the roles say, so editing them cannot
+  // lock the account out -- and blocking it stopped the owner adding
+  // themselves to Sales, which is an ordinary thing to want. Archiving
+  // and removal do end access, and those stay blocked.
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("company_members")
