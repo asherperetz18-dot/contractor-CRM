@@ -4245,3 +4245,19 @@ body {
 .stat-card.stat-static {
   cursor: default;
 }
+.stage-focus-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--blueprint);
+  background: #eef3f8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.stage-focus-bar .btn-ghost.small {
+  margin: 0;
+}

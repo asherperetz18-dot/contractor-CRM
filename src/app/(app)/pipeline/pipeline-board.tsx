@@ -101,6 +101,24 @@ export function PipelineBoard({
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
+  // Narrows the board to one stage. Hiding every other column is what
+  // "take me to that pipeline" means on a kanban -- the previous handler
+  // cleared the hidden set instead, which showed all fifteen columns
+  // again, the opposite of what was asked for. Restore them from the
+  // Columns menu.
+  function focusStage(stage: string) {
+    const others = stages.map((s) => s.name).filter((n) => n !== stage);
+    setHiddenStages(new Set(others));
+    window.localStorage.setItem(HIDDEN_STAGES_KEY, JSON.stringify(others));
+    setShowValueBreakdown(false);
+    scrollElRef.current?.scrollTo({ left: 0, behavior: "smooth" });
+  }
+
+  function showAllStages() {
+    setHiddenStages(new Set());
+    window.localStorage.setItem(HIDDEN_STAGES_KEY, "[]");
+  }
+
   function toggleStageVisible(name: string) {
     setHiddenStages((prev) => {
       const next = new Set(prev);
@@ -391,10 +409,8 @@ export function PipelineBoard({
                   <tr
                     key={row.stage}
                     className="value-breakdown-row"
-                    onClick={() => {
-                      setHiddenStages(new Set());
-                      setShowValueBreakdown(false);
-                    }}
+                    onClick={() => focusStage(row.stage)}
+                    title={`Show only the ${row.stage} column`}
                   >
                     <td>{row.stage}</td>
                     <td className="right mono">{row.count}</td>
@@ -411,6 +427,19 @@ export function PipelineBoard({
             {leadsWithNoValue} of {openLeads.length} open leads have no value recorded, so
             they add nothing to these totals.
           </p>
+        </div>
+      )}
+
+      {hiddenStages.size > 0 && (
+        // Hidden columns persist across reloads, so without this the board
+        // just looks like most of the pipeline vanished.
+        <div className="stage-focus-bar">
+          <span>
+            Showing <strong>{visibleColumnCount}</strong> of {openStageNames.length} stages
+          </span>
+          <button type="button" className="btn-ghost small" onClick={showAllStages}>
+            Show all stages
+          </button>
         </div>
       )}
 
