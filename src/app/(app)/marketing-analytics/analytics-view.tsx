@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   daysSince,
@@ -36,6 +36,7 @@ export function AnalyticsView({
   stages: PipelineStageRow[];
 }) {
   const [range, setRange] = useState<RangeKey>("30");
+  const [expandedRep, setExpandedRep] = useState<string | null>(null);
   const days = range === "all" ? null : Number(range);
 
   function repName(id: string | null) {
@@ -74,7 +75,7 @@ export function AnalyticsView({
         const assigned = createdInRange.filter((l) => l.assigned_to === rep.id);
         const won = assigned.filter((l) => l.stage === "Won");
         const wonVal = won.reduce((s, l) => s + (Number(l.value) || 0), 0);
-        return { rep, count: assigned.length, wonCount: won.length, wonVal };
+        return { rep, count: assigned.length, wonCount: won.length, wonVal, assigned };
       })
       .filter((r) => r.count > 0)
       .sort((a, b) => b.wonVal - a.wonVal);
@@ -197,14 +198,50 @@ export function AnalyticsView({
                 </tr>
               </thead>
               <tbody>
-                {repStats.map(({ rep, count, wonCount, wonVal }) => (
-                  <tr key={rep.id}>
-                    <td>{rep.name || rep.email}</td>
-                    <td className="right mono">{count}</td>
-                    <td className="right mono">{wonCount}</td>
-                    <td className="right mono">{money(wonVal)}</td>
-                  </tr>
-                ))}
+                {repStats.map(({ rep, count, wonCount, wonVal, assigned }) => {
+                  const open = expandedRep === rep.id;
+                  return (
+                    <Fragment key={rep.id}>
+                      <tr
+                        className={"value-breakdown-row" + (open ? " is-open" : "")}
+                        onClick={() => setExpandedRep(open ? null : rep.id)}
+                        title={open ? "Hide these leads" : `Show ${rep.name || rep.email}s ${count} leads`}
+                      >
+                        <td>
+                          <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
+                          {rep.name || rep.email}
+                        </td>
+                        <td className="right mono">{count}</td>
+                        <td className="right mono">{wonCount}</td>
+                        <td className="right mono">{money(wonVal)}</td>
+                      </tr>
+                      {open && (
+                        <tr className="value-breakdown-detail">
+                          <td colSpan={4}>
+                            <div className="value-lead-list">
+                              {[...assigned]
+                                .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
+                                .map((l) => (
+                                  <a
+                                    key={l.id}
+                                    className="value-lead-row"
+                                    href={`/contacts?openLead=${l.id}`}
+                                    title="Open this contact"
+                                  >
+                                    <span className="value-lead-name">{leadDisplayName(l)}</span>
+                                    <span className="value-lead-meta">
+                                      {l.phone || "no phone"} · {l.stage}
+                                    </span>
+                                    <span className="mono value-lead-value">{money(l.value)}</span>
+                                  </a>
+                                ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
