@@ -4319,3 +4319,19 @@ body {
   background: var(--danger);
   color: #fff;
 }
+
+/* Second tier: a backlog rather than a today problem. Amber, and a
+   thinner edge than the urgent panel, so the two are distinguishable
+   from across the room rather than only side by side. */
+.dash-panel.digest-attention {
+  background: #fdf8ee;
+  border-color: #c0730f;
+  border-left: 3px solid #c0730f;
+}
+.dash-panel.digest-attention .cp-tz-head {
+  color: #8a5a2d;
+}
+.count-pill.count-pill-attention {
+  background: #c0730f;
+  color: #fff;
+}

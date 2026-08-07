@@ -36,6 +36,7 @@ function DigestSection({
   onOpenLead,
   defaultOpen,
   urgent,
+  attention,
 }: {
   title: string;
   count: number;
@@ -49,12 +50,20 @@ function DigestSection({
    *  so a panel reading "0" is never red. A colour that is always on
    *  stops being a signal. */
   urgent?: boolean;
+  /** The quieter tier: a backlog worth chipping at, not a today problem.
+   *  Amber rather than red so the hierarchy between the two stays
+   *  legible at a glance. */
+  attention?: boolean;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
 
   return (
     <div
-      className={"dash-panel" + (urgent && count > 0 ? " digest-urgent" : "")}
+      className={
+        "dash-panel" +
+        (urgent && count > 0 ? " digest-urgent" : "") +
+        (attention && !urgent && count > 0 ? " digest-attention" : "")
+      }
       style={{ marginBottom: 14 }}
     >
       <div
@@ -64,7 +73,13 @@ function DigestSection({
       >
         <span>
           {title}{" "}
-          <span className={"count-pill" + (urgent && count > 0 ? " count-pill-urgent" : "")}>
+          <span
+            className={
+              "count-pill" +
+              (urgent && count > 0 ? " count-pill-urgent" : "") +
+              (attention && !urgent && count > 0 ? " count-pill-attention" : "")
+            }
+          >
             {count}
           </span>
         </span>
@@ -155,6 +170,7 @@ export function AttentionDigest({
         title="Cold Leads"
         count={coldLeads.length}
         hint="No appointments on record · stale notes or expired tasks"
+        attention
         leads={coldLeads}
         warningsByLead={warningsByLead}
         repName={repName}
