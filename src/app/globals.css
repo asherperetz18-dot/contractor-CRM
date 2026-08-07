@@ -4945,16 +4945,21 @@ body {
     display: none !important;
   }
 
+  /* Small page margin, with the real breathing room carried by the
+     document's own padding below. The print dialog's Margins control
+     overrides @page -- pick "None" and this becomes zero -- so anything
+     that depends on it alone prints hard against the paper edge, which
+     reads as the content being cut off and is past what most printers
+     can physically reach. */
   @page {
     size: letter;
-    margin: 0.5in;
+    margin: 0.25in;
   }
 
   /* max-width:100%, NOT none. Removing the constraint lets the document
      lay out at the browser's width and the paper then clips whatever
      hangs past the right margin -- the doc number and the totals column
      are the first things over the edge. */
-  .estdoc,
   .estdoc-preview-frame {
     border: none !important;
     border-radius: 0 !important;
@@ -4962,6 +4967,21 @@ body {
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    background: #fff !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Keeps its own padding rather than inheriting all spacing from @page,
+     so there is white space around the document even when the dialog's
+     Margins is set to None. border-box means this padding comes out of
+     the page width instead of adding to it. */
+  .estdoc {
+    border: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0.3in !important;
     background: #fff !important;
     box-sizing: border-box !important;
   }
