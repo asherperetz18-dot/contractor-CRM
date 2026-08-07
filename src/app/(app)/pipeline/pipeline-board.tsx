@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   computeLeadWarnings,
@@ -99,20 +99,8 @@ export function PipelineBoard({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
+  const [expandedStage, setExpandedStage] = useState<string | null>(null);
   const [showImport, setShowImport] = useState(false);
-
-  // Narrows the board to one stage. Hiding every other column is what
-  // "take me to that pipeline" means on a kanban -- the previous handler
-  // cleared the hidden set instead, which showed all fifteen columns
-  // again, the opposite of what was asked for. Restore them from the
-  // Columns menu.
-  function focusStage(stage: string) {
-    const others = stages.map((s) => s.name).filter((n) => n !== stage);
-    setHiddenStages(new Set(others));
-    window.localStorage.setItem(HIDDEN_STAGES_KEY, JSON.stringify(others));
-    setShowValueBreakdown(false);
-    scrollElRef.current?.scrollTo({ left: 0, behavior: "smooth" });
-  }
 
   function showAllStages() {
     setHiddenStages(new Set());
@@ -408,21 +396,59 @@ export function PipelineBoard({
                 </tr>
               </thead>
               <tbody>
-                {valueByStage.map((row) => (
-                  <tr
-                    key={row.stage}
-                    className="value-breakdown-row"
-                    onClick={() => focusStage(row.stage)}
-                    title={`Show only the ${row.stage} column`}
-                  >
-                    <td>{row.stage}</td>
-                    <td className="right mono">{row.count}</td>
-                    <td className="right mono">{money(row.value)}</td>
-                    <td className="right mono">
-                      {money(row.count ? row.value / row.count : 0)}
-                    </td>
-                  </tr>
-                ))}
+                {valueByStage.map((row) => {
+                  const open = expandedStage === row.stage;
+                  // The leads themselves, right under the row that was
+                  // clicked. Narrowing the board's columns instead was too
+                  // indirect -- the board still looked like a board, so it
+                  // read as "nothing happened".
+                  const stageLeads = open
+                    ? openLeads
+                        .filter((l) => l.stage === row.stage)
+                        .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
+                    : [];
+                  return (
+                    <Fragment key={row.stage}>
+                      <tr
+                        className={"value-breakdown-row" + (open ? " is-open" : "")}
+                        onClick={() => setExpandedStage(open ? null : row.stage)}
+                        title={open ? "Hide these leads" : `Show the ${row.count} leads here`}
+                      >
+                        <td>
+                          <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
+                          {row.stage}
+                        </td>
+                        <td className="right mono">{row.count}</td>
+                        <td className="right mono">{money(row.value)}</td>
+                        <td className="right mono">
+                          {money(row.count ? row.value / row.count : 0)}
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr className="value-breakdown-detail">
+                          <td colSpan={4}>
+                            <div className="value-lead-list">
+                              {stageLeads.map((l) => (
+                                <div
+                                  key={l.id}
+                                  className="value-lead-row"
+                                  onClick={() => setEditing(l)}
+                                  title="Open this contact"
+                                >
+                                  <span className="value-lead-name">{leadDisplayName(l)}</span>
+                                  <span className="value-lead-meta">
+                                    {l.phone || "no phone"} · {repName(l.assigned_to)}
+                                  </span>
+                                  <span className="mono value-lead-value">{money(l.value)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           )}
