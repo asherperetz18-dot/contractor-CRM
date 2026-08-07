@@ -147,7 +147,6 @@ export function AttentionDigest({
         warningsByLead={warningsByLead}
         repName={repName}
         onOpenLead={onOpenLead}
-        defaultOpen
       />
     </div>
   );
