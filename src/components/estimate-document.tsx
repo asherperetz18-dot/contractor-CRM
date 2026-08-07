@@ -1,9 +1,11 @@
 import {
   moneyCents,
+  paymentPercentOfTotal,
   signatureProgress,
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
+  type EstimatePayment,
 } from "@/lib/data/types";
 
 export type DocumentCompany = {
@@ -25,6 +27,11 @@ export type DocumentCustomer = {
   phone: string | null;
   address: string | null;
 };
+
+function pct(amountCents: number, totalCents: number): string {
+  const p = paymentPercentOfTotal(amountCents, totalCents);
+  return p === null ? "—" : `${p.toFixed(2)}%`;
+}
 
 function longDate(value: string | null) {
   if (!value) return "—";
@@ -48,12 +55,14 @@ export function EstimateDocument({
   estimate,
   items,
   signers,
+  payments,
   company,
   customer,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
   signers: EstimateSigner[];
+  payments: EstimatePayment[];
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
 }) {
@@ -165,13 +174,42 @@ export function EstimateDocument({
           <span>Total</span>
           <span>{moneyCents(estimate.total_cents)}</span>
         </div>
-        {estimate.deposit_cents ? (
-          <div className="estdoc-total-row estdoc-deposit">
-            <span>Deposit due to start</span>
-            <span>{moneyCents(estimate.deposit_cents)}</span>
-          </div>
-        ) : null}
       </div>
+
+      {/* The payment schedule is the part a homeowner reads hardest -- it
+          is what they are committing to pay and when. Percentages are of
+          the contract total, matching what the rep saw when building it. */}
+      {(estimate.deposit_cents || payments.length > 0) && (
+        <section className="estdoc-schedule">
+          <div className="estdoc-label">Payment schedule</div>
+          <table className="estdoc-items estdoc-schedule-table">
+            <tbody>
+              {estimate.deposit_cents ? (
+                <tr>
+                  <td>
+                    <div className="estdoc-strong">Deposit</div>
+                    <div className="estdoc-muted">Due upon contract signing</div>
+                  </td>
+                  <td className="estdoc-num">
+                    {pct(estimate.deposit_cents, estimate.total_cents)}
+                  </td>
+                  <td className="estdoc-num">{moneyCents(estimate.deposit_cents)}</td>
+                </tr>
+              ) : null}
+              {payments.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <div className="estdoc-strong">{p.name}</div>
+                    {p.description && <div className="estdoc-muted">{p.description}</div>}
+                  </td>
+                  <td className="estdoc-num">{pct(p.amount_cents, estimate.total_cents)}</td>
+                  <td className="estdoc-num">{moneyCents(p.amount_cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {estimate.terms && (
         <section className="estdoc-terms">

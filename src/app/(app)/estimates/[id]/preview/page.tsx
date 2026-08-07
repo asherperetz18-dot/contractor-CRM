@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner } from "@/lib/data/types";
+import { canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment } from "@/lib/data/types";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -39,10 +39,11 @@ export default async function EstimatePreviewPage({
     .maybeSingle<Estimate>();
   if (!estimate) notFound();
 
-  const [{ data: items }, { data: signers }, { data: company }, { data: lead }] =
+  const [{ data: items }, { data: signers }, { data: payments }, { data: company }, { data: lead }] =
     await Promise.all([
       supabase.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
       supabase.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
+      supabase.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
       supabase
         .from("company_profile")
         .select(
@@ -77,6 +78,7 @@ export default async function EstimatePreviewPage({
           estimate={estimate}
           items={(items ?? []) as EstimateItem[]}
           signers={(signers ?? []) as EstimateSigner[]}
+          payments={(payments ?? []) as EstimatePayment[]}
           company={company ?? null}
           customer={lead ?? null}
         />

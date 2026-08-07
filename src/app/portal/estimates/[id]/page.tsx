@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
-import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner } from "@/lib/data/types";
+import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment } from "@/lib/data/types";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -39,9 +39,10 @@ export default async function PortalEstimatePage({
 
   await markEstimateViewed(id);
 
-  const [{ data: items }, { data: signers }, { data: company }] = await Promise.all([
+  const [{ data: items }, { data: signers }, { data: payments }, { data: company }] = await Promise.all([
     admin.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
+    admin.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
     admin
       .from("company_profile")
       .select(
@@ -67,6 +68,7 @@ export default async function PortalEstimatePage({
         estimate={estimate}
         items={(items ?? []) as EstimateItem[]}
         signers={signerRows}
+        payments={(payments ?? []) as EstimatePayment[]}
         company={company ?? null}
         customer={viewer.lead}
       />

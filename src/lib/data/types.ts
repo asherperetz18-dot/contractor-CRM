@@ -1025,6 +1025,10 @@ export type Estimate = {
   subtotal_cents: number;
   tax_cents: number;
   total_cents: number;
+  // Snapshotted policy, so changing the company's deposit rule next year
+  // cannot rewrite the deposit on a contract already signed.
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
   deposit_cents: number | null;
   customer_message: string | null;
   terms: string | null;
@@ -1129,6 +1133,100 @@ export function estimateMargin(
     pct: marginPct(revenueCents, costCents),
   };
 }
+
+// ── Deposit and progress payments ────────────────────────────────────
+
+export type EstimatePayment = {
+  id: string;
+  estimate_id: string;
+  sort_order: number;
+  name: string;
+  description: string | null;
+  amount_cents: number;
+};
+
+export const DEFAULT_DEPOSIT_PERCENT_BP = 1000; // 10.00%
+export const DEFAULT_DEPOSIT_CAP_CENTS = 100000; // $1,000
+
+/**
+ * "10% or up to $1,000" means whichever is LESS, not whichever the rep
+ * prefers. On a $28,500 job 10% is $2,850, so the deposit is $1,000; on a
+ * $5,000 job 10% is $500, so the deposit is $500.
+ *
+ * This is California's limit for home improvement contracts (CSLB, B&P
+ * 7159) -- a down payment may not exceed $1,000 or 10% of the contract
+ * price, whichever is less. Enforced as a ceiling rather than a default
+ * so a large job cannot quietly collect an illegal deposit.
+ */
+export function depositCents(
+  totalCents: number,
+  percentBp: number = DEFAULT_DEPOSIT_PERCENT_BP,
+  capCents: number = DEFAULT_DEPOSIT_CAP_CENTS
+): number {
+  if (!totalCents || totalCents <= 0) return 0;
+  const byPercent = Math.round((totalCents * (Number(percentBp) || 0)) / 10000);
+  if (!capCents || capCents <= 0) return Math.min(byPercent, totalCents);
+  return Math.min(byPercent, capCents, totalCents);
+}
+
+/** What the progress phases have to add up to. */
+export function balanceAfterDepositCents(totalCents: number, deposit: number): number {
+  return Math.max(0, (totalCents || 0) - (deposit || 0));
+}
+
+/**
+ * Percent is always of the estimate total, matching how the reference
+ * product reports it -- a $4,722.45 phase on a $28,500 job reads 16.57%,
+ * not 17.17% of the post-deposit balance. Percentages of two different
+ * bases on one page is how a customer ends up querying the invoice.
+ */
+export function paymentPercentOfTotal(amountCents: number, totalCents: number): number | null {
+  if (!totalCents) return null;
+  return ((amountCents || 0) / totalCents) * 100;
+}
+
+export function paymentsTotalCents(payments: Pick<EstimatePayment, "amount_cents">[]): number {
+  return payments.reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+}
+
+/**
+ * Deposit + phases must equal the estimate exactly. Anything left over is
+ * money nobody has agreed when to pay, so it is surfaced rather than
+ * quietly absorbed into the last phase.
+ */
+export function scheduleBalance(
+  totalCents: number,
+  depositAmountCents: number,
+  payments: Pick<EstimatePayment, "amount_cents">[]
+): { phasesCents: number; scheduledCents: number; differenceCents: number; balanced: boolean } {
+  const phasesCents = paymentsTotalCents(payments);
+  const scheduledCents = phasesCents + (depositAmountCents || 0);
+  const differenceCents = (totalCents || 0) - scheduledCents;
+  return { phasesCents, scheduledCents, differenceCents, balanced: differenceCents === 0 };
+}
+
+/**
+ * Splits a balance across n phases in whole cents, giving any remainder
+ * to the earliest phases. Three phases of $100.00 must come to $100.00,
+ * not $99.99 -- an even split that loses a cent leaves the schedule
+ * permanently unbalanced and the rep hunting for it.
+ */
+export function splitEvenlyCents(balanceCents: number, phases: number): number[] {
+  if (phases <= 0 || balanceCents <= 0) return [];
+  const base = Math.floor(balanceCents / phases);
+  const remainder = balanceCents - base * phases;
+  return Array.from({ length: phases }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+// The phases a remodel actually bills at, in order. Used to seed a
+// schedule so the rep edits names rather than inventing them.
+export const DEFAULT_PAYMENT_PHASES: { name: string; description: string }[] = [
+  { name: "Materials delivered", description: "Payment due when materials are delivered to the job site." },
+  { name: "At completion of demolition & framing", description: "Payment due upon completion of demolition and framing." },
+  { name: "At completion of rough-in", description: "Payment due upon completion of rough-in plumbing and electrical." },
+  { name: "At completion of finishes", description: "Payment due upon completion of finish work." },
+  { name: "Final walkthrough & punch list", description: "Final payment due upon completion of the punch list." },
+];
 
 export function estimateExpired(e: Pick<Estimate, "expires_at" | "status">, now = new Date()): boolean {
   if (e.status === "Signed" || e.status === "Declined") return false;

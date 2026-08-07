@@ -17,6 +17,7 @@ import {
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
+  type EstimatePayment,
 } from "@/lib/data/types";
 import {
   markEstimateSent,
@@ -24,6 +25,7 @@ import {
   sendEstimateToCustomer,
   updateEstimateDetails,
 } from "@/lib/actions/estimates";
+import { PaymentSchedule } from "./payment-schedule";
 
 export type BuilderLead = {
   id: string;
@@ -82,12 +84,14 @@ export function EstimateBuilder({
   estimate,
   items,
   signers,
+  payments,
   lead,
   canEdit,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
   signers: EstimateSigner[];
+  payments: EstimatePayment[];
   lead: BuilderLead | null;
   canEdit: boolean;
 }) {
@@ -482,6 +486,16 @@ export function EstimateBuilder({
           </p>
         </div>
       )}
+
+      <PaymentSchedule
+        estimateId={estimate.id}
+        totalCents={totals.totalCents}
+        depositPercentBp={estimate.deposit_percent_bp}
+        depositCapCents={estimate.deposit_cap_cents}
+        payments={payments}
+        locked={locked}
+        onChanged={() => router.refresh()}
+      />
 
       <div className="est-meta-grid">
         <label className="field">

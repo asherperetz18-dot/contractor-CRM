@@ -7,8 +7,12 @@ import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
+  balanceAfterDepositCents,
   canCreateEstimates,
   canDeleteLeads,
+  depositCents,
+  DEFAULT_PAYMENT_PHASES,
+  splitEvenlyCents,
   computeEstimateTotals,
   isIssuedEstimate,
   lineTotalCents,
@@ -36,6 +40,8 @@ type ItemsEstimateRow = {
   lead_id: string;
   status: EstimateStatus;
   tax_rate_bp: number;
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
 };
 
 type SendToCustomerRow = {
@@ -46,6 +52,14 @@ type SendToCustomerRow = {
   total_cents: number;
   doc_number: string;
   title: string;
+};
+
+type PaymentEstimateRow = {
+  id: string;
+  status: EstimateStatus;
+  total_cents: number;
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
 };
 
 type SendEstimateRow = {
@@ -200,7 +214,7 @@ export async function saveEstimateItems(
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, lead_id, status, tax_rate_bp")
+    .select("id, lead_id, status, tax_rate_bp, deposit_percent_bp, deposit_cap_cents")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<ItemsEstimateRow>();
@@ -245,6 +259,15 @@ export async function saveEstimateItems(
       subtotal_cents: totals.subtotalCents,
       tax_cents: totals.taxCents,
       total_cents: totals.totalCents,
+      // Re-derived here as well as on the schedule save: changing a line
+      // item changes the total, and a deposit left over from the previous
+      // total is both wrong and, on a big job, potentially over the legal
+      // ceiling.
+      deposit_cents: depositCents(
+        totals.totalCents,
+        estimate.deposit_percent_bp,
+        estimate.deposit_cap_cents
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq("id", estimateId);
@@ -436,4 +459,112 @@ export async function sendEstimateToCustomer(
 
   revalidateEstimates(estimateId);
   return { sentTo: lead.phone };
+}
+
+export type PaymentInput = { name: string; description?: string | null; amount_cents: number };
+
+/**
+ * Replaces the progress-payment schedule.
+ *
+ * The deposit is not one of these rows -- it is derived from the total by
+ * policy and stored on the estimate, so a rep cannot type over the legal
+ * ceiling by editing a line.
+ */
+export async function saveEstimatePayments(
+  estimateId: string,
+  payments: PaymentInput[]
+): Promise<{ error?: string; scheduledCents?: number }> {
+  const guard = await requireEstimateEditor();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: estimate, error: readError } = await supabase
+    .from("estimates")
+    .select("id, status, total_cents, deposit_percent_bp, deposit_cap_cents")
+    .eq("id", estimateId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<PaymentEstimateRow>();
+  if (readError) return { error: readError.message };
+  if (!estimate) return { error: "Estimate not found." };
+  if (isIssuedEstimate(estimate.status)) {
+    return { error: "This estimate has already gone out. Create a new version to change it." };
+  }
+
+  const clean = payments
+    .map((p) => ({ ...p, name: (p.name ?? "").trim() }))
+    .filter((p) => p.name || p.amount_cents);
+
+  const { error: deleteError } = await supabase
+    .from("estimate_payments")
+    .delete()
+    .eq("estimate_id", estimateId);
+  if (deleteError) return { error: deleteError.message };
+
+  if (clean.length) {
+    const { error: insertError } = await supabase.from("estimate_payments").insert(
+      clean.map((p, i) => ({
+        company_id: guard.companyId,
+        estimate_id: estimateId,
+        sort_order: i,
+        name: p.name,
+        description: p.description ?? null,
+        amount_cents: Math.max(0, Math.round(p.amount_cents)),
+      }))
+    );
+    if (insertError) return { error: insertError.message };
+  }
+
+  // Deposit is re-derived on every save so it always reflects the current
+  // total -- editing line items after setting the schedule must not leave
+  // a stale deposit behind.
+  const deposit = depositCents(
+    estimate.total_cents,
+    estimate.deposit_percent_bp,
+    estimate.deposit_cap_cents
+  );
+  await supabase
+    .from("estimates")
+    .update({ deposit_cents: deposit, updated_at: new Date().toISOString() })
+    .eq("id", estimateId);
+
+  revalidateEstimates(estimateId);
+  return { scheduledCents: deposit + clean.reduce((s, p) => s + p.amount_cents, 0) };
+}
+
+/**
+ * Seeds a schedule: the standard remodel phases, splitting the balance
+ * after the deposit evenly and to the cent.
+ */
+export async function generateEstimateSchedule(
+  estimateId: string
+): Promise<{ error?: string }> {
+  const guard = await requireEstimateEditor();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: estimate } = await supabase
+    .from("estimates")
+    .select("id, status, total_cents, deposit_percent_bp, deposit_cap_cents")
+    .eq("id", estimateId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<PaymentEstimateRow>();
+  if (!estimate) return { error: "Estimate not found." };
+  if (!estimate.total_cents) return { error: "Add line items before building a payment schedule." };
+
+  const deposit = depositCents(
+    estimate.total_cents,
+    estimate.deposit_percent_bp,
+    estimate.deposit_cap_cents
+  );
+  const balance = balanceAfterDepositCents(estimate.total_cents, deposit);
+  const amounts = splitEvenlyCents(balance, DEFAULT_PAYMENT_PHASES.length);
+
+  return saveEstimatePayments(
+    estimateId,
+    DEFAULT_PAYMENT_PHASES.map((phase, i) => ({
+      name: phase.name,
+      description: phase.description,
+      amount_cents: amounts[i] ?? 0,
+    }))
+  );
 }
