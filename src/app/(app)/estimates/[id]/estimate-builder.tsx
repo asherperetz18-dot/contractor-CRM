@@ -8,7 +8,8 @@ import {
   computeEstimateTotals,
   estimateMargin,
   formatMarginPct,
-  isIssuedEstimate,
+  editWillRecallEstimate,
+  estimateLocked,
   lineCostCents,
   lineTotalCents,
   marginPct,
@@ -105,9 +106,16 @@ export function EstimateBuilder({
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // View-only covers both cases: a document already sent, and a person
-  // with read access but no permission to write estimates.
-  const locked = isIssuedEstimate(estimate.status) || !canEdit;
+  // Read-only once the customer has signed, or for a person without
+  // write permission. Merely having been sent does not lock it -- the
+  // customer asking for a change after reading the quote is the normal
+  // course of a sale.
+  const signed = estimateLocked(estimate.status, signers);
+  const locked = signed || !canEdit;
+  // Editing something the customer is currently holding a link to pulls
+  // it back to draft, so the rep is told before they start typing rather
+  // than after they save.
+  const willRecall = !locked && editWillRecallEstimate(estimate.status);
   const sig = signatureProgress(signers);
 
   // Same computeEstimateTotals the server uses when it saves, so the number
@@ -153,7 +161,11 @@ export function EstimateBuilder({
       );
       if (res.error) return setError(res.error);
 
-      setSaved(`Saved · ${moneyCents(res.totalCents ?? 0)}`);
+      setSaved(
+        res.recalled
+          ? `Saved · ${moneyCents(res.totalCents ?? 0)} · recalled from the customer, send again when ready`
+          : `Saved · ${moneyCents(res.totalCents ?? 0)}`
+      );
       router.refresh();
       then?.();
     });
@@ -245,9 +257,11 @@ export function EstimateBuilder({
             "You can view estimates but not change them. Ask an Office or Admin user for Create Estimates access."
           ) : (
             <>
-              This estimate was sent to the customer on{" "}
-              {estimate.sent_at ? new Date(estimate.sent_at).toLocaleDateString("en-US") : "—"} and
-              is read-only. Create a new version to change it.
+              The customer signed this on{" "}
+              {estimate.signed_at
+                ? new Date(estimate.signed_at).toLocaleDateString("en-US")
+                : "—"}
+              , so it is now a contract and cannot be edited. Create a new version to change it.
             </>
           )}
           {sig.total > 0 && (
@@ -484,6 +498,14 @@ export function EstimateBuilder({
             Margin is a share of the price, not a markup on cost. Costs left blank are excluded
             rather than counted as zero.
           </p>
+        </div>
+      )}
+
+      {willRecall && (
+        <div className="est-recall-banner">
+          <strong>This is out with the customer.</strong> You can still edit it — saving pulls it
+          back to draft so they can&apos;t sign a version they never read, and their existing link
+          stops working. Send it again when you&apos;re done.
         </div>
       )}
 

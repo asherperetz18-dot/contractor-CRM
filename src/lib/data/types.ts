@@ -983,6 +983,38 @@ export function isIssuedEstimate(status: EstimateStatus): boolean {
   return ISSUED_ESTIMATE_STATUSES.includes(status);
 }
 
+/**
+ * The line past which an estimate stops being editable.
+ *
+ * Not "has it been sent" -- a customer asking for a change after reading
+ * the quote is the normal course of a sale, and forcing a whole new
+ * document for a dropped line item is friction with no safety benefit.
+ *
+ * It is "has anyone committed to it": once a customer has signed, the
+ * document is a contract and its terms are what they agreed to. Editing
+ * underneath a signature is how a homeowner ends up bound to a price they
+ * never saw.
+ *
+ * The contractor's own signature is deliberately not a lock -- revising
+ * your own offer before the customer accepts is allowed.
+ */
+export function estimateLocked(
+  status: EstimateStatus,
+  signers: Pick<EstimateSigner, "party" | "signed_at">[]
+): boolean {
+  if (status === "Signed") return true;
+  return signers.some((s) => s.party === "customer" && !!s.signed_at);
+}
+
+/**
+ * True when editing will pull a live document back from the customer.
+ * They are holding a link to what they were sent, so a silent edit would
+ * leave them reading one version and signing another.
+ */
+export function editWillRecallEstimate(status: EstimateStatus): boolean {
+  return status === "Sent" || status === "Viewed";
+}
+
 export type EstimateItem = {
   id: string;
   estimate_id: string;

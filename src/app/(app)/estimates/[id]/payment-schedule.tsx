@@ -77,7 +77,11 @@ export function PaymentSchedule({
         }))
       );
       if (res.error) return setError(res.error);
-      setSaved("Payment schedule saved");
+      setSaved(
+        res.recalled
+          ? "Payment schedule saved · recalled from the customer, send again when ready"
+          : "Payment schedule saved"
+      );
       onChanged();
     });
   }

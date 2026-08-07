@@ -5226,3 +5226,14 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Shown while an estimate is out with the customer but still editable. */
+.est-recall-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #eef4fb;
+  border: 1px solid #c3d6ea;
+  color: #244a70;
+  font-size: 13px;
+  margin-bottom: 14px;
+}

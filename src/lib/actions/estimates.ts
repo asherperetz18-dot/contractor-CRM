@@ -11,10 +11,11 @@ import {
   canCreateEstimates,
   canDeleteLeads,
   depositCents,
+  editWillRecallEstimate,
+  estimateLocked,
   DEFAULT_PAYMENT_PHASES,
   splitEvenlyCents,
   computeEstimateTotals,
-  isIssuedEstimate,
   lineTotalCents,
   type EstimateStatus,
 } from "@/lib/data/types";
@@ -39,6 +40,7 @@ type ItemsEstimateRow = {
   id: string;
   lead_id: string;
   status: EstimateStatus;
+  version: number;
   tax_rate_bp: number;
   deposit_percent_bp: number;
   deposit_cap_cents: number;
@@ -57,6 +59,7 @@ type SendToCustomerRow = {
 type PaymentEstimateRow = {
   id: string;
   status: EstimateStatus;
+  version: number;
   total_cents: number;
   deposit_percent_bp: number;
   deposit_cap_cents: number;
@@ -207,21 +210,24 @@ export async function updateEstimateDetails(
 export async function saveEstimateItems(
   estimateId: string,
   items: ItemInput[]
-): Promise<{ error?: string; totalCents?: number }> {
+): Promise<{ error?: string; totalCents?: number; recalled?: boolean }> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, lead_id, status, tax_rate_bp, deposit_percent_bp, deposit_cap_cents")
+    .select("id, lead_id, status, version, tax_rate_bp, deposit_percent_bp, deposit_cap_cents")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<ItemsEstimateRow>();
   if (readError) return { error: readError.message };
   if (!estimate) return { error: "Estimate not found." };
-  if (isIssuedEstimate(estimate.status)) {
-    return { error: "This estimate has already gone out. Create a new version to change it." };
+  const lock = await guardEstimateEdit(
+    supabase, estimateId, guard.companyId, estimate.status, estimate.version
+  );
+  if (lock.locked) {
+    return { error: "The customer has signed this estimate. Create a new version to change it." };
   }
 
   const clean = items
@@ -274,7 +280,7 @@ export async function saveEstimateItems(
   if (totalsError) return { error: totalsError.message };
 
   revalidateEstimates(estimateId);
-  return { totalCents: totals.totalCents };
+  return { totalCents: totals.totalCents, recalled: lock.recalled };
 }
 
 // Marks the estimate as issued and stamps its total onto the lead.
@@ -473,21 +479,24 @@ export type PaymentInput = { name: string; description?: string | null; amount_c
 export async function saveEstimatePayments(
   estimateId: string,
   payments: PaymentInput[]
-): Promise<{ error?: string; scheduledCents?: number }> {
+): Promise<{ error?: string; scheduledCents?: number; recalled?: boolean }> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, status, total_cents, deposit_percent_bp, deposit_cap_cents")
+    .select("id, status, version, total_cents, deposit_percent_bp, deposit_cap_cents")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<PaymentEstimateRow>();
   if (readError) return { error: readError.message };
   if (!estimate) return { error: "Estimate not found." };
-  if (isIssuedEstimate(estimate.status)) {
-    return { error: "This estimate has already gone out. Create a new version to change it." };
+  const lock = await guardEstimateEdit(
+    supabase, estimateId, guard.companyId, estimate.status, estimate.version
+  );
+  if (lock.locked) {
+    return { error: "The customer has signed this estimate. Create a new version to change it." };
   }
 
   const clean = payments
@@ -528,7 +537,7 @@ export async function saveEstimatePayments(
     .eq("id", estimateId);
 
   revalidateEstimates(estimateId);
-  return { scheduledCents: deposit + clean.reduce((s, p) => s + p.amount_cents, 0) };
+  return { recalled: lock.recalled, scheduledCents: deposit + clean.reduce((s, p) => s + p.amount_cents, 0) };
 }
 
 /**
@@ -567,4 +576,55 @@ export async function generateEstimateSchedule(
       amount_cents: amounts[i] ?? 0,
     }))
   );
+}
+
+type LockCheck = { locked: boolean; recalled: boolean };
+
+/**
+ * Shared gate for every write to an estimate's contents.
+ *
+ * Blocks only once a customer has signed. Below that line, editing a
+ * document that is already out with the customer pulls it back to Draft
+ * and bumps the version: they were sent a link to a specific set of
+ * numbers, and letting those change under them means they could sign
+ * something they never read. Reverting to Draft also makes the portal
+ * page refuse it, so the stale link stops working immediately.
+ */
+async function guardEstimateEdit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  estimateId: string,
+  companyId: string,
+  status: EstimateStatus,
+  version: number
+): Promise<LockCheck> {
+  const { data: signers } = await supabase
+    .from("estimate_signers")
+    .select("id, party, signed_at")
+    .eq("estimate_id", estimateId)
+    .returns<{ id: string; party: "company" | "customer"; signed_at: string | null }[]>();
+
+  if (estimateLocked(status, signers ?? [])) return { locked: true, recalled: false };
+  if (!editWillRecallEstimate(status)) return { locked: false, recalled: false };
+
+  await supabase
+    .from("estimates")
+    .update({
+      status: "Draft" as EstimateStatus,
+      version: version + 1,
+      viewed_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimateId)
+    .eq("company_id", companyId);
+
+  // The contractor signed at send time to stand behind those numbers.
+  // Different numbers need a fresh signature, added again on the next
+  // send rather than carried over.
+  await supabase
+    .from("estimate_signers")
+    .delete()
+    .eq("estimate_id", estimateId)
+    .eq("party", "company");
+
+  return { locked: false, recalled: true };
 }
