@@ -107,14 +107,14 @@ export type PageKey =
 
 export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/", group: "General" },
-  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch (Leads Mgmt.)" },
-  { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
   {
     key: "marketing-analytics",
     label: "Marketing Analytics",
     href: "/marketing-analytics",
-    group: "Dispatch (Leads Mgmt.)",
+    group: "General",
   },
+  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch (Leads Mgmt.)" },
+  { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
   { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch (Leads Mgmt.)" },
   { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Dispatch (Leads Mgmt.)" },
   {

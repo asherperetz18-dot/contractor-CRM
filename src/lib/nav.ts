@@ -54,6 +54,7 @@ export function filterNavForProfile(
 
 export const NAV: NavEntry[] = [
   { type: "link", href: "/", label: "Dashboard", icon: "◎" },
+  { type: "link", href: "/marketing-analytics", label: "Marketing Analytics", icon: "📈" },
   {
     type: "group",
     label: "Dispatch (Leads Mgmt.)",
@@ -62,7 +63,6 @@ export const NAV: NavEntry[] = [
       { label: "Leads Pipeline", href: "/pipeline" },
       { label: "Dispatch Dashboard", comingSoon: true },
       { label: "Reply Inbox", href: "/reply-inbox" },
-      { label: "Marketing Analytics", href: "/marketing-analytics" },
       { label: "Contacts", href: "/contacts" },
       { label: "Salespeople", href: "/salespeople" },
       { label: "Appt. Setter Assignments", href: "/appt-setter-assignments" },

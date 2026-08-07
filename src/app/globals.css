@@ -4406,3 +4406,37 @@ body {
 .ar-num {
   text-align: right;
 }
+
+/* Sidebar scrolling. The nav is flex:1 inside a column, but without an
+   overflow rule anything past the viewport is simply unreachable -- with
+   both groups expanded that was everything from Production down,
+   including Admin Settings. min-height:0 is required as well: a flex
+   child defaults to min-height:auto, which refuses to shrink below its
+   content and so never overflows in the first place. */
+.sidebar {
+  min-height: 0;
+}
+.sidebar-nav {
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+/* A default light scrollbar on the dark sidebar reads as a rendering
+   fault rather than a control. */
+.sidebar-nav {
+  scrollbar-width: thin;
+  scrollbar-color: #3d5165 transparent;
+}
+.sidebar-nav::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: #3d5165;
+  border-radius: 4px;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: #4e6784;
+}
