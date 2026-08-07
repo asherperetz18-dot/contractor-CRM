@@ -27,6 +27,7 @@ import {
   updateEstimateDetails,
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
+import { ScopeEditor } from "./scope-editor";
 
 export type BuilderLead = {
   id: string;
@@ -104,6 +105,8 @@ export function EstimateBuilder({
   const [expiresAt, setExpiresAt] = useState(estimate.expires_at ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  // Which line item has its scope editor open, by row key.
+  const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Read-only once the customer has signed, or for a person without
@@ -328,13 +331,28 @@ export function EstimateBuilder({
                   disabled={locked}
                   onChange={(e) => patch(r.key, { name: e.target.value })}
                 />
-                <input
-                  className="est-item-desc"
-                  placeholder="Detail (optional, shown to customer)"
-                  value={r.description}
-                  disabled={locked}
-                  onChange={(e) => patch(r.key, { description: e.target.value })}
-                />
+                <div className="est-desc-wrap">
+                  {/* A textarea, not an input: a real scope of work runs to
+                      several lines and a single-line field silently hides
+                      everything past the first. Grows with its content up
+                      to a sane height, then scrolls. */}
+                  <textarea
+                    className="est-item-desc"
+                    placeholder="Scope detail (optional, shown to customer)"
+                    value={r.description}
+                    disabled={locked}
+                    rows={Math.min(6, Math.max(1, r.description.split("\n").length))}
+                    onChange={(e) => patch(r.key, { description: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    className="btn-ghost est-desc-expand"
+                    onClick={() => setScopeRow(r.key)}
+                    title={locked ? "View full scope" : "Expand to write the full scope"}
+                  >
+                    ⤢
+                  </button>
+                </div>
               </td>
               <td className="right">
                 <input
@@ -550,6 +568,19 @@ export function EstimateBuilder({
 
       {error && <p className="error-note">{error}</p>}
       {saved && <p className="hint-note">{saved}</p>}
+
+      {scopeRow !== null && (
+        <ScopeEditor
+          title={rows.find((r) => r.key === scopeRow)?.name ?? ""}
+          initial={rows.find((r) => r.key === scopeRow)?.description ?? ""}
+          readOnly={locked}
+          onClose={() => setScopeRow(null)}
+          onSave={(text) => {
+            patch(scopeRow, { description: text });
+            setScopeRow(null);
+          }}
+        />
+      )}
     </div>
   );
 }

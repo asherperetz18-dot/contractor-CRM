@@ -5237,3 +5237,92 @@ body {
   font-size: 13px;
   margin-bottom: 14px;
 }
+
+/* Line-item scope: a textarea that grows, plus a full editor. */
+.est-desc-wrap {
+  position: relative;
+  margin-top: 5px;
+}
+textarea.est-item-desc {
+  width: 100%;
+  padding: 8px 30px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: #fff;
+  resize: vertical;
+  line-height: 1.45;
+  min-height: 34px;
+}
+textarea.est-item-desc:focus {
+  outline: none;
+  border-color: var(--safety);
+  box-shadow: 0 0 0 2px rgba(199, 105, 27, 0.18);
+  color: var(--ink);
+}
+textarea.est-item-desc:disabled {
+  background: #f5f4f1;
+}
+.est-desc-expand {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.55;
+}
+.est-desc-expand:hover {
+  opacity: 1;
+}
+
+.scope-modal {
+  min-width: min(760px, 92vw);
+  max-width: 92vw;
+}
+.scope-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.scope-textarea {
+  width: 100%;
+  min-height: 320px;
+  max-height: 55vh;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: #fff;
+  resize: vertical;
+}
+.scope-textarea:focus {
+  outline: none;
+  border-color: var(--safety);
+  box-shadow: 0 0 0 2px rgba(199, 105, 27, 0.18);
+}
+
+/* Multi-line scope has to keep its line breaks on the document the
+   customer reads, or a structured scope collapses into one paragraph. */
+.estdoc-items .estdoc-muted,
+.estdoc-schedule .estdoc-muted {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .scope-modal {
+    min-width: 0;
+    width: 100%;
+  }
+  .scope-textarea {
+    min-height: 220px;
+  }
+}
