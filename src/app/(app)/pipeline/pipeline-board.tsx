@@ -100,6 +100,7 @@ export function PipelineBoard({
   const [showNew, setShowNew] = useState(false);
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
+  const [showWonBreakdown, setShowWonBreakdown] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
   function showAllStages() {
@@ -239,9 +240,10 @@ export function PipelineBoard({
   const openLeads = repFiltered.filter((l) => !isSettledStage(l.stage));
   const pipelineValue = openLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
   const avgDealSize = openLeads.length ? pipelineValue / openLeads.length : 0;
-  const wonValue = repFiltered
+  const wonLeads = repFiltered
     .filter((l) => l.stage === "Won")
-    .reduce((s, l) => s + (Number(l.value) || 0), 0);
+    .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
+  const wonValue = wonLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
   const staleCount = openLeads.filter((l) => daysSince(l.date_received) > 14).length;
   // What the two money figures are actually made of. A value of 0 is
   // counted as a lead but contributes nothing, which is why the note
@@ -346,9 +348,9 @@ export function PipelineBoard({
           <div className="stat-label">Avg Deal Size</div>
         </div>
         <div
-          className={"stat-card" + (statusFilter === "Won" ? " stat-card-active" : "")}
-          onClick={() => setStatusFilter((s) => (s === "Won" ? "Open" : "Won"))}
-          title="Toggle: show the won deals behind this figure"
+          className={"stat-card" + (showWonBreakdown ? " stat-card-active" : "")}
+          onClick={() => setShowWonBreakdown((v) => !v)}
+          title="Show the deals behind this figure"
         >
           <div className="stat-value mono">{money(wonValue)}</div>
           <div className="stat-label">Won</div>
@@ -469,6 +471,46 @@ export function PipelineBoard({
           <button type="button" className="btn-ghost small" onClick={showAllStages}>
             Show all stages
           </button>
+        </div>
+      )}
+
+
+      {showWonBreakdown && (
+        <div className="value-breakdown">
+          <div className="value-breakdown-head">
+            <span>Won deals</span>
+            <button
+              type="button"
+              className="btn-ghost small"
+              onClick={() => setShowWonBreakdown(false)}
+            >
+              Close
+            </button>
+          </div>
+          {wonLeads.length === 0 ? (
+            <p className="empty-hint">No won deals yet.</p>
+          ) : (
+            <div className="value-lead-list">
+              {wonLeads.map((l) => (
+                <div
+                  key={l.id}
+                  className="value-lead-row"
+                  onClick={() => setEditing(l)}
+                  title="Open this contact"
+                >
+                  <span className="value-lead-name">{leadDisplayName(l)}</span>
+                  <span className="value-lead-meta">
+                    {l.phone || "no phone"} · {repName(l.assigned_to)}
+                  </span>
+                  <span className="mono value-lead-value">{money(l.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="hint-note">
+            {wonLeads.filter((l) => !Number(l.value)).length} of {wonLeads.length} won deals
+            have no value recorded, so they add nothing to the total.
+          </p>
         </div>
       )}
 
