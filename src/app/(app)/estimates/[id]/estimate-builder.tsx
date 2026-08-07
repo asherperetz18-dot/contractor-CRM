@@ -6,8 +6,12 @@ import {
   centsFromInput,
   centsToInput,
   computeEstimateTotals,
+  estimateMargin,
+  formatMarginPct,
   isIssuedEstimate,
+  lineCostCents,
   lineTotalCents,
+  marginPct,
   moneyCents,
   signatureProgress,
   type Estimate,
@@ -38,6 +42,7 @@ type Row = {
   description: string;
   quantity: string;
   unit: string;
+  unitCost: string;
   unitPrice: string;
   taxable: boolean;
 };
@@ -51,6 +56,7 @@ function blankRow(): Row {
     description: "",
     quantity: "1",
     unit: "",
+    unitCost: "",
     unitPrice: "0.00",
     taxable: false,
   };
@@ -64,6 +70,9 @@ function toRow(item: EstimateItem): Row {
     description: item.description ?? "",
     quantity: String(item.quantity),
     unit: item.unit ?? "",
+    // Blank, not "0.00" -- an unknown cost and a genuinely free item are
+    // different, and showing 100% margin on the former would be a lie.
+    unitCost: item.cost_cents === null ? "" : centsToInput(item.cost_cents),
     unitPrice: centsToInput(item.unit_price_cents),
     taxable: item.taxable,
   };
@@ -99,8 +108,12 @@ export function EstimateBuilder({
     quantity: Number(r.quantity) || 0,
     unit_price_cents: centsFromInput(r.unitPrice),
     taxable: r.taxable,
+    // Blank means unknown, which is not the same as zero.
+    cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
   }));
   const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp);
+  const margin = estimateMargin(parsed);
+  const costsEntered = parsed.some((p) => p.cost_cents !== null);
 
   function patch(key: string, changes: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...changes } : r)));
@@ -127,6 +140,7 @@ export function EstimateBuilder({
           unit: r.unit || null,
           unit_price_cents: centsFromInput(r.unitPrice),
           taxable: r.taxable,
+          cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
         }))
       );
       if (res.error) return setError(res.error);
@@ -252,15 +266,18 @@ export function EstimateBuilder({
         </label>
       </div>
 
-      <table className="data-table est-items">
+      <div className="est-items-wrap">
+        <table className="data-table est-items">
         <thead>
           <tr>
             <th>Item</th>
             <th className="right">Qty</th>
             <th>Unit</th>
+            <th className="right est-internal-col">Cost</th>
             <th className="right">Price</th>
             <th className="center">Tax</th>
             <th className="right">Total</th>
+            <th className="right est-internal-col">Margin</th>
             <th></th>
           </tr>
         </thead>
@@ -301,6 +318,17 @@ export function EstimateBuilder({
                   onChange={(e) => patch(r.key, { unit: e.target.value })}
                 />
               </td>
+              <td className="right est-internal-col">
+                <input
+                  className="est-item-price est-item-cost"
+                  inputMode="decimal"
+                  placeholder="—"
+                  value={r.unitCost}
+                  disabled={locked}
+                  onChange={(e) => patch(r.key, { unitCost: e.target.value })}
+                  aria-label="Your cost (internal)"
+                />
+              </td>
               <td className="right">
                 <input
                   className="est-item-price"
@@ -322,6 +350,25 @@ export function EstimateBuilder({
               <td className="right mono">
                 {moneyCents(lineTotalCents(Number(r.quantity) || 0, centsFromInput(r.unitPrice)))}
               </td>
+              <td className="right mono est-internal-col">
+                {(() => {
+                  if (r.unitCost.trim() === "") return <span className="est-margin-none">—</span>;
+                  const qty = Number(r.quantity) || 0;
+                  const revenue = lineTotalCents(qty, centsFromInput(r.unitPrice));
+                  const cost = lineCostCents(qty, centsFromInput(r.unitCost));
+                  const pct = marginPct(revenue, cost);
+                  // Selling below cost is the thing this column exists to
+                  // catch, so it has to be impossible to skim past.
+                  const cls =
+                    pct === null ? "" : pct < 0 ? " est-margin-loss" : pct < 20 ? " est-margin-thin" : "";
+                  return (
+                    <span className={"est-margin" + cls}>
+                      {formatMarginPct(pct)}
+                      <span className="est-margin-abs">{moneyCents(revenue - cost)}</span>
+                    </span>
+                  );
+                })()}
+              </td>
               <td>
                 {!locked && rows.length > 1 && (
                   <button
@@ -339,7 +386,8 @@ export function EstimateBuilder({
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
 
       {!locked && (
         <button className="btn-ghost est-add-row" onClick={() => setRows((p) => [...p, blankRow()])}>
@@ -371,6 +419,51 @@ export function EstimateBuilder({
           </p>
         )}
       </div>
+
+      {costsEntered && (
+        <div className="est-margin-panel">
+          <div className="est-margin-head">
+            Your margin
+            <span className="est-internal-flag">Internal only — never shown to the customer</span>
+          </div>
+          <div className="est-margin-figures">
+            <div>
+              <span className="est-margin-label">Cost</span>
+              <span className="mono">{moneyCents(margin.costCents)}</span>
+            </div>
+            <div>
+              <span className="est-margin-label">Gross profit</span>
+              <span className="mono">{moneyCents(margin.profitCents)}</span>
+            </div>
+            <div>
+              <span className="est-margin-label">Margin</span>
+              <span
+                className={
+                  "mono est-margin" +
+                  (margin.pct === null
+                    ? ""
+                    : margin.pct < 0
+                      ? " est-margin-loss"
+                      : margin.pct < 20
+                        ? " est-margin-thin"
+                        : "")
+                }
+              >
+                {formatMarginPct(margin.pct)}
+              </span>
+            </div>
+          </div>
+          {margin.pct !== null && margin.pct < 0 && (
+            <p className="est-margin-warn">
+              This job is priced below cost — you would lose {moneyCents(-margin.profitCents)}.
+            </p>
+          )}
+          <p className="est-tax-note">
+            Margin is a share of the price, not a markup on cost. Costs left blank are excluded
+            rather than counted as zero.
+          </p>
+        </div>
+      )}
 
       <div className="est-meta-grid">
         <label className="field">

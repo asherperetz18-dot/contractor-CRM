@@ -4919,3 +4919,92 @@ body {
     display: none !important;
   }
 }
+
+/* Cost and margin: rep-facing only. Tinted so it reads as a different
+   class of information from the numbers the customer will see. */
+.est-internal-col {
+  background: #fbf9f4;
+}
+.est-item-cost::placeholder {
+  color: #a9b2ba;
+}
+.est-margin {
+  font-weight: 600;
+}
+.est-margin-abs {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+.est-margin-none {
+  color: #a9b2ba;
+}
+.est-margin-thin {
+  color: #a9700c;
+}
+.est-margin-loss {
+  color: var(--danger);
+}
+.est-margin-panel {
+  max-width: 420px;
+  margin-left: auto;
+  border: 1px solid #e6dfcc;
+  border-radius: 10px;
+  background: #fbf9f4;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+.est-margin-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.est-internal-flag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+.est-margin-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.est-margin-figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.est-margin-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+.est-margin-warn {
+  margin: 10px 0 0;
+  color: var(--danger);
+  font-weight: 600;
+  font-size: 13px;
+}
+.est-items {
+  display: table;
+  width: 100%;
+}
+@media (max-width: 1100px) {
+  .est-items-wrap {
+    overflow-x: auto;
+  }
+}
+@media (max-width: 700px) {
+  .est-margin-figures {
+    grid-template-columns: 1fr;
+  }
+  .est-margin-panel {
+    max-width: none;
+  }
+}

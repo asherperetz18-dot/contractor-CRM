@@ -1062,6 +1062,50 @@ export function computeEstimateTotals(
   return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
 }
 
+// Margin, for the rep's eyes only. Every one of these is used exclusively
+// by the builder -- EstimateDocument (what the customer opens) never
+// imports them, and never reads cost_cents at all.
+export function lineCostCents(quantity: number, unitCostCents: number | null): number {
+  if (unitCostCents === null || unitCostCents === undefined) return 0;
+  return Math.round((Number(quantity) || 0) * (Number(unitCostCents) || 0));
+}
+
+/**
+ * Gross margin as a percentage of the price, not a markup on cost.
+ *
+ * These get confused constantly and the gap is not small: $1,000 cost
+ * sold at $1,500 is a 50% markup but a 33% margin. Contractors quote and
+ * lose money on the difference, so this returns the conservative one.
+ *
+ * Null when there is no revenue to take a percentage of -- 0 would read
+ * as "no margin" when the truth is "not known yet".
+ */
+export function marginPct(revenueCents: number, costCents: number): number | null {
+  if (!revenueCents) return null;
+  return ((revenueCents - costCents) / revenueCents) * 100;
+}
+
+export function formatMarginPct(pct: number | null): string {
+  return pct === null ? "—" : `${pct.toFixed(1)}%`;
+}
+
+export function estimateMargin(
+  items: { quantity: number; unit_price_cents: number; cost_cents: number | null }[]
+): { revenueCents: number; costCents: number; profitCents: number; pct: number | null } {
+  let revenueCents = 0;
+  let costCents = 0;
+  for (const item of items) {
+    revenueCents += lineTotalCents(item.quantity, item.unit_price_cents);
+    costCents += lineCostCents(item.quantity, item.cost_cents);
+  }
+  return {
+    revenueCents,
+    costCents,
+    profitCents: revenueCents - costCents,
+    pct: marginPct(revenueCents, costCents),
+  };
+}
+
 export function estimateExpired(e: Pick<Estimate, "expires_at" | "status">, now = new Date()): boolean {
   if (e.status === "Signed" || e.status === "Declined") return false;
   if (!e.expires_at) return false;
