@@ -4304,3 +4304,18 @@ body {
 .value-lead-value {
   flex: 0 0 auto;
 }
+
+/* Overdue follow-ups. Only applied while the count is above zero -- a
+   panel that is always red stops being read as a warning. */
+.dash-panel.digest-urgent {
+  background: #fdf1f0;
+  border-color: var(--danger);
+  border-left: 4px solid var(--danger);
+}
+.dash-panel.digest-urgent .cp-tz-head {
+  color: var(--danger);
+}
+.count-pill.count-pill-urgent {
+  background: var(--danger);
+  color: #fff;
+}

@@ -35,6 +35,7 @@ function DigestSection({
   repName,
   onOpenLead,
   defaultOpen,
+  urgent,
 }: {
   title: string;
   count: number;
@@ -44,18 +45,28 @@ function DigestSection({
   repName: (id: string | null) => string;
   onOpenLead: (lead: Lead) => void;
   defaultOpen?: boolean;
+  /** Tints the panel red -- only honoured while the count is above zero,
+   *  so a panel reading "0" is never red. A colour that is always on
+   *  stops being a signal. */
+  urgent?: boolean;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
 
   return (
-    <div className="dash-panel" style={{ marginBottom: 14 }}>
+    <div
+      className={"dash-panel" + (urgent && count > 0 ? " digest-urgent" : "")}
+      style={{ marginBottom: 14 }}
+    >
       <div
         className="cp-tz-head"
         style={{ cursor: "pointer" }}
         onClick={() => setOpen((o) => !o)}
       >
         <span>
-          {title} <span className="count-pill">{count}</span>
+          {title}{" "}
+          <span className={"count-pill" + (urgent && count > 0 ? " count-pill-urgent" : "")}>
+            {count}
+          </span>
         </span>
         <span className="filter-label">{open ? "▲" : "▼"}</span>
       </div>
@@ -138,6 +149,7 @@ export function AttentionDigest({
         warningsByLead={warningsByLead}
         repName={repName}
         onOpenLead={onOpenLead}
+        urgent
       />
       <DigestSection
         title="Cold Leads"
