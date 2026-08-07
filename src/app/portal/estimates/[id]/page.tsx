@@ -6,6 +6,7 @@ import {
   EstimateDocument,
   type DocumentCompany,
 } from "@/components/estimate-document";
+import { PrintButton } from "@/components/print-button";
 import { markEstimateViewed } from "@/lib/actions/portal-estimates";
 import { PortalEstimateActions } from "./portal-estimate-actions";
 
@@ -56,6 +57,12 @@ export default async function PortalEstimatePage({
 
   return (
     <main className="portal-shell">
+      {/* Customers ask for a copy for their records, their lender, or
+          their spouse -- so the print control is on their view too, not
+          only the office's. */}
+      <div className="estdoc-print-bar">
+        <PrintButton label="Print / Save as PDF" />
+      </div>
       <EstimateDocument
         estimate={estimate}
         items={(items ?? []) as EstimateItem[]}

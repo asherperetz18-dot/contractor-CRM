@@ -198,6 +198,14 @@ export function EstimateBuilder({
           >
             Preview as Customer
           </button>
+          {/* Routes to the document and fires the dialog there: printing
+              this page would print the editor's input boxes. */}
+          <button
+            className="btn-ghost"
+            onClick={() => router.push(`/estimates/${estimate.id}/preview?print=1`)}
+          >
+            Print / PDF
+          </button>
           {!locked && (
             <>
               <button className="btn-ghost" onClick={() => save()} disabled={pending}>

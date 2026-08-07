@@ -8,6 +8,7 @@ import {
   type DocumentCompany,
   type DocumentCustomer,
 } from "@/components/estimate-document";
+import { AutoPrint, PrintButton } from "@/components/print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +19,13 @@ export const dynamic = "force-dynamic";
  */
 export default async function EstimatePreviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ print?: string }>;
 }) {
   const { id } = await params;
+  const { print } = await searchParams;
   const profile = await getCurrentProfile();
   if (!profile) return null;
 
@@ -59,10 +63,14 @@ export default async function EstimatePreviewPage({
           <h1 className="module-title">Customer preview</h1>
           <p className="module-sub">Exactly what {estimate.doc_number} looks like to them.</p>
         </div>
-        <Link className="btn-ghost" href={`/estimates/${id}`}>
-          Back to editor
-        </Link>
+        <div className="est-header-actions">
+          <Link className="btn-ghost" href={`/estimates/${id}`}>
+            Back to editor
+          </Link>
+          <PrintButton />
+        </div>
       </div>
+      <AutoPrint enabled={print === "1"} />
       <div className="estdoc-preview-frame">
         <EstimateDocument
           estimate={estimate}
