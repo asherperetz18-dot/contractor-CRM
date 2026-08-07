@@ -28,6 +28,7 @@ import {
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
 import { ScopeEditor } from "./scope-editor";
+import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
 export type BuilderLead = {
   id: string;
@@ -107,6 +108,7 @@ export function EstimateBuilder({
   const [saved, setSaved] = useState<string | null>(null);
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
   const [pending, startTransition] = useTransition();
 
   // Read-only once the customer has signed, or for a person without
@@ -444,9 +446,14 @@ export function EstimateBuilder({
       </div>
 
       {!locked && (
-        <button className="btn-ghost est-add-row" onClick={() => setRows((p) => [...p, blankRow()])}>
-          + Add line
-        </button>
+        <div className="est-add-row-group">
+          <button className="btn-ghost" onClick={() => setRows((p) => [...p, blankRow()])}>
+            + Add line
+          </button>
+          <button className="btn-ghost" onClick={() => setGenerating(true)}>
+            ✨ Generate priced estimate
+          </button>
+        </div>
       )}
 
       <div className="est-totals">
@@ -568,6 +575,35 @@ export function EstimateBuilder({
 
       {error && <p className="error-note">{error}</p>}
       {saved && <p className="hint-note">{saved}</p>}
+
+      {generating && (
+        <GenerateLinesModal
+          onClose={() => setGenerating(false)}
+          onAccept={(accepted: AcceptedLine[]) => {
+            setRows((prev) => {
+              // A single untouched blank starter row is replaced rather
+              // than left above the generated lines.
+              const base =
+                prev.length === 1 && !prev[0].name.trim() && !prev[0].unitPrice.replace(/[0.]/g, "")
+                  ? []
+                  : prev;
+              return [
+                ...base,
+                ...accepted.map((a) => ({
+                  ...blankRow(),
+                  name: a.name,
+                  description: a.description,
+                  quantity: a.quantity,
+                  unit: a.unit,
+                  unitPrice: a.unitPrice,
+                })),
+              ];
+            });
+            setSaved(null);
+            setGenerating(false);
+          }}
+        />
+      )}
 
       {scopeRow !== null && (
         <ScopeEditor

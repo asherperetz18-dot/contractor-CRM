@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { formatScopeWithAI } from "@/lib/actions/scope-ai";
+import { formatScopeWithAI, generateScopeWithAI } from "@/lib/actions/scope-ai";
 
 /**
  * Full-size editor for a line item's scope description.
@@ -43,6 +43,21 @@ export function ScopeEditor({
     });
   }
 
+  // Expands whatever is in the box -- a few words of brief, or notes from
+  // the site visit -- into a full scope. Same undo, since this replaces
+  // more of the rep's writing than formatting does.
+  function generate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await generateScopeWithAI(text);
+      if (res.error) return setError(res.error);
+      if (res.scope) {
+        setBeforeFormat(text);
+        setText(res.scope);
+      }
+    });
+  }
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal scope-modal" onClick={(e) => e.stopPropagation()}>
@@ -65,8 +80,11 @@ export function ScopeEditor({
                   Undo format
                 </button>
               )}
+              <button className="btn-ghost" onClick={generate} disabled={pending || !text.trim()}>
+                {pending ? "Working…" : "✨ Generate with AI"}
+              </button>
               <button className="btn-ghost" onClick={format} disabled={pending || !text.trim()}>
-                {pending ? "Formatting…" : "✨ Format with AI"}
+                {pending ? "Working…" : "✨ Format with AI"}
               </button>
             </div>
           )}

@@ -5339,3 +5339,26 @@ textarea.est-item-desc:disabled {
     min-height: 220px;
   }
 }
+
+.est-add-row-group {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 18px;
+}
+.gen-lines-wrap {
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.gen-lines {
+  margin: 0;
+}
+.gen-line-off {
+  opacity: 0.45;
+}
+.gen-unpriced {
+  color: var(--danger);
+  font-weight: 600;
+}

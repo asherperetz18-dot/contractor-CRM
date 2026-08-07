@@ -260,7 +260,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       { title: "GoHighLevel Connection", desc: "GHL API connection, location selection, sync toggle", icon: "🔗" },
       { title: "GHL Field Mappings", desc: "Map GHL contact and lead fields to app fields", icon: "🗺" },
       { title: "OpenAI API Key", desc: "API key used to power AI features (estimates, analysis, assistant)", icon: "🔑" },
-      { title: "AI Estimator", desc: "Prompt and model settings for the AI scope and estimate generator", icon: "🤖" },
+      {
+        title: "AI Estimator",
+        desc: "Prompt and model settings for the AI scope and estimate generator",
+        icon: "🤖",
+        href: "/settings/ai-estimator",
+      },
       { title: "AI Analysis", desc: "Positive and negative signal prompts used by the AI analyzer", icon: "🧠" },
       {
         title: "AI Activity Log",

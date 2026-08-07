@@ -4,8 +4,8 @@ import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentCompanyId } from "@/lib/data/profile";
-import type { TimeFormat } from "@/lib/data/types";
+import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole, type TimeFormat } from "@/lib/data/types";
 
 export type CompanyProfileInput = {
   name: string;
@@ -206,5 +206,43 @@ export async function saveMetaConfig(input: MetaConfigInput) {
     .eq("company_id", companyId);
   if (error) return { error: error.message };
   revalidatePath("/settings/facebook-lead-ads");
+  return {};
+}
+
+/**
+ * AI estimator configuration. Admin-gated, and the .select() row check
+ * makes an RLS-blocked write surface as an error instead of a silent
+ * success that changed nothing.
+ */
+export async function saveAiEstimatorSettings(input: {
+  enabled: boolean;
+  model: string;
+  instructions: string | null;
+  rateCard: string | null;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  // The model is chosen from a fixed list in the UI; re-checked here so a
+  // crafted request can't point the generator at an arbitrary string.
+  const ALLOWED = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"];
+  const model = ALLOWED.includes(input.model) ? input.model : "claude-opus-5";
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({
+      ai_estimator_enabled: input.enabled,
+      ai_estimator_model: model,
+      ai_estimator_instructions: input.instructions,
+      ai_estimator_rate_card: input.rateCard,
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/ai-estimator");
   return {};
 }
