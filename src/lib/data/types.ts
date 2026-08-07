@@ -105,6 +105,15 @@ export type PageKey =
   | "schedule"
   | "contracts";
 
+// Registry entries carrying this group are not a collapsible sidebar
+// section -- they render as top-level links, in registry order. Role
+// Visibility still shows them under one "General" heading.
+export const TOP_LEVEL_NAV_GROUP = "General";
+
+// The single source of truth for pages: Role Visibility reads it to build
+// its matrix, and lib/nav.ts derives the sidebar from it. Array order is
+// sidebar order. Adding a page here is all that is needed to route it,
+// list it, and make it govern-able -- see the note in lib/nav.ts.
 export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/", group: "General" },
   {

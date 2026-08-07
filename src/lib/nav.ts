@@ -18,7 +18,16 @@ export type NavGroupItem = {
 
 export type NavEntry = NavLinkItem | NavGroupItem;
 
-import { canSeePage, isAdminRole, pathToPageKey, type Profile, type RolePageVisibilityRow } from "./data/types";
+import {
+  canSeePage,
+  isAdminRole,
+  pathToPageKey,
+  PAGE_REGISTRY,
+  TOP_LEVEL_NAV_GROUP,
+  type PageKey,
+  type Profile,
+  type RolePageVisibilityRow,
+} from "./data/types";
 
 export function filterNavForProfile(
   nav: NavEntry[],
@@ -52,38 +61,75 @@ export function filterNavForProfile(
     .filter((entry): entry is NavEntry => entry !== null);
 }
 
-export const NAV: NavEntry[] = [
-  { type: "link", href: "/", label: "Dashboard", icon: "◎" },
-  { type: "link", href: "/marketing-analytics", label: "Marketing Analytics", icon: "📈" },
-  {
-    type: "group",
-    label: "Dispatch (Leads Mgmt.)",
-    icon: "▸",
-    items: [
-      { label: "Leads Pipeline", href: "/pipeline" },
-      { label: "Dispatch Dashboard", comingSoon: true },
-      { label: "Reply Inbox", href: "/reply-inbox" },
-      { label: "Contacts", href: "/contacts" },
-      { label: "Salespeople", href: "/salespeople" },
-      { label: "Appt. Setter Assignments", href: "/appt-setter-assignments" },
-      { label: "Lead Refunds", href: "/lead-refunds" },
-    ],
-  },
-  {
-    type: "group",
-    label: "Your Sales Center",
-    icon: "☎",
-    items: [
-      { label: "Power Dialer", href: "/dial-queue" },
-      { label: "Call Reports", href: "/call-reports" },
-      { label: "Text Reports", href: "/text-reports" },
-      { label: "Appointment Reports", href: "/appointment-reports" },
-    ],
-  },
-  { type: "link", href: "/production", label: "Production", icon: "▦" },
-  { type: "link", href: "/documents", label: "Estimates & Invoices", icon: "▤" },
-  { type: "link", href: "/calendar", label: "Calendar", icon: "📅" },
-  { type: "link", href: "/schedule", label: "Schedule", icon: "▧" },
-  { type: "link", href: "/contracts", label: "Contracts", icon: "✎" },
-  { type: "link", href: "/settings", label: "Admin Settings", icon: "⚙" },
+// The sidebar is DERIVED from PAGE_REGISTRY -- it is not a second list to
+// keep in step. Maintaining both by hand dropped Sales Center's link once
+// and mis-grouped Marketing Analytics once; a page added to the registry
+// now appears here automatically, and the label, href and grouping shown
+// in the sidebar cannot drift from the ones Role Visibility manages.
+//
+// Only presentation lives below: icons, and the one placeholder that has
+// no page behind it yet. A page whose icon is missing still gets a link.
+
+const PAGE_ICONS: Partial<Record<PageKey, string>> = {
+  dashboard: "◎",
+  "marketing-analytics": "📈",
+  production: "▦",
+  documents: "▤",
+  calendar: "📅",
+  schedule: "▧",
+  contracts: "✎",
+};
+
+const GROUP_ICONS: Record<string, string> = {
+  "Dispatch (Leads Mgmt.)": "▸",
+  "Your Sales Center": "☎",
+};
+
+const FALLBACK_ICON = "▪";
+
+// Announced-but-unbuilt items. They have no page key because they have no
+// page, so they cannot come from the registry; `after` pins each one to
+// its spot rather than leaving it to sort to the end of its group.
+const PLACEHOLDERS: { label: string; group: string; after: PageKey }[] = [
+  { label: "Dispatch Dashboard", group: "Dispatch (Leads Mgmt.)", after: "pipeline" },
 ];
+
+function buildNav(): NavEntry[] {
+  const entries: NavEntry[] = [];
+  let openGroup: NavGroupItem | null = null;
+
+  for (const page of PAGE_REGISTRY) {
+    const icon = PAGE_ICONS[page.key] ?? FALLBACK_ICON;
+
+    if (page.group === TOP_LEVEL_NAV_GROUP) {
+      openGroup = null;
+      entries.push({ type: "link", href: page.href, label: page.label, icon });
+      continue;
+    }
+
+    if (!openGroup || openGroup.label !== page.group) {
+      openGroup = {
+        type: "group",
+        label: page.group,
+        icon: GROUP_ICONS[page.group] ?? FALLBACK_ICON,
+        items: [],
+      };
+      entries.push(openGroup);
+    }
+
+    openGroup.items.push({ label: page.label, href: page.href });
+    for (const placeholder of PLACEHOLDERS) {
+      if (placeholder.group === page.group && placeholder.after === page.key) {
+        openGroup.items.push({ label: placeholder.label, comingSoon: true });
+      }
+    }
+  }
+
+  // Admin Settings is deliberately absent from PAGE_REGISTRY: it is not
+  // role-visibility managed (AdminGate blocks it outright), so it has no
+  // cell in that matrix and has to be appended here.
+  entries.push({ type: "link", href: "/settings", label: "Admin Settings", icon: "⚙" });
+  return entries;
+}
+
+export const NAV: NavEntry[] = buildNav();
