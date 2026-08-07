@@ -4351,3 +4351,20 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Money actually won. Green while there is something to show for it --
+   the same rule the red and amber panels follow, so a colour on this
+   page always means something is true right now. */
+.stat-card.stat-card-won {
+  background: #f0f8f2;
+  border-color: var(--success);
+}
+.stat-card.stat-card-won .stat-value {
+  color: var(--success);
+}
+.stat-card.stat-card-won .stat-label {
+  color: #2f6a4a;
+}
+.stat-card.stat-card-won.stat-card-active {
+  box-shadow: inset 0 0 0 1px var(--success);
+}

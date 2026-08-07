@@ -348,7 +348,13 @@ export function PipelineBoard({
           <div className="stat-label">Avg Deal Size</div>
         </div>
         <div
-          className={"stat-card" + (showWonBreakdown ? " stat-card-active" : "")}
+          className={
+            "stat-card" +
+            // Green only once something has actually been won. A green box
+            // reading $0 is not encouragement, it is a reminder.
+            (wonValue > 0 ? " stat-card-won" : "") +
+            (showWonBreakdown ? " stat-card-active" : "")
+          }
           onClick={() => setShowWonBreakdown((v) => !v)}
           title="Show the deals behind this figure"
         >
