@@ -4946,17 +4946,36 @@ body {
   }
 
   @page {
-    margin: 0.55in;
+    size: letter;
+    margin: 0.5in;
   }
 
+  /* max-width:100%, NOT none. Removing the constraint lets the document
+     lay out at the browser's width and the paper then clips whatever
+     hangs past the right margin -- the doc number and the totals column
+     are the first things over the edge. */
   .estdoc,
   .estdoc-preview-frame {
     border: none !important;
     border-radius: 0 !important;
-    max-width: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Nothing inside may establish a width wider than the page either. */
+  .estdoc * {
+    max-width: 100% !important;
+  }
+  .estdoc-items {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  .est-items-wrap {
+    overflow: visible !important;
   }
 
   /* Backgrounds and rules are dropped by default, which would flatten the
