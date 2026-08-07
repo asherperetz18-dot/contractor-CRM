@@ -98,6 +98,7 @@ export function PipelineBoard({
   const scrollElRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
   function toggleStageVisible(name: string) {
@@ -236,6 +237,23 @@ export function PipelineBoard({
     .filter((l) => l.stage === "Won")
     .reduce((s, l) => s + (Number(l.value) || 0), 0);
   const staleCount = openLeads.filter((l) => daysSince(l.date_received) > 14).length;
+  // What the two money figures are actually made of. A value of 0 is
+  // counted as a lead but contributes nothing, which is why the note
+  // below the table says how many of those there are -- otherwise the
+  // averages look inexplicably low.
+  const leadsWithNoValue = openLeads.filter((l) => !Number(l.value)).length;
+  const valueByStage = (() => {
+    const map = new Map<string, { count: number; value: number }>();
+    for (const l of openLeads) {
+      const row = map.get(l.stage) ?? { count: 0, value: 0 };
+      row.count += 1;
+      row.value += Number(l.value) || 0;
+      map.set(l.stage, row);
+    }
+    return [...map.entries()]
+      .map(([stage, row]) => ({ stage, ...row }))
+      .sort((a, b) => b.value - a.value || b.count - a.count);
+  })();
   const noApptCount = openLeads.filter((l) => !l.has_appt).length;
 
   const followUpsDue = openLeads.filter((l) => hasFollowUpDue(tasksByLead.get(l.id) ?? []));
@@ -300,8 +318,17 @@ export function PipelineBoard({
         )}
       </div>
 
+      {/* Every card acts on the board below rather than navigating: the
+          detail behind these numbers is the lead list already on screen,
+          so filtering it in place beats a second page that shows the same
+          rows. The two money figures have no equivalent filter -- they're
+          sums over every open lead -- so those open a breakdown instead. */}
       <div className="stat-grid stat-grid-5">
-        <div className="stat-card stat-static">
+        <div
+          className={"stat-card" + (showValueBreakdown ? " stat-card-active" : "")}
+          onClick={() => setShowValueBreakdown((v) => !v)}
+          title="Show what makes up this total, stage by stage"
+        >
           <div className="stat-value mono">{money(pipelineValue)}</div>
           <div className="stat-label">Pipeline Value</div>
         </div>
@@ -309,11 +336,19 @@ export function PipelineBoard({
           <div className="stat-value mono">{money(avgDealSize)}</div>
           <div className="stat-label">Avg Deal Size</div>
         </div>
-        <div className="stat-card stat-static">
+        <div
+          className={"stat-card" + (statusFilter === "Won" ? " stat-card-active" : "")}
+          onClick={() => setStatusFilter((s) => (s === "Won" ? "Open" : "Won"))}
+          title="Toggle: show the won deals behind this figure"
+        >
           <div className="stat-value mono">{money(wonValue)}</div>
           <div className="stat-label">Won</div>
         </div>
-        <div className="stat-card stat-static">
+        <div
+          className={"stat-card" + (ageFilter === "Stale" ? " stat-card-active" : "")}
+          onClick={() => setAgeFilter((a) => (a === "Stale" ? "All" : "Stale"))}
+          title="Toggle: show only leads older than 14 days"
+        >
           <div className="stat-value mono">{staleCount}</div>
           <div className="stat-label">Stale (&gt;14d)</div>
         </div>
@@ -326,6 +361,58 @@ export function PipelineBoard({
           <div className="stat-label">No Appt Yet</div>
         </div>
       </div>
+
+      {showValueBreakdown && (
+        <div className="value-breakdown">
+          <div className="value-breakdown-head">
+            <span>Open pipeline by stage</span>
+            <button
+              type="button"
+              className="btn-ghost small"
+              onClick={() => setShowValueBreakdown(false)}
+            >
+              Close
+            </button>
+          </div>
+          {valueByStage.length === 0 ? (
+            <p className="empty-hint">No open leads to break down.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th className="right">Leads</th>
+                  <th className="right">Value</th>
+                  <th className="right">Avg</th>
+                </tr>
+              </thead>
+              <tbody>
+                {valueByStage.map((row) => (
+                  <tr
+                    key={row.stage}
+                    className="value-breakdown-row"
+                    onClick={() => {
+                      setHiddenStages(new Set());
+                      setShowValueBreakdown(false);
+                    }}
+                  >
+                    <td>{row.stage}</td>
+                    <td className="right mono">{row.count}</td>
+                    <td className="right mono">{money(row.value)}</td>
+                    <td className="right mono">
+                      {money(row.count ? row.value / row.count : 0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="hint-note">
+            {leadsWithNoValue} of {openLeads.length} open leads have no value recorded, so
+            they add nothing to these totals.
+          </p>
+        </div>
+      )}
 
       <AttentionDigest
         followUpsDue={followUpsDue}

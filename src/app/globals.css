@@ -4206,3 +4206,42 @@ body {
   color: var(--ink-soft);
   align-self: center;
 }
+
+/* Pipeline value breakdown ------------------------------------------- */
+.value-breakdown {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.value-breakdown-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.value-breakdown-head .btn-ghost.small {
+  margin: 0;
+}
+.value-breakdown .data-table {
+  border: none;
+}
+.value-breakdown-row {
+  cursor: pointer;
+}
+.value-breakdown-row:hover {
+  background: #faf8f3;
+}
+.stat-card {
+  cursor: pointer;
+}
+.stat-card.stat-static {
+  cursor: default;
+}
