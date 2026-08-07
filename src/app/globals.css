@@ -4335,3 +4335,19 @@ body {
   background: #c0730f;
   color: #fff;
 }
+
+/* The whole collapsed panel toggles, not just its arrow -- a 4px target
+   on a full-width box is a needless miss. The table sits outside this
+   block so clicking a lead opens the contact instead of collapsing. */
+.digest-toggle {
+  cursor: pointer;
+  padding-bottom: 10px;
+}
+.digest-toggle:hover .cp-tz-head {
+  opacity: 0.85;
+}
+.digest-toggle:focus-visible {
+  outline: 2px solid var(--blueprint);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

@@ -67,10 +67,19 @@ function DigestSection({
       style={{ marginBottom: 14 }}
     >
       <div
-        className="cp-tz-head"
-        style={{ cursor: "pointer" }}
+        className="digest-toggle"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
       >
+      <div className="cp-tz-head">
         <span>
           {title}{" "}
           <span
@@ -85,9 +94,10 @@ function DigestSection({
         </span>
         <span className="filter-label">{open ? "▲" : "▼"}</span>
       </div>
-      <p className="module-sub" style={{ margin: "4px 0 10px" }}>
+      <p className="module-sub" style={{ margin: "4px 0 0" }}>
         {hint}
       </p>
+      </div>
       {open &&
         (leads.length === 0 ? (
           <p className="empty-hint">Nothing here.</p>
