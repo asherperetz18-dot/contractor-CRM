@@ -5008,16 +5008,28 @@ body {
 
   /* A line item split across a page break, or a signature line stranded
      on its own page, is the usual way a printed contract looks wrong. */
-  .estdoc-items tr,
+  /* Only things that are guaranteed SHORT get break-inside: avoid.
+     Applying it to a line item was wrong: a scope of work runs longer
+     than a whole page, the row then cannot fit anywhere, and the browser
+     pushes the entire table to page 2 -- leaving page 1 empty below the
+     header. A long row has to be allowed to flow across pages. */
   .estdoc-signer,
-  .estdoc-total-row {
+  .estdoc-total-row,
+  .estdoc-signatures,
+  .estdoc-schedule-table tr {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .estdoc-signatures,
-  .estdoc-terms {
-    break-inside: avoid;
-    page-break-inside: avoid;
+
+  /* Rows and scope text flow, but never leave a single stranded line at
+     a page boundary. */
+  .estdoc-items tr,
+  .estdoc-items td,
+  .estdoc-terms p {
+    break-inside: auto;
+    page-break-inside: auto;
+    orphans: 3;
+    widows: 3;
   }
   .estdoc-items thead {
     display: table-header-group;
@@ -5211,8 +5223,9 @@ body {
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
-  break-inside: avoid;
-  page-break-inside: avoid;
+  /* Individual rows avoid breaking (see the print block); the section as
+     a whole must not, or a schedule with many phases repeats the blank
+     -page problem the line items had. */
 }
 .estdoc-schedule-table {
   margin-top: 8px;
