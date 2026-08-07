@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { toE164 } from "@/lib/data/types";
 
 function xmlEscape(value: string): string {
   return value
@@ -24,10 +25,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
   }
 
-  const to = (params.To || "").trim();
+  // Normalised before validating. Contacts are stored however they were
+  // typed or imported -- "+1 714-403-5570", "714-403-5570" and
+  // "1714-403-5570" are one person -- and the old check rejected anything
+  // containing a bracket, dash or space. Those calls ended after two
+  // seconds on "Invalid destination number", so only bare ten-digit
+  // numbers ever connected.
+  const to = toE164(params.To);
   const shouldRecord = params.Record === "true";
 
-  if (!/^\+?[0-9]{7,15}$/.test(to)) {
+  if (!/^\+[0-9]{7,15}$/.test(to)) {
     return new NextResponse(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Invalid destination number.</Say></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }

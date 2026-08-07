@@ -669,6 +669,30 @@ export type SmsMessage = {
 
 // Normalizes to the last 10 digits so numbers stored/typed with
 // different formatting (parens, dashes, +1) still match each other.
+/**
+ * A number in the form Twilio dials: "+1" followed by digits.
+ *
+ * Contacts are stored however they were typed or imported -- "+1
+ * 714-403-5570", "714-403-5570", "1714-403-5570" are all the same
+ * person. Anything with a bracket, dash or space in it used to be
+ * rejected as an invalid destination, so the call died after two
+ * seconds and only bare ten-digit numbers ever connected.
+ *
+ * Returns "" when there aren't enough digits to be a phone number, so
+ * callers can tell "nothing to dial" from "dial this".
+ */
+export function toE164(raw: string | null | undefined): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 7) return "";
+  // An explicit + means the country code is already there.
+  if (trimmed.startsWith("+")) return `+${digits}`;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return `+${digits}`;
+}
+
 export function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
   return digits.length > 10 ? digits.slice(-10) : digits;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
-import { normalizePhone } from "@/lib/data/types";
+import { normalizePhone, toE164 } from "@/lib/data/types";
 
 function xmlEscape(value: string): string {
   return value
@@ -68,7 +68,9 @@ export async function POST(req: NextRequest) {
       | { company_id: string; call_forward_number: string | null; call_forward_timeout: number }[]
       | null) ?? [])[0] ?? null;
 
-  const forwardTo = company?.call_forward_number?.trim() ?? "";
+  // Same normalisation as the dialer: someone typing 818-300-8242 into
+  // Settings should not silently fail to ring.
+  const forwardTo = toE164(company?.call_forward_number);
 
   // Caller ID matched against the contact book, so the call lands on the
   // right lead in Call Reports rather than as an anonymous number.
