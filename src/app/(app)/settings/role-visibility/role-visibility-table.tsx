@@ -133,7 +133,8 @@ export function RoleVisibilityTable({ overrides }: { overrides: RolePageVisibili
           <h1 className="module-title">Role Visibility</h1>
           <p className="module-sub">
             Choose which pages each role can open. Hidden pages are removed from the sidebar
-            and blocked at the URL. Office and Admin always have full access.
+            and blocked at the URL. Admin always has full access, and Admin Settings itself can
+            never be hidden — so a change here can always be undone.
           </p>
         </div>
       </div>

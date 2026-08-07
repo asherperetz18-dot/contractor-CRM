@@ -182,9 +182,17 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
 ];
 
-// Roles that can be individually restricted via Role Visibility. Office and
-// Admin are excluded from the matrix because they always have full access.
-export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Field", "Sales", "Call Center"];
+// Roles that can be individually restricted via Role Visibility.
+//
+// Admin is the only role excluded. Office runs the company day to day but
+// is not always meant to see every module -- an office manager who books
+// jobs may have no business in Marketing Analytics or Lead Refunds -- so
+// it is managed here like any other role, defaulting to full access.
+//
+// Admin Settings itself is deliberately not in PAGE_REGISTRY and is gated
+// by isAdminRole instead, so nothing in this matrix can lock an Office
+// user out of the screen they would use to undo it.
+export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Office", "Field", "Sales", "Call Center"];
 
 // Platform default when no explicit override row exists for a role/page --
 // "untouched cells follow the default," same wording as the real product.
@@ -225,8 +233,13 @@ export function canSeePage(
   overrides: RolePageVisibilityRow[]
 ): boolean {
   if (!profile) return false;
-  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  // Admin alone bypasses the matrix. Office is managed like any other
+  // role now, so hiding a page from Office actually hides it.
+  if (profile.roles.includes("Admin")) return true;
   if (profile.roles.length === 0) return defaultPageVisible("Field", pageKey);
+  // Someone holding several roles sees a page if ANY of their roles can.
+  // Restricting a person therefore means restricting every role they
+  // hold, which is why the matrix shows each role separately.
   return profile.roles.some((role) => effectivePageVisible(role, pageKey, overrides));
 }
 
