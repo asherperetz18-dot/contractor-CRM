@@ -290,7 +290,10 @@ export function PipelineBoard({
 
   const openStageNames = stages.map((s) => s.name).filter((s) => !isSettledStage(s));
   const visibleStageNames = openStageNames.filter((s) => !hiddenStages.has(s));
-  const visibleColumnCount = openStageNames.length - hiddenStages.size;
+  // Counted from the rendered list, not by subtracting the hidden set --
+  // that set can contain settled stages which were never columns, which
+  // made a focused board report "-1 of 15".
+  const visibleColumnCount = visibleStageNames.length;
 
   const grouped = visibleStageNames.map((stage) => ({
     stage,
