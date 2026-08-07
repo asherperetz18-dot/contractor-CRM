@@ -98,6 +98,7 @@ export type PageKey =
   | "power-dialer"
   | "call-reports"
   | "text-reports"
+  | "appointment-reports"
   | "production"
   | "documents"
   | "calendar"
@@ -131,6 +132,12 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Your Sales Center" },
   { key: "call-reports", label: "Call Reports", href: "/call-reports", group: "Your Sales Center" },
   { key: "text-reports", label: "Text Reports", href: "/text-reports", group: "Your Sales Center" },
+  {
+    key: "appointment-reports",
+    label: "Appointment Reports",
+    href: "/appointment-reports",
+    group: "Your Sales Center",
+  },
   { key: "production", label: "Production", href: "/production", group: "General" },
   { key: "documents", label: "Estimates & Invoices", href: "/documents", group: "General" },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
@@ -152,7 +159,8 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
       pageKey === "dashboard" ||
       pageKey === "power-dialer" ||
       pageKey === "call-reports" ||
-      pageKey === "text-reports"
+      pageKey === "text-reports" ||
+      pageKey === "appointment-reports"
     );
   }
   return true;

@@ -4385,3 +4385,24 @@ body {
 .stat-card.stat-card-gold.stat-card-active {
   box-shadow: inset 0 0 0 1px #c9a227;
 }
+
+/* Appointment Reports: rep rows laid out as a grid so the expandable
+   detail can live inside the row without breaking column alignment. */
+.ar-rep-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(5, 90px);
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ar-rep-row:hover {
+  background: #faf8f3;
+}
+.ar-rep-name {
+  font-weight: 600;
+}
+.ar-num {
+  text-align: right;
+}
