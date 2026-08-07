@@ -4914,7 +4914,7 @@ body {
   .app-shell,
   .app-root,
   .app-body,
-  .app-main,
+  .main,
   .portal-shell {
     height: auto !important;
     max-height: none !important;
@@ -4922,11 +4922,16 @@ body {
     overflow: visible !important;
     display: block !important;
     background: #fff !important;
+    padding: 0 !important;
   }
 
-  /* Everything that is app furniture rather than the document. */
+  /* Everything that is app furniture rather than the document. The header
+     is .global-topbar -- an earlier pass hid ".topbar", which matches no
+     element at all, so the app header printed across the top of every
+     document. */
   .sidebar,
-  .topbar,
+  .sidebar-backdrop,
+  .global-topbar,
   .module-toolbar,
   .portal-header,
   .portal-footer,
