@@ -5508,3 +5508,18 @@ textarea.est-item-desc:disabled {
 .lead-est-error {
   margin-left: 8px;
 }
+
+.pp-steps {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.pp-steps code {
+  font-family: var(--font-data);
+  font-size: 12px;
+  background: var(--paper);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

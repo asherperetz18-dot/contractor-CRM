@@ -9,16 +9,21 @@ import {
 import { PrintButton } from "@/components/print-button";
 import { markEstimateViewed } from "@/lib/actions/portal-estimates";
 import { PortalEstimateActions } from "./portal-estimate-actions";
+import { DepositPayment } from "./deposit-payment";
+import { getDepositState } from "@/lib/actions/portal-payments";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your estimate" };
 
 export default async function PortalEstimatePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ paid?: string }>;
 }) {
   const { id } = await params;
+  const { paid } = await searchParams;
   const viewer = await getPortalViewer();
   if (!viewer) redirect("/portal");
 
@@ -71,6 +76,11 @@ export default async function PortalEstimatePage({
         payments={(payments ?? []) as EstimatePayment[]}
         company={company ?? null}
         customer={viewer.lead}
+      />
+      <DepositPayment
+        estimateId={id}
+        state={await getDepositState(id)}
+        justPaid={paid === "1"}
       />
       <PortalEstimateActions
         estimateId={id}
