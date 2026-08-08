@@ -5457,3 +5457,54 @@ textarea.est-item-desc:disabled {
   line-height: 1.45;
   margin-bottom: 2px;
 }
+
+/* Lead modal -> estimate. */
+.lead-est-wrap {
+  position: relative;
+  display: inline-block;
+}
+.lead-est-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 40;
+  margin-top: 4px;
+  min-width: 340px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 32, 46, 0.14);
+  overflow: hidden;
+}
+.lead-est-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: #fff;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.lead-est-item:last-child {
+  border-bottom: none;
+}
+.lead-est-item:hover {
+  background: #faf8f3;
+}
+.lead-est-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead-est-new {
+  font-weight: 600;
+  color: var(--safety);
+}
+.lead-est-error {
+  margin-left: 8px;
+}

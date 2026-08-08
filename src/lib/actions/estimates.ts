@@ -10,6 +10,7 @@ import {
   balanceAfterDepositCents,
   canCreateEstimates,
   canDeleteLeads,
+  canViewEstimates,
   depositCents,
   editWillRecallEstimate,
   estimateLocked,
@@ -628,4 +629,61 @@ async function guardEstimateEdit(
     .eq("party", "company");
 
   return { locked: false, recalled: true };
+}
+
+export type LeadEstimateSummary = {
+  id: string;
+  doc_number: string;
+  title: string;
+  status: EstimateStatus;
+  total_cents: number;
+};
+
+/** Estimates on one lead, newest first, for the lead modal's button. */
+export async function getEstimatesForLead(
+  leadId: string
+): Promise<{ estimates: LeadEstimateSummary[]; canCreate: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile || !canViewEstimates(profile)) return { estimates: [], canCreate: false };
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("estimates")
+    .select("id, doc_number, title, status, total_cents")
+    .eq("lead_id", leadId)
+    .eq("company_id", profile.company_id)
+    .order("created_at", { ascending: false })
+    .returns<LeadEstimateSummary[]>();
+
+  return { estimates: data ?? [], canCreate: canCreateEstimates(profile) };
+}
+
+/**
+ * One-click route from a lead to its estimate: opens the newest one, or
+ * starts one if there is none.
+ *
+ * The lead's own project type seeds the title, so the rep is not naming
+ * the same job twice -- and the scope library matches on that type, so a
+ * titled estimate immediately draws the right examples.
+ */
+export async function openOrCreateEstimateForLead(
+  leadId: string
+): Promise<{ error?: string; id?: string; created?: boolean }> {
+  const { estimates } = await getEstimatesForLead(leadId);
+  if (estimates.length > 0) return { id: estimates[0].id };
+
+  const guard = await requireEstimateEditor();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("project_type")
+    .eq("id", leadId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{ project_type: string | null }>();
+
+  const res = await createEstimate(leadId, lead?.project_type || "Estimate");
+  if (res.error) return { error: res.error };
+  return { id: res.id, created: true };
 }

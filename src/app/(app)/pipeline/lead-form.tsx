@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PicklistSelect } from "@/components/ui/picklist-select";
+import { LeadEstimateButton } from "./lead-estimate-button";
 import { LeadViewTrail } from "./lead-view-trail";
 import {
   addHour as addHourTo,
@@ -642,6 +643,9 @@ export function LeadForm({
                 {t === "Files" && (files ?? []).length > 0 ? ` (${(files ?? []).length})` : ""}
               </button>
             ))}
+            {/* Not a tab: it leaves the modal for the estimate itself
+                rather than switching the pane below. */}
+            <LeadEstimateButton leadId={lead.id} />
             {/* One-click exits from the pipeline. Each is shown only if the
                 stage exists for this company and isn't the current one, so
                 a lead is never offered a move that would do nothing. */}
