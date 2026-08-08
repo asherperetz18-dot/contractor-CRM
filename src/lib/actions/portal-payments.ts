@@ -150,7 +150,13 @@ export async function startDepositCheckout(
     const stripe = stripeClient(env);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card", "us_bank_account"],
+      // Deliberately NOT pinned to ["card", "us_bank_account"]. Naming a
+      // method the Stripe account has not enabled makes session creation
+      // fail outright -- so before ACH is switched on, asking for it would
+      // break card payments too, which is the opposite of degrading well.
+      // Left to the account's own payment-method settings instead: cards
+      // work immediately, and ACH appears the moment it is enabled without
+      // needing a deploy.
       line_items: [
         {
           quantity: 1,

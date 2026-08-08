@@ -56,9 +56,10 @@ export default async function PortalPaymentsPage() {
           <ol className="pp-steps">
             <li>
               Create a Stripe account at <strong>stripe.com</strong> and complete their business
-              verification. Enable <strong>ACH Direct Debit</strong> under payment methods — it
-              costs 0.8% capped at $5 against 2.9% + 30¢ for cards, which on a large payment is
-              the difference between $5 and hundreds.
+              verification. Cards work straight away. Turn on{" "}
+              <strong>ACH Direct Debit</strong> under Settings &rarr; Payment methods as well —
+              0.8% capped at $5 against 2.9% + 30¢ means $5 instead of hundreds on a large
+              payment, and it appears at checkout automatically once enabled.
             </li>
             <li>
               Add <code>STRIPE_SECRET_KEY</code> to this project&apos;s environment variables in
