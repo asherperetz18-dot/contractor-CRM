@@ -610,6 +610,7 @@ export function EstimateBuilder({
           title={rows.find((r) => r.key === scopeRow)?.name ?? ""}
           initial={rows.find((r) => r.key === scopeRow)?.description ?? ""}
           readOnly={locked}
+          estimateId={estimate.id}
           onClose={() => setScopeRow(null)}
           onSave={(text) => {
             patch(scopeRow, { description: text });

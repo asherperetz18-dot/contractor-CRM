@@ -45,6 +45,65 @@ export type ProposedLine = {
 
 const ALLOWED_UNITS = ["ea", "sf", "lf", "sq", "hr", "day", "ls"];
 
+const MAX_EXAMPLES = 2;
+const MAX_EXAMPLE_CHARS = 4000;
+
+/**
+ * Pulls worked examples from the company's scope library.
+ *
+ * Examples matching this job's project type come first, then untagged
+ * house-standard ones. Capped at two: a third rarely teaches anything new
+ * and every example crowds the model's attention away from the actual
+ * brief, which is how you get a scope for the wrong job.
+ */
+async function loadScopeExamples(
+  companyId: string,
+  estimateId?: string
+): Promise<{ name: string; body: string }[]> {
+  const supabase = await createClient();
+
+  let projectType: string | null = null;
+  if (estimateId) {
+    const { data } = await supabase
+      .from("estimates")
+      .select("leads(project_type)")
+      .eq("id", estimateId)
+      .eq("company_id", companyId)
+      .maybeSingle<{ leads: { project_type: string | null } | null }>();
+    projectType = data?.leads?.project_type ?? null;
+  }
+
+  const { data: rows } = await supabase
+    .from("scope_templates")
+    .select("name, project_type, body")
+    .eq("company_id", companyId)
+    .returns<{ name: string; project_type: string | null; body: string }[]>();
+
+  // Trimmed and lowercased before comparing. Lead project types are part
+  // free text and carry trailing spaces and casing variants -- "ADU ",
+  // "Adu" and "ADU / Accessory buildings" all exist in this data -- and an
+  // exact match would silently find nothing, which looks identical to
+  // having no examples at all.
+  const norm = (s: string | null) => (s ?? "").trim().toLowerCase();
+  const want = norm(projectType);
+
+  const all = rows ?? [];
+  const matching = want
+    ? all.filter((t) => {
+        const have = norm(t.project_type);
+        if (!have) return false;
+        // Either containing the other counts, so a "Bathroom Remodel"
+        // example still serves a lead simply tagged "Bathroom".
+        return have === want || have.includes(want) || want.includes(have);
+      })
+    : [];
+  const generic = all.filter((t) => !norm(t.project_type));
+
+  return [...matching, ...generic]
+    .slice(0, MAX_EXAMPLES)
+    .map((t) => ({ name: t.name, body: t.body.slice(0, MAX_EXAMPLE_CHARS) }));
+}
+
 /**
  * Tidies a scope-of-work description into something a homeowner can read.
  *
@@ -122,8 +181,9 @@ export async function formatScopeWithAI(
  * filled in, the fabrication gets signed.
  */
 export async function generateScopeWithAI(
-  brief: string
-): Promise<{ error?: string; scope?: string }> {
+  brief: string,
+  estimateId?: string
+): Promise<{ error?: string; scope?: string; examplesUsed?: number }> {
   const input = (brief ?? "").trim();
   if (!input) return { error: "Describe the job first, even roughly." };
   if (input.length > MAX_INPUT_CHARS) return { error: "That brief is too long." };
@@ -138,18 +198,42 @@ export async function generateScopeWithAI(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { error: "AI isn't configured yet." };
 
+  // Worked examples from this contractor's own scope library, preferring
+  // ones tagged with this job's project type. Examples teach structure and
+  // depth far better than instructions do -- "group by phase" is a rule a
+  // model can follow badly; a real scope is a target it can match.
+  const examples = await loadScopeExamples(profile.company_id, estimateId);
+
   const system = [
     "You draft the scope of work for a residential construction estimate, from a contractor's short brief.",
     "",
     "Rules:",
     "- Write only work the brief implies. Do not invent scope to pad it out.",
     "- Where a specific is missing (dimensions, materials, fixture models, counts), write [TBD] rather than guessing. The rep fills those in.",
-    "- Group by phase in the order the work happens, with a short heading line and '- ' bullets.",
+    "- Group by phase in the order the work happens, with a short heading line and simple text bullets.",
+    // Without this the built-in bullet rule quietly overrides the
+    // contractor's own convention, which is the one thing the examples
+    // exist to teach -- verified: numbered sections transferred but the
+    // example's bullet character did not, until this line was added.
+    "- If examples are provided below, match their bullet character, numbering and heading style exactly, in preference to any formatting habit of your own.",
     "- Plain text only. No markdown, no bold, no headers.",
     "- Never state a price, a total, or a timeline. Those are set elsewhere on the estimate.",
     "- Return ONLY the scope. No preamble.",
     loaded.settings.ai_estimator_instructions
       ? `\nHouse style from this contractor:\n${loaded.settings.ai_estimator_instructions}`
+      : "",
+    examples.length
+      ? [
+          "",
+          "=== EXAMPLES OF THIS CONTRACTOR'S OWN SCOPES ===",
+          "Match their structure, heading style, level of detail and vocabulary.",
+          "These are style references for a DIFFERENT job -- do not copy their scope",
+          "into your answer, and do not include work from them that the brief does",
+          "not call for.",
+          "",
+          ...examples.map((e) => `--- ${e.name} ---\n${e.body}`),
+          "=== END EXAMPLES ===",
+        ].join("\n")
       : "",
   ].join("\n");
 
@@ -169,7 +253,7 @@ export async function generateScopeWithAI(
       .join("")
       .trim();
     if (!scope) return { error: "Got an empty result. Try again." };
-    return { scope };
+    return { scope, examplesUsed: examples.length };
   } catch {
     return { error: "Couldn't reach the AI right now." };
   }

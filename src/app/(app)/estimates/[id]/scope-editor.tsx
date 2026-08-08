@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { formatScopeWithAI, generateScopeWithAI } from "@/lib/actions/scope-ai";
+import { saveScopeTemplate } from "@/lib/actions/scope-templates";
 
 /**
  * Full-size editor for a line item's scope description.
@@ -15,18 +16,21 @@ export function ScopeEditor({
   title,
   initial,
   readOnly,
+  estimateId,
   onClose,
   onSave,
 }: {
   title: string;
   initial: string;
   readOnly: boolean;
+  estimateId: string;
   onClose: () => void;
   onSave: (text: string) => void;
 }) {
   const [text, setText] = useState(initial);
   const [beforeFormat, setBeforeFormat] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function format() {
@@ -49,12 +53,32 @@ export function ScopeEditor({
   function generate() {
     setError(null);
     startTransition(async () => {
-      const res = await generateScopeWithAI(text);
+      const res = await generateScopeWithAI(text, estimateId);
       if (res.error) return setError(res.error);
       if (res.scope) {
         setBeforeFormat(text);
         setText(res.scope);
+        setNote(
+          res.examplesUsed
+            ? `Written using ${res.examplesUsed} example${res.examplesUsed === 1 ? "" : "s"} from your scope library`
+            : "No scope-library examples matched this job type — add some in Admin Settings to sharpen this"
+        );
       }
+    });
+  }
+
+  // Banks a good scope as a worked example, which is the only thing that
+  // durably improves what the generator produces next time.
+  function saveAsTemplate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await saveScopeTemplate({
+        name: title || "Saved scope",
+        projectType: null,
+        body: text,
+      });
+      if (res.error) return setError(res.error);
+      setNote("Saved to your scope library. Tag it with a project type in Admin Settings.");
     });
   }
 
@@ -86,6 +110,9 @@ export function ScopeEditor({
               <button className="btn-ghost" onClick={format} disabled={pending || !text.trim()}>
                 {pending ? "Working…" : "✨ Format with AI"}
               </button>
+              <button className="btn-ghost" onClick={saveAsTemplate} disabled={pending || !text.trim()}>
+                Save to library
+              </button>
             </div>
           )}
         </div>
@@ -107,6 +134,7 @@ export function ScopeEditor({
         </p>
 
         {error && <p className="error-note">{error}</p>}
+        {note && <p className="hint-note">{note}</p>}
 
         <div className="modal-actions">
           <button className="btn-ghost" onClick={onClose} disabled={pending}>

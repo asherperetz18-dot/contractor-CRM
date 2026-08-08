@@ -261,6 +261,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       { title: "GHL Field Mappings", desc: "Map GHL contact and lead fields to app fields", icon: "🗺" },
       { title: "OpenAI API Key", desc: "API key used to power AI features (estimates, analysis, assistant)", icon: "🔑" },
       {
+        title: "Scope Library",
+        desc: "Examples of your own scopes of work that the AI generator learns its structure and wording from",
+        icon: "📚",
+        href: "/settings/scope-library",
+      },
+      {
         title: "AI Estimator",
         desc: "Prompt and model settings for the AI scope and estimate generator",
         icon: "🤖",

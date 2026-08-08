@@ -1214,6 +1214,18 @@ export function estimateMargin(
 
 // ── Deposit and progress payments ────────────────────────────────────
 
+// A saved scope of work, used as a worked example for the AI generator.
+// project_type null means "any job".
+export type ScopeTemplate = {
+  id: string;
+  company_id: string;
+  name: string;
+  project_type: string | null;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type EstimatePayment = {
   id: string;
   estimate_id: string;
