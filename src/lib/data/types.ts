@@ -1165,6 +1165,25 @@ export function parseQuantity(raw: string | number | null | undefined): number {
   return n;
 }
 
+/**
+ * Whether a line's quantity is worth showing the customer.
+ *
+ * "1 ls" tells a homeowner nothing -- it is an internal way of saying
+ * "this is a lump sum" -- and next to it the Price column just repeats
+ * the Amount. "300 sq at $75.00" is the opposite: it is the arithmetic
+ * behind the number and they should see it.
+ */
+export function quantityIsMeaningful(
+  quantity: number,
+  unit: string | null | undefined
+): boolean {
+  const u = (unit ?? "").trim().toLowerCase();
+  // A real unit of measure always earns its place.
+  if (u && u !== "ls") return true;
+  // Otherwise only a count other than one says anything.
+  return (Number(quantity) || 0) !== 1;
+}
+
 export function lineTotalCents(quantity: number, unitPriceCents: number): number {
   return Math.round((Number(quantity) || 0) * (Number(unitPriceCents) || 0));
 }

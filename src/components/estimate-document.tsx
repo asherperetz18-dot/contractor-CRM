@@ -1,6 +1,7 @@
 import {
   moneyCents,
   paymentPercentOfTotal,
+  quantityIsMeaningful,
   signatureProgress,
   type Estimate,
   type EstimateItem,
@@ -67,6 +68,12 @@ export function EstimateDocument({
   customer: DocumentCustomer | null;
 }) {
   const sig = signatureProgress(signers);
+
+  // Drop the Qty and Price columns entirely when no line has a real
+  // measurement: every cell would be blank, and Price would only repeat
+  // Amount. A document with one lump-sum line reads as Description and
+  // Amount, which is what a homeowner actually wants to see.
+  const showMeasures = items.some((i) => quantityIsMeaningful(i.quantity, i.unit));
   const customerName =
     [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim() || "Customer";
 
@@ -128,33 +135,48 @@ export function EstimateDocument({
         <thead>
           <tr>
             <th>Description</th>
-            <th className="estdoc-num">Qty</th>
-            <th className="estdoc-num">Price</th>
+            {showMeasures && (
+              <>
+                <th className="estdoc-num">Qty</th>
+                <th className="estdoc-num">Price</th>
+              </>
+            )}
             <th className="estdoc-num">Amount</th>
           </tr>
         </thead>
         <tbody>
           {items.length === 0 ? (
             <tr>
-              <td colSpan={4} className="estdoc-muted">
+              <td colSpan={showMeasures ? 4 : 2} className="estdoc-muted">
                 No line items yet.
               </td>
             </tr>
           ) : (
-            items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <div className="estdoc-strong">{item.name}</div>
-                  {item.description && <div className="estdoc-muted">{item.description}</div>}
-                </td>
-                <td className="estdoc-num">
-                  {item.quantity}
-                  {item.unit ? ` ${item.unit}` : ""}
-                </td>
-                <td className="estdoc-num">{moneyCents(item.unit_price_cents)}</td>
-                <td className="estdoc-num">{moneyCents(item.line_total_cents)}</td>
-              </tr>
-            ))
+            items.map((item) => {
+              const measured = quantityIsMeaningful(item.quantity, item.unit);
+              return (
+                <tr key={item.id}>
+                  <td>
+                    <div className="estdoc-strong">{item.name}</div>
+                    {item.description && <div className="estdoc-muted">{item.description}</div>}
+                  </td>
+                  {showMeasures && (
+                    <>
+                      {/* Blank on a lump-sum line rather than "1 ls", which
+                          means nothing to a homeowner, and blank price
+                          because it would only repeat the amount. */}
+                      <td className="estdoc-num">
+                        {measured ? `${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : ""}
+                      </td>
+                      <td className="estdoc-num">
+                        {measured ? moneyCents(item.unit_price_cents) : ""}
+                      </td>
+                    </>
+                  )}
+                  <td className="estdoc-num">{moneyCents(item.line_total_cents)}</td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>
