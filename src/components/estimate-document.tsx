@@ -173,7 +173,13 @@ export function EstimateDocument({
                       </td>
                     </>
                   )}
-                  <td className="estdoc-num">{moneyCents(item.line_total_cents)}</td>
+                  {/* Blank, not "$0.00". A zero against a real scope line
+                      reads to a homeowner as "this part is worthless",
+                      when it usually means it is covered by the priced
+                      work above it. */}
+                  <td className="estdoc-num">
+                    {item.line_total_cents ? moneyCents(item.line_total_cents) : ""}
+                  </td>
                 </tr>
               );
             })

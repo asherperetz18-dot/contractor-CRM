@@ -139,6 +139,10 @@ export function EstimateBuilder({
   const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp);
   const margin = estimateMargin(parsed);
   const costsEntered = parsed.some((p) => p.cost_cents !== null);
+  // Named rows only: a blank starter row is not an unpriced line item.
+  const unpricedLines = rows.filter(
+    (r) => r.name.trim() && centsFromInput(r.unitPrice) === 0
+  ).length;
 
   function patch(key: string, changes: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...changes } : r)));
@@ -595,6 +599,17 @@ export function EstimateBuilder({
         {estimate.tax_rate_bp === 0 && (
           <p className="est-tax-note">
             No tax rate set. Add one in Admin Settings to tax the lines marked above.
+          </p>
+        )}
+        {/* The customer sees a blank rather than $0.00, which reads as
+            "included". On a signed contract that is a commitment to do
+            the work at no charge, so the rep is told the count here
+            rather than discovering it in a dispute. */}
+        {unpricedLines > 0 && (
+          <p className="est-unpriced-note">
+            {unpricedLines} line{unpricedLines === 1 ? "" : "s"} ha
+            {unpricedLines === 1 ? "s" : "ve"} no price. The customer sees a blank amount, which
+            reads as included in the work above — on a signed contract that commits you to it.
           </p>
         )}
       </div>

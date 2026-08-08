@@ -5427,3 +5427,13 @@ textarea.est-item-desc:disabled {
   opacity: 0.15;
   cursor: default;
 }
+
+.est-unpriced-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #8a6400;
+  background: #fdf3d8;
+  border: 1px solid #e8d9a8;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
