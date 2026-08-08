@@ -53,6 +53,33 @@ export async function createEvent(input: EventInput, leadId?: string) {
   return {};
 }
 
+/**
+ * Clears the follow-up stamps when an appointment moves to a new slot.
+ *
+ * The no-show cron chases an appointment once and records that it did:
+ * result_reminder_sent_at, followup_flagged_at, followup_moved_at. Those
+ * stamps used to survive a reschedule, which quietly disabled the chase
+ * forever -- an appointment chased on Monday and then moved to Thursday
+ * looked "already handled", so the rep was never reminded to log its
+ * result. It failed silently and only surfaced as "I never got a text".
+ *
+ * A moved appointment is a new occurrence, so it starts over.
+ */
+function rescheduleResets(
+  before: { date: string; time: string | null } | null,
+  date: string,
+  time: string | null | undefined
+) {
+  if (!before) return {};
+  const timeChanged = time !== undefined && (time ?? null) !== (before.time ?? null);
+  if (before.date === date && !timeChanged) return {};
+  return {
+    result_reminder_sent_at: null,
+    followup_flagged_at: null,
+    followup_moved_at: null,
+  };
+}
+
 export async function updateEvent(
   id: string,
   input: EventInput,
@@ -60,7 +87,11 @@ export async function updateEvent(
 ) {
   const profile = await getCurrentProfile();
   const supabase = await createClient();
-  const { data: existing } = await supabase.from("events").select("notes").eq("id", id).single();
+  const { data: existing } = await supabase
+    .from("events")
+    .select("notes, date, time")
+    .eq("id", id)
+    .single();
   const notesChanged = (existing?.notes ?? "") !== (input.notes || "");
   const notesStamp =
     notesChanged && profile
@@ -73,9 +104,19 @@ export async function updateEvent(
     ...(confirmationTouched?.customer ? { customer_confirmed: input.customer_confirmed } : {}),
     ...(confirmationTouched?.rep ? { rep_confirmed: input.rep_confirmed } : {}),
   };
+  const row = toRow(input);
   const { error } = await supabase
     .from("events")
-    .update({ ...toRow(input), ...notesStamp, ...confirmations })
+    .update({
+      ...row,
+      ...notesStamp,
+      ...confirmations,
+      ...rescheduleResets(
+        existing as { date: string; time: string | null } | null,
+        (row as { date: string }).date,
+        (row as { time?: string | null }).time
+      ),
+    })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidateCalendarRoutes();
@@ -89,7 +130,19 @@ export async function updateEvent(
  */
 export async function rescheduleEvent(id: string, date: string, time?: string | null) {
   const supabase = await createClient();
-  const patch: { date: string; time?: string | null } = { date };
+  const { data: before } = await supabase
+    .from("events")
+    .select("date, time")
+    .eq("id", id)
+    .maybeSingle<{ date: string; time: string | null }>();
+
+  const patch: {
+    date: string;
+    time?: string | null;
+    result_reminder_sent_at?: null;
+    followup_flagged_at?: null;
+    followup_moved_at?: null;
+  } = { date, ...rescheduleResets(before ?? null, date, time) };
   if (time !== undefined) patch.time = time;
 
   // Asks for the row back: an RLS-blocked update returns no error and

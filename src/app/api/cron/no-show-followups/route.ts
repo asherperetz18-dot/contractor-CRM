@@ -135,10 +135,26 @@ async function processCompany(
           const l = lead as { first_name: string | null; last_name: string | null } | null;
           leadName = `${l?.first_name ?? ""} ${l?.last_name ?? ""}`.trim();
         }
-        const result = await sendTwilioSms(repPhone, reminderBody(row, leadName), twilioEnv);
+        const body = reminderBody(row, leadName);
+        const result = await sendTwilioSms(repPhone, body, twilioEnv);
         if (!result.error) {
           await admin.from("events").update({ result_reminder_sent_at: stamp }).eq("id", row.id);
           texted += 1;
+
+          // Logged like every other outbound message. Without this the
+          // only evidence a reminder went out was a timestamp on the
+          // event -- so "the rep says they never got it" could not be
+          // checked against what was actually sent, or to which number.
+          await admin.from("sms_messages").insert({
+            lead_id: row.lead_id,
+            direction: "outbound",
+            from_number: twilioEnv.phoneNumber,
+            to_number: repPhone,
+            body,
+            twilio_sid: result.sid || null,
+            company_id: company.company_id,
+            channel: "sms",
+          });
         }
       }
     }
