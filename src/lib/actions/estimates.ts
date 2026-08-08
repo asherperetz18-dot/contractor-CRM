@@ -17,6 +17,7 @@ import {
   splitEvenlyCents,
   computeEstimateTotals,
   lineTotalCents,
+  parseQuantity,
   type EstimateStatus,
 } from "@/lib/data/types";
 
@@ -247,10 +248,10 @@ export async function saveEstimateItems(
       sort_order: i,
       name: item.name,
       description: item.description ?? null,
-      quantity: item.quantity,
+      quantity: parseQuantity(item.quantity),
       unit: item.unit ?? null,
       unit_price_cents: item.unit_price_cents,
-      line_total_cents: lineTotalCents(item.quantity, item.unit_price_cents),
+      line_total_cents: lineTotalCents(parseQuantity(item.quantity), item.unit_price_cents),
       taxable: item.taxable,
       cost_cents: item.cost_cents ?? null,
     }));

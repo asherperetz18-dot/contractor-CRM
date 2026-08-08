@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { centsToInput, moneyCents } from "@/lib/data/types";
+import { centsToInput, moneyCents, parseQuantity } from "@/lib/data/types";
 import { generatePricedLines, type ProposedLine } from "@/lib/actions/scope-ai";
 
 export type AcceptedLine = {
@@ -50,7 +50,7 @@ export function GenerateLinesModal({
   }
 
   const selected = lines?.filter((_, i) => chosen.has(i)) ?? [];
-  const selectedTotal = selected.reduce((s, l) => s + l.quantity * l.unit_price_cents, 0);
+  const selectedTotal = selected.reduce((s, l) => s + parseQuantity(l.quantity) * l.unit_price_cents, 0);
   const unpricedCount = selected.filter((l) => !l.priced).length;
 
   return (
@@ -139,7 +139,7 @@ export function GenerateLinesModal({
                         )}
                       </td>
                       <td className="right mono">
-                        {l.priced ? moneyCents(l.quantity * l.unit_price_cents) : "—"}
+                        {l.priced ? moneyCents(parseQuantity(l.quantity) * l.unit_price_cents) : "—"}
                       </td>
                     </tr>
                   ))}

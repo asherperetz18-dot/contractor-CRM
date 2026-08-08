@@ -5362,3 +5362,68 @@ textarea.est-item-desc:disabled {
   color: var(--danger);
   font-weight: 600;
 }
+
+/* An explicit qty of 0 against a real price zeroes the line. Legal, but
+   almost always a slip -- flagged so it is not discovered in the total. */
+.est-qty-zero {
+  border-color: var(--danger) !important;
+  color: var(--danger);
+  font-weight: 600;
+}
+.est-item-qty::placeholder {
+  color: #b9c0c7;
+}
+
+/* Reordering line items: drag the grip, or use the arrows on touch where
+   HTML5 drag never fires. */
+.est-grip-col {
+  width: 26px;
+  padding-right: 0 !important;
+  vertical-align: top;
+}
+.est-grip {
+  display: inline-block;
+  cursor: grab;
+  color: #b9c0c7;
+  font-size: 15px;
+  line-height: 1;
+  padding: 8px 2px;
+  user-select: none;
+}
+.est-grip:hover {
+  color: var(--ink-soft);
+}
+.est-grip:active {
+  cursor: grabbing;
+}
+.est-dragging {
+  opacity: 0.4;
+}
+/* A line above the hovered row, so it is obvious where the row will land
+   rather than only which row is under the cursor. */
+.est-drop-target td {
+  box-shadow: inset 0 2px 0 0 var(--safety);
+}
+.est-row-tools {
+  white-space: nowrap;
+  vertical-align: top;
+}
+.est-move-group {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.est-move {
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.25;
+  opacity: 0.5;
+}
+.est-move:hover:not(:disabled) {
+  opacity: 1;
+}
+.est-move:disabled {
+  opacity: 0.15;
+  cursor: default;
+}

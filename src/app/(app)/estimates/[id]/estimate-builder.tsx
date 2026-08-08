@@ -11,6 +11,7 @@ import {
   editWillRecallEstimate,
   estimateLocked,
   lineCostCents,
+  parseQuantity,
   lineTotalCents,
   marginPct,
   moneyCents,
@@ -59,7 +60,7 @@ function blankRow(): Row {
     key: `row-${rowSeq}`,
     name: "",
     description: "",
-    quantity: "1",
+    quantity: "",
     unit: "",
     unitCost: "",
     unitPrice: "0.00",
@@ -109,6 +110,9 @@ export function EstimateBuilder({
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // Row being dragged, and the row it is currently hovering over.
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   // Read-only once the customer has signed, or for a person without
@@ -126,7 +130,7 @@ export function EstimateBuilder({
   // Same computeEstimateTotals the server uses when it saves, so the number
   // on screen and the number stored can't drift apart.
   const parsed = rows.map((r) => ({
-    quantity: Number(r.quantity) || 0,
+    quantity: parseQuantity(r.quantity),
     unit_price_cents: centsFromInput(r.unitPrice),
     taxable: r.taxable,
     // Blank means unknown, which is not the same as zero.
@@ -138,6 +142,49 @@ export function EstimateBuilder({
 
   function patch(key: string, changes: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...changes } : r)));
+    setSaved(null);
+  }
+
+  /**
+   * Reorders a line item. The order on screen is the order the customer
+   * reads, and a scope that jumps from finishes back to demolition reads
+   * as carelessness on a document someone is about to sign.
+   *
+   * Dragging the grip is the main way; these arrows are kept alongside it
+   * because HTML5 drag-and-drop does not fire on touch at all, so on a
+   * phone the grip is dead and the arrows are the only way to reorder.
+   *
+   * sort_order is written from array position on save, so moving the row
+   * here is the whole change.
+   */
+  function moveRow(key: string, delta: -1 | 1) {
+    setRows((prev) => {
+      const i = prev.findIndex((r) => r.key === key);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+    setSaved(null);
+  }
+
+  // Drops the dragged row into the target's position, shifting the rest
+  // rather than swapping the two -- dragging item 5 to the top should
+  // leave 1-4 in order below it, not fling item 1 down to position 5.
+  function dropRowOn(targetKey: string) {
+    setRows((prev) => {
+      if (!dragKey || dragKey === targetKey) return prev;
+      const from = prev.findIndex((r) => r.key === dragKey);
+      const to = prev.findIndex((r) => r.key === targetKey);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    setDragKey(null);
+    setOverKey(null);
     setSaved(null);
   }
 
@@ -157,7 +204,7 @@ export function EstimateBuilder({
         rows.map((r) => ({
           name: r.name,
           description: r.description || null,
-          quantity: Number(r.quantity) || 0,
+          quantity: parseQuantity(r.quantity),
           unit: r.unit || null,
           unit_price_cents: centsFromInput(r.unitPrice),
           taxable: r.taxable,
@@ -311,6 +358,7 @@ export function EstimateBuilder({
         <table className="data-table est-items">
         <thead>
           <tr>
+            <th className="est-grip-col"></th>
             <th>Item</th>
             <th className="right">Qty</th>
             <th>Unit</th>
@@ -324,7 +372,45 @@ export function EstimateBuilder({
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key}>
+            <tr
+              key={r.key}
+              className={
+                (dragKey === r.key ? "est-dragging" : "") +
+                (overKey === r.key && dragKey && dragKey !== r.key ? " est-drop-target" : "")
+              }
+              onDragOver={(e) => {
+                if (!dragKey || dragKey === r.key) return;
+                // Without preventDefault the browser refuses the drop.
+                e.preventDefault();
+                if (overKey !== r.key) setOverKey(r.key);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                dropRowOn(r.key);
+              }}
+            >
+              <td className="est-grip-col">
+                {!locked && rows.length > 1 && (
+                  <span
+                    className="est-grip"
+                    draggable
+                    onDragStart={(e) => {
+                      setDragKey(r.key);
+                      e.dataTransfer.effectAllowed = "move";
+                      // Firefox will not start a drag without payload.
+                      e.dataTransfer.setData("text/plain", r.key);
+                    }}
+                    onDragEnd={() => {
+                      setDragKey(null);
+                      setOverKey(null);
+                    }}
+                    title="Drag to reorder"
+                    aria-hidden="true"
+                  >
+                    ⠿
+                  </span>
+                )}
+              </td>
               <td>
                 <input
                   className="est-item-name"
@@ -358,8 +444,18 @@ export function EstimateBuilder({
               </td>
               <td className="right">
                 <input
-                  className="est-item-qty"
+                  className={
+                    "est-item-qty" +
+                    // An explicit 0 against a real price zeroes the line.
+                    // That is legal but almost always a slip, so it is
+                    // flagged rather than left to be noticed in the total.
+                    (r.quantity.trim() === "0" && centsFromInput(r.unitPrice) > 0
+                      ? " est-qty-zero"
+                      : "")
+                  }
                   inputMode="decimal"
+                  placeholder="1"
+                  title="Leave blank for a lump sum — blank counts as 1"
                   value={r.quantity}
                   disabled={locked}
                   onChange={(e) => patch(r.key, { quantity: e.target.value })}
@@ -404,12 +500,12 @@ export function EstimateBuilder({
                 />
               </td>
               <td className="right mono">
-                {moneyCents(lineTotalCents(Number(r.quantity) || 0, centsFromInput(r.unitPrice)))}
+                {moneyCents(lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice)))}
               </td>
               <td className="right mono est-internal-col">
                 {(() => {
                   if (r.unitCost.trim() === "") return <span className="est-margin-none">—</span>;
-                  const qty = Number(r.quantity) || 0;
+                  const qty = parseQuantity(r.quantity);
                   const revenue = lineTotalCents(qty, centsFromInput(r.unitPrice));
                   const cost = lineCostCents(qty, centsFromInput(r.unitCost));
                   const pct = marginPct(revenue, cost);
@@ -425,7 +521,29 @@ export function EstimateBuilder({
                   );
                 })()}
               </td>
-              <td>
+              <td className="est-row-tools">
+                {!locked && rows.length > 1 && (
+                  <span className="est-move-group">
+                    <button
+                      className="btn-ghost est-move"
+                      onClick={() => moveRow(r.key, -1)}
+                      disabled={rows[0].key === r.key}
+                      aria-label="Move this item up"
+                      title="Move up"
+                    >
+                      ▲
+                    </button>
+                    <button
+                      className="btn-ghost est-move"
+                      onClick={() => moveRow(r.key, 1)}
+                      disabled={rows[rows.length - 1].key === r.key}
+                      aria-label="Move this item down"
+                      title="Move down"
+                    >
+                      ▼
+                    </button>
+                  </span>
+                )}
                 {!locked && rows.length > 1 && (
                   <button
                     className="btn-ghost est-row-remove"

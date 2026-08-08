@@ -1146,6 +1146,25 @@ export function centsToInput(cents: number | null | undefined): string {
   return ((Number(cents) || 0) / 100).toFixed(2);
 }
 
+/**
+ * Quantity is optional: most line items are lump sums where typing "1"
+ * every time is noise.
+ *
+ * Blank means one, NOT zero. `Number("")` is 0, so an empty box used to
+ * multiply the price to nothing -- a rep who cleared the field got a
+ * priced line worth $0.00, and the only clue was a total they had no
+ * reason to re-read. An explicit 0 is still honoured, since that is a
+ * deliberate keystroke.
+ */
+export function parseQuantity(raw: string | number | null | undefined): number {
+  if (raw === null || raw === undefined) return 1;
+  const s = String(raw).trim();
+  if (s === "") return 1;
+  const n = Number(s);
+  if (!Number.isFinite(n) || n < 0) return 1;
+  return n;
+}
+
 export function lineTotalCents(quantity: number, unitPriceCents: number): number {
   return Math.round((Number(quantity) || 0) * (Number(unitPriceCents) || 0));
 }
