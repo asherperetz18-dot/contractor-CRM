@@ -1,7 +1,14 @@
 export type ContactType = "Individual" | "Company";
 
-export type AppRole = "Office" | "Field" | "Admin" | "Sales" | "Call Center";
-export const APP_ROLES: AppRole[] = ["Office", "Field", "Admin", "Sales", "Call Center"];
+export type AppRole = "Office" | "Field" | "Admin" | "Sales" | "Call Center" | "Dispatch";
+export const APP_ROLES: AppRole[] = [
+  "Office",
+  "Field",
+  "Admin",
+  "Sales",
+  "Call Center",
+  "Dispatch",
+];
 
 export type UserStatus = "Active" | "Archived";
 
@@ -50,7 +57,10 @@ export function canEditDispatch(profile: Pick<Profile, "roles"> | null) {
   return (
     profile.roles.includes("Office") ||
     profile.roles.includes("Admin") ||
-    profile.roles.includes("Sales")
+    profile.roles.includes("Sales") ||
+    // Assigning leads and moving them along is the entire job of the
+    // Dispatch role -- it is named after this section.
+    profile.roles.includes("Dispatch")
   );
 }
 
@@ -91,7 +101,11 @@ export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
   return (
     profile.roles.includes("Office") ||
     profile.roles.includes("Admin") ||
-    profile.roles.includes("Field")
+    profile.roles.includes("Field") ||
+    // Booking, moving and confirming appointments is what a dispatcher
+    // does all day; without this the role can see the calendar but not
+    // change it, which is not a dispatcher.
+    profile.roles.includes("Dispatch")
   );
 }
 
@@ -192,12 +206,30 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
 // Admin Settings itself is deliberately not in PAGE_REGISTRY and is gated
 // by isAdminRole instead, so nothing in this matrix can lock an Office
 // user out of the screen they would use to undo it.
-export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Office", "Field", "Sales", "Call Center"];
+export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Office", "Dispatch", "Field", "Sales", "Call Center"];
+
+// A dispatcher receives leads, assigns them to reps, books and confirms
+// appointments, and works the schedule. They need everyone's leads and
+// the whole calendar -- and nothing to do with money, so Estimates,
+// Lead Refunds and Marketing Analytics are off by default. All of it is
+// overridable per company in Role Visibility.
+const DISPATCH_DEFAULT_PAGES: PageKey[] = [
+  "dashboard",
+  "pipeline",
+  "reply-inbox",
+  "contacts",
+  "salespeople",
+  "appt-setter-assignments",
+  "calendar",
+  "schedule",
+  "call-reports",
+  "text-reports",
+];
 
 // Platform default when no explicit override row exists for a role/page --
 // "untouched cells follow the default," same wording as the real product.
-// Every role defaults to full access except the Call Center role, which
-// defaults to just Dashboard + Power Dialer + Call/Text Reports.
+// Most roles default to full access; Call Center and Dispatch default to
+// the pages their job actually needs.
 export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   if (role === "Call Center") {
     return (
@@ -208,6 +240,7 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
       pageKey === "appointment-reports"
     );
   }
+  if (role === "Dispatch") return DISPATCH_DEFAULT_PAGES.includes(pageKey);
   return true;
 }
 
