@@ -5437,3 +5437,23 @@ textarea.est-item-desc:disabled {
   border-radius: 6px;
   padding: 8px 10px;
 }
+
+/* Unpriced scope folded under the priced line that covers it. */
+.estdoc-includes {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
+.estdoc-includes-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+.estdoc-include {
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 2px;
+}

@@ -29,6 +29,42 @@ export type DocumentCustomer = {
   address: string | null;
 };
 
+/**
+ * Folds unpriced lines into the priced line they belong to.
+ *
+ * A line with no amount reads to a homeowner as either an omission or a
+ * freebie. Shown instead as "Includes:" beneath the priced work above it,
+ * the same scope reads as what it actually is -- covered by that price.
+ *
+ * A priced line claims every unpriced line that follows it. Unpriced
+ * lines appearing before any priced line (site protection listed ahead of
+ * the work it protects) attach to the first priced line instead, since
+ * they are prep for it. If nothing is priced at all there is nothing to
+ * fold into, and every line is left standing on its own.
+ */
+export function groupIncludedItems(items: EstimateItem[]): {
+  parent: EstimateItem;
+  included: EstimateItem[];
+}[] {
+  const priced = (i: EstimateItem) => (i.line_total_cents || 0) > 0;
+  if (!items.some(priced)) return items.map((parent) => ({ parent, included: [] }));
+
+  const groups: { parent: EstimateItem; included: EstimateItem[] }[] = [];
+  const leading: EstimateItem[] = [];
+
+  for (const item of items) {
+    if (priced(item)) {
+      groups.push({ parent: item, included: [] });
+    } else if (groups.length === 0) {
+      leading.push(item);
+    } else {
+      groups[groups.length - 1].included.push(item);
+    }
+  }
+  if (leading.length) groups[0].included.unshift(...leading);
+  return groups;
+}
+
 function pct(amountCents: number, totalCents: number): string {
   const p = paymentPercentOfTotal(amountCents, totalCents);
   return p === null ? "—" : `${p.toFixed(2)}%`;
@@ -73,7 +109,11 @@ export function EstimateDocument({
   // measurement: every cell would be blank, and Price would only repeat
   // Amount. A document with one lump-sum line reads as Description and
   // Amount, which is what a homeowner actually wants to see.
-  const showMeasures = items.some((i) => quantityIsMeaningful(i.quantity, i.unit));
+  const groups = groupIncludedItems(items);
+  // Only the priced parents remain as rows, so the columns are judged on
+  // those -- an unpriced "1 ls" that is now folded in must not keep an
+  // otherwise empty Qty column alive.
+  const showMeasures = groups.some((g) => quantityIsMeaningful(g.parent.quantity, g.parent.unit));
   const customerName =
     [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim() || "Customer";
 
@@ -152,13 +192,26 @@ export function EstimateDocument({
               </td>
             </tr>
           ) : (
-            items.map((item) => {
+            groups.map(({ parent: item, included }) => {
               const measured = quantityIsMeaningful(item.quantity, item.unit);
               return (
                 <tr key={item.id}>
                   <td>
                     <div className="estdoc-strong">{item.name}</div>
                     {item.description && <div className="estdoc-muted">{item.description}</div>}
+                    {included.length > 0 && (
+                      <div className="estdoc-includes">
+                        <div className="estdoc-includes-label">Includes</div>
+                        {included.map((inc) => (
+                          <div key={inc.id} className="estdoc-include">
+                            <span className="estdoc-strong">{inc.name}</span>
+                            {inc.description && (
+                              <span className="estdoc-muted"> — {inc.description}</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   {showMeasures && (
                     <>
