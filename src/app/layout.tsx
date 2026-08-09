@@ -28,6 +28,18 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "Contractor CRM",
   description: "Contractor CRM",
+  // The product's own mark, for every page reached without signing in --
+  // login, the customer portal, and whatever a search engine crawls.
+  // Without it those pages declared no icon at all, so Google fell back
+  // to the only logo it had ever seen from this app: one customer's
+  // company logo, which then represented the whole product in search
+  // results.
+  //
+  // Deliberately config-based rather than a src/app/icon.svg file:
+  // file-based icons outrank metadata and would permanently override the
+  // per-company favicon the (app) layout sets for signed-in users. Here
+  // the child layout's icons still win, and this only fills the gap.
+  icons: { icon: "/aibuildpros-icon.svg" },
 };
 
 export default function RootLayout({
