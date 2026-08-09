@@ -44,7 +44,7 @@ export default async function EstimatePreviewPage({
       supabase.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
       supabase.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
       supabase.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
-      supabase.from("portal_payments").select("id, estimate_id, kind, amount_cents, status, method, paid_at, created_at").eq("estimate_id", id),
+      supabase.from("portal_payments").select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at").eq("estimate_id", id),
       supabase
         .from("company_profile")
         .select(

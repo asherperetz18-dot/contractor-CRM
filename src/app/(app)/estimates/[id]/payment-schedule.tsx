@@ -17,6 +17,7 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import { generateEstimateSchedule, saveEstimatePayments } from "@/lib/actions/estimates";
+import { PhaseBilling } from "./phase-billing";
 
 type Row = { key: string; name: string; description: string; amount: string };
 
@@ -207,7 +208,7 @@ export function PaymentSchedule({
             <td></td>
           </tr>
 
-          {rows.map((r) => {
+          {rows.map((r, i) => {
             const cents = centsFromInput(r.amount);
             const pct = paymentPercentOfTotal(cents, totalCents);
             return (
@@ -239,7 +240,14 @@ export function PaymentSchedule({
                   />
                 </td>
                 <td>
-                  {!locked && (
+                  {locked ? (
+                    // Rows come straight from `payments` and cannot be
+                    // reordered or removed while locked, so index alignment
+                    // holds and each row can find its own saved phase.
+                    payments[i] && (
+                      <PhaseBilling phase={payments[i]} payments={paid} signed={locked} />
+                    )
+                  ) : (
                     <button
                       className="btn-ghost est-row-remove"
                       onClick={() => {

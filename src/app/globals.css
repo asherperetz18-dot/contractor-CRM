@@ -5338,6 +5338,119 @@ body {
   text-decoration: underline;
 }
 
+.stat-grid-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+/* Money that is genuinely late. Red, and only while it is true -- same
+   rule as the green and gold cards. */
+.stat-card.stat-card-late {
+  background: #fdf1f1;
+  border-color: #c96a6a;
+}
+.stat-card.stat-card-late .stat-value {
+  color: #a03b3b;
+}
+.stat-card.stat-card-late .stat-label {
+  color: #8a3333;
+}
+
+/* Billing controls on a signed contract's schedule */
+.est-phase-bill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.est-phase-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.est-phase-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.est-phase-due input {
+  font: inherit;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.est-phase-due-note,
+.est-phase-note {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Progress payments in the customer portal */
+.pp-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 12px 0;
+}
+.pp-phase {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pp-phase-overdue {
+  border-color: #c96a6a;
+  background: #fdf1f1;
+}
+.pp-phase-paid {
+  border-color: #b7dcc5;
+  background: #f0faf4;
+}
+.pp-phase-main {
+  min-width: 0;
+}
+.pp-phase-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pp-phase-amount {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .stat-grid-6 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Same reasoning as the estimate document: on a phone the amount and its
+   button belong under the phase name, not squeezed beside it. */
+@media (max-width: 600px) {
+  .pp-phase {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pp-phase-side {
+    align-items: stretch;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .pp-phase-side .btn-primary {
+    flex: 1;
+    margin-left: 12px;
+  }
+}
+
 /* Shown while an estimate is out with the customer but still editable. */
 .est-recall-banner {
   padding: 10px 14px;

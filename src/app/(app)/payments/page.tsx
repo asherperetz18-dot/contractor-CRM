@@ -6,6 +6,9 @@ import {
   collectionsSummary,
   moneyCents,
   paymentMethodLabel,
+  phaseState,
+  phaseStateLabel,
+  type EstimatePayment,
   type PortalPayment,
   type SignedContract,
 } from "@/lib/data/types";
@@ -47,11 +50,11 @@ export default async function PaymentsPage() {
   const supabase = await createClient();
   const env = getStripeEnv();
 
-  const [payments, contracts] = await Promise.all([
+  const [payments, contracts, billedPhases] = await Promise.all([
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
-        .select("id, estimate_id, lead_id, kind, amount_cents, status, method, paid_at, created_at")
+        .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, paid_at, created_at")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .range(from, to)
@@ -63,6 +66,15 @@ export default async function PaymentsPage() {
         .select("id, doc_number, title, total_cents, deposit_cents, lead_id")
         .eq("company_id", profile.company_id)
         .eq("status", "Signed")
+        .range(from, to)
+    ),
+    selectAll<EstimatePayment>((from, to) =>
+      supabase
+        .from("estimate_payments")
+        .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+        .eq("company_id", profile.company_id)
+        .not("requested_at", "is", null)
+        .order("due_date")
         .range(from, to)
     ),
   ]);
@@ -87,7 +99,7 @@ export default async function PaymentsPage() {
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
 
-  const s = collectionsSummary(contracts, payments);
+  const s = collectionsSummary(contracts, payments, billedPhases);
   const settledDeposits = new Set(
     payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
   );
@@ -113,18 +125,24 @@ export default async function PaymentsPage() {
         </p>
       )}
 
-      <div className="stat-grid stat-grid-5">
+      <div className="stat-grid stat-grid-6">
         <div className={"stat-card stat-static" + (s.collectedCents > 0 ? " stat-card-won" : "")}>
           <div className="stat-value mono">{moneyCents(s.collectedCents)}</div>
           <div className="stat-label">Collected</div>
         </div>
+        {/* Red only while something is actually late, so the colour never
+            means anything but "act on this". */}
+        <div className={"stat-card stat-static" + (s.overdueCents > 0 ? " stat-card-late" : "")}>
+          <div className="stat-value mono">{moneyCents(s.overdueCents)}</div>
+          <div className="stat-label">Overdue</div>
+        </div>
+        <div className={"stat-card stat-static" + (s.billedCents > 0 ? " stat-card-gold" : "")}>
+          <div className="stat-value mono">{moneyCents(s.billedCents)}</div>
+          <div className="stat-label">Billed, Unpaid</div>
+        </div>
         <div className={"stat-card stat-static" + (s.outstandingCents > 0 ? " stat-card-gold" : "")}>
           <div className="stat-value mono">{moneyCents(s.outstandingCents)}</div>
           <div className="stat-label">Outstanding</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{moneyCents(s.contractValueCents)}</div>
-          <div className="stat-label">Signed Contracts</div>
         </div>
         <div
           className={"stat-card stat-static" + (s.awaitingDepositCents > 0 ? " stat-card-gold" : "")}
@@ -137,6 +155,83 @@ export default async function PaymentsPage() {
           <div className="stat-label">Clearing (ACH)</div>
         </div>
       </div>
+
+      {/* Billed progress payments: money already asked for. Overdue first,
+          because that is the list somebody has to work today. */}
+      {billedPhases.length > 0 && (
+        <section className="pay-section">
+          <h2 className="pay-section-title">
+            Billed progress payments
+            {s.overdueCount > 0 ? ` — ${s.overdueCount} overdue` : ""}
+          </h2>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Contract</th>
+                <th>Phase</th>
+                <th>Due</th>
+                <th>Status</th>
+                <th className="right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...billedPhases]
+                .map((ph) => ({
+                  ph,
+                  state: phaseState(
+                    ph,
+                    payments.filter((p) => p.estimate_payment_id === ph.id)
+                  ),
+                }))
+                .sort((a, b) => {
+                  const rank = (x: string) => (x === "overdue" ? 0 : x === "billed" ? 1 : 2);
+                  return (
+                    rank(a.state) - rank(b.state) ||
+                    (a.ph.due_date || "").localeCompare(b.ph.due_date || "")
+                  );
+                })
+                .map(({ ph, state }) => {
+                  const c = docOf(ph.estimate_id);
+                  return (
+                    <tr key={ph.id}>
+                      <td>
+                        {c ? (
+                          <Link className="link-plain" href={`/estimates/${c.id}`}>
+                            <span className="ur-name mono">{c.doc_number}</span>
+                          </Link>
+                        ) : (
+                          <span className="ur-name mono">—</span>
+                        )}
+                        <div className="ur-add-phone">{c ? nameOf(c.lead_id) : ""}</div>
+                      </td>
+                      <td>{ph.name || "Progress payment"}</td>
+                      <td>
+                        {ph.due_date
+                          ? new Date(`${ph.due_date}T00:00:00`).toLocaleDateString("en-US")
+                          : "—"}
+                      </td>
+                      <td>
+                        <span
+                          className={
+                            "est-badge est-badge-" +
+                            (state === "paid"
+                              ? "signed"
+                              : state === "overdue"
+                                ? "declined"
+                                : "sent")
+                          }
+                        >
+                          {phaseStateLabel(state)}
+                        </span>
+                      </td>
+                      <td className="right mono">{moneyCents(ph.amount_cents)}</td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {/* The only figure on this page that is a to-do list rather than a
           number: these are signed jobs where the deposit never landed. */}
@@ -228,12 +323,12 @@ export default async function PaymentsPage() {
         )}
       </section>
 
-      {/* Said out loud because its absence is otherwise indistinguishable
-          from "nothing is late". */}
+      {/* Overdue counts only what was actually billed, so an untouched
+          schedule on an old contract never turns red on its own. */}
       <p className="est-tax-note">
-        There is no overdue figure here yet: progress payments are milestones (&ldquo;at completion
-        of rough-in&rdquo;), not dates, so nothing in a contract can be late. Due dates arrive with
-        progress billing.
+        A phase counts as overdue only once it has been billed and its due date has passed — an
+        unbilled phase is work not yet done, and the customer has never been asked for it. Bill a
+        phase from the contract&apos;s payment schedule.
       </p>
     </div>
   );

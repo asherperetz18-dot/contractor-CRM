@@ -43,7 +43,7 @@ export default async function EstimateDetailPage({
       .order("sort_order", { ascending: true }),
     supabase
       .from("portal_payments")
-      .select("id, estimate_id, kind, amount_cents, status, method, paid_at, created_at")
+      .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at")
       .eq("estimate_id", id)
       .order("created_at", { ascending: false }),
     supabase

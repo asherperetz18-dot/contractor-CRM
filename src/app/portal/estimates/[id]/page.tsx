@@ -10,7 +10,8 @@ import { PrintButton } from "@/components/print-button";
 import { markEstimateViewed } from "@/lib/actions/portal-estimates";
 import { PortalEstimateActions } from "./portal-estimate-actions";
 import { DepositPayment } from "./deposit-payment";
-import { getDepositState } from "@/lib/actions/portal-payments";
+import { PhasePayments } from "./phase-payments";
+import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your estimate" };
@@ -48,7 +49,7 @@ export default async function PortalEstimatePage({
     admin.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
-    admin.from("portal_payments").select("id, estimate_id, kind, amount_cents, status, method, paid_at, created_at").eq("estimate_id", id),
+    admin.from("portal_payments").select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at").eq("estimate_id", id),
     admin
       .from("company_profile")
       .select(
@@ -84,6 +85,9 @@ export default async function PortalEstimatePage({
         state={await getDepositState(id)}
         justPaid={paid === "1"}
       />
+      {/* Progress payments sit below the deposit: the deposit comes first
+          in time, so it comes first on the page. */}
+      <PhasePayments phases={await getPortalPhases(id)} />
       <PortalEstimateActions
         estimateId={id}
         status={estimate.status}

@@ -1278,6 +1278,8 @@ export type ScopeTemplate = {
 export type PortalPayment = {
   id: string;
   estimate_id: string;
+  /** Which schedule phase this settles. Null on a deposit. */
+  estimate_payment_id?: string | null;
   kind: "deposit" | "progress";
   amount_cents: number;
   status: "pending" | "succeeded" | "failed" | "cancelled";
@@ -1317,23 +1319,32 @@ export type CollectionsSummary = {
   /** Signed contracts whose deposit has not landed: the money to chase today. */
   awaitingDepositCount: number;
   awaitingDepositCents: number;
+  /** Progress phases billed and not yet paid. */
+  billedCents: number;
+  /** Billed, unpaid, and past its due date. */
+  overdueCents: number;
+  overdueCount: number;
 };
 
 /**
  * The money view over signed contracts.
  *
- * Deliberately has no "overdue" figure. Progress payments are milestones
- * ("at completion of rough-in"), not dates -- estimate_payments carries no
- * due date at all -- so nothing in the data can be late yet. Showing an
- * overdue number here would mean inventing one.
- *
  * Only signed estimates count as contract value. A draft or a sent
  * estimate is a proposal; counting it as money owed would inflate the
  * figure with work nobody has agreed to.
+ *
+ * Overdue counts only phases the contractor actually billed. An unbilled
+ * phase cannot be late however old the contract is -- the customer has
+ * never been asked for it.
  */
 export function collectionsSummary(
   contracts: SignedContract[],
-  payments: Pick<PortalPayment, "estimate_id" | "kind" | "status" | "amount_cents">[]
+  payments: Pick<
+    PortalPayment,
+    "estimate_id" | "estimate_payment_id" | "kind" | "status" | "amount_cents"
+  >[],
+  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at" | "due_date">[] = [],
+  today = new Date()
 ): CollectionsSummary {
   const collectedCents = paidTotalCents(payments);
   const contractValueCents = contracts.reduce((sum, c) => sum + (c.total_cents || 0), 0);
@@ -1347,6 +1358,19 @@ export function collectionsSummary(
   );
   const awaiting = contracts.filter((c) => (c.deposit_cents || 0) > 0 && !settledOn.has(c.id));
 
+  let billedCents = 0;
+  let overdueCents = 0;
+  let overdueCount = 0;
+  for (const phase of phases) {
+    const on = payments.filter((p) => p.estimate_payment_id === phase.id);
+    const state = phaseState(phase, on, today);
+    if (state === "billed" || state === "overdue") billedCents += phase.amount_cents || 0;
+    if (state === "overdue") {
+      overdueCents += phase.amount_cents || 0;
+      overdueCount += 1;
+    }
+  }
+
   return {
     collectedCents,
     contractValueCents,
@@ -1357,6 +1381,9 @@ export function collectionsSummary(
     clearingCents,
     awaitingDepositCount: awaiting.length,
     awaitingDepositCents: awaiting.reduce((sum, c) => sum + (c.deposit_cents || 0), 0),
+    billedCents,
+    overdueCents,
+    overdueCount,
   };
 }
 
@@ -1380,7 +1407,53 @@ export type EstimatePayment = {
   name: string;
   description: string | null;
   amount_cents: number;
+  /** When the contractor billed this phase. Null means not billed yet. */
+  requested_at?: string | null;
+  due_date?: string | null;
 };
+
+export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
+
+/**
+ * Where a single progress phase stands.
+ *
+ * Paid beats everything: money that has landed is not overdue no matter
+ * what the due date said. Clearing (an ACH transfer in flight) is
+ * likewise not overdue -- the customer has done their part and chasing
+ * them for it would be wrong.
+ */
+export function phaseState(
+  phase: Pick<EstimatePayment, "requested_at" | "due_date">,
+  payments: Pick<PortalPayment, "status">[],
+  today = new Date()
+): PhaseState {
+  if (payments.some((p) => p.status === "succeeded")) return "paid";
+  if (payments.some((p) => p.status === "pending")) return "clearing";
+  if (!phase.requested_at) return "unbilled";
+  if (phase.due_date) {
+    // Date-only comparison: a payment due today is not late today.
+    const due = new Date(`${phase.due_date}T23:59:59`);
+    if (today > due) return "overdue";
+  }
+  return "billed";
+}
+
+export function phaseStateLabel(state: PhaseState): string {
+  if (state === "paid") return "Paid";
+  if (state === "clearing") return "Clearing";
+  if (state === "overdue") return "Overdue";
+  if (state === "billed") return "Billed";
+  return "Not billed";
+}
+
+/** Default terms on a progress payment: net 7 from the day it is billed. */
+export const PROGRESS_PAYMENT_NET_DAYS = 7;
+
+export function defaultDueDate(from = new Date(), netDays = PROGRESS_PAYMENT_NET_DAYS): string {
+  const d = new Date(from);
+  d.setDate(d.getDate() + netDays);
+  return d.toISOString().slice(0, 10);
+}
 
 export const DEFAULT_DEPOSIT_PERCENT_BP = 1000; // 10.00%
 export const DEFAULT_DEPOSIT_CAP_CENTS = 100000; // $1,000
