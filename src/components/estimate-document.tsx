@@ -224,10 +224,10 @@ export function EstimateDocument({
                       {/* Blank on a lump-sum line rather than "1 ls", which
                           means nothing to a homeowner, and blank price
                           because it would only repeat the amount. */}
-                      <td className="estdoc-num">
+                      <td className="estdoc-num" data-label="Qty">
                         {measured ? `${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : ""}
                       </td>
-                      <td className="estdoc-num">
+                      <td className="estdoc-num" data-label="Price">
                         {measured ? moneyCents(item.unit_price_cents) : ""}
                       </td>
                     </>
@@ -236,7 +236,7 @@ export function EstimateDocument({
                       reads to a homeowner as "this part is worthless",
                       when it usually means it is covered by the priced
                       work above it. */}
-                  <td className="estdoc-num">
+                  <td className="estdoc-num" data-label="Amount">
                     {item.line_total_cents ? moneyCents(item.line_total_cents) : ""}
                   </td>
                 </tr>
@@ -277,10 +277,10 @@ export function EstimateDocument({
                     <div className="estdoc-strong">Deposit</div>
                     <div className="estdoc-muted">Due upon contract signing</div>
                   </td>
-                  <td className="estdoc-num">
+                  <td className="estdoc-num" data-label="Of total">
                     {pct(estimate.deposit_cents, estimate.total_cents)}
                   </td>
-                  <td className="estdoc-num">
+                  <td className="estdoc-num" data-label="Amount">
                     {moneyCents(estimate.deposit_cents)}
                     {/* A receipt on the contract itself: the homeowner can
                         see what they have already paid without digging out
@@ -305,8 +305,12 @@ export function EstimateDocument({
                     <div className="estdoc-strong">{p.name}</div>
                     {p.description && <div className="estdoc-muted">{p.description}</div>}
                   </td>
-                  <td className="estdoc-num">{pct(p.amount_cents, estimate.total_cents)}</td>
-                  <td className="estdoc-num">{moneyCents(p.amount_cents)}</td>
+                  <td className="estdoc-num" data-label="Of total">
+                    {pct(p.amount_cents, estimate.total_cents)}
+                  </td>
+                  <td className="estdoc-num" data-label="Amount">
+                    {moneyCents(p.amount_cents)}
+                  </td>
                 </tr>
               ))}
             </tbody>

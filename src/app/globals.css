@@ -4905,6 +4905,82 @@ body {
   }
 }
 
+/* On a phone the four-column line-item table is the whole problem: Qty,
+   Price and Amount are short but unshrinkable (nowrap numerals), so they
+   take ~63% of a 375px screen and leave the scope of work a ~109px
+   ribbon -- measured at 8 characters per line over 45 lines. The scope is
+   the part the homeowner actually has to read.
+
+   So below 600px the rows stop being table rows and become cards: the
+   description gets the full width, and the figures sit under it on one
+   labelled line. Tablets keep the real table, where it still fits. */
+@media (max-width: 600px) {
+  .estdoc-items,
+  .estdoc-items tbody,
+  .estdoc-items tr,
+  .estdoc-items td {
+    display: block;
+    width: auto;
+  }
+  /* Headers belong to columns that no longer exist; each cell carries its
+     own label instead. */
+  .estdoc-items thead {
+    display: none;
+  }
+  .estdoc-items tr {
+    border-bottom: 1px solid var(--line);
+    padding: 12px 0;
+  }
+  .estdoc-items tr:last-child {
+    border-bottom: none;
+  }
+  .estdoc-items td {
+    border-bottom: none;
+    padding: 0;
+  }
+  /* The figures flow onto one line under the description rather than
+     stacking three deep. */
+  .estdoc-items td.estdoc-num {
+    display: inline-block;
+    text-align: left;
+    margin: 8px 18px 0 0;
+  }
+  .estdoc-items td.estdoc-num:last-child {
+    margin-right: 0;
+  }
+  /* An unmeasured qty or an unpriced line renders an empty cell -- it must
+     not leave a floating "QTY" label with nothing after it. */
+  .estdoc-items td.estdoc-num:empty {
+    display: none;
+  }
+  .estdoc-items td.estdoc-num::before {
+    content: attr(data-label);
+    display: block;
+    font-family: var(--font-body);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+  }
+  /* The amount is what the eye goes to first on a phone. */
+  .estdoc-items tbody td.estdoc-num:last-child {
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .estdoc-schedule-table td {
+    padding: 0;
+  }
+  /* Signing and paying are why the customer opened the link at all, and
+     both are done thumb-first. Full-width targets, primary on top
+     (the markup puts btn-primary last, so the row reverses). */
+  .estdoc-sign-actions {
+    flex-direction: column-reverse;
+  }
+  .estdoc-sign-actions button {
+    width: 100%;
+  }
+}
+
 @media print {
   /* The app shell is height:100vh + overflow:hidden so the sidebar can
      scroll on screen. Left alone it clips a printout to exactly one page,
