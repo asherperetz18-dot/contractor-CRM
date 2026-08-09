@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { AdminGate } from "@/components/admin-gate";
 import { moneyCents } from "@/lib/data/types";
 import { getStripeEnv } from "@/lib/stripe-env";
+import { StripeDoctor } from "./stripe-doctor";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,8 @@ export default async function PortalPaymentsPage() {
           Stripe is connected{env.webhookSecret ? "" : " — but STRIPE_WEBHOOK_SECRET is missing, so payments will not be recorded as paid"}.
         </p>
       )}
+
+      <StripeDoctor />
 
       {rows.length > 0 && (
         <>

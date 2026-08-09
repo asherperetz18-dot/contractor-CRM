@@ -5342,6 +5342,19 @@ body {
   grid-template-columns: repeat(6, 1fr);
 }
 
+/* Stripe connection check */
+.pp-checks,
+.pp-notes {
+  margin: 12px 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.pp-checks li.pp-bad {
+  color: #a03b3b;
+  font-weight: 500;
+}
+
 /* Estimate links on the portal home page */
 .portal-est {
   display: flex;
