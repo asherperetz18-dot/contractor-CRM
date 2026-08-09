@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -428,6 +429,10 @@ export async function sendEstimateToCustomer(
     .from("estimates")
     .update({ status: "Sent", sent_at: now, issued_at: now, updated_at: now })
     .eq("id", estimateId);
+
+  // The proposal is out, so the board should say so. Revives a lead
+  // written off as Lost, since sending an estimate contradicts that.
+  await advanceStageOnEstimateSent(admin, estimate.lead_id, guard.companyId);
 
   // The contractor signs too -- the reference product shows documents as
   // "1 of 2 signed" with the rep already on them. Recording it at send

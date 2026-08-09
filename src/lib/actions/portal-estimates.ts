@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
+import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {
@@ -126,6 +127,12 @@ export async function signEstimateAsCustomer(
       .from("leads")
       .update({ value: estimate.total_cents / 100 })
       .eq("id", estimate.lead_id);
+
+    // A signed contract is won work, whatever the board still says. Left
+    // to a rep to update by hand, this is exactly the step that gets
+    // missed -- and a won job sitting in "Appointment Scheduled" is
+    // missing from the pipeline's won figure.
+    await advanceStageOnEstimateSigned(admin, estimate.lead_id, estimate.company_id);
   }
 
   revalidatePath("/estimates");
