@@ -33,6 +33,24 @@ export type DocumentCustomer = {
 };
 
 /**
+ * Who the customer is dealing with.
+ *
+ * Names only, deliberately: the company's own phone and email are
+ * already in the header, and a rep's direct number is usually their
+ * personal mobile -- which should not be published on a document that
+ * gets forwarded, printed and kept.
+ *
+ * The dispatcher is first-name only. They are usually the voice on the
+ * phone before anyone visits, so the customer recognises them, but a
+ * signed contract does not need an internal coordinator's full name on
+ * it.
+ */
+export type DocumentTeam = {
+  repName: string | null;
+  dispatcherFirstName: string | null;
+};
+
+/**
  * Folds unpriced lines into the priced line they belong to.
  *
  * A line with no amount reads to a homeowner as either an omission or a
@@ -99,6 +117,7 @@ export function EstimateDocument({
   paid = [],
   company,
   customer,
+  team,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -107,6 +126,7 @@ export function EstimateDocument({
   paid?: PortalPayment[];
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
+  team?: DocumentTeam | null;
 }) {
   const sig = signatureProgress(signers);
 
@@ -171,6 +191,18 @@ export function EstimateDocument({
           <div className="estdoc-label">Project</div>
           <div className="estdoc-strong">{estimate.title || "Estimate"}</div>
         </div>
+        {/* Who to ask for. A homeowner reading this weeks later should not
+            have to work out who they spoke to. Omitted entirely when
+            neither is known, rather than printing an empty heading. */}
+        {(team?.repName || team?.dispatcherFirstName) && (
+          <div>
+            <div className="estdoc-label">Your team</div>
+            {team.repName && <div className="estdoc-strong">{team.repName}</div>}
+            {team.dispatcherFirstName && (
+              <div className="estdoc-muted">{team.dispatcherFirstName} · scheduling</div>
+            )}
+          </div>
+        )}
       </section>
 
       {estimate.customer_message && (

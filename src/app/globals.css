@@ -4760,9 +4760,12 @@ body {
   color: var(--ink-soft);
   margin-bottom: 4px;
 }
+/* Prepared for / Project / Your team. auto-fit rather than a fixed
+   column count so the row still reads correctly on an estimate with no
+   team named on it. */
 .estdoc-parties {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 24px;
   margin-bottom: 20px;
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
+import { getEstimateTeam } from "@/lib/estimate-team";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -79,6 +80,7 @@ export default async function PortalEstimatePage({
         paid={(paidRows ?? []) as PortalPayment[]}
         company={company ?? null}
         customer={viewer.lead}
+        team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}
       />
       <DepositPayment
         estimateId={id}
