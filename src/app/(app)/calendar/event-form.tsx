@@ -258,9 +258,21 @@ export function EventForm({
     setResultPending(true);
     setError("");
 
-    // The outcome itself first: it's the thing the red badge and the
-    // follow-up cron both read, so it must land even if a later step
-    // fails. Everything after it is optional detail.
+    // The value goes first, because the server now refuses a Showed on a
+    // lead worth nothing -- writing the outcome first would have it
+    // reject the very save that was about to supply the number.
+    if (outcome === "Showed" && parsedResultValue > 0 && parsedResultValue !== lead.value) {
+      const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
+      if (valueResult?.error) {
+        setResultPending(false);
+        setError(valueResult.error);
+        return;
+      }
+    }
+
+    // Then the outcome: it's the thing the red badge and the follow-up
+    // cron both read, so it must land even if a later step fails.
+    // Everything after it is optional detail.
     const statusResult = await setEventResult(event.id, outcome);
     if (statusResult?.error) {
       setResultPending(false);
@@ -274,14 +286,6 @@ export function EventForm({
       if (stageResult?.error) {
         setResultPending(false);
         setError(stageResult.error);
-        return;
-      }
-    }
-    if (outcome === "Showed" && parsedResultValue > 0 && parsedResultValue !== lead.value) {
-      const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
-      if (valueResult?.error) {
-        setResultPending(false);
-        setError(valueResult.error);
         return;
       }
     }
@@ -832,6 +836,32 @@ export function EventForm({
             </div>
           </Field>
 
+          {/* Directly under Outcome, because it is a consequence of
+              picking Showed -- not a field to discover further down the
+              form after the button has already refused to work. */}
+          {outcomeNeedsValue && (
+            <Field label="Estimated job value">
+              <input
+                className="est-item-price"
+                inputMode="decimal"
+                // Lands the cursor here the moment Showed is picked. The
+                // strongest way to require something is to put the caret
+                // in it, not to grey out a button elsewhere.
+                autoFocus
+                value={resultValue}
+                onChange={(e) => setResultValue(e.target.value)}
+                placeholder={lead.value ? String(lead.value) : "18000"}
+                disabled={readOnly || resultPending}
+              />
+              {!resultValueOk && (
+                <p className="est-tax-note">
+                  Required on a Showed. Every money figure on the pipeline is a sum of this, so a
+                  visit logged without one reads as a slow month rather than as missing data.
+                </p>
+              )}
+            </Field>
+          )}
+
           <div className="form-grid">
             <Field label="Move Lead to Stage">
               <select
@@ -847,25 +877,6 @@ export function EventForm({
               </select>
             </Field>
           </div>
-          {outcomeNeedsValue && (
-            <Field label="Estimated job value">
-              <input
-                className="est-item-price"
-                inputMode="decimal"
-                value={resultValue}
-                onChange={(e) => setResultValue(e.target.value)}
-                placeholder={lead.value ? String(lead.value) : "18000"}
-                disabled={readOnly || resultPending}
-              />
-              {!resultValueOk && (
-                <p className="est-tax-note">
-                  Required on a Showed. Every money figure on the pipeline is a sum of this, so a
-                  visit logged without one leaves a hole in the forecast that nobody notices.
-                </p>
-              )}
-            </Field>
-          )}
-
           <Field label="Result Note">
             <textarea
               value={resultNote}
@@ -881,7 +892,14 @@ export function EventForm({
           </p>
           {!readOnly && (
             <div className="modal-actions">
-              <div>{resultSaved && <span className="cp-saved">✓ Result saved</span>}</div>
+              <div>
+                {resultSaved && <span className="cp-saved">✓ Result saved</span>}
+                {/* A greyed-out button with no reason beside it is how
+                    people conclude the app is broken. */}
+                {!resultValueOk && (
+                  <span className="est-tax-note">Enter the job value to save this result.</span>
+                )}
+              </div>
               <div>
                 <button
                   type="button"

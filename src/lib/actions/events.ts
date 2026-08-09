@@ -168,6 +168,32 @@ export async function rescheduleEvent(id: string, date: string, time?: string | 
  */
 export async function setEventResult(id: string, status: EventStatus) {
   const supabase = await createClient();
+
+  /**
+   * A Showed has to carry a job value.
+   *
+   * Enforced here rather than only in the form, because a disabled
+   * button is a suggestion -- this is the rule. Every money figure on
+   * the pipeline sums leads.value, so a visit marked Showed with nothing
+   * against it quietly reads as a slow month rather than as missing
+   * data.
+   *
+   * Only Showed. There is nothing to price on a no-show, and demanding a
+   * number there would only produce zeros.
+   */
+  if (status === "Showed") {
+    const { data: withLead } = await supabase
+      .from("events")
+      .select("lead_id, leads(value)")
+      .eq("id", id)
+      .maybeSingle<{ lead_id: string | null; leads: { value: number } | null }>();
+    if (withLead?.lead_id && !((withLead.leads?.value ?? 0) > 0)) {
+      return {
+        error: "Enter the estimated job value before marking this appointment as Showed.",
+      };
+    }
+  }
+
   const { data, error } = await supabase
     .from("events")
     .update({ status })
