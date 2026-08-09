@@ -17,11 +17,28 @@ export function DepositPayment({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  if (state.paid || justPaid) {
+  // Confirmed money: the payment record says it settled.
+  if (state.paid) {
     return (
       <div className="portal-card estdoc-result estdoc-result-ok">
         <strong>Deposit received.</strong> Thank you — your contractor has been notified.
         {state.paidAt && ` Paid ${new Date(state.paidAt).toLocaleDateString("en-US")}.`}
+      </div>
+    );
+  }
+
+  // Back from Stripe, but nothing has confirmed yet. This used to claim
+  // "Deposit received" on the strength of ?paid=1 alone -- a value the
+  // browser carries back from the redirect, which says only that the
+  // customer returned, not that any money moved. Telling someone their
+  // deposit arrived when it has not is the one thing this panel must
+  // never do: they stop chasing it, and so does the contractor.
+  if (justPaid) {
+    return (
+      <div className="portal-card estdoc-result">
+        <strong>Thanks — your payment is being confirmed.</strong> Bank transfers take a few
+        business days to clear. This page updates on its own once it is confirmed, and your
+        contractor sees it at the same time.
       </div>
     );
   }

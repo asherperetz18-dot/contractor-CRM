@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
 import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
+import { resolvePaymentMethod } from "@/lib/stripe-method";
 
 export type EndpointInfo = {
   url: string;
@@ -248,7 +249,7 @@ export async function reconcilePendingPayments(): Promise<{
     if (session.payment_status === "paid") {
       patch.status = "succeeded";
       patch.paid_at = new Date().toISOString();
-      patch.method = session.payment_method_types?.[0] ?? null;
+      patch.method = await resolvePaymentMethod(stripe, session);
       patch.stripe_payment_intent_id =
         typeof session.payment_intent === "string" ? session.payment_intent : null;
       notes.push(`${doc}: marked paid.`);
@@ -260,7 +261,8 @@ export async function reconcilePendingPayments(): Promise<{
       // days. Record the method so the CRM can say "bank transfer
       // clearing" rather than showing nothing, but leave the status
       // alone: this is not a state change, so it is not counted as one.
-      if (session.payment_method_types?.[0]) patch.method = session.payment_method_types[0];
+      const inFlightMethod = await resolvePaymentMethod(stripe, session);
+      if (inFlightMethod) patch.method = inFlightMethod;
       await admin.from("portal_payments").update(patch).eq("id", r.id);
       notes.push(`${doc}: still ${session.status}/${session.payment_status}, left pending.`);
       continue;

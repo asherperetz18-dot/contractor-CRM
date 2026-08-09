@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
+import { resolvePaymentMethod } from "@/lib/stripe-method";
 
 // Stripe signs the exact bytes it sent. Next's parsed body would not
 // match, so the raw text is read and passed through untouched.
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
       .from("portal_payments")
       .update({
         status: settled ? "succeeded" : "pending",
-        method: session.payment_method_types?.[0] ?? null,
+        method: await resolvePaymentMethod(stripeClient(env), session),
         stripe_payment_intent_id:
           typeof session.payment_intent === "string" ? session.payment_intent : null,
         paid_at: settled ? new Date().toISOString() : null,
