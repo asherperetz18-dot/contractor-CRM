@@ -138,6 +138,9 @@ export function EventForm({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<EventInput>(toInput(event, initialDate));
+  // Snapshot of how the appointment looked when opened, so closing can
+  // tell "nothing touched" from "about to lose work".
+  const [openedWith] = useState<EventInput>(() => toInput(event, initialDate));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("Appointment");
@@ -293,6 +296,30 @@ export function EventForm({
     router.push(`/contacts?openLead=${lead.id}`);
   }
 
+  /**
+   * Closing without saving.
+   *
+   * Autosave was the obvious answer here and the wrong one: this modal
+   * has Cancel and Delete, Status drives the no-show and reminder
+   * automation, and a date field emits "08/0" as you type it. Saving
+   * silently would make a mis-click permanent and could fire a real
+   * text. Asking before discarding solves the actual problem -- losing
+   * work to a stray click on the backdrop -- without any of that.
+   *
+   * The unsaved result note counts too: that tab says nothing is stored
+   * until Save Result, which makes it exactly the thing people lose.
+   */
+  const isDirty =
+    !readOnly &&
+    (JSON.stringify(form) !== JSON.stringify(openedWith) ||
+      resultNote.trim() !== "" ||
+      pendingOutcome !== "");
+
+  function requestClose() {
+    if (isDirty && !window.confirm("Discard your unsaved changes to this appointment?")) return;
+    onCancel();
+  }
+
   function callPhone(phone: string) {
     window.dispatchEvent(
       new CustomEvent("crm:call", { detail: { phone, leadId: lead?.id } })
@@ -387,7 +414,7 @@ export function EventForm({
   }
 
   return (
-    <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={onCancel} wide>
+    <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={requestClose} wide>
       {lead && (
         <div className="contact-card">
           <div className="contact-card-name">{leadDisplayName(lead)}</div>
@@ -910,7 +937,10 @@ export function EventForm({
       {(!lead || tab !== "Lead") && (
         <>
           {error && <p className="error-note">{error}</p>}
-          <div className="modal-actions">
+          {/* Pinned to the bottom of the modal: this form is taller than
+              the viewport, so Save used to sit below the fold and had to
+              be scrolled to before anything could be committed. */}
+          <div className="modal-actions modal-actions-sticky">
             <div className="modal-actions-left">
               {event && !readOnly && (
                 <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
@@ -919,7 +949,7 @@ export function EventForm({
               )}
             </div>
             <div>
-              <button type="button" className="btn-ghost" onClick={onCancel}>
+              <button type="button" className="btn-ghost" onClick={requestClose}>
                 {readOnly ? "Close" : "Cancel"}
               </button>
               {!readOnly && (

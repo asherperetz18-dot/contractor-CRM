@@ -5880,3 +5880,16 @@ textarea.est-item-desc:disabled {
   color: #fff;
   border-color: var(--ink);
 }
+
+/* Appointment modal: keep Save reachable without scrolling. The form is
+   taller than the viewport, so the action row is pinned to the bottom of
+   the scrolling body rather than sitting at the end of the content. */
+.modal-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper, #fff);
+  border-top: 1px solid var(--line);
+  padding: 12px 0 4px;
+  margin-top: 8px;
+  z-index: 2;
+}
