@@ -24,6 +24,7 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
   const router = useRouter();
   const [estimates, setEstimates] = useState<LeadEstimateSummary[] | null>(null);
   const [canCreate, setCanCreate] = useState(false);
+  const [paidCents, setPaidCents] = useState(0);
   const [listOpen, setListOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -35,6 +36,7 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
       if (cancelled) return;
       setEstimates(res.estimates);
       setCanCreate(res.canCreate);
+      setPaidCents(res.paidCents);
     })();
     return () => {
       cancelled = true;
@@ -76,6 +78,13 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
       >
         {pending ? "Opening…" : count === 0 ? "+ Estimate" : `Estimates (${count})`}
       </button>
+      {/* Money in, at a glance -- a rep should not have to open Admin
+          Settings to find out whether the deposit landed. */}
+      {paidCents > 0 && (
+        <span className="lead-est-paid" title="Paid online through the portal">
+          {moneyCents(paidCents)} paid
+        </span>
+      )}
 
       {listOpen && count > 1 && (
         <div className="lead-est-menu">

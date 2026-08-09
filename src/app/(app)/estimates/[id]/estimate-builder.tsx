@@ -20,6 +20,7 @@ import {
   type EstimateItem,
   type EstimateSigner,
   type EstimatePayment,
+  type PortalPayment,
 } from "@/lib/data/types";
 import {
   markEstimateSent,
@@ -89,6 +90,7 @@ export function EstimateBuilder({
   items,
   signers,
   payments,
+  paid,
   lead,
   canEdit,
 }: {
@@ -96,6 +98,7 @@ export function EstimateBuilder({
   items: EstimateItem[];
   signers: EstimateSigner[];
   payments: EstimatePayment[];
+  paid: PortalPayment[];
   lead: BuilderLead | null;
   canEdit: boolean;
 }) {
@@ -673,6 +676,7 @@ export function EstimateBuilder({
         depositPercentBp={estimate.deposit_percent_bp}
         depositCapCents={estimate.deposit_cap_cents}
         payments={payments}
+        paid={paid}
         locked={locked}
         onChanged={() => router.refresh()}
       />

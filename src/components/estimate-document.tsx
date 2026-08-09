@@ -2,11 +2,14 @@ import {
   moneyCents,
   paymentPercentOfTotal,
   quantityIsMeaningful,
+  depositPayment,
+  paymentMethodLabel,
   signatureProgress,
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
   type EstimatePayment,
+  type PortalPayment,
 } from "@/lib/data/types";
 
 export type DocumentCompany = {
@@ -93,6 +96,7 @@ export function EstimateDocument({
   items,
   signers,
   payments,
+  paid = [],
   company,
   customer,
 }: {
@@ -100,6 +104,7 @@ export function EstimateDocument({
   items: EstimateItem[];
   signers: EstimateSigner[];
   payments: EstimatePayment[];
+  paid?: PortalPayment[];
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
 }) {
@@ -109,6 +114,7 @@ export function EstimateDocument({
   // measurement: every cell would be blank, and Price would only repeat
   // Amount. A document with one lump-sum line reads as Description and
   // Amount, which is what a homeowner actually wants to see.
+  const depositPaid = depositPayment(paid);
   const groups = groupIncludedItems(items);
   // Only the priced parents remain as rows, so the columns are judged on
   // those -- an unpriced "1 ls" that is now folded in must not keep an
@@ -274,7 +280,23 @@ export function EstimateDocument({
                   <td className="estdoc-num">
                     {pct(estimate.deposit_cents, estimate.total_cents)}
                   </td>
-                  <td className="estdoc-num">{moneyCents(estimate.deposit_cents)}</td>
+                  <td className="estdoc-num">
+                    {moneyCents(estimate.deposit_cents)}
+                    {/* A receipt on the contract itself: the homeowner can
+                        see what they have already paid without digging out
+                        a card statement. */}
+                    {depositPaid && (
+                      <div className="estdoc-paid">
+                        PAID
+                        {depositPaid.paid_at
+                          ? " " + new Date(depositPaid.paid_at).toLocaleDateString("en-US")
+                          : ""}
+                        {paymentMethodLabel(depositPaid.method)
+                          ? " · " + paymentMethodLabel(depositPaid.method)
+                          : ""}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ) : null}
               {payments.map((p) => (

@@ -1264,6 +1264,46 @@ export type ScopeTemplate = {
   updated_at: string;
 };
 
+// A payment taken online through the portal. Distinct from
+// EstimatePayment, which is a *scheduled* phase -- this is money that
+// actually arrived.
+export type PortalPayment = {
+  id: string;
+  estimate_id: string;
+  kind: "deposit" | "progress";
+  amount_cents: number;
+  status: "pending" | "succeeded" | "failed" | "cancelled";
+  method: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
+
+/** Only settled money counts. A pending ACH transfer has not arrived. */
+export function paidTotalCents(payments: Pick<PortalPayment, "status" | "amount_cents">[]): number {
+  return payments
+    .filter((p) => p.status === "succeeded")
+    .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+}
+
+export function depositPayment(
+  payments: Pick<PortalPayment, "kind" | "status" | "paid_at" | "method" | "amount_cents">[]
+) {
+  return payments.find((p) => p.kind === "deposit" && p.status === "succeeded") ?? null;
+}
+
+/** An ACH transfer still clearing -- worth showing, but it is not money yet. */
+export function pendingPayment(
+  payments: Pick<PortalPayment, "status" | "amount_cents" | "method">[]
+) {
+  return payments.find((p) => p.status === "pending") ?? null;
+}
+
+export function paymentMethodLabel(method: string | null): string {
+  if (method === "us_bank_account") return "bank transfer";
+  if (method === "card") return "card";
+  return method ?? "";
+}
+
 export type EstimatePayment = {
   id: string;
   estimate_id: string;

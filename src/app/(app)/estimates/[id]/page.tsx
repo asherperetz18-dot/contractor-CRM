@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment } from "@/lib/data/types";
+import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export default async function EstimateDetailPage({
     .maybeSingle<Estimate>();
   if (!estimate) notFound();
 
-  const [{ data: items }, { data: signers }, { data: payments }, { data: lead }] = await Promise.all([
+  const [{ data: items }, { data: signers }, { data: payments }, { data: paidRows }, { data: lead }] = await Promise.all([
     supabase
       .from("estimate_items")
       .select("*")
@@ -42,6 +42,11 @@ export default async function EstimateDetailPage({
       .eq("estimate_id", id)
       .order("sort_order", { ascending: true }),
     supabase
+      .from("portal_payments")
+      .select("id, estimate_id, kind, amount_cents, status, method, paid_at, created_at")
+      .eq("estimate_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
       .from("leads")
       .select("id, first_name, last_name, email, phone, address")
       .eq("id", estimate.lead_id)
@@ -54,6 +59,7 @@ export default async function EstimateDetailPage({
       items={(items ?? []) as EstimateItem[]}
       signers={(signers ?? []) as EstimateSigner[]}
       payments={(payments ?? []) as EstimatePayment[]}
+      paid={(paidRows ?? []) as PortalPayment[]}
       lead={lead ?? null}
       canEdit={canCreateEstimates(profile)}
     />

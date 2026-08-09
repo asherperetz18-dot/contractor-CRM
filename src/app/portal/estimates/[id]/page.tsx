@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
-import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment } from "@/lib/data/types";
+import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -44,10 +44,11 @@ export default async function PortalEstimatePage({
 
   await markEstimateViewed(id);
 
-  const [{ data: items }, { data: signers }, { data: payments }, { data: company }] = await Promise.all([
+  const [{ data: items }, { data: signers }, { data: payments }, { data: paidRows }, { data: company }] = await Promise.all([
     admin.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
+    admin.from("portal_payments").select("id, estimate_id, kind, amount_cents, status, method, paid_at, created_at").eq("estimate_id", id),
     admin
       .from("company_profile")
       .select(
@@ -74,6 +75,7 @@ export default async function PortalEstimatePage({
         items={(items ?? []) as EstimateItem[]}
         signers={signerRows}
         payments={(payments ?? []) as EstimatePayment[]}
+        paid={(paidRows ?? []) as PortalPayment[]}
         company={company ?? null}
         customer={viewer.lead}
       />

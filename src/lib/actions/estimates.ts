@@ -19,6 +19,7 @@ import {
   computeEstimateTotals,
   lineTotalCents,
   parseQuantity,
+  paidTotalCents,
   type EstimateStatus,
 } from "@/lib/data/types";
 
@@ -639,12 +640,19 @@ export type LeadEstimateSummary = {
   total_cents: number;
 };
 
+export type LeadEstimatesResult = {
+  estimates: LeadEstimateSummary[];
+  canCreate: boolean;
+  /** Settled money across every estimate on this lead. */
+  paidCents: number;
+};
+
 /** Estimates on one lead, newest first, for the lead modal's button. */
 export async function getEstimatesForLead(
   leadId: string
-): Promise<{ estimates: LeadEstimateSummary[]; canCreate: boolean }> {
+): Promise<LeadEstimatesResult> {
   const profile = await getCurrentProfile();
-  if (!profile || !canViewEstimates(profile)) return { estimates: [], canCreate: false };
+  if (!profile || !canViewEstimates(profile)) return { estimates: [], canCreate: false, paidCents: 0 };
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -655,7 +663,18 @@ export async function getEstimatesForLead(
     .order("created_at", { ascending: false })
     .returns<LeadEstimateSummary[]>();
 
-  return { estimates: data ?? [], canCreate: canCreateEstimates(profile) };
+  const ids = (data ?? []).map((e) => e.id);
+  let paidCents = 0;
+  if (ids.length) {
+    const { data: paidRows } = await supabase
+      .from("portal_payments")
+      .select("amount_cents, status")
+      .in("estimate_id", ids)
+      .returns<{ amount_cents: number; status: string }[]>();
+    paidCents = paidTotalCents((paidRows ?? []) as never);
+  }
+
+  return { estimates: data ?? [], canCreate: canCreateEstimates(profile), paidCents };
 }
 
 /**

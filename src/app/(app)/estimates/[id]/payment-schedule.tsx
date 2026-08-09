@@ -10,7 +10,11 @@ import {
   paymentPercentOfTotal,
   scheduleBalance,
   splitEvenlyCents,
+  depositPayment,
+  pendingPayment,
+  paymentMethodLabel,
   type EstimatePayment,
+  type PortalPayment,
 } from "@/lib/data/types";
 import { generateEstimateSchedule, saveEstimatePayments } from "@/lib/actions/estimates";
 
@@ -34,6 +38,7 @@ export function PaymentSchedule({
   depositPercentBp,
   depositCapCents,
   payments,
+  paid,
   locked,
   onChanged,
 }: {
@@ -42,6 +47,7 @@ export function PaymentSchedule({
   depositPercentBp: number;
   depositCapCents: number;
   payments: EstimatePayment[];
+  paid: PortalPayment[];
   locked: boolean;
   onChanged: () => void;
 }) {
@@ -56,6 +62,10 @@ export function PaymentSchedule({
   const deposit = depositCents(totalCents, depositPercentBp, depositCapCents);
   const balance = balanceAfterDepositCents(totalCents, deposit);
   const capped = Math.round((totalCents * depositPercentBp) / 10000) > deposit && totalCents > 0;
+
+  // Money actually received, as opposed to money scheduled.
+  const depositPaid = depositPayment(paid);
+  const settling = pendingPayment(paid);
 
   const parsed = rows.map((r) => ({ amount_cents: centsFromInput(r.amount) }));
   const bal = scheduleBalance(totalCents, deposit, parsed);
@@ -178,7 +188,22 @@ export function PaymentSchedule({
             <td className="right mono">
               {totalCents ? `${paymentPercentOfTotal(deposit, totalCents)!.toFixed(2)}%` : "—"}
             </td>
-            <td className="right mono">{moneyCents(deposit)}</td>
+            <td className="right mono">
+              {moneyCents(deposit)}
+              {depositPaid && (
+                <div className="est-paid-flag">
+                  Paid {paymentMethodLabel(depositPaid.method)}
+                  {depositPaid.paid_at
+                    ? " · " + new Date(depositPaid.paid_at).toLocaleDateString("en-US")
+                    : ""}
+                </div>
+              )}
+              {!depositPaid && settling && (
+                <div className="est-settling-flag">
+                  {paymentMethodLabel(settling.method) || "Payment"} clearing
+                </div>
+              )}
+            </td>
             <td></td>
           </tr>
 
