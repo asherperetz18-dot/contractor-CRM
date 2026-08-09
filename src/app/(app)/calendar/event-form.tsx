@@ -48,9 +48,18 @@ import { moveLeadStage } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
+import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
-type Tab = "Appointment" | "Result" | "Lead" | "Tasks" | "Estimates" | "Texts" | "Notes";
+type Tab =
+  | "Appointment"
+  | "Result"
+  | "Lead"
+  | "Tasks"
+  | "Estimates"
+  | "Photos"
+  | "Texts"
+  | "Notes";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -496,7 +505,7 @@ export function EventForm({
 
       {lead && (
         <div className="chip-row no-margin ta-tabs">
-          {(["Appointment", "Result", "Lead", "Tasks", "Estimates", "Texts", "Notes"] as Tab[]).map(
+          {(["Appointment", "Result", "Lead", "Tasks", "Estimates", "Photos", "Texts", "Notes"] as Tab[]).map(
             (t) => (
               <button
                 key={t}
@@ -894,6 +903,11 @@ export function EventForm({
             </table>
           )}
         </div>
+      )}
+
+      {/* Only on a saved appointment: a photo needs an event to belong to. */}
+      {lead && event && tab === "Photos" && (
+        <VisitMedia leadId={lead.id} eventId={event.id} readOnly={readOnly} />
       )}
 
       {lead && tab === "Texts" && (

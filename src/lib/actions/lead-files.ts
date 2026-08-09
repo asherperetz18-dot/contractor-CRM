@@ -11,13 +11,20 @@ import {
   uploadFileToDrive,
 } from "./google-drive";
 
-const MAX_SUPABASE_FILE_BYTES = 1500 * 1024;
+// Matches serverActions.bodySizeLimit in next.config. This was 1500KB,
+// which is below a single phone photo -- the reason no rep had ever
+// successfully uploaded one. Images are downscaled in the browser before
+// they get here, so this ceiling is now only reached by video.
+const MAX_SUPABASE_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_DRIVE_FILE_BYTES = 20 * 1024 * 1024;
 const BUCKET = "lead-files";
 
 export async function uploadLeadFile(
   leadId: string,
-  formData: FormData
+  formData: FormData,
+  // Set when the photo was taken on a specific visit, so it sits on that
+  // appointment as well as rolling up to the contact.
+  eventId?: string | null
 ): Promise<{ error?: string }> {
   const file = formData.get("file");
   if (!(file instanceof File) || !file.name) return { error: "No file selected." };
@@ -30,7 +37,7 @@ export async function uploadLeadFile(
 
   if (drive) {
     if (file.size > MAX_DRIVE_FILE_BYTES) {
-      return { error: "File is too large — please use one under 20MB." };
+      return { error: "That file is over 20MB — Drive uploads are capped there for now." };
     }
     const leadFolderId = await getOrCreateLeadDriveFolder(leadId, profile.company_id);
     if (!leadFolderId) return { error: "Could not prepare this contact's Drive folder." };
@@ -47,6 +54,7 @@ export async function uploadLeadFile(
       file_size: file.size,
       content_type: file.type || null,
       storage_provider: "google_drive",
+      event_id: eventId ?? null,
       company_id: profile.company_id,
     });
     if (error) return { error: error.message };
@@ -57,7 +65,10 @@ export async function uploadLeadFile(
   }
 
   if (file.size > MAX_SUPABASE_FILE_BYTES) {
-    return { error: "File is too large — please use one under 1500KB, or connect Google Drive in Settings for larger files." };
+    return {
+      error:
+        "That file is over 25MB. Connect Google Drive in Settings, or record a shorter video.",
+    };
   }
 
   const admin = createAdminClient();
@@ -82,6 +93,7 @@ export async function uploadLeadFile(
     file_size: file.size,
     content_type: file.type || null,
     storage_provider: "supabase",
+    event_id: eventId ?? null,
     company_id: profile.company_id,
   });
   if (error) return { error: error.message };

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { LeadFile, Profile } from "@/lib/data/types";
 import { deleteLeadFile, uploadLeadFile } from "@/lib/actions/lead-files";
+import { downscaleImage } from "@/lib/images/downscale";
 
 function formatSize(bytes: number | null): string {
   if (bytes == null) return "";
@@ -39,10 +40,13 @@ export function LeadFilesPanel({
   const sorted = [...files].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const chosen = e.target.files?.[0];
+    if (!chosen) return;
     setPending(true);
     setError("");
+    // Same shrink as the visit uploader: a 12MB phone photo becomes a
+    // few hundred KB before it ever leaves the device.
+    const file = await downscaleImage(chosen);
     const formData = new FormData();
     formData.append("file", file);
     const result = await uploadLeadFile(leadId, formData);
