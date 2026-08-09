@@ -5984,3 +5984,22 @@ textarea.est-item-desc:disabled {
     flex: 1;
   }
 }
+
+/* The contracts behind a dispatcher's commission total */
+.comm-job td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border-top: none;
+}
+.comm-job td:first-child {
+  padding-left: 24px;
+}
+.comm-job-link {
+  color: var(--accent, #c7691b);
+  font-weight: 600;
+}
+.comm-job td:first-child a:hover .comm-job-link {
+  text-decoration: underline;
+}

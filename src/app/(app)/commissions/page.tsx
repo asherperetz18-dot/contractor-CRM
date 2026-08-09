@@ -1,3 +1,5 @@
+import { Fragment } from "react";
+import Link from "next/link";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, moneyCents } from "@/lib/data/types";
 import { getDispatcherCommissions } from "@/lib/actions/dispatcher";
@@ -86,28 +88,53 @@ export default async function CommissionsPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.dispatcherId}>
-                  <td>
-                    <div className="ur-name">{r.dispatcherName}</div>
-                    {r.dispatcherId === profile.id && (
-                      <div className="ur-add-phone">you</div>
-                    )}
-                  </td>
-                  <td className="right mono">{r.jobsSold}</td>
-                  <td className="right mono">{moneyCents(r.contractCents)}</td>
-                  <td className="right mono">
-                    <strong>{moneyCents(r.commissionCents)}</strong>
-                  </td>
-                  <td className="right mono">
-                    {moneyCents(r.earnedOnCollectedCents)}
-                    {r.earnedOnCollectedCents < r.commissionCents && (
-                      <div className="ur-add-phone">
-                        {moneyCents(r.commissionCents - r.earnedOnCollectedCents)} still owed on the
-                        contract
-                      </div>
-                    )}
-                  </td>
-                </tr>
+                <Fragment key={r.dispatcherId}>
+                  <tr>
+                    <td>
+                      <div className="ur-name">{r.dispatcherName}</div>
+                      {r.dispatcherId === profile.id && (
+                        <div className="ur-add-phone">you</div>
+                      )}
+                    </td>
+                    <td className="right mono">{r.jobsSold}</td>
+                    <td className="right mono">{moneyCents(r.contractCents)}</td>
+                    <td className="right mono">
+                      <strong>{moneyCents(r.commissionCents)}</strong>
+                    </td>
+                    <td className="right mono">
+                      {moneyCents(r.earnedOnCollectedCents)}
+                      {r.earnedOnCollectedCents < r.commissionCents && (
+                        <div className="ur-add-phone">
+                          {moneyCents(r.commissionCents - r.earnedOnCollectedCents)} still owed on
+                          the contract
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                  {/* The contracts behind the total. A commission figure
+                      you cannot check is one people argue with, however
+                      right it is. */}
+                  {r.jobs.map((j) => (
+                    <tr key={j.docNumber} className="comm-job">
+                      <td>
+                        {/* Straight to the contract: the first question
+                            after "why is this the number" is "show me the
+                            job", and retyping a doc number into search is
+                            not an answer. */}
+                        <Link className="link-plain" href={`/estimates/${j.estimateId}`}>
+                          <span className="mono comm-job-link">{j.docNumber}</span> ·{" "}
+                          {j.customerName}
+                        </Link>
+                      </td>
+                      <td></td>
+                      <td className="right mono">{moneyCents(j.contractCents)}</td>
+                      <td className="right mono">{moneyCents(j.commissionCents)}</td>
+                      <td className="right mono">
+                        {j.collectedCents > 0 ? `${moneyCents(j.collectedCents)} collected` : "nothing collected"}
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

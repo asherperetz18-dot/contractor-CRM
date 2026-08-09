@@ -104,6 +104,15 @@ export async function setLeadDispatcher(
   return { ok: true };
 }
 
+export type CommissionJob = {
+  estimateId: string;
+  docNumber: string;
+  customerName: string;
+  contractCents: number;
+  collectedCents: number;
+  commissionCents: number;
+};
+
 export type CommissionRow = {
   dispatcherId: string;
   dispatcherName: string;
@@ -114,6 +123,8 @@ export type CommissionRow = {
   commissionCents: number;
   /** The share of that backed by money actually in the bank. */
   earnedOnCollectedCents: number;
+  /** The contracts behind the total, so the number can be checked. */
+  jobs: CommissionJob[];
 };
 
 /**
@@ -142,20 +153,33 @@ export async function getDispatcherCommissions(): Promise<{
 
   const { data: signed } = await admin
     .from("estimates")
-    .select("id, lead_id, total_cents")
+    .select("id, doc_number, lead_id, total_cents")
     .eq("company_id", profile.company_id)
     .eq("status", "Signed")
-    .returns<{ id: string; lead_id: string; total_cents: number }[]>();
+    .returns<{ id: string; doc_number: string; lead_id: string; total_cents: number }[]>();
   if (!signed?.length) return { rows: [], ratePercent: bp / 100 };
 
   const leadIds = [...new Set(signed.map((e) => e.lead_id))];
-  const { data: leads } = await admin
+  // Names come along so each contract can be listed by customer rather
+  // than by a document number nobody remembers.
+  const { data: leadRows } = await admin
     .from("leads")
-    .select("id, dispatcher_id")
+    .select("id, dispatcher_id, first_name, last_name")
     .in("id", leadIds)
-    .not("dispatcher_id", "is", null)
-    .returns<{ id: string; dispatcher_id: string }[]>();
-  const dispatcherByLead = new Map((leads ?? []).map((l) => [l.id, l.dispatcher_id]));
+    .returns<
+      { id: string; dispatcher_id: string | null; first_name: string | null; last_name: string | null }[]
+    >();
+  const dispatcherByLead = new Map(
+    (leadRows ?? [])
+      .filter((l) => l.dispatcher_id)
+      .map((l) => [l.id, l.dispatcher_id as string])
+  );
+  const customerByLead = new Map(
+    (leadRows ?? []).map((l) => [
+      l.id,
+      [l.first_name, l.last_name].filter(Boolean).join(" ").trim() || "Unnamed",
+    ])
+  );
 
   const { data: payments } = await admin
     .from("portal_payments")
@@ -175,8 +199,30 @@ export async function getDispatcherCommissions(): Promise<{
     commissionBp: bp,
   });
   const byDispatcher = new Map<string, CommissionRow>(
-    computed.map((c) => [c.dispatcherId, { ...c, dispatcherName: "Unknown" }])
+    computed.map((c) => [c.dispatcherId, { ...c, dispatcherName: "Unknown", jobs: [] }])
   );
+
+  // The contracts behind each total. Without these the report is a
+  // number you cannot check -- "is my job in there?" was unanswerable,
+  // which is exactly how a correct figure still gets doubted.
+  for (const estimate of signed) {
+    const who = dispatcherByLead.get(estimate.lead_id);
+    if (!who) continue;
+    const row = byDispatcher.get(who);
+    if (!row) continue;
+    const collected = Math.min(collectedByEstimate.get(estimate.id) ?? 0, estimate.total_cents);
+    row.jobs.push({
+      estimateId: estimate.id,
+      docNumber: estimate.doc_number,
+      customerName: customerByLead.get(estimate.lead_id) ?? "Unnamed",
+      contractCents: estimate.total_cents,
+      collectedCents: collected,
+      commissionCents: Math.round((estimate.total_cents * bp) / 10000),
+    });
+  }
+  for (const row of byDispatcher.values()) {
+    row.jobs.sort((a, b) => b.contractCents - a.contractCents);
+  }
 
   const { data: people } = await admin
     .from("profiles")
