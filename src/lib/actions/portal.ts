@@ -14,9 +14,10 @@ import {
   portalAccessActive,
   portalAccessExpiry,
   portalBaseUrl,
+  LOGIN_TOKEN_TTL_DAYS,
 } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { canEditDispatch, isAdminRole } from "@/lib/data/types";
 import { leadDisplayName, type Lead } from "@/lib/data/types";
 
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -421,4 +422,51 @@ export async function portalUploadFile(formData: FormData): Promise<{ error?: st
 
   revalidatePath("/portal/home");
   return {};
+}
+
+/**
+ * A portal sign-in link handed to staff rather than sent to the customer.
+ *
+ * For the times the automatic send is the wrong tool: checking what the
+ * customer actually sees, pasting it into an email you are writing
+ * yourself, or reading it down the phone.
+ *
+ * Each call mints a fresh token, because they are single-use -- opening
+ * one consumes it. That is why this returns a new link every press
+ * rather than caching one: a link copied yesterday and opened today by
+ * the customer would already be spent if staff had opened it first.
+ *
+ * Granting access is part of issuing the link, exactly as when it is
+ * sent, or the link would open to a refusal.
+ */
+export async function createPortalLinkForStaff(
+  leadId: string
+): Promise<{ error?: string; url?: string; expiresInDays?: number }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canEditDispatch(profile)) {
+    return { error: "You don't have permission to issue portal links." };
+  }
+
+  const admin = createAdminClient();
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, company_id")
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; company_id: string }>();
+  if (!lead) return { error: "Contact not found." };
+
+  await admin
+    .from("leads")
+    .update({ portal_access_expires_at: portalAccessExpiry() })
+    .eq("id", lead.id);
+
+  const { token, error } = await createLoginToken(lead.id, lead.company_id);
+  if (error || !token) return { error: error || "Could not create a sign-in link." };
+
+  return {
+    url: `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`,
+    expiresInDays: LOGIN_TOKEN_TTL_DAYS,
+  };
 }

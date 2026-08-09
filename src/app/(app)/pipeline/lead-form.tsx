@@ -40,7 +40,11 @@ import {
   updateLead,
 } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
-import { renewPortalAccess, sendPortalLink } from "@/lib/actions/portal";
+import {
+  createPortalLinkForStaff,
+  renewPortalAccess,
+  sendPortalLink,
+} from "@/lib/actions/portal";
 
 // One-click ways out of the active pipeline, in the order they appear.
 // Only rendered when the stage actually exists for the current company --
@@ -150,6 +154,10 @@ export function LeadForm({
     lead?.portal_access_expires_at ?? null
   );
   const [portalRenewPending, setPortalRenewPending] = useState(false);
+  const [portalCopyStatus, setPortalCopyStatus] = useState<
+    "idle" | "pending" | "copied" | "error"
+  >("idle");
+  const [portalCopyNote, setPortalCopyNote] = useState("");
   const [quickExitPending, setQuickExitPending] = useState("");
   const [markLostError, setMarkLostError] = useState("");
 
@@ -169,6 +177,40 @@ export function LeadForm({
     if (!lead) return;
     onCancel();
     router.push(`/reply-inbox?leadId=${lead.id}`);
+  }
+
+  /**
+   * Puts a portal link on the clipboard instead of sending it.
+   *
+   * A fresh token every press, deliberately. Portal links are
+   * single-use, so a link copied now and opened by staff is spent -- if
+   * the same one had been given to the customer they would meet a dead
+   * link and reasonably conclude the portal is broken. Minting per press
+   * makes "copy one for me, send one to them" safe.
+   */
+  async function handleCopyPortalLink() {
+    if (!lead) return;
+    setPortalCopyStatus("pending");
+    setPortalCopyNote("");
+    const result = await createPortalLinkForStaff(lead.id);
+    if (result?.error || !result?.url) {
+      setPortalCopyStatus("error");
+      setPortalCopyNote(result?.error || "Could not create a link.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(result.url);
+      setPortalCopyStatus("copied");
+      setPortalCopyNote(
+        `Single-use, expires in ${result.expiresInDays ?? 7} days. Opening it signs you in as this customer.`
+      );
+    } catch {
+      // Clipboard access can be refused outright; showing the link is
+      // better than a copy button that silently does nothing.
+      setPortalCopyStatus("error");
+      setPortalCopyNote(result.url);
+    }
+    setTimeout(() => setPortalCopyStatus("idle"), 6000);
   }
 
   // Sends the customer a magic link into their client portal by email and
@@ -520,6 +562,25 @@ export function LeadForm({
                 {portalLinkStatus === "pending" ? "Sending…" : "🔗 Portal Link"}
               </button>
             )}
+            {/* Copying rather than sending: for checking what the
+                customer sees, or pasting into an email being written by
+                hand. A fresh token every press, because they are
+                single-use -- see handleCopyPortalLink. */}
+            {lead && (
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={handleCopyPortalLink}
+                disabled={portalCopyStatus === "pending"}
+                title="Copy a sign-in link for this contact's portal, to open or paste yourself"
+              >
+                {portalCopyStatus === "pending"
+                  ? "Making…"
+                  : portalCopyStatus === "copied"
+                    ? "✓ Copied"
+                    : "⧉ Copy link"}
+              </button>
+            )}
             {portalLinkStatus === "sent" && (
               <span className="cp-saved">
                 ✓ Sent{portalLinkChannels ? ` by ${portalLinkChannels}` : ""}
@@ -528,6 +589,11 @@ export function LeadForm({
           </div>
         )}
         {portalLinkStatus === "error" && <p className="error-note">{portalLinkError}</p>}
+        {portalCopyNote && (
+          <p className={portalCopyStatus === "error" ? "error-note" : "est-tax-note"}>
+            {portalCopyNote}
+          </p>
+        )}
 
         {lead && (
           <div className="portal-status-row">
