@@ -49,6 +49,7 @@ import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
 import { DispatcherPicker } from "./dispatcher-picker";
+import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
@@ -687,6 +688,12 @@ export function EventForm({
               {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
             </Field>
           </div>
+
+          {/* Says who holds the lead when that is not this user, so an
+              appointment they cannot save explains itself rather than
+              looking broken. The lead itself may not be readable here --
+              that is the case this is for. */}
+          {event && <EventOwnerNote eventId={event.id} />}
 
           {/* Set here because this is where the work happens, but written
               to the lead: the dispatcher holds it until it sells and is

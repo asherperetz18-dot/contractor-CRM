@@ -219,3 +219,63 @@ export async function getDispatcherContext(): Promise<DispatcherContext | null> 
     isDispatcher: (profile.roles ?? []).includes("Dispatch"),
   };
 }
+
+export type EventOwner = { eventId: string; dispatcherName: string | null; isMine: boolean };
+
+/**
+ * Who holds the lead behind each appointment.
+ *
+ * Needed because a dispatcher can see every appointment but only their
+ * own leads -- so the name of the colleague who owns one is not
+ * reachable through any query they are allowed to make. Read with the
+ * service role and narrowed to a single name: enough to say "this is
+ * Vanessa's" and nothing more about her customer.
+ *
+ * Without it a dispatcher meets appointments they simply cannot edit,
+ * with no explanation on screen.
+ */
+export async function getEventOwners(eventIds: string[]): Promise<EventOwner[]> {
+  const profile = await getCurrentProfile();
+  if (!profile || eventIds.length === 0) return [];
+
+  const admin = createAdminClient();
+  const { data: events } = await admin
+    .from("events")
+    .select("id, lead_id")
+    .eq("company_id", profile.company_id)
+    .in("id", eventIds)
+    .returns<{ id: string; lead_id: string | null }[]>();
+  if (!events?.length) return [];
+
+  const leadIds = [...new Set(events.map((e) => e.lead_id).filter(Boolean) as string[])];
+  if (leadIds.length === 0) {
+    return events.map((e) => ({ eventId: e.id, dispatcherName: null, isMine: true }));
+  }
+
+  const { data: leads } = await admin
+    .from("leads")
+    .select("id, dispatcher_id")
+    .in("id", leadIds)
+    .returns<{ id: string; dispatcher_id: string | null }[]>();
+  const dispatcherByLead = new Map((leads ?? []).map((l) => [l.id, l.dispatcher_id]));
+
+  const dispatcherIds = [...new Set([...dispatcherByLead.values()].filter(Boolean) as string[])];
+  const { data: people } = dispatcherIds.length
+    ? await admin
+        .from("profiles")
+        .select("id, name, email")
+        .in("id", dispatcherIds)
+        .returns<{ id: string; name: string | null; email: string | null }[]>()
+    : { data: [] };
+  const nameById = new Map((people ?? []).map((p) => [p.id, p.name || p.email || "Unnamed"]));
+
+  return events.map((e) => {
+    const holder = e.lead_id ? dispatcherByLead.get(e.lead_id) ?? null : null;
+    return {
+      eventId: e.id,
+      dispatcherName: holder ? nameById.get(holder) ?? null : null,
+      // Unclaimed counts as workable, matching what the policy allows.
+      isMine: !holder || holder === profile.id,
+    };
+  });
+}
