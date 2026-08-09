@@ -44,7 +44,7 @@ import {
 } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
-import { moveLeadStage } from "@/lib/actions/leads";
+import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
@@ -179,6 +179,9 @@ export function EventForm({
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
+  // Seeded from what the lead is already worth, so a rep confirming an
+  // existing figure does not retype it.
+  const [resultValue, setResultValue] = useState("");
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
   // Tracks whether the user actually toggled each confirmation badge, so a
@@ -203,6 +206,20 @@ export function EventForm({
     !!pendingOutcome ||
     resultNote.trim().length > 0 ||
     (!!resultStage && !!lead && resultStage !== lead.stage);
+
+  /**
+   * A job value is only asked for on Showed.
+   *
+   * A rep who stood in the room can price it. On a no-show or a
+   * cancellation there is nothing to price, and demanding a number there
+   * teaches people to type a zero -- which is worse than leaving it
+   * blank, because a zero looks like an answer in the pipeline total.
+   */
+  const outcomeNeedsValue = (pendingOutcome || form.status) === "Showed";
+  const parsedResultValue = Number(resultValue.replace(/[^0-9.]/g, ""));
+  const resultValueOk =
+    !outcomeNeedsValue ||
+    (resultValue.trim() !== "" && Number.isFinite(parsedResultValue) && parsedResultValue > 0);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -230,6 +247,13 @@ export function EventForm({
   async function saveResult() {
     if (!lead || !event) return;
     const outcome = (pendingOutcome || form.status) as EventStatus;
+    // Checked here as well as on the button. The button is the courtesy;
+    // this is the rule, and a Showed with no value is the exact hole it
+    // exists to close.
+    if (outcome === "Showed" && !resultValueOk) {
+      setError("Enter the estimated job value before saving this result.");
+      return;
+    }
     const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage);
     setResultPending(true);
     setError("");
@@ -250,6 +274,14 @@ export function EventForm({
       if (stageResult?.error) {
         setResultPending(false);
         setError(stageResult.error);
+        return;
+      }
+    }
+    if (outcome === "Showed" && parsedResultValue > 0 && parsedResultValue !== lead.value) {
+      const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
+      if (valueResult?.error) {
+        setResultPending(false);
+        setError(valueResult.error);
         return;
       }
     }
@@ -815,6 +847,25 @@ export function EventForm({
               </select>
             </Field>
           </div>
+          {outcomeNeedsValue && (
+            <Field label="Estimated job value">
+              <input
+                className="est-item-price"
+                inputMode="decimal"
+                value={resultValue}
+                onChange={(e) => setResultValue(e.target.value)}
+                placeholder={lead.value ? String(lead.value) : "18000"}
+                disabled={readOnly || resultPending}
+              />
+              {!resultValueOk && (
+                <p className="est-tax-note">
+                  Required on a Showed. Every money figure on the pipeline is a sum of this, so a
+                  visit logged without one leaves a hole in the forecast that nobody notices.
+                </p>
+              )}
+            </Field>
+          )}
+
           <Field label="Result Note">
             <textarea
               value={resultNote}
@@ -836,7 +887,7 @@ export function EventForm({
                   type="button"
                   className="btn-primary small"
                   onClick={saveResult}
-                  disabled={resultPending || !resultDirty}
+                  disabled={resultPending || !resultDirty || !resultValueOk}
                 >
                   {resultPending ? "Saving…" : "Save Result"}
                 </button>

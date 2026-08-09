@@ -351,3 +351,36 @@ export async function deleteLeadTask(taskId: string) {
   revalidatePath("/pipeline");
   return {};
 }
+
+/**
+ * The job's value, captured when the rep reports back from the visit.
+ *
+ * Recorded separately from the full lead form because it is entered at a
+ * different moment by a different person: the rep who just stood in the
+ * bathroom, not the office typing up a contact. Every money figure on
+ * the pipeline is a sum of this column, so an appointment that comes
+ * back without one leaves a hole in the forecast that nobody notices.
+ */
+export async function setLeadEstimatedValue(
+  leadId: string,
+  value: number
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!Number.isFinite(value) || value < 0) return { error: "Enter a value of 0 or more." };
+
+  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
+  const supabase = asDispatcher ? createAdminClient() : await createClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ value })
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Couldn't save the value — your role may not have permission." };
+
+  revalidatePath("/pipeline");
+  revalidatePath("/calendar");
+  return {};
+}
