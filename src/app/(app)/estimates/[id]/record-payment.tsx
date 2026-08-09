@@ -2,14 +2,15 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { centsFromInput, moneyCents } from "@/lib/data/types";
 import {
-  recordManualPayment,
-  MANUAL_METHODS,
-  type ManualMethod,
-} from "@/lib/actions/manual-payments";
+  centsFromInput,
+  moneyCents,
+  MANUAL_PAYMENT_METHODS,
+  type ManualPaymentMethod,
+} from "@/lib/data/types";
+import { recordManualPayment } from "@/lib/actions/manual-payments";
 
-const METHOD_LABEL: Record<ManualMethod, string> = {
+const METHOD_LABEL: Record<ManualPaymentMethod, string> = {
   cash: "Cash",
   check: "Check",
   zelle: "Zelle",
@@ -39,7 +40,7 @@ export function RecordPayment({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState((suggestedCents / 100).toFixed(2));
-  const [method, setMethod] = useState<ManualMethod>("check");
+  const [method, setMethod] = useState<ManualPaymentMethod>("check");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [receivedOn, setReceivedOn] = useState(new Date().toISOString().slice(0, 10));
@@ -99,8 +100,8 @@ export function RecordPayment({
         </label>
         <label className="field">
           <span className="field-label">Method</span>
-          <select value={method} onChange={(e) => setMethod(e.target.value as ManualMethod)} disabled={pending}>
-            {MANUAL_METHODS.map((m) => (
+          <select value={method} onChange={(e) => setMethod(e.target.value as ManualPaymentMethod)} disabled={pending}>
+            {MANUAL_PAYMENT_METHODS.map((m) => (
               <option key={m} value={m}>
                 {METHOD_LABEL[m]}
               </option>

@@ -3,18 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { depositCents, isAdminRole, moneyCents, type EstimateStatus } from "@/lib/data/types";
-
-/** What a contractor actually gets handed, beyond the card reader. */
-export const MANUAL_METHODS = ["cash", "check", "zelle", "wire", "other"] as const;
-export type ManualMethod = (typeof MANUAL_METHODS)[number];
+import {
+  depositCents,
+  isAdminRole,
+  moneyCents,
+  type EstimateStatus,
+  type ManualPaymentMethod,
+} from "@/lib/data/types";
 
 export type ManualPaymentInput = {
   estimateId: string;
   /** Which schedule phase this settles. Omit for the deposit. */
   phaseId?: string | null;
   amountCents: number;
-  method: ManualMethod;
+  method: ManualPaymentMethod;
   /** Cheque number, transfer reference, whatever proves it later. */
   reference?: string;
   note?: string;

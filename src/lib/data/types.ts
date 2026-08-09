@@ -1394,6 +1394,17 @@ export function pendingPayment(
   return payments.find((p) => p.status === "pending") ?? null;
 }
 
+/**
+ * How money arrives when it isn't Stripe.
+ *
+ * Lives here rather than beside the action that writes it: a "use server"
+ * file may only export async functions, so a plain array there breaks the
+ * whole module at runtime -- and takes every page importing it down with
+ * it. Nothing in the type check or the build catches that.
+ */
+export const MANUAL_PAYMENT_METHODS = ["cash", "check", "zelle", "wire", "other"] as const;
+export type ManualPaymentMethod = (typeof MANUAL_PAYMENT_METHODS)[number];
+
 export function paymentMethodLabel(method: string | null): string {
   if (method === "us_bank_account") return "bank transfer";
   if (method === "card") return "card";
