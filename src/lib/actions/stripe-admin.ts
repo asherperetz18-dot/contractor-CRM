@@ -23,12 +23,23 @@ export type PendingInfo = {
   verdict: string;
 };
 
+export type PmConfigInfo = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  ach: string;
+  card: string;
+};
+
 export type StripeDiagnostics = {
   configured: boolean;
   keyMode: "test" | "live" | null;
   webhookSecretSet: boolean;
   endpoints: EndpointInfo[];
   achEnabled: boolean | null;
+  /** Every payment-method configuration, because the one the dashboard
+      happens to be showing is not necessarily the one checkout uses. */
+  configs: PmConfigInfo[];
   pending: PendingInfo[];
   error?: string;
 };
@@ -65,6 +76,7 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
     webhookSecretSet: false,
     endpoints: [],
     achEnabled: null,
+    configs: [],
     pending: [],
   };
   if (!profile) return { ...empty, error: "Admins only." };
@@ -77,6 +89,7 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
 
   let endpoints: EndpointInfo[] = [];
   let achEnabled: boolean | null = null;
+  let pmConfigs: PmConfigInfo[] = [];
   try {
     const eps = await stripe.webhookEndpoints.list({ limit: 10 });
     endpoints = eps.data.map((e) => ({
@@ -90,8 +103,21 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
 
     // Dynamic payment methods decide what shows at checkout, so ACH being
     // "on" is a property of the account's configuration, not of our code.
-    const configs = await stripe.paymentMethodConfigurations.list();
-    const active = configs.data.find((c) => c.is_default) ?? configs.data[0];
+    //
+    // Listed in full rather than reduced to one boolean: an account can
+    // hold several configurations, the Dashboard deep-links to whichever
+    // one you last opened, and Checkout uses the DEFAULT unless a session
+    // names another. Enabling ACH on a non-default configuration looks
+    // exactly like enabling it, and changes nothing at checkout.
+    const list = await stripe.paymentMethodConfigurations.list();
+    pmConfigs = list.data.map((c) => ({
+      id: c.id,
+      name: c.name ?? "(unnamed)",
+      isDefault: !!c.is_default,
+      ach: c.us_bank_account?.display_preference?.value ?? "not available",
+      card: c.card?.display_preference?.value ?? "not available",
+    }));
+    const active = list.data.find((c) => c.is_default) ?? list.data[0];
     achEnabled = active?.us_bank_account?.display_preference?.value === "on";
   } catch (e) {
     return {
@@ -99,6 +125,7 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
       configured: true,
       keyMode,
       webhookSecretSet: !!env.webhookSecret,
+      configs: pmConfigs,
       error: e instanceof Error ? e.message : "Could not reach Stripe.",
     };
   }
@@ -162,6 +189,7 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
     webhookSecretSet: !!env.webhookSecret,
     endpoints,
     achEnabled,
+    configs: pmConfigs,
     pending,
   };
 }

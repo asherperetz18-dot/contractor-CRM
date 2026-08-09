@@ -89,14 +89,26 @@ export function StripeDoctor() {
                 Signing secret {diag.webhookSecretSet ? "is set" : "is MISSING — payments cannot be recorded"}.
               </li>
               <li className={diag.achEnabled === false ? "pp-bad" : ""}>
-                ACH Direct Debit{" "}
+                ACH Direct Debit on the <strong>default</strong> configuration:{" "}
                 {diag.achEnabled === null
-                  ? "status unknown"
+                  ? "unknown"
                   : diag.achEnabled
-                    ? "is enabled on the account"
-                    : "is NOT enabled — it will not appear at checkout"}
+                    ? "on"
+                    : "OFF — this is the one Checkout uses, so ACH will not appear"}
                 .
               </li>
+              {/* An account can hold several configurations and the
+                  Dashboard deep-links to whichever was last opened, so
+                  "I enabled ACH" and "ACH is off at checkout" are both
+                  true when the toggle was flipped on a non-default one. */}
+              {diag.configs.map((c) => (
+                <li key={c.id} className={c.isDefault && c.ach !== "on" ? "pp-bad" : ""}>
+                  <span className="mono">{c.name}</span>
+                  {c.isDefault ? " (DEFAULT — used by checkout)" : " (not default — ignored)"} · ACH{" "}
+                  <strong>{c.ach}</strong> · card {c.card}
+                  <div className="ur-add-phone mono">{c.id}</div>
+                </li>
+              ))}
               {/* The whole point of the panel: an ACH payment settles days
                   later and is reported only by webhook, so a missing or
                   wrong endpoint loses it silently. */}
