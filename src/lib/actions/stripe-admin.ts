@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
-import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
+import { stripeClient } from "@/lib/stripe-env";
+import { getStripeForCompany } from "@/lib/stripe-company";
+import { encryptionAvailable, encryptSecret, secretTail } from "@/lib/crypto/secrets";
+import { portalBaseUrl } from "@/lib/portal/session";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
 
 export type EndpointInfo = {
@@ -36,6 +39,12 @@ export type StripeDiagnostics = {
   configured: boolean;
   keyMode: "test" | "live" | null;
   webhookSecretSet: boolean;
+  /** Whether this company uses its own Stripe account or the platform fallback. */
+  source: "company" | "platform" | null;
+  /** The URL this company must give Stripe, which is unique to it. */
+  webhookUrl: string;
+  /** Whether APP_ENCRYPTION_KEY is readable by the running deployment. */
+  encryptionReady: boolean;
   endpoints: EndpointInfo[];
   achEnabled: boolean | null;
   /** Every payment-method configuration, because the one the dashboard
@@ -75,6 +84,9 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
     configured: false,
     keyMode: null,
     webhookSecretSet: false,
+    source: null,
+    webhookUrl: "",
+    encryptionReady: encryptionAvailable(),
     endpoints: [],
     achEnabled: null,
     configs: [],
@@ -82,8 +94,17 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
   };
   if (!profile) return { ...empty, error: "Admins only." };
 
-  const env = getStripeEnv();
-  if (!env) return { ...empty, error: "Stripe isn't connected — STRIPE_SECRET_KEY is not set." };
+  // Unique to this company, because each contractor's Stripe signs with
+  // its own secret and the company must be known before the payload can
+  // be trusted.
+  empty.webhookUrl = `${portalBaseUrl()}/api/stripe/webhook/${profile.company_id}`;
+
+  const env = await getStripeForCompany(profile.company_id);
+  if (!env)
+    return {
+      ...empty,
+      error: "No Stripe account is connected for this company yet.",
+    };
 
   const keyMode = env.secretKey.startsWith("sk_live") ? "live" : "test";
   const stripe = stripeClient(env);
@@ -126,6 +147,7 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
       configured: true,
       keyMode,
       webhookSecretSet: !!env.webhookSecret,
+      source: env.source,
       configs: pmConfigs,
       error: e instanceof Error ? e.message : "Could not reach Stripe.",
     };
@@ -185,9 +207,11 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
   }
 
   return {
+    ...empty,
     configured: true,
     keyMode,
     webhookSecretSet: !!env.webhookSecret,
+    source: env.source,
     endpoints,
     achEnabled,
     configs: pmConfigs,
@@ -213,8 +237,8 @@ export async function reconcilePendingPayments(): Promise<{
   const profile = await requireAdmin();
   if (!profile) return { error: "Admins only." };
 
-  const env = getStripeEnv();
-  if (!env) return { error: "Stripe isn't connected." };
+  const env = await getStripeForCompany(profile.company_id);
+  if (!env) return { error: "No Stripe account is connected for this company yet." };
   const stripe = stripeClient(env);
   const admin = createAdminClient();
 
@@ -277,4 +301,131 @@ export async function reconcilePendingPayments(): Promise<{
   revalidatePath("/payments");
   revalidatePath("/settings/portal-payments");
   return { updated, checked: rows?.length ?? 0, notes };
+}
+
+/**
+ * Stores this company's own Stripe credentials.
+ *
+ * Write-only by design: the key is sealed immediately and only its last
+ * four characters are kept in the clear, so nothing can ever hand a
+ * customer's live secret back to a browser -- not this form, not a
+ * misplaced console.log, not a compromised admin session.
+ *
+ * Refuses outright when no platform encryption key is configured.
+ * Storing a live Stripe secret in plaintext because a setting was
+ * missing is worse than the feature not working.
+ */
+export async function saveCompanyStripeKeys(input: {
+  secretKey: string;
+  webhookSecret: string;
+}): Promise<{ error?: string; ok?: boolean; mode?: "test" | "live" }> {
+  const profile = await requireAdmin();
+  if (!profile) return { error: "Admins only." };
+
+  if (!encryptionAvailable()) {
+    return {
+      error:
+        "Credential encryption isn't configured on the server (APP_ENCRYPTION_KEY), so keys cannot be stored safely.",
+    };
+  }
+
+  const secretKey = input.secretKey.trim();
+  const webhookSecret = input.webhookSecret.trim();
+
+  // Caught here rather than at the first failed payment: a publishable
+  // key in this box would look saved and then break checkout for real
+  // customers.
+  if (!/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/.test(secretKey)) {
+    return {
+      error: secretKey.startsWith("pk_")
+        ? "That's a publishable key. The secret key starts with sk_."
+        : "That doesn't look like a Stripe secret key (it should start with sk_ or rk_).",
+    };
+  }
+  if (webhookSecret && !webhookSecret.startsWith("whsec_")) {
+    return { error: "The signing secret should start with whsec_." };
+  }
+
+  const mode: "test" | "live" = secretKey.includes("_live_") ? "live" : "test";
+  const secretEnc = encryptSecret(secretKey);
+  const webhookEnc = webhookSecret ? encryptSecret(webhookSecret) : null;
+  if (!secretEnc) return { error: "Could not encrypt the key. Nothing was saved." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("company_profile")
+    .update({
+      stripe_secret_key_enc: secretEnc,
+      stripe_webhook_secret_enc: webhookEnc,
+      stripe_key_last4: secretTail(secretKey),
+      stripe_key_mode: mode,
+      stripe_connected_at: new Date().toISOString(),
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  // Row count rather than the absence of an error: a blocked update
+  // matches zero rows and raises nothing.
+  if (error || !data?.length) return { error: error?.message || "Could not save the keys." };
+
+  revalidatePath("/settings/portal-payments");
+  return { ok: true, mode };
+}
+
+/** Disconnects this company's account, falling back to the platform's. */
+export async function clearCompanyStripeKeys(): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await requireAdmin();
+  if (!profile) return { error: "Admins only." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("company_profile")
+    .update({
+      stripe_secret_key_enc: null,
+      stripe_webhook_secret_enc: null,
+      stripe_key_last4: null,
+      stripe_key_mode: null,
+      stripe_connected_at: null,
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error || !data?.length) return { error: error?.message || "Could not disconnect." };
+
+  revalidatePath("/settings/portal-payments");
+  return { ok: true };
+}
+
+export type CompanyStripeStatus = {
+  connected: boolean;
+  last4: string | null;
+  mode: "test" | "live" | null;
+  connectedAt: string | null;
+  encryptionReady: boolean;
+  webhookUrl: string;
+};
+
+/** What the Settings screen shows about this company's connection. */
+export async function getCompanyStripeStatus(): Promise<CompanyStripeStatus | null> {
+  const profile = await requireAdmin();
+  if (!profile) return null;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_profile")
+    .select("stripe_secret_key_enc, stripe_key_last4, stripe_key_mode, stripe_connected_at")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{
+      stripe_secret_key_enc: string | null;
+      stripe_key_last4: string | null;
+      stripe_key_mode: "test" | "live" | null;
+      stripe_connected_at: string | null;
+    }>();
+
+  return {
+    connected: !!data?.stripe_secret_key_enc,
+    last4: data?.stripe_key_last4 ?? null,
+    mode: data?.stripe_key_mode ?? null,
+    connectedAt: data?.stripe_connected_at ?? null,
+    encryptionReady: encryptionAvailable(),
+    webhookUrl: `${portalBaseUrl()}/api/stripe/webhook/${profile.company_id}`,
+  };
 }

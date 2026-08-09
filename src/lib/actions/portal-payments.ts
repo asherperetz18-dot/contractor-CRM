@@ -2,7 +2,8 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
-import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
+import { stripeClient } from "@/lib/stripe-env";
+import { getStripeForCompany } from "@/lib/stripe-company";
 import {
   depositCents,
   phaseState,
@@ -43,12 +44,15 @@ export type DepositState = {
  * the client is a payment amount that will be.
  */
 export async function getDepositState(estimateId: string): Promise<DepositState> {
+  // Whether payment is switched on is now a property of the company, not
+  // of the deployment, and the company is not known until the estimate
+  // loads -- so the early exits below claim nothing either way.
   const none: DepositState = {
     payable: false,
     amountCents: 0,
     paid: false,
     paidAt: null,
-    configured: !!getStripeEnv(),
+    configured: false,
   };
 
   const viewer = await getPortalViewer();
@@ -86,12 +90,15 @@ export async function getDepositState(estimateId: string): Promise<DepositState>
   );
   if (amountCents <= 0) return none;
 
+  // Payable only if the company that owns this estimate has an account
+  // to take the money into.
+  const stripe = await getStripeForCompany(data.company_id);
   return {
-    payable: !!getStripeEnv(),
+    payable: !!stripe,
     amountCents,
     paid: false,
     paidAt: null,
-    configured: !!getStripeEnv(),
+    configured: !!stripe,
   };
 }
 
@@ -173,9 +180,6 @@ export async function startPhaseCheckout(
   const viewer = await getPortalViewer();
   if (!viewer) return { error: "Your sign-in link has expired. Request a new one." };
 
-  const env = getStripeEnv();
-  if (!env) return { error: "Online payment isn't switched on yet." };
-
   const admin = createAdminClient();
   const { data: phase } = await admin
     .from("estimate_payments")
@@ -194,6 +198,11 @@ export async function startPhaseCheckout(
   // Unbilled means the contractor has not asked for it yet.
   if (!phase.requested_at) return { error: "That payment isn't due yet." };
   if (phase.amount_cents <= 0) return { error: "There's nothing to pay on this phase." };
+
+  // Resolved from the phase's own company, so the money lands in the
+  // account belonging to the business doing the work.
+  const env = await getStripeForCompany(phase.company_id);
+  if (!env) return { error: "Online payment isn't switched on yet." };
 
   const { data: estimate } = await admin
     .from("estimates")
@@ -281,9 +290,6 @@ export async function startDepositCheckout(
   const viewer = await getPortalViewer();
   if (!viewer) return { error: "Your sign-in link has expired. Request a new one." };
 
-  const env = getStripeEnv();
-  if (!env) return { error: "Online payment isn't switched on yet." };
-
   const admin = createAdminClient();
   const { data: estimate } = await admin
     .from("estimates")
@@ -298,6 +304,11 @@ export async function startDepositCheckout(
   if (estimate.status !== "Signed") {
     return { error: "The deposit is due once the estimate is signed." };
   }
+
+  // The contractor's own Stripe account, not the platform's -- a
+  // customer of one business must never pay into another's.
+  const env = await getStripeForCompany(estimate.company_id);
+  if (!env) return { error: "Online payment isn't switched on yet." };
 
   const { data: already } = await admin
     .from("portal_payments")
