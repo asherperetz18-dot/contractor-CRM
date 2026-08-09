@@ -51,6 +51,7 @@ const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
+import { DispatcherPicker } from "../calendar/dispatcher-picker";
 import { LeadFilesPanel } from "./lead-files-panel";
 
 type Tab = "Overview" | "Tasks" | "Notes" | "Texts" | "Files";
@@ -767,6 +768,21 @@ export function LeadForm({
             </select>
           </Field>
         </div>
+
+        {/* A dispatcher takes the lead when it arrives -- long before
+            there is an appointment to set it on, which is where this
+            first shipped and was the only place it existed. Hidden until
+            the lead is saved, since claiming needs a row to claim. */}
+        {lead && (
+          <div className="form-grid">
+            <DispatcherPicker
+              leadId={lead.id}
+              currentDispatcherId={lead.dispatcher_id ?? null}
+              readOnly={readOnly}
+            />
+            <div />
+          </div>
+        )}
 
         {lead && (
           <div className="second-contact-block">
