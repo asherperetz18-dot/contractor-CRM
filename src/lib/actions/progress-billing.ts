@@ -190,3 +190,82 @@ export async function cancelProgressRequest(
   revalidatePath("/payments");
   return { ok: true };
 }
+
+/**
+ * Marks a phase billed without texting anyone.
+ *
+ * Plenty of billing happens another way -- an invoice handed over on
+ * site, a phone call, an email from the office. Forcing a text through
+ * this app to record that would either send the customer a duplicate or
+ * leave the phase permanently unbilled, and an unbilled phase never
+ * appears on the Payments page or turns overdue.
+ *
+ * The sibling action stamps requested_at only after Twilio confirms,
+ * precisely so nothing lands on the overdue list for a request the
+ * customer never received. That reasoning does not disappear here -- it
+ * moves: pressing this is the contractor asserting they told the
+ * customer some other way, which is why the button says so plainly.
+ *
+ * Portal access is still granted. However they were told, they may well
+ * pay online, and a Pay button that refuses them would be a strange
+ * reward for it.
+ */
+export async function markProgressPaymentBilled(
+  phaseId: string,
+  dueDate?: string
+): Promise<{ error?: string; ok?: boolean }> {
+  const guard = await requireBiller();
+  if ("error" in guard) return guard;
+
+  const admin = createAdminClient();
+  const { data: phase } = await admin
+    .from("estimate_payments")
+    .select("id, company_id, estimate_id, name, amount_cents, requested_at, due_date")
+    .eq("id", phaseId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<PhaseRow>();
+  if (!phase) return { error: "That payment phase no longer exists." };
+  if (phase.amount_cents <= 0) return { error: "This phase has no amount to bill." };
+
+  const { data: estimate } = await admin
+    .from("estimates")
+    .select("id, lead_id, company_id, doc_number, title, status")
+    .eq("id", phase.estimate_id)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<ParentEstimate>();
+  if (!estimate) return { error: "Contract not found." };
+  if (estimate.status !== "Signed") {
+    return { error: "This contract isn't signed yet, so there's nothing to bill against." };
+  }
+
+  const { data: settled } = await admin
+    .from("portal_payments")
+    .select("id")
+    .eq("estimate_payment_id", phaseId)
+    .eq("status", "succeeded")
+    .maybeSingle();
+  if (settled) return { error: "This phase has already been paid." };
+
+  const due = dueDate || phase.due_date || defaultDueDate();
+
+  await admin
+    .from("leads")
+    .update({ portal_access_expires_at: portalAccessExpiry() })
+    .eq("id", estimate.lead_id);
+
+  const { data: updated, error } = await admin
+    .from("estimate_payments")
+    .update({
+      requested_at: new Date().toISOString(),
+      due_date: due,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", phaseId)
+    .eq("company_id", guard.companyId)
+    .select("id");
+  if (error || !updated?.length) return { error: "Couldn't mark that phase billed." };
+
+  revalidatePath(`/estimates/${estimate.id}`);
+  revalidatePath("/payments");
+  return { ok: true };
+}

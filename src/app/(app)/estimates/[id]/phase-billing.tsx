@@ -9,7 +9,11 @@ import {
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
-import { requestProgressPayment, cancelProgressRequest } from "@/lib/actions/progress-billing";
+import {
+  requestProgressPayment,
+  markProgressPaymentBilled,
+  cancelProgressRequest,
+} from "@/lib/actions/progress-billing";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -59,6 +63,21 @@ export function PhaseBilling({
     });
   }
 
+  // The same stamp, without Twilio. Billing often happens on site or by
+  // phone, and forcing a text to record it would either duplicate what
+  // the customer already heard or leave the phase unbilled -- and an
+  // unbilled phase never reaches the Payments page or turns overdue.
+  function billQuietly() {
+    setError(null);
+    startTransition(async () => {
+      const res = await markProgressPaymentBilled(phase.id, due);
+      if (res.error) return setError(res.error);
+      setConfirming(false);
+      setNote("Marked billed — no text sent");
+      router.refresh();
+    });
+  }
+
   function unbill() {
     setError(null);
     startTransition(async () => {
@@ -94,6 +113,14 @@ export function PhaseBilling({
           </label>
           <button className="btn-primary" onClick={bill} disabled={pending}>
             {pending ? "Texting…" : "Text pay link"}
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={billQuietly}
+            disabled={pending}
+            title="Marks the phase billed and due, without texting the customer"
+          >
+            {pending ? "Saving…" : "Save, don't text"}
           </button>
           <button className="btn-ghost" onClick={() => setConfirming(false)} disabled={pending}>
             Cancel
