@@ -5858,3 +5858,25 @@ textarea.est-item-desc:disabled {
   font-size: 13px;
   white-space: nowrap;
 }
+
+/* Client / Rep toggle on a contact's text history */
+.second-contact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.msg-tabs {
+  display: inline-flex;
+  gap: 6px;
+}
+.msg-tabs .chip {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 10px;
+}
+.msg-tabs .chip-on {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
