@@ -48,6 +48,7 @@ import { moveLeadStage } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
+import { DispatcherPicker } from "./dispatcher-picker";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
@@ -686,6 +687,20 @@ export function EventForm({
               {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
             </Field>
           </div>
+
+          {/* Set here because this is where the work happens, but written
+              to the lead: the dispatcher holds it until it sells and is
+              paid on the sale, so it cannot differ per appointment. */}
+          {lead && (
+            <div className="form-grid">
+              <DispatcherPicker
+                leadId={lead.id}
+                currentDispatcherId={lead.dispatcher_id ?? null}
+                readOnly={readOnly}
+              />
+              <div />
+            </div>
+          )}
 
           <div className="form-grid">
             <Field label="Customer">

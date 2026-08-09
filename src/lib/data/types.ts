@@ -865,6 +865,11 @@ export type Lead = {
   second_contact_last_name: string | null;
   second_contact_phone: string | null;
   assigned_to: string | null;
+  // The dispatcher who holds this lead until it sells and is paid a
+  // percentage of the sale. Separate from assigned_to, which is the rep
+  // who runs the appointment -- a lead has both, and they are rarely the
+  // same person.
+  dispatcher_id: string | null;
   won_at: string | null;
   notes_updated_at: string | null;
   address_type: AddressType;
@@ -1620,4 +1625,72 @@ export function leadDisplayName(l: {
     return l.company_name || "Unnamed Company";
   }
   return `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim() || "Unnamed";
+}
+
+export type CommissionInputs = {
+  signed: { id: string; lead_id: string; total_cents: number }[];
+  dispatcherByLead: Map<string, string>;
+  collectedByEstimate: Map<string, number>;
+  commissionBp: number;
+};
+
+export type DispatcherCommission = {
+  dispatcherId: string;
+  jobsSold: number;
+  contractCents: number;
+  collectedCents: number;
+  /** Earned on what sold. */
+  commissionCents: number;
+  /** The share of that backed by money actually in the bank. */
+  earnedOnCollectedCents: number;
+};
+
+/**
+ * What each dispatcher has earned on the jobs they brought in.
+ *
+ * Two figures, deliberately. Commission is earned when the job sells,
+ * but paying 1% of a $50,000 contract that has taken $500 so far is a
+ * cash-flow trap -- so the collected-backed figure sits beside it and
+ * the contractor chooses which one they pay against.
+ *
+ * Pure so it can be tested without a session: the action that calls it
+ * needs a signed-in user, which is exactly what makes the maths hard to
+ * check otherwise.
+ */
+export function computeDispatcherCommissions({
+  signed,
+  dispatcherByLead,
+  collectedByEstimate,
+  commissionBp,
+}: CommissionInputs): DispatcherCommission[] {
+  const byDispatcher = new Map<string, DispatcherCommission>();
+
+  for (const estimate of signed) {
+    const who = dispatcherByLead.get(estimate.lead_id);
+    // No dispatcher on the lead means nobody is owed anything for it.
+    if (!who) continue;
+
+    const row =
+      byDispatcher.get(who) ??
+      {
+        dispatcherId: who,
+        jobsSold: 0,
+        contractCents: 0,
+        collectedCents: 0,
+        commissionCents: 0,
+        earnedOnCollectedCents: 0,
+      };
+
+    // Overpayment happens (a rounded-up cheque, a tip). It must not pay
+    // commission on more than the job is worth.
+    const collected = Math.min(collectedByEstimate.get(estimate.id) ?? 0, estimate.total_cents);
+    row.jobsSold += 1;
+    row.contractCents += estimate.total_cents;
+    row.collectedCents += collected;
+    row.commissionCents += Math.round((estimate.total_cents * commissionBp) / 10000);
+    row.earnedOnCollectedCents += Math.round((collected * commissionBp) / 10000);
+    byDispatcher.set(who, row);
+  }
+
+  return [...byDispatcher.values()].sort((a, b) => b.commissionCents - a.commissionCents);
 }
