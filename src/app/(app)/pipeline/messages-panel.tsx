@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getLeadMessages, sendSms, type LeadMessage } from "@/lib/actions/sms";
+import {
+  getLeadMessages,
+  getRepMessages,
+  sendSms,
+  type LeadMessage,
+  type RepMessage,
+} from "@/lib/actions/sms";
 
 // Portal-link emails are logged in the same table so delivery is
 // auditable, but they aren't conversation -- shown as a quiet system line
@@ -26,6 +32,8 @@ export function MessagesPanel({
   readOnly?: boolean;
 }) {
   const [messages, setMessages] = useState<LeadMessage[] | null>(null);
+  const [repMessages, setRepMessages] = useState<RepMessage[] | null>(null);
+  const [tab, setTab] = useState<"client" | "rep">("client");
   const [error, setError] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -37,14 +45,19 @@ export function MessagesPanel({
     // one contact's thread into another's card.
     let cancelled = false;
     (async () => {
-      const result = await getLeadMessages(leadId);
+      const [result, repResult] = await Promise.all([
+        getLeadMessages(leadId),
+        getRepMessages(leadId),
+      ]);
       if (cancelled) return;
       if (result.error) {
         setError(result.error);
         setMessages([]);
+        setRepMessages([]);
         return;
       }
       setMessages(result.messages ?? []);
+      setRepMessages(repResult.messages ?? []);
     })();
     return () => {
       cancelled = true;
@@ -66,22 +79,51 @@ export function MessagesPanel({
     setReloadKey((k) => k + 1);
   }
 
+  const shown = tab === "client" ? messages : repMessages;
+
   return (
     <div className="second-contact-block">
       <div className="second-contact-head">
         <span>Text History</span>
+        {/* Crew notifications are stamped against the job so they can be
+            found, but they are not the customer's conversation -- shown
+            side by side rather than mixed, because reading a rep text in
+            the customer's thread means believing the customer was told. */}
+        <span className="msg-tabs">
+          <button
+            type="button"
+            className={"chip" + (tab === "client" ? " chip-on" : "")}
+            onClick={() => setTab("client")}
+          >
+            Client
+          </button>
+          <button
+            type="button"
+            className={"chip" + (tab === "rep" ? " chip-on" : "")}
+            onClick={() => setTab("rep")}
+          >
+            Rep{repMessages && repMessages.length > 0 ? ` (${repMessages.length})` : ""}
+          </button>
+        </span>
       </div>
 
-      {messages === null ? (
-        <p className="empty-hint">Loading…</p>
-      ) : messages.length === 0 ? (
+      {tab === "rep" && (
         <p className="empty-hint">
-          No texts with this contact yet. Messages sent to your own crew about this job aren&apos;t
-          shown here — those are recorded on the appointment.
+          Sent to your own crew about this job — the customer did not receive these.
+        </p>
+      )}
+
+      {shown === null ? (
+        <p className="empty-hint">Loading…</p>
+      ) : shown.length === 0 ? (
+        <p className="empty-hint">
+          {tab === "client"
+            ? "No texts with this contact yet. Anything sent to your crew about this job is under Rep."
+            : "Nothing has been sent to your crew about this job."}
         </p>
       ) : (
         <div className="lead-thread">
-          {messages.map((m) =>
+          {shown.map((m) =>
             isSystemEntry(m) ? (
               <div key={m.id} className="lead-thread-system">
                 {m.body} · {new Date(m.created_at).toLocaleString()}
@@ -113,7 +155,10 @@ export function MessagesPanel({
 
       {error && <p className="error-note">{error}</p>}
 
-      {!readOnly && phone && (
+      {/* Only on the client tab. A reply box under the rep record would
+          send to the rep, and anyone typing on a customer's card means
+          the customer. */}
+      {tab === "client" && !readOnly && phone && (
         <div style={{ marginTop: 10 }}>
           <textarea
             value={body}
@@ -134,7 +179,9 @@ export function MessagesPanel({
           </div>
         </div>
       )}
-      {!phone && <p className="empty-hint">No phone number on file for this contact.</p>}
+      {tab === "client" && !phone && (
+        <p className="empty-hint">No phone number on file for this contact.</p>
+      )}
     </div>
   );
 }

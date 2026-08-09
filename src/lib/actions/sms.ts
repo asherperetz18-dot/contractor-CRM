@@ -111,22 +111,60 @@ export async function getLeadMessages(
     .maybeSingle();
   if (!leadRow) return { error: "Contact not found." };
 
-  const { data: linked } = await supabase
-    .from("sms_messages")
-    .select("id, direction, body, channel, created_at")
-    .eq("company_id", profile.company_id)
-    .eq("lead_id", leadId)
-    .order("created_at", { ascending: true });
-
-  const messages = (linked as LeadMessage[]) ?? [];
-
-  // Older messages predate lead_id being stamped, so also match on the
-  // client's own number -- but only when that number isn't also a staff
-  // phone, or rep notifications about other jobs would surface here.
   const lead = leadRow as { phone: string | null; second_contact_phone: string | null };
   const clientNumbers = [lead.phone, lead.second_contact_phone]
     .filter((p): p is string => !!p)
     .map(normalizePhone);
+
+  const { data: linked } = await supabase
+    .from("sms_messages")
+    .select("id, direction, body, channel, created_at, from_number, to_number")
+    .eq("company_id", profile.company_id)
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: true });
+
+  /**
+   * Only what the client was actually party to.
+   *
+   * Rep notifications are stamped with lead_id so they attach to the
+   * right job -- "Text Rep Info", appointment reminders, result chases --
+   * but they are addressed to a rep's phone, not the customer's. Showing
+   * them in the customer's thread told the office a homeowner had been
+   * texted their appointment details when the message went to the rep and
+   * the customer had received nothing at all. Somebody reading that stops
+   * chasing.
+   *
+   * Written as an allow-list rather than "hide anything sent to staff":
+   * a deny-list silently lets anything it does not recognise through,
+   * which is how this got missed in the first place.
+   */
+  const clientIsParty = (row: { from_number: string | null; to_number: string | null }) => {
+    const from = normalizePhone(row.from_number ?? "");
+    const to = normalizePhone(row.to_number ?? "");
+    // Portal messages and emailed links carry no usable phone number, and
+    // are genuinely part of this conversation.
+    if (!from && !to) return true;
+    return clientNumbers.includes(from) || clientNumbers.includes(to);
+  };
+
+  const messages: LeadMessage[] = (
+    (linked as (LeadMessage & { from_number: string | null; to_number: string | null })[]) ?? []
+  )
+    .filter((row) => {
+      // channel already records who a message was for, and every rep
+      // notification in this database carries it. That is the reliable
+      // test; the number check below only catches anything untagged.
+      if (row.channel === "rep") return false;
+      if (row.channel === "portal" || row.channel === "email") return true;
+      return clientIsParty(row);
+    })
+    .map((row) => ({
+      id: row.id,
+      direction: row.direction,
+      body: row.body,
+      channel: row.channel,
+      created_at: row.created_at,
+    }));
 
   if (clientNumbers.length > 0) {
     const { data: staff } = await supabase.from("profiles").select("phone");
@@ -165,5 +203,92 @@ export async function getLeadMessages(
   }
 
   messages.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return { messages };
+}
+
+export type RepMessage = LeadMessage & {
+  /** Who it went to, so the record says more than a bare number. */
+  repName: string | null;
+  toNumber: string;
+};
+
+/**
+ * What was sent to staff about this job.
+ *
+ * The counterpart to getLeadMessages. Rep notifications are stamped with
+ * lead_id so they attach to the right job, but they are addressed to a
+ * rep rather than the customer -- they were being shown in the
+ * customer's thread, which read as "the homeowner was told" when the
+ * homeowner had received nothing.
+ *
+ * Kept as a record rather than a conversation: there is no reply box,
+ * because a reply here would go to the rep, and anyone looking at a
+ * customer's card who wants to send something means the customer.
+ */
+export async function getRepMessages(
+  leadId: string
+): Promise<{ error?: string; messages?: RepMessage[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: leadRow } = await supabase
+    .from("leads")
+    .select("phone, second_contact_phone")
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle();
+  if (!leadRow) return { error: "Contact not found." };
+
+  const lead = leadRow as { phone: string | null; second_contact_phone: string | null };
+  const clientNumbers = [lead.phone, lead.second_contact_phone]
+    .filter((p): p is string => !!p)
+    .map(normalizePhone);
+
+  const [{ data: rows }, { data: staff }] = await Promise.all([
+    supabase
+      .from("sms_messages")
+      .select("id, direction, body, channel, created_at, from_number, to_number")
+      .eq("company_id", profile.company_id)
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: true }),
+    supabase.from("profiles").select("id, name, phone"),
+  ]);
+
+  const staffByNumber = new Map(
+    ((staff as { id: string; name: string | null; phone: string | null }[]) ?? [])
+      .filter((s) => s.phone)
+      .map((s) => [normalizePhone(s.phone!), s.name])
+  );
+
+  const messages: RepMessage[] = [];
+  for (const row of (rows as (LeadMessage & {
+    from_number: string | null;
+    to_number: string | null;
+  })[]) ?? []) {
+    if (row.channel === "portal" || row.channel === "email") continue;
+    const to = normalizePhone(row.to_number ?? "");
+    const from = normalizePhone(row.from_number ?? "");
+    const counterparty = row.direction === "inbound" ? from : to;
+    if (!counterparty) continue;
+
+    // Tagged rep traffic, or untagged traffic whose counterparty is a
+    // known staff phone. Anything the client was party to belongs in
+    // their own thread, not here.
+    const isRep = row.channel === "rep" || staffByNumber.has(counterparty);
+    if (!isRep) continue;
+    if (row.channel !== "rep" && (clientNumbers.includes(to) || clientNumbers.includes(from)))
+      continue;
+    messages.push({
+      id: row.id,
+      direction: row.direction,
+      body: row.body,
+      channel: row.channel,
+      created_at: row.created_at,
+      repName: staffByNumber.get(counterparty) ?? null,
+      toNumber: row.to_number ?? row.from_number ?? "",
+    });
+  }
+
   return { messages };
 }
