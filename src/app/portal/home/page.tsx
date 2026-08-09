@@ -2,7 +2,16 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import type { Event, Profile, SmsMessage } from "@/lib/data/types";
-import { PortalHome } from "./portal-home";
+import { PortalHome, type PortalEstimate } from "./portal-home";
+
+type EstimateRow = {
+  id: string;
+  doc_number: string;
+  title: string | null;
+  status: string;
+  total_cents: number;
+  deposit_cents: number | null;
+};
 
 export const metadata = {
   title: "Your Project",
@@ -28,6 +37,8 @@ export default async function PortalHomePage() {
     { data: messages },
     { data: company },
     { data: reps },
+    { data: estimateRows },
+    { data: paymentRows },
   ] = await Promise.all([
     admin
       .from("events")
@@ -51,9 +62,33 @@ export default async function PortalHomePage() {
       .eq("company_id", viewer.companyId)
       .maybeSingle(),
     admin.from("profiles").select("id, name, email, phone"),
+    // Draft is excluded deliberately: the estimate page itself redirects a
+    // Draft back here, so listing one would be a link to nowhere -- and a
+    // half-built estimate is not something to show a customer.
+    admin
+      .from("estimates")
+      .select("id, doc_number, title, status, total_cents, deposit_cents")
+      .eq("lead_id", viewer.lead.id)
+      .in("status", ["Sent", "Viewed", "Signed", "Declined"])
+      .order("created_at", { ascending: false })
+      .returns<EstimateRow[]>(),
+    admin
+      .from("portal_payments")
+      .select("estimate_id, kind, status")
+      .eq("lead_id", viewer.lead.id)
+      .returns<{ estimate_id: string; kind: string; status: string }[]>(),
   ]);
 
   const companyRow = company as { name: string | null; phone: string | null; logo_url: string | null } | null;
+
+  // A deposit is only owed on a signed contract, and only until it lands.
+  const estimates: PortalEstimate[] = (estimateRows ?? []).map((e) => {
+    const depositPaid = (paymentRows ?? []).some(
+      (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"
+    );
+    const owed = e.status === "Signed" && !depositPaid ? e.deposit_cents || 0 : 0;
+    return { ...e, depositPaid, amountDueCents: owed };
+  });
 
   return (
     <PortalHome
@@ -62,6 +97,7 @@ export default async function PortalHomePage() {
       files={(files as PortalFile[]) ?? []}
       messages={(messages as SmsMessage[]) ?? []}
       reps={(reps as Profile[]) ?? []}
+      estimates={estimates}
       companyName={companyRow?.name || "Your Contractor"}
       companyPhone={companyRow?.phone || null}
       companyLogo={companyRow?.logo_url || null}

@@ -5342,6 +5342,65 @@ body {
   grid-template-columns: repeat(6, 1fr);
 }
 
+/* Estimate links on the portal home page */
+.portal-est {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+.portal-est + .portal-est {
+  margin-top: 10px;
+}
+.portal-est:hover {
+  border-color: var(--ink-soft);
+}
+.portal-est-main {
+  min-width: 0;
+}
+.portal-est-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.portal-est-sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.portal-est-due {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8a6d0b;
+}
+.portal-est-paid {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--success);
+}
+.portal-est-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.portal-est-total {
+  font-family: var(--font-data);
+  font-size: 18px;
+  font-weight: 600;
+}
+.portal-est-go {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
 /* Money that is genuinely late. Red, and only while it is true -- same
    rule as the green and gold cards. */
 .stat-card.stat-card-late {

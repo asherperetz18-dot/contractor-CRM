@@ -28,6 +28,17 @@ type PortalFile = {
   uploaded_by: string | null;
 };
 
+export type PortalEstimate = {
+  id: string;
+  doc_number: string;
+  title: string | null;
+  status: string;
+  total_cents: number;
+  deposit_cents: number | null;
+  depositPaid: boolean;
+  amountDueCents: number;
+};
+
 type Tab = "Overview" | "Photos" | "Messages";
 
 // Internal pipeline stages are sales shorthand ("No Answer", "DNC",
@@ -41,7 +52,24 @@ const JOURNEY = [
   "Project confirmed",
 ] as const;
 
-function journeyStep(stage: string): number | null {
+/**
+ * Where the customer actually is.
+ *
+ * The estimate is asked first because it knows on its own: it turns
+ * Signed the moment the customer signs it. The pipeline stage only moves
+ * when a rep remembers to move it, and it routinely does not -- every
+ * sent or signed estimate in this account was contradicted by its lead's
+ * stage, including a signed $5,400 contract whose customer was shown
+ * "Appointment scheduled".
+ *
+ * The stage is still the fallback, since before any estimate exists it
+ * is the only thing that knows anything.
+ */
+function journeyStep(stage: string, estimates: PortalEstimate[]): number | null {
+  if (estimates.some((e) => e.status === "Signed")) return 4;
+  if (estimates.some((e) => e.status === "Sent" || e.status === "Viewed")) return 3;
+  if (estimates.length > 0) return 2;
+
   const s = stage.toLowerCase();
   if (s === "lost" || s === "dnc") return null; // show no tracker at all
   if (s === "won") return 4;
@@ -49,6 +77,10 @@ function journeyStep(stage: string): number | null {
   if (s.includes("estimate")) return 2;
   if (s.includes("appointment") || s.includes("2nd")) return 1;
   return 0;
+}
+
+function formatMoney(cents: number) {
+  return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
 function formatDate(dateStr: string) {
@@ -67,6 +99,7 @@ export function PortalHome({
   files,
   messages,
   reps,
+  estimates,
   companyName,
   companyPhone,
   companyLogo,
@@ -76,6 +109,7 @@ export function PortalHome({
   files: PortalFile[];
   messages: SmsMessage[];
   reps: Profile[];
+  estimates: PortalEstimate[];
   companyName: string;
   companyPhone: string | null;
   companyLogo: string | null;
@@ -90,7 +124,7 @@ export function PortalHome({
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const step = journeyStep(lead.stage);
+  const step = journeyStep(lead.stage, estimates);
   const todayISO = new Date().toISOString().slice(0, 10);
   const upcoming = events.filter((e) => e.date >= todayISO && e.status !== "Cancelled");
   const past = events.filter((e) => e.date < todayISO || e.status === "Cancelled");
@@ -217,6 +251,45 @@ export function PortalHome({
                     </li>
                   ))}
                 </ol>
+              </section>
+            )}
+
+            {/* The only permanent way back to the document. Before this,
+                the estimate was reachable solely through the magic link in
+                the original text -- delete that text and a signed contract
+                became unreachable. */}
+            {estimates.length > 0 && (
+              <section className="portal-card">
+                <h2 className="portal-card-title">
+                  {estimates.length === 1 ? "Your estimate" : "Your estimates"}
+                </h2>
+                {estimates.map((e) => (
+                  <a key={e.id} className="portal-est" href={`/portal/estimates/${e.id}`}>
+                    <div className="portal-est-main">
+                      <div className="portal-est-title">{e.title || "Project estimate"}</div>
+                      <div className="portal-est-sub">
+                        {e.doc_number}
+                        {e.status === "Signed"
+                          ? " · Signed"
+                          : e.status === "Declined"
+                            ? " · Declined"
+                            : " · Awaiting your signature"}
+                      </div>
+                      {/* Money still owed is the one thing worth
+                          surfacing here rather than a page deeper. */}
+                      {e.amountDueCents > 0 && (
+                        <div className="portal-est-due">
+                          {formatMoney(e.amountDueCents)} deposit due
+                        </div>
+                      )}
+                      {e.depositPaid && <div className="portal-est-paid">Deposit paid</div>}
+                    </div>
+                    <div className="portal-est-side">
+                      <span className="portal-est-total">{formatMoney(e.total_cents)}</span>
+                      <span className="portal-est-go">View →</span>
+                    </div>
+                  </a>
+                ))}
               </section>
             )}
 
