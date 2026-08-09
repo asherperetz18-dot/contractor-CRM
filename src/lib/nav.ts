@@ -80,6 +80,7 @@ const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   "marketing-analytics": "📈",
   production: "▦",
   documents: "📄",
+  payments: "💵",
   calendar: "📅",
   schedule: "▧",
   contracts: "✎",

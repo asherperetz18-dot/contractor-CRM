@@ -139,6 +139,7 @@ export type PageKey =
   | "appointment-reports"
   | "production"
   | "documents"
+  | "payments"
   | "calendar"
   | "schedule"
   | "contracts";
@@ -191,6 +192,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // rather than "Invoices" because a signed estimate becomes a contract --
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
+  { key: "payments", label: "Payments", href: "/payments", group: "General" },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
@@ -241,6 +243,12 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
     );
   }
   if (role === "Dispatch") return DISPATCH_DEFAULT_PAGES.includes(pageKey);
+  // Payments is company-wide money -- everything collected, across every
+  // rep's jobs. A rep seeing the whole company's revenue is a different
+  // thing from a rep seeing their own commissionable work, so it starts
+  // off for the field roles and an Admin can turn it on per role in Role
+  // Visibility. Office and Admin keep it: that is who chases the money.
+  if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
   return true;
 }
 
@@ -1289,6 +1297,67 @@ export function depositPayment(
   payments: Pick<PortalPayment, "kind" | "status" | "paid_at" | "method" | "amount_cents">[]
 ) {
   return payments.find((p) => p.kind === "deposit" && p.status === "succeeded") ?? null;
+}
+
+export type SignedContract = {
+  id: string;
+  total_cents: number;
+  deposit_cents: number | null;
+};
+
+export type CollectionsSummary = {
+  /** Settled money, in the bank. */
+  collectedCents: number;
+  /** Face value of every signed contract. */
+  contractValueCents: number;
+  /** Signed but not yet collected. Never negative. */
+  outstandingCents: number;
+  /** ACH still clearing -- promised, not arrived. */
+  clearingCents: number;
+  /** Signed contracts whose deposit has not landed: the money to chase today. */
+  awaitingDepositCount: number;
+  awaitingDepositCents: number;
+};
+
+/**
+ * The money view over signed contracts.
+ *
+ * Deliberately has no "overdue" figure. Progress payments are milestones
+ * ("at completion of rough-in"), not dates -- estimate_payments carries no
+ * due date at all -- so nothing in the data can be late yet. Showing an
+ * overdue number here would mean inventing one.
+ *
+ * Only signed estimates count as contract value. A draft or a sent
+ * estimate is a proposal; counting it as money owed would inflate the
+ * figure with work nobody has agreed to.
+ */
+export function collectionsSummary(
+  contracts: SignedContract[],
+  payments: Pick<PortalPayment, "estimate_id" | "kind" | "status" | "amount_cents">[]
+): CollectionsSummary {
+  const collectedCents = paidTotalCents(payments);
+  const contractValueCents = contracts.reduce((sum, c) => sum + (c.total_cents || 0), 0);
+
+  const clearingCents = payments
+    .filter((p) => p.status === "pending")
+    .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+
+  const settledOn = new Set(
+    payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
+  );
+  const awaiting = contracts.filter((c) => (c.deposit_cents || 0) > 0 && !settledOn.has(c.id));
+
+  return {
+    collectedCents,
+    contractValueCents,
+    // Collected can exceed signed value if money landed against an
+    // estimate later revised downward; a negative "outstanding" would
+    // read as the company owing the customer, which it does not.
+    outstandingCents: Math.max(0, contractValueCents - collectedCents),
+    clearingCents,
+    awaitingDepositCount: awaiting.length,
+    awaitingDepositCents: awaiting.reduce((sum, c) => sum + (c.deposit_cents || 0), 0),
+  };
 }
 
 /** An ACH transfer still clearing -- worth showing, but it is not money yet. */

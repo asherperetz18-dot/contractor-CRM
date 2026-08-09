@@ -5316,6 +5316,28 @@ body {
   }
 }
 
+/* Payments page */
+.pay-section {
+  margin-top: 28px;
+}
+.pay-section-title {
+  font-family: var(--font-headers);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+/* A document number that opens the contract, without looking like body
+   copy full of links. */
+.link-plain {
+  color: inherit;
+  text-decoration: none;
+}
+.link-plain:hover .ur-name {
+  text-decoration: underline;
+}
+
 /* Shown while an estimate is out with the customer but still editable. */
 .est-recall-banner {
   padding: 10px 14px;

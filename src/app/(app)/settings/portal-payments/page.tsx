@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { AdminGate } from "@/components/admin-gate";
@@ -89,7 +90,10 @@ export default async function PortalPaymentsPage() {
 
       {rows.length > 0 && (
         <>
-          <p className="module-sub">Received to date: {moneyCents(received)}</p>
+          <p className="module-sub">
+            Received to date: {moneyCents(received)} — the full record, with what is still
+            outstanding, lives on <Link href="/payments">Payments</Link>.
+          </p>
           <table className="data-table">
             <thead>
               <tr>
