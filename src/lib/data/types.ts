@@ -1397,6 +1397,13 @@ export function pendingPayment(
 export function paymentMethodLabel(method: string | null): string {
   if (method === "us_bank_account") return "bank transfer";
   if (method === "card") return "card";
+  // Money taken by hand. Named the way a contractor would say it, since
+  // this reads back on the contract and in the payment history.
+  if (method === "cash") return "cash";
+  if (method === "check") return "check";
+  if (method === "zelle") return "Zelle";
+  if (method === "wire") return "wire transfer";
+  if (method === "other") return "other";
   return method ?? "";
 }
 

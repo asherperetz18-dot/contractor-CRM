@@ -18,6 +18,7 @@ import {
 } from "@/lib/data/types";
 import { generateEstimateSchedule, saveEstimatePayments } from "@/lib/actions/estimates";
 import { PhaseBilling } from "./phase-billing";
+import { RecordPayment } from "./record-payment";
 
 type Row = { key: string; name: string; description: string; amount: string };
 
@@ -205,7 +206,17 @@ export function PaymentSchedule({
                 </div>
               )}
             </td>
-            <td></td>
+            <td>
+              {/* Cash and cheques are most contractors' normal case, so
+                  the deposit needs a way in that isn't Stripe. */}
+              {locked && !depositPaid && deposit > 0 && (
+                <RecordPayment
+                  estimateId={estimateId}
+                  suggestedCents={deposit}
+                  label="Deposit"
+                />
+              )}
+            </td>
           </tr>
 
           {rows.map((r, i) => {
@@ -245,7 +256,20 @@ export function PaymentSchedule({
                     // reordered or removed while locked, so index alignment
                     // holds and each row can find its own saved phase.
                     payments[i] && (
-                      <PhaseBilling phase={payments[i]} payments={paid} signed={locked} />
+                      <>
+                        <PhaseBilling phase={payments[i]} payments={paid} signed={locked} />
+                        {!paid.some(
+                          (p) =>
+                            p.estimate_payment_id === payments[i].id && p.status === "succeeded"
+                        ) && (
+                          <RecordPayment
+                            estimateId={estimateId}
+                            phaseId={payments[i].id}
+                            suggestedCents={cents}
+                            label={r.name || "Progress payment"}
+                          />
+                        )}
+                      </>
                     )
                   ) : (
                     <button

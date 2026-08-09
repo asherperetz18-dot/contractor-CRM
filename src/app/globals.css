@@ -5893,3 +5893,39 @@ textarea.est-item-desc:disabled {
   margin-top: 8px;
   z-index: 2;
 }
+
+/* Recording a cash or cheque payment on the schedule */
+.est-record-btn {
+  font-size: 12px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.est-record {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-top: 8px;
+  background: var(--paper, #fff);
+  min-width: 320px;
+}
+.est-record-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.est-record-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.est-record-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .est-record-grid {
+    grid-template-columns: 1fr;
+  }
+}
