@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { sendTwilioSms } from "@/lib/twilio-env";
+import { getTwilioForCompany } from "@/lib/twilio-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
@@ -101,7 +102,7 @@ export async function requestProgressPayment(
   if (!lead) return { error: "Customer not found." };
   if (!lead.phone) return { error: "This customer has no phone number on file." };
 
-  const twilioEnv = getTwilioEnv();
+  const twilioEnv = await getTwilioForCompany(guard.companyId);
   if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
 
   const due = dueDate || phase.due_date || defaultDueDate();

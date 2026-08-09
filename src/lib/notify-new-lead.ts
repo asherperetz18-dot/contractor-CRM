@@ -1,6 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { sendTwilioSms } from "@/lib/twilio-env";
+import { getTwilioForCompany } from "@/lib/twilio-company";
 import { normalizePhone } from "@/lib/data/types";
 
 export type NewLeadAlertInput = {
@@ -74,7 +75,9 @@ export async function notifyNewLead(
   admin: ReturnType<typeof createAdminClient>,
   lead: NewLeadAlertInput
 ): Promise<{ sent: number; skipped?: string }> {
-  const twilioEnv = getTwilioEnv();
+  // This company's own number: an alert about a Ca Pro Builder lead must
+  // not arrive from La Home Contractor's line.
+  const twilioEnv = await getTwilioForCompany(lead.companyId);
   if (!twilioEnv) return { sent: 0, skipped: "twilio not configured" };
 
   const { data } = await admin

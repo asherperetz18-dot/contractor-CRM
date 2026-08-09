@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canEditDispatch, normalizePhone } from "@/lib/data/types";
-import { getTwilioEnv } from "@/lib/twilio-env";
+import { getTwilioForCompany } from "@/lib/twilio-company";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
@@ -34,9 +34,11 @@ export async function sendSms(
   if (!trimmedBody) return { error: "Message cannot be empty." };
   if (!toNumber.trim()) return { error: "No phone number to send to." };
 
-  const twilioEnv = getTwilioEnv();
+  // The company the sender belongs to, so the text goes out on that
+  // business's own number rather than a shared one.
+  const twilioEnv = await getTwilioForCompany(profile.company_id);
   if (!twilioEnv) {
-    return { error: "Twilio is not configured on the server." };
+    return { error: "Texting isn't configured for this company yet." };
   }
   const { accountSid, authToken, phoneNumber: fromNumber } = twilioEnv;
 

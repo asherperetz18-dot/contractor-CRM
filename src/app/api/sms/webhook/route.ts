@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone, type Lead } from "@/lib/data/types";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 
 const YES_WORDS = new Set(["yes", "y", "confirm", "confirmed", "ok", "okay", "yeah", "yep", "sure"]);
 const NO_WORDS = new Set(["no", "n", "cancel", "decline", "declined", "nope"]);
@@ -56,29 +57,47 @@ function pickNearest(rows: EventRow[]): EventRow | null {
 }
 
 export async function POST(req: NextRequest) {
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) {
-    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
-  }
-
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
+
+  const from = params.From || "";
+  const to = params.To || "";
+  const body = params.Body || "";
+
+  // Which company owns this message is decided by the number it was sent
+  // TO, before anything else. Each company signs with its own auth token,
+  // so the company has to be known to verify at all.
+  //
+  // Naming a company in the payload buys an attacker nothing: they still
+  // cannot produce a valid signature without that company's token, and a
+  // number nobody owns falls through to the platform credentials.
+  const inboundCompanyId = await companyForInboundNumber(to);
+  const twilioEnv = inboundCompanyId
+    ? await getTwilioForCompany(inboundCompanyId)
+    : getTwilioEnv();
+  if (!twilioEnv) {
+    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
+  }
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
   }
 
-  const from = params.From || "";
-  const to = params.To || "";
-  const body = params.Body || "";
   const normalizedFrom = normalizePhone(from);
   const normalizedBody = body.trim().toLowerCase();
 
   const admin = createAdminClient();
+  // Scoped to the receiving company once one is known. Matching the
+  // sender across every company's leads was only safe while there was a
+  // single number: two companies holding the same homeowner's number
+  // would race, and the reply could attach to the wrong business.
+  let leadQuery = admin.from("leads").select("id, company_id, phone, second_contact_phone");
+  if (inboundCompanyId) leadQuery = leadQuery.eq("company_id", inboundCompanyId);
+
   const [{ data: leads }, { data: profiles }] = await Promise.all([
-    admin.from("leads").select("id, company_id, phone, second_contact_phone"),
+    leadQuery,
     admin.from("profiles").select("id, name, phone"),
   ]);
 
@@ -157,7 +176,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const companyId = matchedLead?.company_id ?? targetEvent?.company_id ?? null;
+  // The receiving number is the most reliable answer, so it wins; the
+  // lead and event matches remain as fallbacks for numbers that predate
+  // per-company Twilio.
+  const companyId =
+    inboundCompanyId ?? matchedLead?.company_id ?? targetEvent?.company_id ?? null;
   if (companyId) {
     await admin.from("sms_messages").insert({
       lead_id: matchedLead?.id ?? null,

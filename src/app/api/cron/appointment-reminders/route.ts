@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
-import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { sendTwilioSms } from "@/lib/twilio-env";
+import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import {
   TIMEZONE_IANA,
@@ -59,7 +60,7 @@ function buildBody(
 
 async function processCompany(
   admin: ReturnType<typeof createAdminClient>,
-  twilioEnv: NonNullable<ReturnType<typeof getTwilioEnv>>,
+  twilioEnv: CompanyTwilio,
   company: Pick<CompanyProfile, "company_id" | "timezone">
 ): Promise<{ checked: number; sent: number }> {
   const ianaZone = TIMEZONE_IANA[company.timezone] ?? "America/Los_Angeles";
@@ -159,11 +160,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) {
-    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
-  }
-
   // No session here (cron) -- loop every company so each uses its own
   // timezone and only ever sees its own events/leads.
   const admin = createAdminClient();
@@ -172,11 +168,20 @@ export async function POST(req: NextRequest) {
 
   let checked = 0;
   let sent = 0;
+  let skipped = 0;
   for (const company of companyRows) {
+    // Resolved per company: each texts from its own number. One company
+    // without Twilio is skipped rather than aborting the run, so a
+    // half-configured tenant cannot stop everybody else's reminders.
+    const twilioEnv = await getTwilioForCompany(company.company_id);
+    if (!twilioEnv) {
+      skipped += 1;
+      continue;
+    }
     const result = await processCompany(admin, twilioEnv, company);
     checked += result.checked;
     sent += result.sent;
   }
 
-  return NextResponse.json({ companies: companyRows.length, checked, sent });
+  return NextResponse.json({ companies: companyRows.length, checked, sent, skipped });
 }

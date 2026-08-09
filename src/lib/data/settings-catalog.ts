@@ -141,6 +141,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     hint: "Click-to-call, the power dialer, call scripts, and call outcomes",
     cards: [
       {
+        title: "Twilio Account & Number",
+        desc: "This company's own Twilio account and phone number — texts and calls go out on it",
+        icon: "📱",
+        href: "/settings/twilio",
+      },
+      {
         title: "In-App Dialer (Twilio Voice)",
         desc: "Native click-to-call dialer: connection status, caller ID, and call recording toggle",
         icon: "📞",

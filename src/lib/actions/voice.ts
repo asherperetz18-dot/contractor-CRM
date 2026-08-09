@@ -2,7 +2,8 @@
 
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
-import { getTwilioVoiceEnv } from "@/lib/twilio-env";
+import { getTwilioVoiceForCompany, type CompanyTwilioVoice } from "@/lib/twilio-company";
+import { getCurrentProfile } from "@/lib/data/profile";
 
 function base64url(input: Buffer | string): string {
   const buf = typeof input === "string" ? Buffer.from(input) : input;
@@ -15,7 +16,7 @@ function base64url(input: Buffer | string): string {
 // SDK just for token signing -- same approach used for SMS elsewhere.
 function buildAccessToken(
   identity: string,
-  env: NonNullable<ReturnType<typeof getTwilioVoiceEnv>>
+  env: CompanyTwilioVoice
 ): string {
   const now = Math.floor(Date.now() / 1000);
   const ttl = 3600;
@@ -53,8 +54,13 @@ export async function getVoiceAccessToken(): Promise<{ token?: string; error?: s
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." };
 
-  const env = getTwilioVoiceEnv();
-  if (!env) return { error: "Twilio Voice is not configured on the server." };
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  // The dialer calls out on this company's own number, so the customer
+  // sees the business they are actually dealing with.
+  const env = await getTwilioVoiceForCompany(profile.company_id);
+  if (!env) return { error: "Calling isn't configured for this company yet." };
 
   const token = buildAccessToken(user.id, env);
   return { token };

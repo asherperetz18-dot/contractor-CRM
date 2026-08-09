@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
-import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { sendTwilioSms } from "@/lib/twilio-env";
+import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import {
   FOLLOW_UP_STAGE,
@@ -59,7 +60,7 @@ function reminderBody(row: EventRow, leadName: string): string {
 
 async function processCompany(
   admin: ReturnType<typeof createAdminClient>,
-  twilioEnv: ReturnType<typeof getTwilioEnv>,
+  twilioEnv: CompanyTwilio | null,
   company: CompanyRow
 ): Promise<{ checked: number; flagged: number; texted: number; moved: number }> {
   const empty = { checked: 0, flagged: 0, texted: 0, moved: 0 };
@@ -221,10 +222,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Texting is best-effort: if Twilio isn't configured, the tasks and the
-  // stage moves still need to happen.
-  const twilioEnv = getTwilioEnv();
-
   // No session here (cron) -- loop every company so each uses its own
   // timezone/settings and only ever touches its own events/tasks.
   const admin = createAdminClient();
@@ -240,6 +237,10 @@ export async function POST(req: NextRequest) {
   let texted = 0;
   let moved = 0;
   for (const company of companyRows) {
+    // Per company, so each texts from its own number. Texting stays
+    // best-effort: a company without Twilio still gets its tasks created
+    // and its stages moved, which is the part that must not be skipped.
+    const twilioEnv = await getTwilioForCompany(company.company_id);
     const result = await processCompany(admin, twilioEnv, company);
     checked += result.checked;
     flagged += result.flagged;

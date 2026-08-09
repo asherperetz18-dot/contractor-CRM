@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { getTwilioVoiceEnv } from "@/lib/twilio-env";
+import { getTwilioVoiceForCompany } from "@/lib/twilio-company";
 
 export async function logCall(input: {
   leadId: string | null;
@@ -16,7 +16,7 @@ export async function logCall(input: {
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
-  const voiceEnv = getTwilioVoiceEnv();
+  const voiceEnv = await getTwilioVoiceForCompany(profile.company_id);
 
   const { data, error } = await supabase
     .from("call_logs")

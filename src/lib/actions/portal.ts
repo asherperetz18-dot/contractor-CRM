@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email-env";
-import { getTwilioEnv, sendTwilioSms } from "@/lib/twilio-env";
+import { sendTwilioSms } from "@/lib/twilio-env";
+import { getTwilioForCompany } from "@/lib/twilio-company";
 import {
   completeChallenge,
   createLoginToken,
@@ -168,7 +169,7 @@ export async function sendPortalLink(
     }
   }
 
-  const twilioEnv = getTwilioEnv();
+  const twilioEnv = await getTwilioForCompany(lead.company_id);
   if (lead.phone && twilioEnv) {
     // A separate token per channel -- these are single-use, so one shared
     // token would silently break whichever link the customer opened second.
@@ -357,7 +358,7 @@ export async function portalSendMessage(body: string): Promise<{ error?: string 
   const viewer = await getPortalViewer();
   if (!viewer) return { error: "Please sign in again." };
 
-  const twilioEnv = getTwilioEnv();
+  const twilioEnv = await getTwilioForCompany(viewer.companyId);
   const admin = createAdminClient();
   const { error } = await admin.from("sms_messages").insert({
     lead_id: viewer.lead.id,

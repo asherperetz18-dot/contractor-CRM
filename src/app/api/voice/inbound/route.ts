@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { normalizePhone, toE164 } from "@/lib/data/types";
 
 function xmlEscape(value: string): string {
@@ -38,31 +39,41 @@ async function readParams(req: NextRequest): Promise<Record<string, string>> {
  * from your phone's own log.
  */
 export async function POST(req: NextRequest) {
-  const twilioEnv = getTwilioEnv();
+  const params = await readParams(req);
+  const from = (params.From || "").trim();
+  const to = (params.To || "").trim();
+  const callSid = (params.CallSid || "").trim();
+
+  // The number that was called identifies the company, and each company
+  // signs with its own auth token, so this has to be resolved before the
+  // signature can be checked at all.
+  const inboundCompanyId = await companyForInboundNumber(to);
+  const twilioEnv = inboundCompanyId
+    ? await getTwilioForCompany(inboundCompanyId)
+    : getTwilioEnv();
   if (!twilioEnv) {
     return twiml(`<Say>This line is not configured.</Say>`);
   }
 
-  const params = await readParams(req);
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
   }
 
-  const from = (params.From || "").trim();
-  const to = (params.To || "").trim();
-  const callSid = (params.CallSid || "").trim();
-
   const admin = createAdminClient();
 
-  // One Twilio number serves the account, so the forwarding company is
-  // the one that has actually configured a destination. Ambiguity is
-  // resolved by taking the first -- with a single number there is no way
-  // to tell two companies apart on an inbound call.
-  const { data: companies } = await admin
+  // Resolved from the number dialled. This used to take the first
+  // company with any forwarding number configured, because one shared
+  // number genuinely could not tell two companies apart -- which meant a
+  // call to one business could ring another's phone.
+  let companyQuery = admin
     .from("company_profile")
-    .select("company_id, call_forward_number, call_forward_timeout")
-    .not("call_forward_number", "is", null);
+    .select("company_id, call_forward_number, call_forward_timeout");
+  companyQuery = inboundCompanyId
+    ? companyQuery.eq("company_id", inboundCompanyId)
+    : companyQuery.not("call_forward_number", "is", null);
+
+  const { data: companies } = await companyQuery;
   const company =
     ((companies as
       | { company_id: string; call_forward_number: string | null; call_forward_timeout: number }[]
