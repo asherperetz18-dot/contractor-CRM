@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { computeDispatcherCommissions, isAdminRole } from "@/lib/data/types";
@@ -84,7 +83,10 @@ export async function setLeadDispatcher(
     }
   }
 
-  const supabase = await createClient();
+  // Claiming is an update on the lead, and the update policy still
+  // admits only Office and Sales. The permission rules above already
+  // decided this is allowed, so the write goes through the service role.
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("leads")
     .update({ dispatcher_id: dispatcherId })

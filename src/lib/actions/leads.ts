@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatcherMayWriteToLead } from "@/lib/dispatcher-access";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { normalizePhone, type LeadInput, type PipelineStage } from "@/lib/data/types";
 
@@ -312,7 +314,11 @@ export async function createLeadTask(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  const supabase = await createClient();
+  // Same as notes: the task insert policy predates the Dispatch role, so
+  // a dispatcher's follow-up on their own lead goes through the service
+  // role behind an ownership check. Deleting a task stays out of reach.
+  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
+  const supabase = asDispatcher ? createAdminClient() : await createClient();
   const { error } = await supabase.from("lead_tasks").insert({
     lead_id: leadId,
     title: input.title.trim(),

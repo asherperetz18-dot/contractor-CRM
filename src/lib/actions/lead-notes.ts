@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { dispatcherMayWriteToLead } from "@/lib/dispatcher-access";
 import { getCurrentProfile } from "@/lib/data/profile";
 
 export async function addLeadNote(
@@ -15,7 +17,11 @@ export async function addLeadNote(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  const supabase = await createClient();
+  // A dispatcher works the lead they are paid on, but the insert policy
+  // still admits only Office, Sales and Field -- so their own note is
+  // written with the service role after an explicit ownership check.
+  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
+  const supabase = asDispatcher ? createAdminClient() : await createClient();
   const { error } = await supabase.from("lead_notes").insert({
     lead_id: leadId,
     author_id: profile.id,
