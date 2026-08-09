@@ -108,6 +108,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "%",
       },
       {
+        title: "Dispatcher Commission",
+        desc: "What a dispatcher earns on the gross sale of every contract signed on a lead they hold",
+        icon: "🧾",
+        href: "/settings/dispatcher-commission",
+      },
+      {
         title: "Lead Sources",
         desc: "Create and manage lead source categories (Zillow, Referral, etc.)",
         icon: "📥",

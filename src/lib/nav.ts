@@ -81,6 +81,7 @@ const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   production: "▦",
   documents: "📄",
   payments: "💵",
+  commissions: "🧾",
   calendar: "📅",
   schedule: "▧",
   contracts: "✎",

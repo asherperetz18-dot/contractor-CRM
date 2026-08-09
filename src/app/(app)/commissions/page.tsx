@@ -1,0 +1,127 @@
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole, moneyCents } from "@/lib/data/types";
+import { getDispatcherCommissions } from "@/lib/actions/dispatcher";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * What dispatchers have earned.
+ *
+ * Office and Admin see everyone; a dispatcher sees only their own line,
+ * which the action enforces rather than this page.
+ */
+export default async function CommissionsPage() {
+  const profile = await getCurrentProfile();
+  if (!profile) return null;
+
+  const { rows, ratePercent, error } = await getDispatcherCommissions();
+  const everyone = isAdminRole(profile);
+
+  const totals = (rows ?? []).reduce(
+    (acc, r) => ({
+      jobs: acc.jobs + r.jobsSold,
+      contract: acc.contract + r.contractCents,
+      commission: acc.commission + r.commissionCents,
+      collected: acc.collected + r.earnedOnCollectedCents,
+    }),
+    { jobs: 0, contract: 0, commission: 0, collected: 0 }
+  );
+
+  return (
+    <div>
+      <div className="module-toolbar">
+        <div>
+          <h1 className="module-title">Commissions</h1>
+          <p className="module-sub">
+            {(ratePercent ?? 1).toFixed(2)}% of the gross sale on every signed contract, to the
+            dispatcher who brought the lead in.
+          </p>
+        </div>
+      </div>
+
+      {error && <p className="error-note">{error}</p>}
+
+      {!rows?.length ? (
+        <div className="empty-state">
+          <p className="empty-label">Nothing earned yet</p>
+          <p className="empty-hint">
+            Commission is credited when a contract is signed on a lead a dispatcher holds. Claim a
+            lead from the pipeline, and it appears here once that job sells.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="stat-grid stat-grid-5">
+            <div className="stat-card stat-static">
+              <div className="stat-value mono">{totals.jobs}</div>
+              <div className="stat-label">Jobs Sold</div>
+            </div>
+            <div className="stat-card stat-static">
+              <div className="stat-value mono">{moneyCents(totals.contract)}</div>
+              <div className="stat-label">Contract Value</div>
+            </div>
+            <div className={"stat-card stat-static" + (totals.commission > 0 ? " stat-card-gold" : "")}>
+              <div className="stat-value mono">{moneyCents(totals.commission)}</div>
+              <div className="stat-label">Commission Earned</div>
+            </div>
+            <div className={"stat-card stat-static" + (totals.collected > 0 ? " stat-card-won" : "")}>
+              <div className="stat-value mono">{moneyCents(totals.collected)}</div>
+              <div className="stat-label">Backed By Cash</div>
+            </div>
+            <div className="stat-card stat-static">
+              <div className="stat-value mono">{moneyCents(totals.commission - totals.collected)}</div>
+              <div className="stat-label">Not Yet Collected</div>
+            </div>
+          </div>
+
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Dispatcher</th>
+                <th className="right">Jobs sold</th>
+                <th className="right">Contract value</th>
+                <th className="right">Commission</th>
+                <th className="right">Backed by cash</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.dispatcherId}>
+                  <td>
+                    <div className="ur-name">{r.dispatcherName}</div>
+                    {r.dispatcherId === profile.id && (
+                      <div className="ur-add-phone">you</div>
+                    )}
+                  </td>
+                  <td className="right mono">{r.jobsSold}</td>
+                  <td className="right mono">{moneyCents(r.contractCents)}</td>
+                  <td className="right mono">
+                    <strong>{moneyCents(r.commissionCents)}</strong>
+                  </td>
+                  <td className="right mono">
+                    {moneyCents(r.earnedOnCollectedCents)}
+                    {r.earnedOnCollectedCents < r.commissionCents && (
+                      <div className="ur-add-phone">
+                        {moneyCents(r.commissionCents - r.earnedOnCollectedCents)} still owed on the
+                        contract
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {/* The distinction that decides when it is safe to pay out. */}
+      <p className="est-tax-note">
+        <strong>Commission</strong> is earned on the gross sale the moment a contract is signed.
+        <strong> Backed by cash</strong> is the share of it covered by money actually collected —
+        paying the full amount on a contract that has taken a deposit and nothing since is a
+        cash-flow trap, so both are shown and the choice of what to pay against is yours.
+        {!everyone && " You are seeing your own line only."}
+      </p>
+    </div>
+  );
+}

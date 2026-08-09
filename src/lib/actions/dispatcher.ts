@@ -279,3 +279,47 @@ export async function getEventOwners(eventIds: string[]): Promise<EventOwner[]> 
     };
   });
 }
+
+/** The company's dispatcher commission rate, as a percentage. */
+export async function getDispatcherCommissionRate(): Promise<number | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_profile")
+    .select("dispatcher_commission_bp")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ dispatcher_commission_bp: number }>();
+  return (data?.dispatcher_commission_bp ?? 100) / 100;
+}
+
+/**
+ * Sets the rate. Stored in basis points so a rate like 1.25% survives
+ * without the rounding that a float percentage would introduce, the same
+ * reason tax and deposit rates are stored that way.
+ */
+export async function setDispatcherCommissionRate(
+  percent: number
+): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin can change this." };
+
+  if (!Number.isFinite(percent) || percent < 0) return { error: "Enter a percentage of 0 or more." };
+  // A dispatcher earning more than a fifth of the contract is far more
+  // likely to be a typo than a deal.
+  if (percent > 20) return { error: "That's over 20% — check the number before saving." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("company_profile")
+    .update({ dispatcher_commission_bp: Math.round(percent * 100) })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error || !data?.length) return { error: error?.message || "Could not save." };
+
+  revalidatePath("/commissions");
+  revalidatePath("/settings/dispatcher-commission");
+  return { ok: true };
+}

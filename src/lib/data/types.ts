@@ -140,6 +140,7 @@ export type PageKey =
   | "production"
   | "documents"
   | "payments"
+  | "commissions"
   | "calendar"
   | "schedule"
   | "contracts";
@@ -193,6 +194,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
+  { key: "commissions", label: "Commissions", href: "/commissions", group: "General" },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
@@ -249,6 +251,11 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // off for the field roles and an Admin can turn it on per role in Role
   // Visibility. Office and Admin keep it: that is who chases the money.
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
+  // Commission is payroll: what each person earns, side by side. Office
+  // and Admin only by default -- including dispatchers themselves, who
+  // would otherwise see each other's pay. An Admin can grant it per role
+  // in Role Visibility if they want dispatchers to see their own line.
+  if (pageKey === "commissions" && role !== "Office" && role !== "Admin") return false;
   return true;
 }
 
