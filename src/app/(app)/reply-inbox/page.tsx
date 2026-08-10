@@ -20,7 +20,14 @@ export default async function ReplyInboxPage() {
       // conversations keyed by the rep's phone, so a teammate appeared
       // in the list looking like a client -- and replying in that thread
       // sent the customer message straight to the rep.
-      .neq("channel", "rep")
+      //
+      // With one exception: a crew reply we could not tie to any
+      // appointment. Those have no job page to appear on, so excluding
+      // them here means they exist in the database and nowhere else. They
+      // key by the rep's own phone rather than a lead, so they cannot
+      // reappear inside a customer's thread -- which is what the
+      // exclusion was protecting against.
+      .or("channel.neq.rep,and(channel.eq.rep,lead_id.is.null,direction.eq.inbound)")
       .order("created_at", { ascending: true }),
     selectAll<Lead>((f, t) =>
       supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)

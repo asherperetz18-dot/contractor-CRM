@@ -2827,6 +2827,17 @@ body {
   font-size: 12px;
   color: var(--ink-soft);
 }
+/* Warm, not alarming: nothing has gone wrong, but the reader has to know
+   who is on the other end before they type. */
+.ri-crew-note {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: #fdf8ee;
+  border-bottom: 1px solid var(--line);
+}
 .ri-thread-messages {
   flex: 1;
   overflow-y: auto;

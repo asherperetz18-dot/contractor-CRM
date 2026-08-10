@@ -16,6 +16,13 @@ type Conversation = {
   leadId: string | null;
   name: string;
   phone: string;
+  /**
+   * The other end of this thread is a teammate, not a customer. Carried
+   * explicitly rather than inferred from the name, because everything in
+   * here -- who a reply is addressed to, what the send button promises --
+   * turns on it.
+   */
+  isCrew: boolean;
   messages: SmsMessage[];
 };
 
@@ -79,6 +86,7 @@ export function ReplyInboxView({
               ? `👷 ${rep.name || rep.email}`
               : counterpartyPhone,
           phone: lead?.phone || counterpartyPhone,
+          isCrew: !!rep,
           messages: [],
         };
         map.set(key, convo);
@@ -93,6 +101,7 @@ export function ReplyInboxView({
         leadId: pendingTarget.leadId,
         name: lead ? leadDisplayName(lead) : pendingTarget.phone || "New conversation",
         phone: lead?.phone || pendingTarget.phone || "",
+        isCrew: false,
         messages: [],
       });
     } else if (pendingTarget && !pendingTarget.leadId && pendingTarget.phone) {
@@ -103,6 +112,7 @@ export function ReplyInboxView({
           leadId: null,
           name: pendingTarget.phone,
           phone: pendingTarget.phone,
+          isCrew: false,
           messages: [],
         });
       }
@@ -202,6 +212,15 @@ export function ReplyInboxView({
                   <div className="ri-thread-name">{selected.name}</div>
                   <div className="ri-thread-phone">{selected.phone}</div>
                 </div>
+                {/* Said plainly, because the whole risk of showing crew
+                    replies alongside customer ones is someone answering
+                    this thread believing the homeowner will read it. */}
+                {selected.isCrew && (
+                  <p className="ri-crew-note">
+                    Your crew, not the customer — we couldn&apos;t tell which appointment
+                    this was about. Anything you send here goes to them.
+                  </p>
+                )}
                 <div className="ri-thread-messages">
                   {selected.messages.length === 0 ? (
                     <p className="empty-hint">No messages yet — send the first one below.</p>

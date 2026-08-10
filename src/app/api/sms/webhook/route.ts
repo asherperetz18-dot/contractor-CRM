@@ -28,6 +28,12 @@ function escapeXml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// How long a rep's free-text reply stays attachable to the appointment we
+// last nudged them about. A "yes" is unambiguous whenever it arrives, but
+// "on my way" a week after the fact is not about that job, and filing it
+// there would put words on a customer's record that were never theirs.
+const REP_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // When did we last text this rep about this specific appointment? That is
 // almost certainly the message they're replying to, and it beats guessing
 // by date -- appointments routinely sit in the past still unconfirmed, so
@@ -122,7 +128,14 @@ export async function POST(req: NextRequest) {
   // lead match, since a staff member's own phone should never coincide with
   // a lead's, but if it somehow did, treating them as staff is the safer
   // assumption.
-  if (isYesNo && matchedRep) {
+  //
+  // Runs for any text from a known rep, not just yes/no. Which appointment
+  // they mean is decided by who they are and what we last sent them --
+  // never by the words -- so "running late" and "nobody's home" reach the
+  // job the same way "yes" does. Gating this on yes/no meant every other
+  // reply resolved to no appointment, and so was filed against no job and
+  // shown nowhere.
+  if (matchedRep) {
     const { data: candidateEvents } = await admin
       .from("events")
       .select(EVENT_COLUMNS)
@@ -134,9 +147,23 @@ export async function POST(req: NextRequest) {
       .map((row) => ({ row, at: lastTextedRepAt(row, matchedRep.id) }))
       .filter((x): x is { row: EventRow; at: string } => !!x.at)
       .sort((a, b) => b.at.localeCompare(a.at));
-    targetEvent = texted[0]?.row ?? pickNearest(rows);
 
-    if (targetEvent) {
+    if (isYesNo) {
+      // An answer to a question only this app asks, so it pairs with the
+      // appointment however long it took them to reply.
+      targetEvent = texted[0]?.row ?? pickNearest(rows);
+    } else if (
+      texted[0] &&
+      Date.now() - new Date(texted[0].at).getTime() < REP_REPLY_WINDOW_MS
+    ) {
+      // Anything else only attaches while the nudge is still fresh. A rep
+      // texting the office out of the blue is not commentary on whatever
+      // job they were last sent, and guessing would be worse than leaving
+      // it loose -- the reply inbox catches those.
+      targetEvent = texted[0].row;
+    }
+
+    if (isYesNo && targetEvent) {
       await admin.from("events").update({ rep_confirmed: confirmed }).eq("id", targetEvent.id);
       if (targetEvent.lead_id) {
         await admin.from("lead_notes").insert({
@@ -181,15 +208,32 @@ export async function POST(req: NextRequest) {
   // per-company Twilio.
   const companyId =
     inboundCompanyId ?? matchedLead?.company_id ?? targetEvent?.company_id ?? null;
+
+  // Which job this message belongs to on the record.
+  //
+  // A lead match wins: a customer texting from their own number belongs in
+  // their own thread, and that includes the rare person who is both a
+  // customer and staff. Everyone else's reply is filed against the
+  // appointment resolved above -- a rep's number matches no lead, which is
+  // exactly why their replies used to be stored with no job attached and
+  // then be unfindable. The confirmation flipped and a note appeared, but
+  // the words they actually sent went nowhere.
+  const attachedLeadId = matchedLead?.id ?? targetEvent?.lead_id ?? null;
+  // Crew traffic is tagged so it shows on the appointment's Rep tab rather
+  // than in the customer's thread, where it would read as something the
+  // homeowner was told.
+  const fromCrew = !matchedLead && !!matchedRep;
+
   if (companyId) {
     await admin.from("sms_messages").insert({
-      lead_id: matchedLead?.id ?? null,
+      lead_id: attachedLeadId,
       direction: "inbound",
       from_number: from,
       to_number: to,
       body,
       twilio_sid: params.MessageSid || null,
       company_id: companyId,
+      channel: fromCrew ? "rep" : "sms",
     });
   }
 
