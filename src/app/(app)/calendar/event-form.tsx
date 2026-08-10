@@ -360,11 +360,12 @@ export function EventForm({
    * The unsaved result note counts too: that tab says nothing is stored
    * until Save Result, which makes it exactly the thing people lose.
    */
-  const isDirty =
-    !readOnly &&
-    (JSON.stringify(form) !== JSON.stringify(openedWith) ||
-      resultNote.trim() !== "" ||
-      pendingOutcome !== "");
+  const formDirty = !readOnly && JSON.stringify(form) !== JSON.stringify(openedWith);
+  // resultDirty, not its parts: a chosen stage counts too. Listing the
+  // note and the outcome by hand left the stage out, so picking DNC and
+  // closing threw it away without a word -- the change most likely to be
+  // made on its own was the one change nothing was watching.
+  const isDirty = !readOnly && (formDirty || resultDirty);
 
   function requestClose() {
     if (isDirty && !window.confirm("Discard your unsaved changes to this appointment?")) return;
@@ -387,6 +388,20 @@ export function EventForm({
    * find their way back to another tab to do it.
    */
   const selfSaving = tab === "Texts" || tab === "Photos";
+
+  /**
+   * When the footer's Save is a trap rather than a courtesy.
+   *
+   * It writes the appointment fields and closes -- which on the Result tab
+   * means shutting the modal on an outcome or stage the user had chosen
+   * but not yet committed, since those go through Save Result. Two save
+   * buttons on one screen, only one of which saves what you just changed,
+   * is a coin toss nobody knows they are playing.
+   *
+   * So it appears there only when the appointment itself has been edited,
+   * which is the only case it has anything to do.
+   */
+  const footerSaveHidden = (selfSaving && !isDirty) || (tab === "Result" && !formDirty);
 
   function callPhone(phone: string) {
     window.dispatchEvent(
@@ -914,11 +929,18 @@ export function EventForm({
           {!readOnly && (
             <div className="modal-actions">
               <div>
-                {resultSaved && <span className="cp-saved">✓ Result saved</span>}
                 {/* A greyed-out button with no reason beside it is how
-                    people conclude the app is broken. */}
-                {!resultValueOk && (
+                    people conclude the app is broken -- and an enabled one
+                    with nothing beside it is how a change gets left
+                    uncommitted, because nothing said it was waiting. */}
+                {!resultValueOk ? (
                   <span className="est-tax-note">Enter the job value to save this result.</span>
+                ) : resultDirty ? (
+                  <span className="est-tax-note">Not saved yet — press Save Result.</span>
+                ) : resultSaved ? (
+                  <span className="cp-saved">✓ Result saved</span>
+                ) : (
+                  <span className="est-tax-note">Nothing changed to save.</span>
                 )}
               </div>
               <div>
@@ -1089,9 +1111,9 @@ export function EventForm({
             </div>
             <div>
               <button type="button" className="btn-ghost" onClick={requestClose}>
-                {readOnly || (selfSaving && !isDirty) ? "Close" : "Cancel"}
+                {readOnly || footerSaveHidden ? "Close" : "Cancel"}
               </button>
-              {!readOnly && !(selfSaving && !isDirty) && (
+              {!readOnly && !footerSaveHidden && (
                 <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
                   {pending ? "Saving…" : "Save"}
                 </button>
