@@ -122,6 +122,11 @@ export async function POST(req: NextRequest) {
   const confirmed = YES_WORDS.has(normalizedBody);
 
   let targetEvent: EventRow | null = null;
+  // The job to file a crew reply against. Tracked separately from
+  // targetEvent because the two answer different questions: which
+  // appointment to mark confirmed, and which job the words belong to. A
+  // message typed from the Rep tab has a job but no appointment.
+  let crewLeadId: string | null = null;
   let replyMessage: string | null = null;
 
   // A rep replying to their "Text Rep Info" message takes priority over a
@@ -148,19 +153,53 @@ export async function POST(req: NextRequest) {
       .filter((x): x is { row: EventRow; at: string } => !!x.at)
       .sort((a, b) => b.at.localeCompare(a.at));
 
+    // What we actually last said to this rep, whichever job it was about.
+    //
+    // The event stamps above only record the automated nudges. A message
+    // typed by hand from a job's Rep tab writes no stamp, so relying on
+    // them alone meant the newest nudge won even when the real last word
+    // was about a different customer entirely -- and the reply landed on
+    // whoever had most recently been auto-texted. Outbound crew messages
+    // carry the job on them, so they answer this directly.
+    let crewQuery = admin
+      .from("sms_messages")
+      .select("lead_id, to_number, created_at")
+      .eq("direction", "outbound")
+      .eq("channel", "rep")
+      .not("lead_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (inboundCompanyId) crewQuery = crewQuery.eq("company_id", inboundCompanyId);
+    const { data: crewOut } = await crewQuery.returns<
+      { lead_id: string; to_number: string | null; created_at: string }[]
+    >();
+    // Numbers are stored as they were typed, so this cannot be matched in
+    // SQL -- "2138806622" and "+12138806622" are the same phone.
+    const lastToRep = (crewOut ?? []).find(
+      (m) => normalizePhone(m.to_number ?? "") === normalizedFrom
+    );
+
+    // An appointment on that same job, so a confirmation follows the
+    // conversation rather than the last automated nudge.
+    const onLastJob = lastToRep
+      ? rows.find((r) => r.lead_id === lastToRep.lead_id) ?? null
+      : null;
+
     if (isYesNo) {
       // An answer to a question only this app asks, so it pairs with the
       // appointment however long it took them to reply.
-      targetEvent = texted[0]?.row ?? pickNearest(rows);
+      targetEvent = onLastJob ?? texted[0]?.row ?? pickNearest(rows);
+      crewLeadId = lastToRep?.lead_id ?? targetEvent?.lead_id ?? null;
     } else if (
-      texted[0] &&
-      Date.now() - new Date(texted[0].at).getTime() < REP_REPLY_WINDOW_MS
+      lastToRep &&
+      Date.now() - new Date(lastToRep.created_at).getTime() < REP_REPLY_WINDOW_MS
     ) {
-      // Anything else only attaches while the nudge is still fresh. A rep
-      // texting the office out of the blue is not commentary on whatever
-      // job they were last sent, and guessing would be worse than leaving
-      // it loose -- the reply inbox catches those.
-      targetEvent = texted[0].row;
+      // Anything else only attaches while the last word is still fresh. A
+      // rep texting the office out of the blue is not commentary on
+      // whatever job they were last sent, and guessing would be worse than
+      // leaving it loose -- the reply inbox catches those.
+      targetEvent = onLastJob;
+      crewLeadId = lastToRep.lead_id;
     }
 
     if (isYesNo && targetEvent) {
@@ -218,7 +257,7 @@ export async function POST(req: NextRequest) {
   // exactly why their replies used to be stored with no job attached and
   // then be unfindable. The confirmation flipped and a note appeared, but
   // the words they actually sent went nowhere.
-  const attachedLeadId = matchedLead?.id ?? targetEvent?.lead_id ?? null;
+  const attachedLeadId = matchedLead?.id ?? crewLeadId ?? targetEvent?.lead_id ?? null;
   // Crew traffic is tagged so it shows on the appointment's Rep tab rather
   // than in the customer's thread, where it would read as something the
   // homeowner was told.

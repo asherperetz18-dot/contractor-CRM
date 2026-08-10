@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { repMessagePreview } from "@/lib/data/types";
 import {
   getLeadMessages,
   getRepMessages,
   getRepRecipients,
+  sendRepMessage,
   sendSms,
   type LeadMessage,
   type RepMessage,
@@ -37,6 +39,7 @@ export function MessagesPanel({
   const [repMessages, setRepMessages] = useState<RepMessage[] | null>(null);
   const [recipients, setRecipients] = useState<RepRecipient[]>([]);
   const [repTo, setRepTo] = useState("");
+  const [jobLabel, setJobLabel] = useState("");
   const [tab, setTab] = useState<"client" | "rep">("client");
   const [error, setError] = useState("");
   // Separate drafts per tab. One shared box meant a half-typed note to the
@@ -69,6 +72,7 @@ export function MessagesPanel({
       setRepMessages(repResult.messages ?? []);
       const who = whoResult.recipients ?? [];
       setRecipients(who);
+      setJobLabel(whoResult.jobLabel ?? "");
       // Whoever is on the next appointment, which is the first entry.
       setRepTo(who[0]?.id ?? "");
     })();
@@ -97,15 +101,15 @@ export function MessagesPanel({
    *
    * Goes out tagged as crew traffic and stamped with the lead, so it
    * lands in this same Rep record and never in the customer's thread --
-   * the same separation the read side already keeps.
+   * the same separation the read side already keeps. The job name is
+   * added server-side; see sendRepMessage.
    */
   async function handleSendRep() {
     const text = repBody.trim();
-    const to = recipients.find((r) => r.id === repTo);
-    if (!text || !to) return;
+    if (!text || !repTo) return;
     setSending(true);
     setError("");
-    const result = await sendSms(leadId, to.phone, text, "rep");
+    const result = await sendRepMessage(leadId, repTo, text);
     setSending(false);
     if (result?.error) {
       setError(result.error);
@@ -219,6 +223,15 @@ export function MessagesPanel({
             rows={2}
             placeholder={repTarget ? `Message ${repTarget.name}…` : "Message your crew…"}
           />
+          {/* The job name is added for you, so show it. Every text leaves
+              from the same company number, which on the rep's phone is one
+              long thread across every customer -- without the name, "can
+              you go earlier" is unanswerable. */}
+          {jobLabel && (
+            <p className="hint-note">
+              Sends as “{repMessagePreview(jobLabel, repBody || "…").replace(/\n/g, " ⏎ ")}”
+            </p>
+          )}
           <div className="modal-actions">
             <div />
             <button

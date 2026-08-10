@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import { canEditDispatch, normalizePhone } from "@/lib/data/types";
+import {
+  canEditDispatch,
+  leadDisplayName,
+  normalizePhone,
+  repMessagePreview,
+} from "@/lib/data/types";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
@@ -228,18 +233,25 @@ export type RepRecipient = {
  */
 export async function getRepRecipients(
   leadId: string
-): Promise<{ error?: string; recipients?: RepRecipient[] }> {
+): Promise<{ error?: string; recipients?: RepRecipient[]; jobLabel?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
   const { data: leadRow } = await supabase
     .from("leads")
-    .select("id, assigned_to, dispatcher_id")
+    .select("id, assigned_to, dispatcher_id, contact_type, company_name, first_name, last_name")
     .eq("id", leadId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<{ id: string; assigned_to: string | null; dispatcher_id: string | null }>();
+    .maybeSingle<
+      {
+        id: string;
+        assigned_to: string | null;
+        dispatcher_id: string | null;
+      } & Parameters<typeof leadDisplayName>[0]
+    >();
   if (!leadRow) return { error: "Contact not found." };
+  const jobLabel = leadDisplayName(leadRow);
 
   const { data: events } = await supabase
     .from("events")
@@ -266,7 +278,7 @@ export async function getRepRecipients(
   if (leadRow.dispatcher_id && !why.has(leadRow.dispatcher_id))
     why.set(leadRow.dispatcher_id, "Dispatcher");
 
-  if (why.size === 0) return { recipients: [] };
+  if (why.size === 0) return { recipients: [], jobLabel };
 
   // Resolved through company_members, so someone removed from the company
   // can't still be texted from a job they once worked.
@@ -281,7 +293,38 @@ export async function getRepRecipients(
     if (!member?.phone) continue;
     recipients.push({ id, name: member.name || member.email || "Teammate", phone: member.phone, role });
   }
-  return { recipients };
+  return { recipients, jobLabel };
+}
+
+/**
+ * Texts a teammate about one job.
+ *
+ * The job name is prepended here rather than left to the sender. Every
+ * text this system sends leaves from the same company number, so on the
+ * rep's phone it is all one thread -- "can you go half an hour earlier"
+ * with nothing attached is unanswerable when they have three visits
+ * booked. The nudges this app sends automatically already name the job;
+ * a message typed by hand was the one kind that didn't.
+ *
+ * Plain "Re:" and a newline, no emoji: an emoji anywhere in the body
+ * flips the whole message to UCS-2 and halves the segment length.
+ *
+ * The recipient is resolved from the job, not taken from the caller, so
+ * this can only ever reach someone actually working it.
+ */
+export async function sendRepMessage(
+  leadId: string,
+  recipientId: string,
+  body: string
+): Promise<{ error?: string; sentTo?: string }> {
+  const { recipients, jobLabel, error } = await getRepRecipients(leadId);
+  if (error) return { error };
+  const to = recipients?.find((r) => r.id === recipientId);
+  if (!to) return { error: "That teammate isn't on this job." };
+
+  const result = await sendSms(leadId, to.phone, repMessagePreview(jobLabel ?? "", body), "rep");
+  if (result.error) return result;
+  return { sentTo: to.name };
 }
 
 export type RepMessage = LeadMessage & {

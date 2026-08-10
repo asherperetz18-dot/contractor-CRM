@@ -1634,6 +1634,22 @@ export function leadDisplayName(l: {
   return `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim() || "Unnamed";
 }
 
+/**
+ * How a hand-typed crew message reads on the rep's phone.
+ *
+ * Lives here rather than beside the action that sends it because the
+ * compose box shows the same string back to the sender, and a preview
+ * built by different code from the message itself is a preview that can
+ * quietly stop being true.
+ *
+ * ("use server" files may only export async functions, so a plain helper
+ * could not live there anyway -- that one takes the whole module down at
+ * runtime while every local check still passes.)
+ */
+export function repMessagePreview(jobLabel: string, body: string) {
+  return `Re: ${jobLabel}\n${body.trim()}`;
+}
+
 export type CommissionInputs = {
   signed: { id: string; lead_id: string; total_cents: number }[];
   dispatcherByLead: Map<string, string>;
