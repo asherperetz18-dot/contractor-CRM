@@ -2,8 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { dispatcherMayWriteToLead } from "@/lib/dispatcher-access";
 import { getCurrentProfile } from "@/lib/data/profile";
 
 export async function addLeadNote(
@@ -17,19 +15,26 @@ export async function addLeadNote(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  // A dispatcher works the lead they are paid on, but the insert policy
-  // still admits only Office, Sales and Field -- so their own note is
-  // written with the service role after an explicit ownership check.
-  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
-  const supabase = asDispatcher ? createAdminClient() : await createClient();
-  const { error } = await supabase.from("lead_notes").insert({
-    lead_id: leadId,
-    author_id: profile.id,
-    body: trimmed,
-    event_id: eventId || null,
-    company_id: profile.company_id,
-  });
+  // Written as the signed-in user, so the insert policy decides. This
+  // used to take the service role for dispatchers, because the policy
+  // predated the Dispatch role and would have refused them; 0070 added
+  // it, so the check belongs in one place again rather than being
+  // half in the database and half here.
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_notes")
+    .insert({
+      lead_id: leadId,
+      author_id: profile.id,
+      body: trimmed,
+      event_id: eventId || null,
+      company_id: profile.company_id,
+    })
+    .select("id");
   if (error) return { error: error.message };
+  // Row count as well as the error: an insert refused by policy raises,
+  // but nothing else here would notice a write that quietly did nothing.
+  if (!data?.length) return { error: "Couldn't save that note — your role may not have permission." };
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { computeDispatcherCommissions, isAdminRole } from "@/lib/data/types";
 
@@ -58,8 +59,8 @@ export async function setLeadDispatcher(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  const admin = createAdminClient();
-  const { data: lead } = await admin
+  const supabase = await createClient();
+  const { data: lead } = await supabase
     .from("leads")
     .select("id, dispatcher_id, company_id")
     .eq("id", leadId)
@@ -83,10 +84,11 @@ export async function setLeadDispatcher(
     }
   }
 
-  // Claiming is an update on the lead, and the update policy still
-  // admits only Office and Sales. The permission rules above already
-  // decided this is allowed, so the write goes through the service role.
-  const supabase = createAdminClient();
+  // Written as the signed-in user. The checks above are kept because they
+  // say why -- "another dispatcher already has this lead" is a better
+  // answer than a refusal -- but leads_update now enforces the same rule,
+  // so the database has the final say rather than taking this action's
+  // word for it.
   const { data, error } = await supabase
     .from("leads")
     .update({ dispatcher_id: dispatcherId })

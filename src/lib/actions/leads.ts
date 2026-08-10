@@ -2,8 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { dispatcherMayWriteToLead } from "@/lib/dispatcher-access";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { normalizePhone, type LeadInput, type PipelineStage } from "@/lib/data/types";
 
@@ -314,21 +312,25 @@ export async function createLeadTask(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  // Same as notes: the task insert policy predates the Dispatch role, so
-  // a dispatcher's follow-up on their own lead goes through the service
-  // role behind an ownership check. Deleting a task stays out of reach.
-  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
-  const supabase = asDispatcher ? createAdminClient() : await createClient();
-  const { error } = await supabase.from("lead_tasks").insert({
-    lead_id: leadId,
-    title: input.title.trim(),
-    due_date: input.due_date,
-    due_time: input.due_time || null,
-    assigned_to: input.assigned_to || null,
-    created_by: profile.id,
-    company_id: profile.company_id,
-  });
+  // As the signed-in user: 0070 split the old catch-all task policy into
+  // insert/update/delete and admitted Dispatch to the first two, so a
+  // dispatcher's follow-up no longer needs the service role -- and
+  // deleting one is refused by the database rather than by omission here.
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_tasks")
+    .insert({
+      lead_id: leadId,
+      title: input.title.trim(),
+      due_date: input.due_date,
+      due_time: input.due_time || null,
+      assigned_to: input.assigned_to || null,
+      created_by: profile.id,
+      company_id: profile.company_id,
+    })
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Couldn't create that task — your role may not have permission." };
   revalidatePath("/pipeline");
   return {};
 }
@@ -369,8 +371,9 @@ export async function setLeadEstimatedValue(
   if (!profile) return { error: "Not signed in." };
   if (!Number.isFinite(value) || value < 0) return { error: "Enter a value of 0 or more." };
 
-  const asDispatcher = await dispatcherMayWriteToLead(profile, leadId, profile.company_id);
-  const supabase = asDispatcher ? createAdminClient() : await createClient();
+  // leads_update admits Dispatch on their own or an unclaimed lead since
+  // 0070, so a rep, the office and a dispatcher all take the same path.
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("leads")
     .update({ value })
