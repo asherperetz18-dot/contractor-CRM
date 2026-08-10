@@ -1108,7 +1108,11 @@ export function LeadForm({
 
         <div className="modal-actions">
           <div className="modal-actions-left">
-            {lead && !readOnly && canDelete && (
+            {/* Not on the tabs that commit as you go. Delete removes the
+                whole contact, and a red Delete directly beneath a thread
+                of messages or a list of files reads as though it removes
+                the one you are looking at. */}
+            {lead && !readOnly && canDelete && tab !== "Texts" && tab !== "Files" && (
               <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
                 Delete
               </button>

@@ -367,6 +367,23 @@ export function EventForm({
     onCancel();
   }
 
+  /**
+   * Tabs that commit as you go: a text is sent the moment you press send,
+   * a photo is uploaded the moment you pick it. There is nothing on them
+   * for Save to commit.
+   *
+   * Delete is hidden there outright. It removes the whole appointment,
+   * and a red Delete sitting directly beneath a thread of messages reads
+   * as "delete this message" -- the wrong thing to put within a slip of
+   * something that only ever meant the appointment.
+   *
+   * Save still appears if something elsewhere in the form is unsaved,
+   * because the tabs share one record: someone who edits the date, wanders
+   * over to read the texts and then wants to commit should not have to
+   * find their way back to another tab to do it.
+   */
+  const selfSaving = tab === "Texts" || tab === "Photos";
+
   function callPhone(phone: string) {
     window.dispatchEvent(
       new CustomEvent("crm:call", { detail: { phone, leadId: lead?.id } })
@@ -1047,7 +1064,7 @@ export function EventForm({
               be scrolled to before anything could be committed. */}
           <div className="modal-actions modal-actions-sticky">
             <div className="modal-actions-left">
-              {event && !readOnly && (
+              {event && !readOnly && !selfSaving && (
                 <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
                   Delete
                 </button>
@@ -1055,9 +1072,9 @@ export function EventForm({
             </div>
             <div>
               <button type="button" className="btn-ghost" onClick={requestClose}>
-                {readOnly ? "Close" : "Cancel"}
+                {readOnly || (selfSaving && !isDirty) ? "Close" : "Cancel"}
               </button>
-              {!readOnly && (
+              {!readOnly && !(selfSaving && !isDirty) && (
                 <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
                   {pending ? "Saving…" : "Save"}
                 </button>
