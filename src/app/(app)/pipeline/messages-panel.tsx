@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { repMessagePreview } from "@/lib/data/types";
 import {
   getLeadMessages,
@@ -81,6 +81,55 @@ export function MessagesPanel({
     };
   }, [leadId, reloadKey]);
 
+  /**
+   * Keeps the thread current while it is open.
+   *
+   * Polled rather than pushed. A text reply arrives on a human timescale,
+   * so twelve seconds reads as instant, and this panel is a tab inside a
+   * modal -- open for a minute while someone reads, not all day. A live
+   * socket would want a publication change, realtime row policies, and a
+   * connection held per open lead card, to be indistinguishable here.
+   *
+   * Only the messages are refetched. Recipients come from the
+   * appointments, which do not change while you watch, and refetching
+   * them would reset the picker under a hand that had just chosen
+   * someone else.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+
+    async function poll() {
+      // A background tab has nobody reading it, and a laptop left open
+      // overnight should not keep asking on their behalf.
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const [lead, rep] = await Promise.all([getLeadMessages(leadId), getRepMessages(leadId)]);
+        if (cancelled) return;
+        // Only on success: a dropped request should leave the thread as
+        // it was rather than blanking it.
+        if (lead.messages) setMessages(lead.messages);
+        if (rep.messages) setRepMessages(rep.messages);
+      } catch {
+        // A failed poll is not worth an error banner over a thread that
+        // is already on screen -- the next one is twelve seconds away.
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    const timer = setInterval(poll, 12_000);
+    // Coming back to the tab should catch up at once rather than waiting
+    // out the rest of an interval that ran while nobody was looking.
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [leadId]);
+
   async function handleSend() {
     const text = body.trim();
     if (!text || !phone) return;
@@ -121,6 +170,29 @@ export function MessagesPanel({
 
   const shown = tab === "client" ? messages : repMessages;
   const repTarget = recipients.find((r) => r.id === repTo) ?? null;
+
+  /**
+   * Follows the conversation without stealing the scrollbar.
+   *
+   * A polled thread that grows below the fold is no better than one that
+   * never updated -- but jumping someone to the bottom while they are
+   * reading back through last week is worse. So it only follows if they
+   * were already at the end, which is the same rule every messaging app
+   * uses and nobody notices until it is broken.
+   */
+  const threadRef = useRef<HTMLDivElement | null>(null);
+  const following = useRef(true);
+
+  function onThreadScroll() {
+    const el = threadRef.current;
+    if (!el) return;
+    following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  }
+
+  useEffect(() => {
+    const el = threadRef.current;
+    if (el && following.current) el.scrollTop = el.scrollHeight;
+  }, [shown]);
 
   return (
     <div className="second-contact-block">
@@ -163,7 +235,7 @@ export function MessagesPanel({
             : "Nothing has been sent to your crew about this job."}
         </p>
       ) : (
-        <div className="lead-thread">
+        <div className="lead-thread" ref={threadRef} onScroll={onThreadScroll}>
           {shown.map((m) =>
             isSystemEntry(m) ? (
               <div key={m.id} className="lead-thread-system">
