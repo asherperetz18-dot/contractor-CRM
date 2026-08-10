@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import type {
   CalendarRow,
-  DocumentRecord,
+  LinkedEstimate,
   Event,
   Job,
   Lead,
@@ -29,7 +29,7 @@ export default async function SchedulePage() {
     { data: stages },
     { data: leadTasks },
     { data: leadNotes },
-    { data: documents },
+    { data: estimates },
     { data: calendars },
   ] = await Promise.all([
     supabase.from("events").select("*").eq("company_id", companyId),
@@ -48,7 +48,13 @@ export default async function SchedulePage() {
       .select("*")
       .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
-    supabase.from("documents").select("*").eq("type", "Estimate").eq("company_id", companyId),
+    // The estimates table, not the legacy documents one -- see the note
+    // on the calendar page.
+    supabase
+      .from("estimates")
+      .select("id, lead_id, doc_number, title, status, total_cents, issued_at, created_at")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
@@ -62,7 +68,7 @@ export default async function SchedulePage() {
       stages={(stages as PipelineStageRow[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}
-      documents={(documents as DocumentRecord[]) ?? []}
+      estimates={(estimates as LinkedEstimate[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
     />

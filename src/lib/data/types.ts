@@ -1646,6 +1646,16 @@ export function leadDisplayName(l: {
  * could not live there anyway -- that one takes the whole module down at
  * runtime while every local check still passes.)
  */
+/**
+ * The estimate fields an appointment needs to list what a lead has been
+ * quoted. Narrower than the full row on purpose: the calendar loads these
+ * for every lead in the company, and it only ever shows a line per one.
+ */
+export type LinkedEstimate = Pick<
+  Estimate,
+  "id" | "lead_id" | "doc_number" | "title" | "status" | "total_cents" | "issued_at" | "created_at"
+>;
+
 export function repMessagePreview(jobLabel: string, body: string) {
   return `Re: ${jobLabel}\n${body.trim()}`;
 }

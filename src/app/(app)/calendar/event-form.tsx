@@ -21,9 +21,10 @@ import {
   leadDisplayName,
   mapsUrl,
   money,
+  moneyCents,
   normalizePhone,
   type CalendarRow,
-  type DocumentRecord,
+  type LinkedEstimate,
   type Event,
   type EventInput,
   type EventStatus,
@@ -124,7 +125,7 @@ export function EventForm({
   leads,
   leadTasks,
   leadNotes,
-  documents,
+  estimates,
   calendars,
   stages,
   readOnly,
@@ -139,7 +140,7 @@ export function EventForm({
   leads?: Lead[];
   leadTasks?: LeadTask[];
   leadNotes?: LeadNote[];
-  documents?: DocumentRecord[];
+  estimates?: LinkedEstimate[];
   calendars: CalendarRow[];
   stages?: PipelineStageRow[];
   readOnly?: boolean;
@@ -193,8 +194,11 @@ export function EventForm({
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
   const openTaskCount = linkedTasks.filter((t) => !t.completed_at).length;
   const linkedNotes = lead ? (leadNotes ?? []).filter((n) => n.lead_id === lead.id) : [];
+  // Matched on lead_id. This used to filter the legacy documents table by
+  // contact_id, which is a different feature with a different table, so a
+  // lead with three real estimates against it read "no estimates yet".
   const linkedEstimates = lead
-    ? (documents ?? []).filter((d) => d.contact_id === lead.id)
+    ? (estimates ?? []).filter((e) => e.lead_id === lead.id)
     : [];
   // Captured once on open rather than read during render -- calling the
   // clock mid-render is impure, and the badge doesn't need to tick.
@@ -982,29 +986,42 @@ export function EventForm({
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Number</th>
                   <th>Date</th>
                   <th>Status</th>
                   <th className="right">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {linkedEstimates.map((d) => (
-                  <tr key={d.id}>
+                {/* Rows open the contract. Seeing that a lead has a signed
+                    estimate and having no way through to it is most of the
+                    way to useless -- the reason to look is usually to read
+                    what was quoted. */}
+                {linkedEstimates.map((e) => (
+                  <tr
+                    key={e.id}
+                    className="est-row"
+                    onClick={() => router.push(`/estimates/${e.id}`)}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter") router.push(`/estimates/${e.id}`);
+                    }}
+                  >
+                    <td className="mono">{e.doc_number}</td>
                     <td>
-                      {d.date
-                        ? new Date(`${d.date}T00:00:00`).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : ""}
+                      {new Date(e.issued_at ?? e.created_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </td>
                     <td>
-                      <Badge color="#2D5F8A">{d.status}</Badge>
+                      <span className={"est-badge est-badge-" + e.status.toLowerCase()}>
+                        {e.status}
+                      </span>
                     </td>
-                    <td className="right mono">
-                      {money(d.items.reduce((s, i) => s + i.qty * i.price, 0))}
-                    </td>
+                    <td className="right mono">{moneyCents(e.total_cents)}</td>
                   </tr>
                 ))}
               </tbody>

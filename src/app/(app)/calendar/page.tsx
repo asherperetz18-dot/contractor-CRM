@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import type {
   CalendarRow,
-  DocumentRecord,
+  LinkedEstimate,
   Event,
   Job,
   Lead,
@@ -28,7 +28,7 @@ export default async function CalendarPage() {
     leads,
     { data: leadTasks },
     { data: leadNotes },
-    { data: documents },
+    { data: estimates },
     { data: calendars },
     { data: stages },
   ] = await Promise.all([
@@ -47,7 +47,15 @@ export default async function CalendarPage() {
       .select("id, lead_id, author_id, body, event_id, created_at")
       .eq("company_id", companyId)
       .order("created_at", { ascending: false }),
-    supabase.from("documents").select("*").eq("type", "Estimate").eq("company_id", companyId),
+    // The estimates table, not the legacy documents one. This tab used to
+    // read documents where type = 'Estimate', which is a different feature
+    // entirely -- so a lead with three real estimates against it showed
+    // "no estimates yet".
+    supabase
+      .from("estimates")
+      .select("id, lead_id, doc_number, title, status, total_cents, issued_at, created_at")
+      .eq("company_id", companyId)
+      .order("created_at", { ascending: false }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
@@ -61,7 +69,7 @@ export default async function CalendarPage() {
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}
-      documents={(documents as DocumentRecord[]) ?? []}
+      estimates={(estimates as LinkedEstimate[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}
       canWrite={canWrite}

@@ -10,7 +10,7 @@ import {
   formatTimeRange,
   stageColor,
   type CalendarRow,
-  type DocumentRecord,
+  type LinkedEstimate,
   type Event,
   type EventStatus,
   type Job,
@@ -68,7 +68,7 @@ export function CalendarBoard({
   leads,
   leadTasks,
   leadNotes,
-  documents,
+  estimates,
   calendars,
   stages,
   canWrite,
@@ -79,7 +79,7 @@ export function CalendarBoard({
   leads: Lead[];
   leadTasks: LeadTask[];
   leadNotes: LeadNote[];
-  documents: DocumentRecord[];
+  estimates: LinkedEstimate[];
   calendars: CalendarRow[];
   stages: PipelineStageRow[];
   canWrite: boolean;
@@ -527,7 +527,7 @@ export function CalendarBoard({
           leads={leads}
           leadTasks={leadTasks}
           leadNotes={leadNotes}
-          documents={documents}
+          estimates={estimates}
           calendars={calendars}
           stages={stages}
           onCancel={() => setShowNew(false)}
@@ -545,7 +545,7 @@ export function CalendarBoard({
           leads={leads}
           leadTasks={leadTasks}
           leadNotes={leadNotes}
-          documents={documents}
+          estimates={estimates}
           calendars={calendars}
           stages={stages}
           readOnly={!canWrite}

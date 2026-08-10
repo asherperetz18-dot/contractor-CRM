@@ -9,7 +9,7 @@ import {
   formatTimeRange,
   stageColor,
   type CalendarRow,
-  type DocumentRecord,
+  type LinkedEstimate,
   type Event,
   type Job,
   type Lead,
@@ -41,7 +41,7 @@ export function ScheduleList({
   stages,
   leadTasks,
   leadNotes,
-  documents,
+  estimates,
   calendars,
   canWrite,
 }: {
@@ -52,7 +52,7 @@ export function ScheduleList({
   stages: PipelineStageRow[];
   leadTasks: LeadTask[];
   leadNotes: LeadNote[];
-  documents: DocumentRecord[];
+  estimates: LinkedEstimate[];
   calendars: CalendarRow[];
   canWrite: boolean;
 }) {
@@ -145,7 +145,7 @@ export function ScheduleList({
           leads={leads}
           leadTasks={leadTasks}
           leadNotes={leadNotes}
-          documents={documents}
+          estimates={estimates}
           calendars={calendars}
           stages={stages}
           readOnly={!canWrite}
