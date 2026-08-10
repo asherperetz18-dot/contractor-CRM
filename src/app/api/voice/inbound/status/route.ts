@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 
 function twiml(body: string): NextResponse {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`, {
@@ -26,12 +27,17 @@ const OUTCOME: Record<string, { status: string; disposition: string }> = {
  * would sit in Call Reports as "ringing, 0 seconds" forever.
  */
 export async function POST(req: NextRequest) {
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) return twiml("");
-
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
+
+  // Verified against the account the callback came from. On the platform
+  // token this silently rejected every callback from a company running
+  // its own Twilio, which left their inbound calls stuck reading
+  // "ringing, 0 seconds" in Call Reports forever.
+  const companyId = await companyForAccountSid(params.AccountSid || "");
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  if (!twilioEnv) return twiml("");
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {

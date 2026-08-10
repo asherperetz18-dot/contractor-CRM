@@ -126,3 +126,30 @@ export async function companyForInboundNumber(toNumber: string): Promise<string 
   );
   return match?.company_id ?? null;
 }
+
+/**
+ * Which company a Twilio callback belongs to, from the account that sent
+ * it.
+ *
+ * Voice callbacks have no reliable number to match on -- a recording
+ * callback carries a call SID and little else, and on a dial-status
+ * callback the number that matters depends on the direction. Every Twilio
+ * request carries AccountSid, and a company's account is its own, so this
+ * answers it directly for all of them.
+ *
+ * Null means the platform account (or one nobody has connected), and
+ * callers fall back to the platform credentials -- which is what the
+ * original business still runs on.
+ */
+export async function companyForAccountSid(accountSid: string): Promise<string | null> {
+  const sid = accountSid.trim();
+  if (!sid) return null;
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_profile")
+    .select("company_id")
+    .eq("twilio_account_sid", sid)
+    .maybeSingle<{ company_id: string }>();
+  return data?.company_id ?? null;
+}

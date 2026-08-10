@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 
 export async function POST(req: NextRequest) {
-  const twilioEnv = getTwilioEnv();
-  if (!twilioEnv) {
-    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
-  }
-
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
+
+  // The recording lives in the account that made it, so that account is
+  // both who to verify against and, later, whose credentials can play it
+  // back. See the recording route.
+  const companyId = await companyForAccountSid(params.AccountSid || "");
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  if (!twilioEnv) {
+    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
+  }
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
