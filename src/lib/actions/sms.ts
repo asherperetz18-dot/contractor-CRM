@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyMembers } from "@/lib/data/company";
 import { canEditDispatch, normalizePhone } from "@/lib/data/types";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 
@@ -204,6 +205,83 @@ export async function getLeadMessages(
 
   messages.sort((a, b) => a.created_at.localeCompare(b.created_at));
   return { messages };
+}
+
+export type RepRecipient = {
+  id: string;
+  name: string;
+  phone: string;
+  /** Why they're on this job, so the picker isn't a bare list of names. */
+  role: string;
+};
+
+/**
+ * The crew you can text about one job.
+ *
+ * Built from the job itself rather than the whole company roster: the
+ * reps on its appointments, whoever owns the lead, and its dispatcher.
+ * A full staff list would make it just as easy to text someone with no
+ * connection to the work as the person standing outside the house.
+ *
+ * Ordered by the most recent appointment first, because the person you
+ * need is almost always the one going there next.
+ */
+export async function getRepRecipients(
+  leadId: string
+): Promise<{ error?: string; recipients?: RepRecipient[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data: leadRow } = await supabase
+    .from("leads")
+    .select("id, assigned_to, dispatcher_id")
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; assigned_to: string | null; dispatcher_id: string | null }>();
+  if (!leadRow) return { error: "Contact not found." };
+
+  const { data: events } = await supabase
+    .from("events")
+    .select("date, assigned_to, second_assigned_to")
+    .eq("lead_id", leadId)
+    .eq("company_id", profile.company_id)
+    .order("date", { ascending: false })
+    .returns<{ date: string; assigned_to: string | null; second_assigned_to: string | null }[]>();
+
+  // Insertion order is the priority order, so a Map both de-dupes and
+  // keeps the first (most relevant) reason a person appears here.
+  const why = new Map<string, string>();
+  for (const ev of events ?? []) {
+    const when = new Date(`${ev.date}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    if (ev.assigned_to && !why.has(ev.assigned_to)) why.set(ev.assigned_to, `Rep · ${when}`);
+    if (ev.second_assigned_to && !why.has(ev.second_assigned_to))
+      why.set(ev.second_assigned_to, `2nd rep · ${when}`);
+  }
+  if (leadRow.assigned_to && !why.has(leadRow.assigned_to))
+    why.set(leadRow.assigned_to, "Lead owner");
+  if (leadRow.dispatcher_id && !why.has(leadRow.dispatcher_id))
+    why.set(leadRow.dispatcher_id, "Dispatcher");
+
+  if (why.size === 0) return { recipients: [] };
+
+  // Resolved through company_members, so someone removed from the company
+  // can't still be texted from a job they once worked.
+  const members = await getCompanyMembers(profile.company_id);
+  const byId = new Map(members.map((m) => [m.id, m]));
+
+  const recipients: RepRecipient[] = [];
+  for (const [id, role] of why) {
+    const member = byId.get(id);
+    // No phone means nothing to send to -- dropped rather than offered as
+    // a choice that fails on send.
+    if (!member?.phone) continue;
+    recipients.push({ id, name: member.name || member.email || "Teammate", phone: member.phone, role });
+  }
+  return { recipients };
 }
 
 export type RepMessage = LeadMessage & {
