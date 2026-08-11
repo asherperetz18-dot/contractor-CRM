@@ -3,6 +3,7 @@ import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { ProjectTypeRow } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { FieldOptionsTable } from "../field-options-table";
+import { MergeValues } from "../merge-values";
 
 export default async function ProjectTypesPage() {
   const supabase = await createClient();
@@ -22,6 +23,7 @@ export default async function ProjectTypesPage() {
         itemLabel="Project Type"
         rows={(rows as ProjectTypeRow[]) ?? []}
       />
+      <MergeValues table="project_types" itemLabel="Project type" />
     </AdminGate>
   );
 }

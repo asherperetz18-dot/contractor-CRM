@@ -3,6 +3,7 @@ import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { LeadSourceRow } from "@/lib/data/types";
 import { AdminGate } from "@/components/admin-gate";
 import { FieldOptionsTable } from "../field-options-table";
+import { MergeValues } from "../merge-values";
 
 export default async function LeadSourcesPage() {
   const supabase = await createClient();
@@ -22,6 +23,7 @@ export default async function LeadSourcesPage() {
         itemLabel="Source"
         rows={(rows as LeadSourceRow[]) ?? []}
       />
+      <MergeValues table="lead_sources" itemLabel="Source" />
     </AdminGate>
   );
 }
