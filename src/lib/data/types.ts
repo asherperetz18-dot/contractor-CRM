@@ -1119,6 +1119,12 @@ export type Estimate = {
   assigned_to: string | null;
   issued_at: string | null;
   expires_at: string | null;
+  // Approximate, and nullable: California requires a home improvement
+  // contract to state them, but a rep pricing a job on a kitchen counter
+  // does not always know yet, and a date guessed to fill a required box
+  // reads as a commitment.
+  start_date: string | null;
+  completion_date: string | null;
   tax_rate_bp: number;
   subtotal_cents: number;
   tax_cents: number;

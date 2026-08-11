@@ -8,7 +8,7 @@ import { getTwilioForCompany } from "@/lib/twilio-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
-import { fillContract } from "@/lib/contracts/merge";
+import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -21,7 +21,6 @@ import {
   splitEvenlyCents,
   computeEstimateTotals,
   lineTotalCents,
-  moneyCents,
   parseQuantity,
   paidTotalCents,
   type EstimateStatus,
@@ -138,7 +137,9 @@ async function fillContractMoney(estimateId: string, companyId: string): Promise
   const supabase = createAdminClient();
   const { data: est } = await supabase
     .from("estimates")
-    .select("terms, total_cents, deposit_cents, deposit_percent_bp, deposit_cap_cents")
+    .select(
+      "terms, total_cents, deposit_cents, deposit_percent_bp, deposit_cap_cents, start_date, completion_date"
+    )
     .eq("id", estimateId)
     .eq("company_id", companyId)
     .maybeSingle<{
@@ -147,16 +148,12 @@ async function fillContractMoney(estimateId: string, companyId: string): Promise
       deposit_cents: number | null;
       deposit_percent_bp: number;
       deposit_cap_cents: number;
+      start_date: string | null;
+      completion_date: string | null;
     }>();
   if (!est?.terms) return;
 
-  const deposit =
-    est.deposit_cents ??
-    depositCents(est.total_cents, est.deposit_percent_bp, est.deposit_cap_cents);
-  const filled = fillContract(est.terms, {
-    contract_total: moneyCents(est.total_cents),
-    deposit_amount: moneyCents(deposit),
-  });
+  const filled = fillContract(est.terms, lateContractValues(est));
   if (filled === est.terms) return;
 
   await supabase
@@ -292,6 +289,8 @@ export async function updateEstimateDetails(
   fields: {
     title?: string;
     expires_at?: string | null;
+    start_date?: string | null;
+    completion_date?: string | null;
     customer_message?: string | null;
     terms?: string | null;
     notes?: string | null;

@@ -11,7 +11,7 @@ import {
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
-import { parseContract } from "@/lib/contracts/merge";
+import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 
 export type DocumentCompany = {
   name: string | null;
@@ -360,7 +360,13 @@ export function EstimateDocument({
               a wall of text is not a document somebody reads before
               signing. Nothing here interprets HTML: the body is plain
               text an office user pasted in, and it renders as text. */}
-          {parseContract(estimate.terms).map((block, i) =>
+          {/* Filled again on the way out. Sending freezes these into the
+              stored text, but before that a draft still carries
+              {{contract_total}} -- and showing braces to whoever is
+              checking the document over is how a contract goes out with
+              them still in it. Same function both times, so the preview
+              cannot disagree with what gets sent. */}
+          {parseContract(fillContract(estimate.terms, lateContractValues(estimate))).map((block, i) =>
             block.kind === "heading" ? (
               <h4 key={i} className="estdoc-terms-head">
                 {block.text}

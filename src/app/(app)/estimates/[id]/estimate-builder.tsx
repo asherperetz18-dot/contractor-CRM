@@ -108,6 +108,8 @@ export function EstimateBuilder({
   const [message, setMessage] = useState(estimate.customer_message ?? "");
   const [terms, setTerms] = useState(estimate.terms ?? "");
   const [expiresAt, setExpiresAt] = useState(estimate.expires_at ?? "");
+  const [startDate, setStartDate] = useState(estimate.start_date ?? "");
+  const [completionDate, setCompletionDate] = useState(estimate.completion_date ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   // Which line item has its scope editor open, by row key.
@@ -203,6 +205,8 @@ export function EstimateBuilder({
         customer_message: message || null,
         terms: terms || null,
         expires_at: expiresAt || null,
+        start_date: startDate || null,
+        completion_date: completionDate || null,
       });
       if (detail.error) return setError(detail.error);
 
@@ -355,6 +359,37 @@ export function EstimateBuilder({
             disabled={locked}
             onChange={(e) => {
               setExpiresAt(e.target.value);
+              setSaved(null);
+            }}
+          />
+        </label>
+        {/* California requires a home improvement contract to state
+            approximate start and completion dates, and the contract
+            merges these in. Approximate is the standard the law sets --
+            hence the wording, and hence neither being required: a date
+            guessed to fill a box reads as a commitment. */}
+        <label className="field">
+          <span className="field-label">Start date (approx.)</span>
+          <input
+            className="est-title-input"
+            type="date"
+            value={startDate}
+            disabled={locked}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              setSaved(null);
+            }}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Completion (approx.)</span>
+          <input
+            className="est-title-input"
+            type="date"
+            value={completionDate}
+            disabled={locked}
+            onChange={(e) => {
+              setCompletionDate(e.target.value);
               setSaved(null);
             }}
           />

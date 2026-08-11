@@ -8,6 +8,8 @@
  * separately from the code that resolves them.
  */
 
+import { depositCents, moneyCents } from "@/lib/data/types";
+
 export type MergeField = {
   token: string;
   label: string;
@@ -31,6 +33,8 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "project_address", label: "Project address", example: "14333 Collins St, Sherman Oaks, CA" },
   { token: "contract_total", label: "Total contract price", example: "$5,400.00" },
   { token: "deposit_amount", label: "Deposit due at signing", example: "$540.00" },
+  { token: "start_date", label: "Approximate start date", example: "September 2, 2026" },
+  { token: "completion_date", label: "Estimated completion date", example: "September 20, 2026" },
   { token: "rep_name", label: "Sales representative", example: "Asher Peretz" },
   { token: "project_title", label: "Project title", example: "New roof" },
   { token: "company_name", label: "Your company name", example: "L.A. Home Contractor Inc." },
@@ -69,6 +73,41 @@ export function tokensUsed(body: string): string[] {
 export function unknownTokens(body: string): string[] {
   const known = new Set(MERGE_FIELDS.map((f) => f.token));
   return tokensUsed(body).filter((t) => !known.has(t));
+}
+
+/**
+ * The fields that cannot be known when an estimate is created.
+ *
+ * Nothing is priced or scheduled at that moment, so these resolve later:
+ * frozen into the stored text when the estimate is sent, and substituted
+ * at render time before that, so a draft preview shows real figures
+ * instead of braces. One function for both, because a preview computed
+ * differently from the document is a preview that can lie.
+ */
+export function lateContractValues(e: {
+  total_cents: number;
+  deposit_cents: number | null;
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
+  start_date?: string | null;
+  completion_date?: string | null;
+}): MergeValues {
+  const day = (d?: string | null) =>
+    d
+      ? new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : null;
+  return {
+    contract_total: moneyCents(e.total_cents),
+    deposit_amount: moneyCents(
+      e.deposit_cents ?? depositCents(e.total_cents, e.deposit_percent_bp, e.deposit_cap_cents)
+    ),
+    start_date: day(e.start_date),
+    completion_date: day(e.completion_date),
+  };
 }
 
 export type ContractBlock =
