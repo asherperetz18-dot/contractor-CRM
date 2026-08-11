@@ -187,10 +187,12 @@ export function PaymentSchedule({
                 )}
               </div>
             </td>
-            <td className="right mono">
+            {/* data-label feeds the phone layout, where the header row is
+                hidden and each cell has to name itself. */}
+            <td className="right mono" data-label="Percent">
               {totalCents ? `${paymentPercentOfTotal(deposit, totalCents)!.toFixed(2)}%` : "—"}
             </td>
-            <td className="right mono">
+            <td className="right mono" data-label="Amount">
               {moneyCents(deposit)}
               {depositPaid && (
                 <div className="est-paid-flag">
@@ -240,8 +242,10 @@ export function PaymentSchedule({
                     onChange={(e) => patch(r.key, { description: e.target.value })}
                   />
                 </td>
-                <td className="right mono">{pct === null ? "—" : `${pct.toFixed(2)}%`}</td>
-                <td className="right">
+                <td className="right mono" data-label="Percent">
+                  {pct === null ? "—" : `${pct.toFixed(2)}%`}
+                </td>
+                <td className="right" data-label="Amount">
                   <input
                     className="est-item-price"
                     inputMode="decimal"

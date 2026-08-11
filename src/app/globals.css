@@ -2867,6 +2867,62 @@ body {
   .est-items td:nth-child(2)::before {
     content: none;
   }
+
+  /* The payment schedule has the same problem in a quieter way: the table
+     box reports a width that fits, while its rows run well past the screen
+     and get clipped by the shell -- so Amount, and the button that bills
+     or records the phase, were simply not there. Nothing scrolled to them
+     because nothing was scrollable. Same card treatment. */
+  .est-pay-table thead {
+    display: none;
+  }
+  .est-pay-table,
+  .est-pay-table tbody,
+  .est-pay-table tr,
+  .est-pay-table td {
+    display: block;
+    width: auto;
+  }
+  .est-pay-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .est-pay-table td {
+    border: none;
+    padding: 6px 0 0;
+    text-align: left !important;
+  }
+  .est-pay-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    margin-bottom: 2px;
+  }
+  /* The name, and the actions cell, run the full width of the card. */
+  .est-pay-table td:first-child,
+  .est-pay-table td:last-child {
+    grid-column: 1 / -1;
+  }
+  .est-pay-table td:first-child::before,
+  .est-pay-table td:last-child::before {
+    content: none;
+  }
+  .est-pay-table td:last-child:empty {
+    display: none;
+  }
+  .est-pay-table input {
+    width: 100%;
+    font-size: 16px;
+  }
   .stat-grid-5 {
     grid-template-columns: repeat(2, 1fr);
   }
