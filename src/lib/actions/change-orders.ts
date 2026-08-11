@@ -120,6 +120,29 @@ export type ChangeOrderRow = {
   created_at: string;
 };
 
+/**
+ * The contract a change order amends, for its document header.
+ *
+ * Fetched only when parent_estimate_id is set, which is the rare case --
+ * a join would pull a second row for every document the portal renders.
+ * Uses the caller's client so the portal (service role, no staff session)
+ * and the staff preview (RLS) can both use it.
+ */
+export async function getParentContract(parentId: string | null): Promise<{
+  doc_number: string;
+  total_cents: number;
+  signed_at: string | null;
+} | null> {
+  if (!parentId) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("estimates")
+    .select("doc_number, total_cents, signed_at")
+    .eq("id", parentId)
+    .maybeSingle<{ doc_number: string; total_cents: number; signed_at: string | null }>();
+  return data ?? null;
+}
+
 /** The change orders on one contract, oldest first. */
 export async function getChangeOrders(
   parentId: string

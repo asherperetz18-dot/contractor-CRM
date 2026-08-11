@@ -4676,6 +4676,18 @@ body {
   background: #faf8f3;
 }
 
+/* Says what the document is, above its number. Deliberately loud: the
+   difference between a $400 estimate and a $400 amendment to a $5,400
+   contract is the whole meaning of the page. */
+.estdoc-doctype {
+  font-family: var(--font-headers);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #C2410C;
+  margin-bottom: 2px;
+}
+
 /* Photos and documents as tiles. auto-fill rather than a fixed count so
    a phone gets two across and a laptop four, without a breakpoint. */
 .portal-file-grid {

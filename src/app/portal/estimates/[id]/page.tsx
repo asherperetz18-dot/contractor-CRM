@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
+import { getParentContract } from "@/lib/actions/change-orders";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -81,6 +82,7 @@ export default async function PortalEstimatePage({
         company={company ?? null}
         customer={viewer.lead}
         team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}
+        parent={await getParentContract(estimate.parent_estimate_id)}
       />
       <DepositPayment
         estimateId={id}

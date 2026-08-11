@@ -119,6 +119,7 @@ export function EstimateDocument({
   company,
   customer,
   team,
+  parent,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -128,8 +129,11 @@ export function EstimateDocument({
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
   team?: DocumentTeam | null;
+  /** The contract this amends, when the document is a change order. */
+  parent?: { doc_number: string; total_cents: number; signed_at: string | null } | null;
 }) {
   const sig = signatureProgress(signers);
+  const isChangeOrder = estimate.kind === "change_order";
 
   // Drop the Qty and Price columns entirely when no line has a real
   // measurement: every cell would be blank, and Price would only repeat
@@ -171,8 +175,19 @@ export function EstimateDocument({
           </div>
         </div>
         <div className="estdoc-meta">
+          {/* Says what the document is before it says which one. Without
+              this a change order reads as a fresh $400 estimate rather
+              than an amendment to a $5,400 contract, and the customer
+              signing it has no way to tell the difference. */}
+          {isChangeOrder && <div className="estdoc-doctype">CHANGE ORDER</div>}
           <div className="estdoc-docnum">{estimate.doc_number}</div>
           <div className="estdoc-muted">Issued {longDate(estimate.issued_at ?? estimate.created_at)}</div>
+          {isChangeOrder && parent && (
+            <div className="estdoc-muted">
+              To contract {parent.doc_number}
+              {parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}
+            </div>
+          )}
           {estimate.expires_at && estimate.status !== "Signed" && (
             <div className="estdoc-muted">Valid until {longDate(estimate.expires_at)}</div>
           )}
@@ -291,15 +306,35 @@ export function EstimateDocument({
           </div>
         )}
         <div className="estdoc-total-row estdoc-grand">
-          <span>Total</span>
+          <span>{isChangeOrder ? "This change order" : "Total"}</span>
           <span>{moneyCents(estimate.total_cents)}</span>
         </div>
+        {/* What the contract becomes. A customer asked to approve $400
+            needs to see the number it lands on, not work it out -- and a
+            credit reads as a reduction only when the new total is shown
+            beside it. */}
+        {isChangeOrder && parent && (
+          <>
+            <div className="estdoc-total-row">
+              <span>Original contract {parent.doc_number}</span>
+              <span>{moneyCents(parent.total_cents)}</span>
+            </div>
+            <div className="estdoc-total-row estdoc-grand">
+              <span>Revised contract total</span>
+              <span>{moneyCents(parent.total_cents + estimate.total_cents)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* The payment schedule is the part a homeowner reads hardest -- it
           is what they are committing to pay and when. Percentages are of
           the contract total, matching what the rep saw when building it. */}
-      {(estimate.deposit_cents || payments.length > 0) && (
+      {/* Never on a change order. Its amount is added as one phase to the
+          contract's existing schedule, so printing a second schedule here
+          would offer the customer payment terms that do not govern
+          anything -- two schedules for one job, disagreeing. */}
+      {!isChangeOrder && (estimate.deposit_cents || payments.length > 0) && (
         <section className="estdoc-schedule">
           <div className="estdoc-label">Payment schedule</div>
           <table className="estdoc-items estdoc-schedule-table">
