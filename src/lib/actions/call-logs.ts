@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { getTwilioVoiceForCompany } from "@/lib/twilio-company";
+import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 
 export async function logCall(input: {
   leadId: string | null;
@@ -19,10 +20,19 @@ export async function logCall(input: {
   const supabase = await createClient();
   const voiceEnv = await getTwilioVoiceForCompany(profile.company_id);
 
+  // A call placed from a lead card, the calendar or the dial queue
+  // carries its lead. A number typed into the keypad carries nothing --
+  // but the number itself is often already in the book, and the call
+  // belongs on that customer's history whichever way it was dialled.
+  // Inbound has always matched this way; outbound simply never did, so a
+  // rep who typed a customer's number saw the call vanish from their card.
+  const leadId =
+    input.leadId ?? (await leadForPhoneNumber(supabase, profile.company_id, input.toNumber));
+
   const { data, error } = await supabase
     .from("call_logs")
     .insert({
-      lead_id: input.leadId,
+      lead_id: leadId,
       rep_id: profile.id,
       direction: "outbound",
       from_number: voiceEnv?.phoneNumber ?? "",

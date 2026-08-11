@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
-import { normalizePhone, toE164 } from "@/lib/data/types";
-import { selectAll } from "@/lib/data/select-all";
+import { toE164 } from "@/lib/data/types";
+import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 
 function xmlEscape(value: string): string {
   return value
@@ -85,31 +85,14 @@ export async function POST(req: NextRequest) {
   const forwardTo = toE164(company?.call_forward_number);
 
   // Caller ID matched against the contact book, so the call lands on the
-  // right lead in Call Reports rather than as an anonymous number.
-  let leadId: string | null = null;
-  if (company && from) {
-    const fromDigits = normalizePhone(from);
-    // selectAll: a bare select stops at 1000 rows silently, so on a
-    // company with more leads than that the caller simply did not match
-    // and the call logged as an anonymous number against no customer.
-    const rows = await selectAll<{
-      id: string;
-      phone: string | null;
-      second_contact_phone: string | null;
-    }>((rangeFrom, rangeTo) =>
-      admin
-        .from("leads")
-        .select("id, phone, second_contact_phone")
-        .eq("company_id", company.company_id)
-        .range(rangeFrom, rangeTo)
-    );
-    leadId =
-      rows.find(
-        (l) =>
-          (l.phone && normalizePhone(l.phone) === fromDigits) ||
-          (l.second_contact_phone && normalizePhone(l.second_contact_phone) === fromDigits)
-      )?.id ?? null;
-  }
+  // right lead in Call Reports rather than as an anonymous number. Shared
+  // with the outbound path so both directions file a call the same way --
+  // including the 1000-row paging, and the refusal to guess when several
+  // leads share one number.
+  const leadId =
+    company && from
+      ? await leadForPhoneNumber(admin, company.company_id, from)
+      : null;
 
   if (company) {
     // Logged before the dial, not after: a caller who hangs up while it

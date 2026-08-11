@@ -57,9 +57,9 @@ export function CallsPanel({ leadId, readOnly }: { leadId: string; readOnly?: bo
   if (calls.length === 0) {
     return (
       <p className="empty-hint">
-        No calls with this contact yet. Calls placed from the ☎ button here, the calendar or
-        the dial queue are recorded against this job — a number typed straight into the
-        dialer is not.
+        No calls with this contact yet. Calls to this contact&rsquo;s number land here however
+        they were dialled — from the ☎ button, the calendar, the dial queue or the keypad —
+        as do calls they make to the office.
       </p>
     );
   }
