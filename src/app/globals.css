@@ -2764,6 +2764,109 @@ body {
     align-items: flex-start;
     gap: 10px;
   }
+  /* The estimate header's buttons sat in one unbreakable 502px row, which
+     is wider than the phone. Nothing clipped them -- instead the whole
+     page gained a horizontal scroll and slid sideways under the thumb,
+     taking the toolbar and the totals with it. The line-items table has
+     its own scrolling wrapper and is meant to move; the page is not. */
+  .est-header-actions {
+    flex-wrap: wrap;
+    gap: 8px 6px;
+  }
+
+  /* Ten columns of inputs do not survive a phone. Sideways-scrolled, every
+     field was about thirty pixels wide -- "Des", "e", "0." -- which is
+     legible as a layout and unusable as a form, and pricing a job is
+     exactly what a rep does standing in someone's kitchen.
+
+     Each line becomes a card instead: description across the full width,
+     the numbers in a labelled two-column grid beneath it. The header row
+     goes, so every cell names itself from data-label. */
+  .est-items-wrap {
+    overflow-x: visible;
+  }
+  .est-items thead {
+    display: none;
+  }
+  .est-items,
+  .est-items tbody,
+  .est-items tr,
+  .est-items td {
+    display: block;
+    width: auto;
+  }
+  .est-items tr {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px 12px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+  .est-items td {
+    border: none;
+    padding: 6px 0 0;
+    text-align: left !important;
+  }
+  .est-items td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    margin-bottom: 2px;
+  }
+  /* The grip is for drag-reordering, which is a mouse gesture. */
+  .est-items .est-grip-col {
+    display: none;
+  }
+  /* .est-item-desc sets 13px, so this has to out-specify it: under 16px
+     iOS zooms the whole page on focus and does not zoom back out. */
+  .est-items input,
+  .est-items textarea,
+  .est-items textarea.est-item-desc {
+    width: 100%;
+    font-size: 16px;
+  }
+  /* The field opens at one row, and at phone width its placeholder needs
+     two -- so the prompt telling you what the field is for was itself cut
+     in half. Grows from content as before; this is only the floor. */
+  .est-items textarea.est-item-desc {
+    min-height: 52px;
+  }
+  /* max-width: 90px keeps qty and price legible without hogging the row;
+     they read fine at that size and the label sits above them. */
+  .est-items input[type="checkbox"] {
+    width: auto;
+    min-height: 24px;
+    min-width: 24px;
+  }
+  /* The numeric fields pair up; description and totals stay full width. */
+  .est-items tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 12px;
+  }
+  .est-items td:nth-child(2),
+  .est-items td[data-label="Line total"] {
+    grid-column: 1 / -1;
+  }
+  .est-items td[data-label="Line total"] {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    font-size: 16px;
+    font-weight: 600;
+  }
+  /* Last cell is the row's delete button -- no label, sits with the total. */
+  .est-items td:last-child {
+    grid-column: 1 / -1;
+    padding-top: 8px;
+  }
+  .est-items td:last-child::before,
+  .est-items td:nth-child(2)::before {
+    content: none;
+  }
   .stat-grid-5 {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -4654,6 +4757,15 @@ body {
 }
 
 /* New-estimate dialog */
+/* These two build their own card rather than going through the Modal
+   component, so they never get .modal-body -- which is the only thing
+   carrying the inset. Every child sat flush against the card edge at any
+   width; on a desktop there is enough room that it reads as a style, and
+   on a phone the text touches the glass. */
+.est-modal,
+.scope-modal {
+  padding: 18px 20px 20px;
+}
 .est-modal {
   min-width: 460px;
 }

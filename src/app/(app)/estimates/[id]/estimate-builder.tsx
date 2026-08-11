@@ -449,7 +449,9 @@ export function EstimateBuilder({
                   </button>
                 </div>
               </td>
-              <td className="right">
+              {/* data-label feeds the phone layout, where the header row is
+                  hidden and each cell has to name itself. */}
+              <td className="right" data-label="Qty">
                 <input
                   className={
                     "est-item-qty" +
@@ -468,7 +470,7 @@ export function EstimateBuilder({
                   onChange={(e) => patch(r.key, { quantity: e.target.value })}
                 />
               </td>
-              <td>
+              <td data-label="Unit">
                 <input
                   className="est-item-unit"
                   placeholder="ea"
@@ -477,7 +479,7 @@ export function EstimateBuilder({
                   onChange={(e) => patch(r.key, { unit: e.target.value })}
                 />
               </td>
-              <td className="right est-internal-col">
+              <td className="right est-internal-col" data-label="Your cost">
                 <input
                   className="est-item-price est-item-cost"
                   inputMode="decimal"
@@ -488,7 +490,7 @@ export function EstimateBuilder({
                   aria-label="Your cost (internal)"
                 />
               </td>
-              <td className="right">
+              <td className="right" data-label="Price">
                 <input
                   className="est-item-price"
                   inputMode="decimal"
@@ -497,7 +499,7 @@ export function EstimateBuilder({
                   onChange={(e) => patch(r.key, { unitPrice: e.target.value })}
                 />
               </td>
-              <td className="center">
+              <td className="center" data-label="Taxable">
                 <input
                   type="checkbox"
                   checked={r.taxable}
@@ -506,10 +508,10 @@ export function EstimateBuilder({
                   aria-label="Taxable"
                 />
               </td>
-              <td className="right mono">
+              <td className="right mono" data-label="Line total">
                 {moneyCents(lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice)))}
               </td>
-              <td className="right mono est-internal-col">
+              <td className="right mono est-internal-col" data-label="Margin">
                 {(() => {
                   if (r.unitCost.trim() === "") return <span className="est-margin-none">—</span>;
                   const qty = parseQuantity(r.quantity);
