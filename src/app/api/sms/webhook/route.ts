@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone, type Lead } from "@/lib/data/types";
+import { selectAll } from "@/lib/data/select-all";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 
@@ -99,16 +100,26 @@ export async function POST(req: NextRequest) {
   // sender across every company's leads was only safe while there was a
   // single number: two companies holding the same homeowner's number
   // would race, and the reply could attach to the wrong business.
-  let leadQuery = admin.from("leads").select("id, company_id, phone, second_contact_phone");
-  if (inboundCompanyId) leadQuery = leadQuery.eq("company_id", inboundCompanyId);
-
-  const [{ data: leads }, { data: profiles }] = await Promise.all([
-    leadQuery,
+  // selectAll, not a bare select: PostgREST stops at 1000 rows and says
+  // nothing. With 1520 leads on this company, 520 customers -- all with
+  // working phone numbers -- could text in and match nothing, so their
+  // reply attached to no job and their YES never confirmed anything.
+  const [leadRows, { data: profiles }] = await Promise.all([
+    selectAll<Pick<Lead, "id" | "phone" | "second_contact_phone"> & { company_id: string }>(
+      // Named rangeFrom/rangeTo deliberately: `from` and `to` in this
+      // scope are the phone numbers on the message, and shadowing those
+      // inside a query builder is a mistake waiting to be made.
+      (rangeFrom, rangeTo) => {
+        let q = admin
+          .from("leads")
+          .select("id, company_id, phone, second_contact_phone")
+          .range(rangeFrom, rangeTo);
+        if (inboundCompanyId) q = q.eq("company_id", inboundCompanyId);
+        return q;
+      }
+    ),
     admin.from("profiles").select("id, name, phone"),
   ]);
-
-  const leadRows =
-    (leads as (Pick<Lead, "id" | "phone" | "second_contact_phone"> & { company_id: string })[]) ?? [];
   const matchedLead = leadRows.find(
     (l) =>
       (l.phone && normalizePhone(l.phone) === normalizedFrom) ||

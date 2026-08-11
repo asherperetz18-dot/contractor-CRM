@@ -3,6 +3,19 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, isSettledStage } from "@/lib/data/types";
+import { selectAll } from "@/lib/data/select-all";
+
+type BriefLead = {
+  id: string;
+  created_at: string;
+  stage: string;
+  value: number | null;
+  won_at: string | null;
+  source: string | null;
+  refund_status: string;
+  refund_requested_at: string | null;
+  has_appt: string | null;
+};
 
 export type BriefPeriod = "today" | "week" | "month";
 
@@ -65,7 +78,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
 
   const [
     { data: company },
-    { data: leads },
+    leads,
     { data: events },
     { data: calls },
     { data: texts },
@@ -73,10 +86,18 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     { data: members },
   ] = await Promise.all([
     supabase.from("company_profile").select("name").eq("company_id", companyId).maybeSingle(),
-    supabase
-      .from("leads")
-      .select("id, created_at, stage, value, won_at, source, refund_status, refund_requested_at, has_appt")
-      .eq("company_id", companyId),
+    // selectAll: every figure on the brief is a sum over this, and a
+    // bare select stops at 1000. On 1520 leads the morning brief was
+    // reporting two thirds of the business as though it were all of it.
+    selectAll<BriefLead>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select(
+          "id, created_at, stage, value, won_at, source, refund_status, refund_requested_at, has_appt"
+        )
+        .eq("company_id", companyId)
+        .range(rangeFrom, rangeTo)
+    ),
     supabase
       .from("events")
       .select("id, created_at, date, status, assigned_to, customer_confirmed")

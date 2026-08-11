@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { normalizePhone, toE164 } from "@/lib/data/types";
+import { selectAll } from "@/lib/data/select-all";
 
 function xmlEscape(value: string): string {
   return value
@@ -88,13 +89,20 @@ export async function POST(req: NextRequest) {
   let leadId: string | null = null;
   if (company && from) {
     const fromDigits = normalizePhone(from);
-    const { data: leads } = await admin
-      .from("leads")
-      .select("id, phone, second_contact_phone")
-      .eq("company_id", company.company_id);
-    const rows =
-      (leads as { id: string; phone: string | null; second_contact_phone: string | null }[] | null) ??
-      [];
+    // selectAll: a bare select stops at 1000 rows silently, so on a
+    // company with more leads than that the caller simply did not match
+    // and the call logged as an anonymous number against no customer.
+    const rows = await selectAll<{
+      id: string;
+      phone: string | null;
+      second_contact_phone: string | null;
+    }>((rangeFrom, rangeTo) =>
+      admin
+        .from("leads")
+        .select("id, phone, second_contact_phone")
+        .eq("company_id", company.company_id)
+        .range(rangeFrom, rangeTo)
+    );
     leadId =
       rows.find(
         (l) =>

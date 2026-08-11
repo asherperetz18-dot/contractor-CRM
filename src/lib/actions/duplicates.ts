@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canEditDispatch, normalizePhone, type Lead } from "@/lib/data/types";
 
@@ -30,8 +31,10 @@ export async function findDuplicateLeads(): Promise<{ error?: string; pairs?: Du
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
-  const [{ data: leads }, { data: dismissals }] = await Promise.all([
-    supabase.from("leads").select("*").eq("company_id", guard.companyId),
+  const [leads, { data: dismissals }] = await Promise.all([
+    selectAll<Lead>((rangeFrom, rangeTo) =>
+      supabase.from("leads").select("*").eq("company_id", guard.companyId).range(rangeFrom, rangeTo)
+    ),
     supabase
       .from("lead_duplicate_dismissals")
       .select("lead_id_a, lead_id_b")

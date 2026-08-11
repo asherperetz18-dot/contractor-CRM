@@ -2,6 +2,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -111,7 +112,7 @@ async function buildContext(companyId: string): Promise<string> {
   const supabase = await createClient();
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  const [{ data: companyProfile }, members, { data: leads }, { data: allLeadTotals }, { data: stages }, { data: events }, { data: tasks }] =
+  const [{ data: companyProfile }, members, { data: leads }, allLeadTotals, { data: stages }, { data: events }, { data: tasks }] =
     await Promise.all([
       supabase.from("company_profile").select("name").eq("company_id", companyId).single(),
       getCompanyMembers(companyId),
@@ -123,11 +124,19 @@ async function buildContext(companyId: string): Promise<string> {
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .limit(MAX_LEADS_IN_CONTEXT),
-      // Unlimited, narrow columns -- true totals, independent of the
-      // MAX_LEADS_IN_CONTEXT cap on the detailed roster below. Without
-      // this, "how many open leads" answers from the truncated list and
-      // silently disagrees with the Dashboard's real count.
-      supabase.from("leads").select("stage, value").eq("company_id", companyId),
+      // Narrow columns, and genuinely every row -- true totals,
+      // independent of the MAX_LEADS_IN_CONTEXT cap on the detailed
+      // roster above. This said "unlimited" and was not: PostgREST stops
+      // at 1000, so on 1520 leads the assistant answered "how many open
+      // leads" from two thirds of the book while sounding certain, and
+      // disagreed with the Dashboard it was meant to corroborate.
+      selectAll<{ stage: string; value: number }>((rangeFrom, rangeTo) =>
+        supabase
+          .from("leads")
+          .select("stage, value")
+          .eq("company_id", companyId)
+          .range(rangeFrom, rangeTo)
+      ),
       supabase
         .from("pipeline_stages")
         .select("id, name, sort_order")
