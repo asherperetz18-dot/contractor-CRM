@@ -4674,6 +4674,25 @@ body {
   background: #faf8f3;
 }
 
+/* A sixteen-section contract sits in here, so it needs the shape of a
+   document rather than a paragraph of small print. */
+.estdoc-terms-head {
+  margin: 14px 0 4px;
+  font-family: var(--font-headers);
+  font-size: 13px;
+  font-weight: 700;
+}
+.estdoc-terms-head:first-child {
+  margin-top: 0;
+}
+.estdoc-terms-list {
+  margin: 4px 0 4px 18px;
+  padding: 0;
+}
+.estdoc-terms-list li {
+  margin-bottom: 2px;
+}
+
 .est-badge {
   display: inline-block;
   padding: 2px 8px;

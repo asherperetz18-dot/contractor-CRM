@@ -8,6 +8,7 @@ import { getTwilioForCompany } from "@/lib/twilio-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
+import { fillContract } from "@/lib/contracts/merge";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -20,6 +21,7 @@ import {
   splitEvenlyCents,
   computeEstimateTotals,
   lineTotalCents,
+  moneyCents,
   parseQuantity,
   paidTotalCents,
   type EstimateStatus,
@@ -106,6 +108,64 @@ function revalidateEstimates(estimateId?: string | null) {
   if (estimateId) revalidatePath(`/estimates/${estimateId}`);
 }
 
+/** The rep's name for the contract's signature block. */
+async function repDisplayName(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  profileId: string | null
+): Promise<string> {
+  if (!profileId) return "";
+  const { data } = await supabase
+    .from("profiles")
+    .select("name, email")
+    .eq("id", profileId)
+    .maybeSingle<{ name: string | null; email: string | null }>();
+  return data?.name || data?.email || "";
+}
+
+/**
+ * Fills the money into a contract at the point it is sent.
+ *
+ * Price tokens cannot resolve when an estimate is created -- nothing has
+ * been priced yet, so a total merged in then would read $0.00 on every
+ * contract ever sent. fillContract leaves an unresolved token standing,
+ * so the frozen text still carries {{contract_total}} until this runs and
+ * replaces it with the figure the customer is actually agreeing to.
+ */
+async function fillContractMoney(estimateId: string, companyId: string): Promise<void> {
+  // Its own client rather than the caller's: the two send paths use
+  // different ones, and the caller has already established who may do
+  // this. Scoped to the company on every statement regardless.
+  const supabase = createAdminClient();
+  const { data: est } = await supabase
+    .from("estimates")
+    .select("terms, total_cents, deposit_cents, deposit_percent_bp, deposit_cap_cents")
+    .eq("id", estimateId)
+    .eq("company_id", companyId)
+    .maybeSingle<{
+      terms: string | null;
+      total_cents: number;
+      deposit_cents: number | null;
+      deposit_percent_bp: number;
+      deposit_cap_cents: number;
+    }>();
+  if (!est?.terms) return;
+
+  const deposit =
+    est.deposit_cents ??
+    depositCents(est.total_cents, est.deposit_percent_bp, est.deposit_cap_cents);
+  const filled = fillContract(est.terms, {
+    contract_total: moneyCents(est.total_cents),
+    deposit_amount: moneyCents(deposit),
+  });
+  if (filled === est.terms) return;
+
+  await supabase
+    .from("estimates")
+    .update({ terms: filled })
+    .eq("id", estimateId)
+    .eq("company_id", companyId);
+}
+
 export async function createEstimate(
   leadId: string,
   title: string
@@ -119,18 +179,39 @@ export async function createEstimate(
   // retyping what the lead record already knows.
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, email, phone, assigned_to, company_id")
+    .select("id, first_name, last_name, email, phone, address, assigned_to, company_id")
     .eq("id", leadId)
     .eq("company_id", guard.companyId)
-    .maybeSingle<LeadRow>();
+    .maybeSingle<LeadRow & { address: string | null }>();
   if (leadError) return { error: leadError.message };
   if (!lead) return { error: "Lead not found." };
 
   const { data: settings } = await supabase
     .from("company_profile")
-    .select("tax_rate_bp, estimate_expiry_days, estimate_terms")
+    .select(
+      "tax_rate_bp, estimate_expiry_days, estimate_terms, name, address, phone, email, license_number"
+    )
     .eq("company_id", guard.companyId)
-    .maybeSingle<SettingsRow>();
+    .maybeSingle<
+      SettingsRow & {
+        name: string | null;
+        address: string | null;
+        phone: string | null;
+        email: string | null;
+        license_number: string | null;
+      }
+    >();
+
+  // The default contract, frozen onto this estimate as it reads today.
+  // Copied rather than referenced so that editing the template next year
+  // cannot rewrite a contract signed this one -- the same reason
+  // estimate_terms was already copied, extended to a real document.
+  const { data: template } = await supabase
+    .from("contract_templates")
+    .select("id, body")
+    .eq("company_id", guard.companyId)
+    .eq("is_default", true)
+    .maybeSingle<{ id: string; body: string }>();
 
   const { data: docNumber, error: numberError } = await supabase.rpc("next_estimate_number", {
     check_company_id: guard.companyId,
@@ -142,6 +223,33 @@ export async function createEstimate(
   const expires = new Date();
   expires.setDate(expires.getDate() + expiryDays);
 
+  const customerFullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
+  const repName = await repDisplayName(supabase, lead.assigned_to ?? guard.userId);
+  // Money and dates are left out on purpose: nothing is priced yet at
+  // creation, so a total merged in here would be $0.00 on every contract.
+  // They fill in when the estimate is sent -- see fillContractMoney.
+  const contractBody = template?.body
+    ? fillContract(template.body, {
+        contract_no: docNumberText ?? "",
+        contract_date: new Date().toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+        client_name: customerFullName,
+        client_phone: lead.phone,
+        client_email: lead.email,
+        project_address: lead.address,
+        rep_name: repName,
+        project_title: title.trim(),
+        company_name: settings?.name,
+        company_address: settings?.address,
+        company_phone: settings?.phone,
+        company_email: settings?.email,
+        license_no: settings?.license_number,
+      })
+    : (settings?.estimate_terms ?? null);
+
   const { data: created, error } = await supabase
     .from("estimates")
     .insert({
@@ -152,7 +260,8 @@ export async function createEstimate(
       status: "Draft" as EstimateStatus,
       assigned_to: lead.assigned_to ?? guard.userId,
       tax_rate_bp: settings?.tax_rate_bp ?? 0,
-      terms: settings?.estimate_terms ?? null,
+      terms: contractBody,
+      contract_template_id: template?.id ?? null,
       expires_at: expires.toISOString().slice(0, 10),
       created_by: guard.userId,
     })
@@ -310,6 +419,10 @@ export async function markEstimateSent(estimateId: string): Promise<{ error?: st
   if (estimate.status !== "Draft") return { error: "This estimate has already been sent." };
   if (!estimate.total_cents) return { error: "Add at least one line item before sending." };
 
+  // Before the status flips, so the contract carries its price the first
+  // time anyone can open it.
+  await fillContractMoney(estimateId, guard.companyId);
+
   const now = new Date().toISOString();
   const { data: updated, error } = await supabase
     .from("estimates")
@@ -424,6 +537,8 @@ export async function sendEstimateToCustomer(
   const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
   const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
   if (sent.error) return { error: `Text failed (${sent.error})` };
+
+  await fillContractMoney(estimateId, guard.companyId);
 
   const now = new Date().toISOString();
   await admin

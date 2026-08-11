@@ -11,6 +11,7 @@ import {
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
+import { parseContract } from "@/lib/contracts/merge";
 
 export type DocumentCompany = {
   name: string | null;
@@ -353,7 +354,27 @@ export function EstimateDocument({
       {estimate.terms && (
         <section className="estdoc-terms">
           <div className="estdoc-label">Terms</div>
-          <p>{estimate.terms}</p>
+          {/* Rendered as blocks, not one paragraph. This carries a full
+              home-improvement contract now -- sixteen numbered sections,
+              a mechanics lien warning and a right-to-cancel notice -- and
+              a wall of text is not a document somebody reads before
+              signing. Nothing here interprets HTML: the body is plain
+              text an office user pasted in, and it renders as text. */}
+          {parseContract(estimate.terms).map((block, i) =>
+            block.kind === "heading" ? (
+              <h4 key={i} className="estdoc-terms-head">
+                {block.text}
+              </h4>
+            ) : block.kind === "bullet" ? (
+              <ul key={i} className="estdoc-terms-list">
+                {block.items.map((item, j) => (
+                  <li key={j}>{item}</li>
+                ))}
+              </ul>
+            ) : (
+              <p key={i}>{block.text}</p>
+            )
+          )}
         </section>
       )}
 

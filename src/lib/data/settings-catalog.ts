@@ -115,6 +115,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "%",
       },
       {
+        title: "Contracts",
+        desc: "The agreement customers sign. Paste yours in, use merge fields, and pick the one new estimates carry.",
+        icon: "📜",
+        href: "/settings/contracts",
+        adminOnly: true,
+      },
+      {
         title: "Dispatcher Commission",
         desc: "What a dispatcher earns on the gross sale of every contract signed on a lead they hold",
         icon: "🧾",
