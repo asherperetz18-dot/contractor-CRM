@@ -51,8 +51,11 @@ export function CallsPanel({ leadId, readOnly }: { leadId: string; readOnly?: bo
     };
   }, [leadId, reloadKey]);
 
+  // Error first. The other order looks harmless and is not: a failed load
+  // never sets `calls`, so the panel sat on "Loading…" for good and the
+  // line explaining why was unreachable.
+  if (error && !calls) return <p className="error-note">{error}</p>;
   if (!calls) return <p className="empty-hint">Loading…</p>;
-  if (error) return <p className="error-note">{error}</p>;
 
   if (calls.length === 0) {
     return (
