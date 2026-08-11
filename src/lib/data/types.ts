@@ -1454,6 +1454,81 @@ export type EstimatePayment = {
   due_date?: string | null;
 };
 
+// ── Job costs ────────────────────────────────────────────────────────
+
+/**
+ * Money actually spent on a job.
+ *
+ * Distinct from estimate_items.cost_cents, which is what somebody
+ * guessed a line would cost while quoting it. This is what left the bank.
+ */
+export type JobExpense = {
+  id: string;
+  company_id: string;
+  lead_id: string;
+  /** The phase it is filed against. Null means "on the job, unfiled". */
+  estimate_payment_id: string | null;
+  vendor: string | null;
+  category: string | null;
+  description: string | null;
+  amount_cents: number;
+  spent_on: string;
+  /** 'manual' or 'quickbooks' -- which rows a sync may overwrite. */
+  source: string;
+  qb_txn_id: string | null;
+  qb_txn_type: string | null;
+  qb_project_id: string | null;
+  created_at: string;
+};
+
+export type JobExpenseInput = {
+  leadId: string;
+  estimatePaymentId: string | null;
+  vendor: string;
+  category: string;
+  description: string;
+  amountCents: number;
+  spentOn: string;
+};
+
+export type PhaseProfit = {
+  billedCents: number;
+  costCents: number;
+  profitCents: number;
+  /** Null when nothing is billed -- 0% would read as "no margin". */
+  pct: number | null;
+};
+
+/**
+ * Profit on one phase: what it bills, less what was spent against it.
+ *
+ * Costs only count once they are filed against a phase. An unfiled
+ * receipt is deliberately absent rather than spread across phases,
+ * because spreading it would move every phase's margin by an amount
+ * nobody chose.
+ */
+export function phaseProfit(billedCents: number, expenses: Pick<JobExpense, "amount_cents">[]): PhaseProfit {
+  const costCents = expenses.reduce((sum, e) => sum + (Number(e.amount_cents) || 0), 0);
+  return {
+    billedCents,
+    costCents,
+    profitCents: billedCents - costCents,
+    pct: marginPct(billedCents, costCents),
+  };
+}
+
+/** Costs grouped by the phase they are filed against; null key = unfiled. */
+export function expensesByPhase(expenses: JobExpense[]): Map<string | null, JobExpense[]> {
+  const map = new Map<string | null, JobExpense[]>();
+  for (const e of expenses) {
+    const key = e.estimate_payment_id ?? null;
+    const list = map.get(key) ?? [];
+    list.push(e);
+    map.set(key, list);
+  }
+  return map;
+}
+
 export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
 
 /**

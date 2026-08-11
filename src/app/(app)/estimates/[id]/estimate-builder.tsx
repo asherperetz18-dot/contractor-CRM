@@ -31,6 +31,7 @@ import {
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
+import { JobCosts } from "./job-costs";
 import { ScopeEditor } from "./scope-editor";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
@@ -719,6 +720,22 @@ export function EstimateBuilder({
         locked={locked}
         onChanged={() => router.refresh()}
       />
+
+      {/* Costs are worth recording from the moment a job is real, which is
+          when it is signed -- not when it completes. A margin that only
+          appears at the end is a post-mortem, not a warning. Kept off
+          change orders and completion certificates: those share the job's
+          costs rather than having their own. */}
+      {estimate.status === "Signed" && estimate.kind === "contract" && (
+        <JobCosts
+          leadId={estimate.lead_id}
+          payments={payments}
+          totalCents={estimate.total_cents}
+          depositPercentBp={estimate.deposit_percent_bp}
+          depositCapCents={estimate.deposit_cap_cents}
+          canEdit={canEdit}
+        />
+      )}
 
       {/* Only on a signed contract, and never on a change order itself --
           a change order to a change order is a chain nobody can read. */}
