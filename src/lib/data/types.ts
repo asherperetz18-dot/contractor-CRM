@@ -137,6 +137,7 @@ export type PageKey =
   | "call-reports"
   | "text-reports"
   | "appointment-reports"
+  | "projects"
   | "production"
   | "documents"
   | "payments"
@@ -187,6 +188,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     href: "/appointment-reports",
     group: "Your Sales Center",
   },
+  { key: "projects", label: "Projects", href: "/projects", group: "General" },
   { key: "production", label: "Production", href: "/production", group: "General" },
   // Key stays "documents" so existing role_page_visibility overrides keep
   // pointing at it; only the label and route move. Named "Contracts"
@@ -1527,6 +1529,79 @@ export function expensesByPhase(expenses: JobExpense[]): Map<string | null, JobE
     map.set(key, list);
   }
   return map;
+}
+
+// ── Projects ─────────────────────────────────────────────────────────
+
+/**
+ * A sold job: one signed contract, its change orders, and the money.
+ *
+ * Not a new record. There is an empty `jobs` table sitting in this
+ * schema inviting one, and creating it would put the customer's name and
+ * address in two places -- which drift apart the first time somebody
+ * corrects one and not the other. A project is a view over a contract
+ * and the lead it belongs to.
+ */
+export type ProjectRollup = {
+  /** Contract plus every signed change order. What was actually sold. */
+  soldCents: number;
+  /** Money received and settled. Pending ACH has not arrived. */
+  collectedCents: number;
+  /** Billed but not yet collected. */
+  receivableCents: number;
+  costCents: number;
+  /** Collected less spent. The figure that says whether a job is bleeding. */
+  netCashCents: number;
+  /** Costs on this customer that no phase claims. Excluded from the
+   *  figures above when the customer has more than one contract, since
+   *  attributing them to either would be a guess. */
+  unattributedCostCents: number;
+  collectedPct: number | null;
+};
+
+export function computeProjectRollup(input: {
+  contractTotalCents: number;
+  signedChangeOrderCents: number;
+  /** Settled payments against the contract and its change orders. */
+  payments: Pick<PortalPayment, "status" | "amount_cents">[];
+  billedCents: number;
+  /** Costs filed to a phase of this contract or its change orders. */
+  filedCostCents: number;
+  /** Costs on the lead that no phase claims. */
+  unfiledCostCents: number;
+  /** False when the customer has other signed contracts, in which case
+   *  unfiled costs could belong to any of them. */
+  ownsUnfiledCosts: boolean;
+}): ProjectRollup {
+  const soldCents = input.contractTotalCents + input.signedChangeOrderCents;
+  const collectedCents = paidTotalCents(input.payments);
+  const unattributed = input.ownsUnfiledCosts ? 0 : input.unfiledCostCents;
+  const costCents = input.filedCostCents + (input.ownsUnfiledCosts ? input.unfiledCostCents : 0);
+  return {
+    soldCents,
+    collectedCents,
+    receivableCents: Math.max(0, input.billedCents - collectedCents),
+    costCents,
+    netCashCents: collectedCents - costCents,
+    unattributedCostCents: unattributed,
+    collectedPct: soldCents ? (collectedCents / soldCents) * 100 : null,
+  };
+}
+
+/**
+ * Worst first.
+ *
+ * A project list sorted by name or date is a filing cabinet. Sorted by
+ * money going the wrong way, it is the thing you open in the morning:
+ * jobs underwater, then jobs owed the most, then everything else by size.
+ */
+export function projectTriageOrder(a: ProjectRollup, b: ProjectRollup): number {
+  const aBleeding = a.netCashCents < 0;
+  const bBleeding = b.netCashCents < 0;
+  if (aBleeding !== bBleeding) return aBleeding ? -1 : 1;
+  if (aBleeding && bBleeding) return a.netCashCents - b.netCashCents;
+  if (a.receivableCents !== b.receivableCents) return b.receivableCents - a.receivableCents;
+  return b.soldCents - a.soldCents;
 }
 
 export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
