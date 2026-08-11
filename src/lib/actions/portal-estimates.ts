@@ -54,7 +54,19 @@ function expired(estimate: EstimateRow): boolean {
   return new Date(`${estimate.expires_at}T23:59:59`).getTime() < Date.now();
 }
 
-/** Records that the customer opened the document. */
+/**
+ * Records that the customer opened the document.
+ *
+ * Called from the portal page's own render, which is why there is no
+ * revalidatePath here: Next refuses one during a render and throws, so
+ * the first time a customer opened anything still marked Sent, their
+ * page failed with a server error. Every earlier test opened documents
+ * that were already Signed, where this returns before reaching it.
+ *
+ * Nothing is lost by dropping it. The staff estimates list is rendered
+ * dynamically on each request, so it picks the new status up on its next
+ * load regardless.
+ */
 export async function markEstimateViewed(estimateId: string): Promise<void> {
   const loaded = await loadForViewer(estimateId);
   if ("error" in loaded) return;
@@ -65,7 +77,6 @@ export async function markEstimateViewed(estimateId: string): Promise<void> {
     .from("estimates")
     .update({ status: "Viewed" as EstimateStatus, viewed_at: new Date().toISOString() })
     .eq("id", estimateId);
-  revalidatePath("/estimates");
 }
 
 export async function signEstimateAsCustomer(
