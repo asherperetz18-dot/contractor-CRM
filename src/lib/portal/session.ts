@@ -159,6 +159,25 @@ export async function beginLogin(
   }
 
   const store = await cookies();
+
+  // A link for somebody else ends whoever is signed in here.
+  //
+  // The confirm screen lets an existing session through untouched, so
+  // presenting a fresh link while already signed in as another customer
+  // landed you on the old customer's portal -- their appointments, their
+  // estimates -- with the new token left unused. Nobody saw data they
+  // should not have, but they saw the wrong project and had no way to
+  // tell. Most likely on a shared tablet, or on the contractor's own
+  // phone after using the staff copy-link button.
+  //
+  // Only cleared when the lead differs, so the ordinary case -- the same
+  // customer opening their newest link -- is not challenged again for a
+  // session it already has.
+  const current = await getPortalViewer();
+  if (current && current.lead.id !== token.lead_id) {
+    store.delete(PORTAL_COOKIE);
+  }
+
   store.set(PORTAL_PENDING_COOKIE, raw, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

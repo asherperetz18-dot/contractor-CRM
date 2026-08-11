@@ -134,6 +134,9 @@ export function PortalHome({
   const [messageBody, setMessageBody] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  // Thumbnails that failed to load, so each one falls back to an icon
+  // once rather than retrying on every render.
+  const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set());
 
   const step = journeyStep(lead.stage, estimates);
   const todayISO = new Date().toISOString().slice(0, 10);
@@ -442,23 +445,55 @@ export function PortalHome({
             {files.length === 0 ? (
               <p className="portal-empty">Nothing shared yet.</p>
             ) : (
-              <ul className="portal-files">
-                {files.map((f) => (
-                  <li key={f.id}>
-                    {f.file_url ? (
-                      <a href={f.file_url} target="_blank" rel="noopener noreferrer">
-                        {f.file_name}
-                      </a>
-                    ) : (
-                      <span>{f.file_name}</span>
-                    )}
-                    <span className="portal-file-meta">
-                      {f.uploaded_by ? "from your contractor" : "you"} ·{" "}
-                      {new Date(f.created_at).toLocaleDateString()}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              /* Tiles, not a list of file names. "WhatsApp Image
+                 2026-07-31 at 12.08.20 PM.jpeg" tells nobody anything --
+                 you had to open every one to find the photo you meant,
+                 which on a phone is a download each time. */
+              <div className="portal-file-grid">
+                {files.map((f) => {
+                  const isImage =
+                    !!f.file_url &&
+                    (f.content_type ?? "").startsWith("image/") &&
+                    !brokenThumbs.has(f.id);
+                  const isPdf = (f.content_type ?? "").includes("pdf");
+                  return (
+                    <a
+                      key={f.id}
+                      className="portal-file-tile"
+                      href={f.file_url ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span className="portal-file-thumb">
+                        {isImage ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={f.file_url!}
+                            alt={f.file_name}
+                            loading="lazy"
+                            // A file kept in Google Drive has a URL that
+                            // is a viewer page, not an image. Rather than
+                            // guess from the provider, let it fail once
+                            // and fall back to the icon.
+                            onError={() =>
+                              setBrokenThumbs((prev) => new Set(prev).add(f.id))
+                            }
+                          />
+                        ) : (
+                          <span className="portal-file-icon" aria-hidden="true">
+                            {isPdf ? "📄" : "📎"}
+                          </span>
+                        )}
+                      </span>
+                      <span className="portal-file-name">{f.file_name}</span>
+                      <span className="portal-file-meta">
+                        {f.uploaded_by ? "from your contractor" : "you"} ·{" "}
+                        {new Date(f.created_at).toLocaleDateString()}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
             )}
           </section>
         )}

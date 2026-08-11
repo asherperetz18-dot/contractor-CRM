@@ -4674,6 +4674,53 @@ body {
   background: #faf8f3;
 }
 
+/* Photos and documents as tiles. auto-fill rather than a fixed count so
+   a phone gets two across and a laptop four, without a breakpoint. */
+.portal-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.portal-file-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-decoration: none;
+  color: inherit;
+}
+.portal-file-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.portal-file-thumb img {
+  width: 100%;
+  height: 100%;
+  /* Cover, so a portrait photo of a wall fills its tile instead of
+     sitting in a letterbox with the detail too small to make out. */
+  object-fit: cover;
+}
+.portal-file-icon {
+  font-size: 30px;
+}
+.portal-file-name {
+  font-size: 13px;
+  font-weight: 500;
+  /* Two lines then ellipsis: these names run long and a tile that grows
+     to fit one drags the whole row down with it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
 /* Licence and insurance on the customer's portal. Big enough to tap on a
    phone, which is where most of them will open it. */
 .portal-doc {
