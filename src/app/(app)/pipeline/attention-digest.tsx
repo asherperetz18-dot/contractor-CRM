@@ -33,6 +33,7 @@ function DigestSection({
   leads,
   warningsByLead,
   repName,
+  dispatcherName,
   onOpenLead,
   defaultOpen,
   urgent,
@@ -44,6 +45,7 @@ function DigestSection({
   leads: Lead[];
   warningsByLead: Map<string, LeadWarnings>;
   repName: (id: string | null) => string;
+  dispatcherName: (id: string | null) => string;
   onOpenLead: (lead: Lead) => void;
   defaultOpen?: boolean;
   /** Tints the panel red -- only honoured while the count is above zero,
@@ -110,6 +112,9 @@ function DigestSection({
                 <th>Address</th>
                 <th>Pipeline Stage</th>
                 <th>Warnings</th>
+                {/* Next to the rep on purpose: the two people who could
+                    chase this lead, side by side. */}
+                <th>Dispatcher</th>
                 <th>Assigned Rep</th>
                 <th className="right">Value</th>
               </tr>
@@ -136,6 +141,7 @@ function DigestSection({
                   <td>
                     <WarningBadges warnings={warningsByLead.get(l.id)} />
                   </td>
+                  <td>{dispatcherName(l.dispatcher_id)}</td>
                   <td>{repName(l.assigned_to)}</td>
                   <td className="right mono">{money(l.value)}</td>
                 </tr>
@@ -156,12 +162,14 @@ export function AttentionDigest({
   coldLeads,
   warningsByLead,
   repName,
+  dispatcherName,
   onOpenLead,
 }: {
   followUpsDue: Lead[];
   coldLeads: Lead[];
   warningsByLead: Map<string, LeadWarnings>;
   repName: (id: string | null) => string;
+  dispatcherName: (id: string | null) => string;
   onOpenLead: (lead: Lead) => void;
 }) {
   return (
@@ -173,6 +181,7 @@ export function AttentionDigest({
         leads={followUpsDue}
         warningsByLead={warningsByLead}
         repName={repName}
+        dispatcherName={dispatcherName}
         onOpenLead={onOpenLead}
         urgent
       />
@@ -184,6 +193,7 @@ export function AttentionDigest({
         leads={coldLeads}
         warningsByLead={warningsByLead}
         repName={repName}
+        dispatcherName={dispatcherName}
         onOpenLead={onOpenLead}
       />
     </div>

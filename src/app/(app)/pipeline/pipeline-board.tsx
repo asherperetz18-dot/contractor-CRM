@@ -53,6 +53,7 @@ export function PipelineBoard({
   notes,
   files,
   reps,
+  allMembers,
   stages,
   calendars,
   projectTypes,
@@ -66,6 +67,8 @@ export function PipelineBoard({
   notes: LeadNote[];
   files: LeadFile[];
   reps: Profile[];
+  /** For putting a name to an id only -- includes deactivated members. */
+  allMembers: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
   projectTypes: ProjectTypeRow[];
@@ -205,6 +208,22 @@ export function PipelineBoard({
   function repName(id: string | null) {
     if (!id) return "Unassigned";
     return reps.find((r) => r.id === id)?.name || "Unassigned";
+  }
+
+  /**
+   * The dispatcher holding this lead.
+   *
+   * Looked up against every member rather than the Active ones, and says
+   * "—" rather than "Unassigned" when the field is empty: most leads
+   * genuinely have no dispatcher, and printing "Unassigned" next to the
+   * rep column would read as a gap to fill rather than a field nobody
+   * uses on that lead.
+   */
+  function dispatcherName(id: string | null) {
+    if (!id) return "—";
+    const m = allMembers.find((r) => r.id === id);
+    if (!m) return "—";
+    return (m.name || m.email || "—") + (m.status === "Active" ? "" : " (inactive)");
   }
 
   function handleDrop(stage: string) {
@@ -529,6 +548,7 @@ export function PipelineBoard({
         coldLeads={coldLeads}
         warningsByLead={warningsByLead}
         repName={repName}
+        dispatcherName={dispatcherName}
         onOpenLead={setEditing}
       />
 

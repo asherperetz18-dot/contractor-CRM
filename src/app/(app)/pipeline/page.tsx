@@ -75,6 +75,12 @@ export default async function PipelinePage() {
       notes={(notes as LeadNote[]) ?? []}
       files={(files as LeadFile[]) ?? []}
       reps={reps}
+      // Everyone, including deactivated members. `reps` is filtered to
+      // Active because it feeds the assignment dropdowns, but a lead can
+      // still be held by someone who has since left -- and looking that
+      // name up in the Active list only would print "Unassigned" over a
+      // lead that is very much assigned.
+      allMembers={allReps}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       projectTypes={(projectTypes as ProjectTypeRow[]) ?? []}
