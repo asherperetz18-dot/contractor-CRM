@@ -50,8 +50,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       { title: "Appearance & Theme", desc: "Theme colors, dark/light mode, and visual style", icon: "🎨" },
       { title: "Social Media Links", desc: "LinkedIn, Facebook, Instagram, and other social profiles", icon: "🔗" },
-      { title: "Insurance Documents", desc: "Upload liability, workers comp, and other insurance certificates", icon: "🛡" },
-      { title: "License Certificates", desc: "Upload contractor licenses and state certifications", icon: "📜" },
+      {
+        title: "Licence & Insurance",
+        desc: "Upload your contractor licence, bond and insurance certificates. Shown on the customer portal, and hidden automatically once one expires.",
+        icon: "📜",
+        href: "/settings/certificates",
+        adminOnly: true,
+      },
     ],
   },
   {

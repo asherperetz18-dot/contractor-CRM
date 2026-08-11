@@ -4674,6 +4674,34 @@ body {
   background: #faf8f3;
 }
 
+/* Licence and insurance on the customer's portal. Big enough to tap on a
+   phone, which is where most of them will open it. */
+.portal-doc {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+.portal-doc:first-of-type {
+  border-top: none;
+}
+.portal-doc-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.portal-doc-title {
+  display: block;
+  font-weight: 600;
+}
+.portal-doc-kind {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
 /* A sixteen-section contract sits in here, so it needs the shape of a
    document rather than a paragraph of small print. */
 .estdoc-terms-head {

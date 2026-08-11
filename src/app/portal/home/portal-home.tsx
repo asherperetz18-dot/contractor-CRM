@@ -11,6 +11,7 @@ import {
   type Profile,
   type SmsMessage,
 } from "@/lib/data/types";
+import { docKindLabel } from "@/lib/data/company-docs";
 import {
   portalRequestReschedule,
   portalSendMessage,
@@ -26,6 +27,14 @@ type PortalFile = {
   content_type: string | null;
   created_at: string;
   uploaded_by: string | null;
+};
+
+export type PortalDoc = {
+  id: string;
+  kind: string;
+  title: string;
+  file_url: string;
+  expires_on: string | null;
 };
 
 export type PortalEstimate = {
@@ -103,6 +112,7 @@ export function PortalHome({
   companyName,
   companyPhone,
   companyLogo,
+  documents,
 }: {
   lead: Lead;
   events: Event[];
@@ -113,6 +123,7 @@ export function PortalHome({
   companyName: string;
   companyPhone: string | null;
   companyLogo: string | null;
+  documents: PortalDoc[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
@@ -378,6 +389,37 @@ export function PortalHome({
                       <div className="portal-appt-rep">Cancelled</div>
                     )}
                   </div>
+                ))}
+              </section>
+            )}
+
+            {/* On Overview rather than behind a tab. "Are they licensed,
+                are they insured" is asked early and by everyone, and
+                anything a customer has to go looking for is something they
+                text and ask about instead -- which is the errand this is
+                meant to remove. Expired ones never reach here. */}
+            {documents.length > 0 && (
+              <section className="portal-card">
+                <h2 className="portal-card-title">Licence &amp; insurance</h2>
+                <p className="portal-empty" style={{ marginTop: 0 }}>
+                  {companyName} is licensed and insured. Tap to open or download.
+                </p>
+                {documents.map((d) => (
+                  <a
+                    key={d.id}
+                    className="portal-doc"
+                    href={d.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span className="portal-doc-icon" aria-hidden="true">
+                      {d.kind === "insurance" ? "🛡" : "📜"}
+                    </span>
+                    <span>
+                      <span className="portal-doc-title">{d.title}</span>
+                      <span className="portal-doc-kind">{docKindLabel(d.kind)}</span>
+                    </span>
+                  </a>
                 ))}
               </section>
             )}

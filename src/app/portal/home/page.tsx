@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import type { Event, Profile, SmsMessage } from "@/lib/data/types";
-import { PortalHome, type PortalEstimate } from "./portal-home";
+import { isExpired } from "@/lib/data/company-docs";
+import { PortalHome, type PortalDoc, type PortalEstimate } from "./portal-home";
 
 type EstimateRow = {
   id: string;
@@ -39,6 +40,7 @@ export default async function PortalHomePage() {
     { data: reps },
     { data: estimateRows },
     { data: paymentRows },
+    { data: docRows },
   ] = await Promise.all([
     admin
       .from("events")
@@ -77,6 +79,16 @@ export default async function PortalHomePage() {
       .select("estimate_id, kind, status")
       .eq("lead_id", viewer.lead.id)
       .returns<{ estimate_id: string; kind: string; status: string }[]>(),
+    // Licence and insurance. Read with the service role because a
+    // customer has no Supabase session -- the portal token already
+    // established who they are and which company they belong to.
+    admin
+      .from("company_documents")
+      .select("id, kind, title, file_url, expires_on")
+      .eq("company_id", viewer.companyId)
+      .eq("show_on_portal", true)
+      .order("kind", { ascending: true })
+      .returns<PortalDoc[]>(),
   ]);
 
   const companyRow = company as { name: string | null; phone: string | null; logo_url: string | null } | null;
@@ -101,6 +113,10 @@ export default async function PortalHomePage() {
       companyName={companyRow?.name || "Your Contractor"}
       companyPhone={companyRow?.phone || null}
       companyLogo={companyRow?.logo_url || null}
+      // Filtered here rather than in the query: a lapsed certificate shown
+      // to a customer is worse than none, and "hide it once it expires"
+      // has to hold without anyone remembering to untick a box.
+      documents={(docRows ?? []).filter((d) => !isExpired(d.expires_on))}
     />
   );
 }
