@@ -1125,6 +1125,11 @@ export type Estimate = {
   // reads as a commitment.
   start_date: string | null;
   completion_date: string | null;
+  // "contract" or "change_order". A change order adds to a signed
+  // contract that stays exactly as signed -- unlike supersedes_id, which
+  // replaces one. Every pre-existing row is a contract.
+  kind: string;
+  parent_estimate_id: string | null;
   tax_rate_bp: number;
   subtotal_cents: number;
   tax_cents: number;

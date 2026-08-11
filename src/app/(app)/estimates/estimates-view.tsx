@@ -26,13 +26,28 @@ export type EstimateRep = { id: string; name: string | null; email: string | nul
 // The funnel from the reference product: a draft nobody has seen, a
 // proposal awaiting signature, and a signed contract are three different
 // things to a contractor even though they are one row in the database.
-type Bucket = "drafts" | "sent" | "signed" | "declined";
+// Change orders are a fifth card rather than folded into the first four.
+// They are signed estimates too, so left alone a $1,200 extra would land
+// in Contracts and turn "4 signed" into "5 signed" -- counting one job
+// twice. Kept visible rather than merely filtered out, because an unsent
+// change order is extra work nobody has agreed to yet, and hiding it is
+// how it gets built anyway.
+type Bucket = "drafts" | "sent" | "signed" | "declined" | "changes";
 
 const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateStatus[] }[] = [
   { key: "drafts", label: "Drafts", hint: "not sent yet", statuses: ["Draft"] },
   { key: "sent", label: "Proposals", hint: "awaiting signature", statuses: ["Sent", "Viewed"] },
   { key: "signed", label: "Contracts", hint: "signed", statuses: ["Signed"] },
   { key: "declined", label: "Declined", hint: "lost or expired", statuses: ["Declined", "Expired"] },
+  // Every status: a change order matters most while it is unsigned, so
+  // splitting these across the other cards would bury the ones that need
+  // chasing among contracts that don't.
+  {
+    key: "changes",
+    label: "Change orders",
+    hint: "on signed contracts",
+    statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired"],
+  },
 ];
 
 function initials(name: string) {
@@ -87,17 +102,28 @@ export function EstimatesView({
   const effectiveStatus = (e: Estimate): EstimateStatus =>
     estimateExpired(e) ? "Expired" : e.status;
 
+  // One list or the other, never both. Each card counts only its own
+  // kind, so a change order cannot be tallied as a contract.
+  const isChange = (e: Estimate) => e.kind === "change_order";
+  const inBucket = (e: Estimate, b: Bucket, statuses: EstimateStatus[]) =>
+    (b === "changes" ? isChange(e) : !isChange(e)) && statuses.includes(effectiveStatus(e));
+
   const counts = BUCKETS.map((b) => {
-    const rows = estimates.filter((e) => b.statuses.includes(effectiveStatus(e)));
+    const rows = estimates.filter((e) => inBucket(e, b.key, b.statuses));
     return {
       ...b,
       count: rows.length,
-      totalCents: rows.reduce((sum, e) => sum + (e.total_cents || 0), 0),
+      // Signed ones only for the change-order total. A draft is a
+      // proposal, and adding it here would report money nobody has
+      // agreed to as though the job had grown.
+      totalCents: rows
+        .filter((e) => b.key !== "changes" || effectiveStatus(e) === "Signed")
+        .reduce((sum, e) => sum + (e.total_cents || 0), 0),
     };
   });
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const rows = estimates.filter((e) => active.statuses.includes(effectiveStatus(e)));
+  const rows = estimates.filter((e) => inBucket(e, active.key, active.statuses));
 
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
@@ -111,9 +137,15 @@ export function EstimatesView({
         <div>
           <h1 className="module-title">Estimates &amp; Contracts</h1>
           <p className="module-sub">
-            {estimates.length === 0
-              ? "No estimates yet"
-              : `${estimates.length} document${estimates.length === 1 ? "" : "s"}`}
+            {(() => {
+              const contracts = estimates.filter((e) => e.kind !== "change_order").length;
+              const changes = estimates.length - contracts;
+              if (contracts === 0 && changes === 0) return "No estimates yet";
+              return (
+                `${contracts} document${contracts === 1 ? "" : "s"}` +
+                (changes ? ` · ${changes} change order${changes === 1 ? "" : "s"}` : "")
+              );
+            })()}
           </p>
         </div>
         {canCreate && (

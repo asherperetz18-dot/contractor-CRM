@@ -14,6 +14,10 @@ type EstimateRow = {
   status: EstimateStatus;
   total_cents: number;
   expires_at: string | null;
+  kind: string;
+  parent_estimate_id: string | null;
+  doc_number: string;
+  title: string | null;
 };
 
 /**
@@ -33,7 +37,7 @@ async function loadForViewer(
   const admin = createAdminClient();
   const { data } = await admin
     .from("estimates")
-    .select("id, lead_id, company_id, status, total_cents, expires_at")
+    .select("id, lead_id, company_id, status, total_cents, expires_at, kind, parent_estimate_id, doc_number, title")
     .eq("id", estimateId)
     .maybeSingle<EstimateRow>();
 
@@ -122,11 +126,46 @@ export async function signEstimateAsCustomer(
       .update({ status: "Signed" as EstimateStatus, signed_at: now })
       .eq("id", estimateId);
 
-    // Won work outranks a merely sent estimate as the lead's value.
-    await admin
-      .from("leads")
-      .update({ value: estimate.total_cents / 100 })
-      .eq("id", estimate.lead_id);
+    if (estimate.kind === "change_order" && estimate.parent_estimate_id) {
+      // A signed change order becomes a payment phase on the contract it
+      // belongs to, rather than editing the contract's own total. The
+      // signed document is the record of what was agreed and must keep
+      // saying so; the extra is billed alongside it.
+      //
+      // Appended to the end of the schedule, which is where extra work
+      // falls due -- it is finished after everything already planned.
+      const { data: phases } = await admin
+        .from("estimate_payments")
+        .select("sort_order")
+        .eq("estimate_id", estimate.parent_estimate_id)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .returns<{ sort_order: number }[]>();
+
+      await admin.from("estimate_payments").insert({
+        company_id: estimate.company_id,
+        estimate_id: estimate.parent_estimate_id,
+        sort_order: (phases?.[0]?.sort_order ?? -1) + 1,
+        name: estimate.doc_number,
+        description: estimate.title || "Approved change order",
+        // Not clamped at zero, unlike the schedule editor: a credit is a
+        // real change order, and forcing it positive would turn money
+        // owed back to the customer into money owed by them.
+        amount_cents: Math.round(estimate.total_cents),
+      });
+
+      revalidatePath(`/estimates/${estimate.parent_estimate_id}`);
+      revalidatePath("/payments");
+    } else {
+      // Won work outranks a merely sent estimate as the lead's value.
+      // Not for a change order: the lead's value is what the job sold
+      // for, and overwriting it with the extra alone would report a
+      // $5,000 job as a $1,200 one.
+      await admin
+        .from("leads")
+        .update({ value: estimate.total_cents / 100 })
+        .eq("id", estimate.lead_id);
+    }
 
     // A signed contract is won work, whatever the board still says. Left
     // to a rep to update by hand, this is exactly the step that gets

@@ -29,6 +29,7 @@ import {
   updateEstimateDetails,
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
+import { ChangeOrders } from "./change-orders";
 import { ScopeEditor } from "./scope-editor";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
@@ -717,6 +718,16 @@ export function EstimateBuilder({
         locked={locked}
         onChanged={() => router.refresh()}
       />
+
+      {/* Only on a signed contract, and never on a change order itself --
+          a change order to a change order is a chain nobody can read. */}
+      {estimate.status === "Signed" && estimate.kind !== "change_order" && (
+        <ChangeOrders
+          estimateId={estimate.id}
+          contractTotalCents={estimate.total_cents}
+          canEdit={canEdit}
+        />
+      )}
 
       <div className="est-meta-grid">
         <label className="field">

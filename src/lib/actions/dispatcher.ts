@@ -158,6 +158,10 @@ export async function getDispatcherCommissions(): Promise<{
     .select("id, doc_number, lead_id, total_cents")
     .eq("company_id", profile.company_id)
     .eq("status", "Signed")
+    // Contracts only. A change order is a signed estimate too, so
+    // without this every extra would quietly enter the commission base
+    // -- and commission was deliberately set to the original contract.
+    .eq("kind", "contract")
     .returns<{ id: string; doc_number: string; lead_id: string; total_cents: number }[]>();
   if (!signed?.length) return { rows: [], ratePercent: bp / 100 };
 

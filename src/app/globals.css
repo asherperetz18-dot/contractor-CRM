@@ -4618,7 +4618,9 @@ body {
    green for signed work, grey once a document is dead. */
 .est-funnel {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* auto-fit rather than a fixed four: change orders added a fifth card,
+     and a hard count leaves the last one alone on a row of its own. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
