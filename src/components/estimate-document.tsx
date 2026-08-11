@@ -5,6 +5,7 @@ import {
   depositPayment,
   paymentMethodLabel,
   signatureProgress,
+  isPricelessKind,
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
@@ -134,6 +135,10 @@ export function EstimateDocument({
 }) {
   const sig = signatureProgress(signers);
   const isChangeOrder = estimate.kind === "change_order";
+  // A completion certificate records acceptance, not a price. Its line
+  // items and totals are all zero, and printing "$0.00" beside a document
+  // about a $5,400 job invites exactly the wrong conclusion.
+  const priceless = isPricelessKind(estimate.kind);
 
   // Drop the Qty and Price columns entirely when no line has a real
   // measurement: every cell would be blank, and Price would only repeat
@@ -180,9 +185,10 @@ export function EstimateDocument({
               than an amendment to a $5,400 contract, and the customer
               signing it has no way to tell the difference. */}
           {isChangeOrder && <div className="estdoc-doctype">CHANGE ORDER</div>}
+          {priceless && <div className="estdoc-doctype">CERTIFICATE OF COMPLETION</div>}
           <div className="estdoc-docnum">{estimate.doc_number}</div>
           <div className="estdoc-muted">Issued {longDate(estimate.issued_at ?? estimate.created_at)}</div>
-          {isChangeOrder && parent && (
+          {(isChangeOrder || priceless) && parent && (
             <div className="estdoc-muted">
               To contract {parent.doc_number}
               {parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}
@@ -225,6 +231,11 @@ export function EstimateDocument({
         <p className="estdoc-message">{estimate.customer_message}</p>
       )}
 
+      {/* Both hidden on a certificate: it has no line items and no price,
+          and an empty table above a $0.00 total is worse than nothing on a
+          document about a finished job. Its wording is the whole content,
+          and that renders below with the terms. */}
+      {priceless ? null : (
       <table className="estdoc-items">
         <thead>
           <tr>
@@ -293,7 +304,9 @@ export function EstimateDocument({
           )}
         </tbody>
       </table>
+      )}
 
+      {priceless ? null : (
       <div className="estdoc-totals">
         <div className="estdoc-total-row">
           <span>Subtotal</span>
@@ -313,7 +326,7 @@ export function EstimateDocument({
             needs to see the number it lands on, not work it out -- and a
             credit reads as a reduction only when the new total is shown
             beside it. */}
-        {isChangeOrder && parent && (
+        {(isChangeOrder || priceless) && parent && (
           <>
             <div className="estdoc-total-row">
               <span>Original contract {parent.doc_number}</span>
@@ -326,6 +339,7 @@ export function EstimateDocument({
           </>
         )}
       </div>
+      )}
 
       {/* The payment schedule is the part a homeowner reads hardest -- it
           is what they are committing to pay and when. Percentages are of

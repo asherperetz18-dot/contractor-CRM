@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   estimateExpired,
   moneyCents,
+  isSellableKind,
   signatureProgress,
   type Estimate,
   type EstimateSigner,
@@ -44,8 +45,8 @@ const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateSta
   // chasing among contracts that don't.
   {
     key: "changes",
-    label: "Change orders",
-    hint: "on signed contracts",
+    label: "Attached",
+    hint: "change orders & completions",
     statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired"],
   },
 ];
@@ -104,9 +105,13 @@ export function EstimatesView({
 
   // One list or the other, never both. Each card counts only its own
   // kind, so a change order cannot be tallied as a contract.
-  const isChange = (e: Estimate) => e.kind === "change_order";
+  // isSellableKind rather than a hand-written kind check: the funnel, the
+  // commission base and the lead's value all ask the same question, and
+  // each of them got it wrong in turn when change orders arrived.
+  // Completion certificates are attachments to a contract too.
   const inBucket = (e: Estimate, b: Bucket, statuses: EstimateStatus[]) =>
-    (b === "changes" ? isChange(e) : !isChange(e)) && statuses.includes(effectiveStatus(e));
+    (b === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&
+    statuses.includes(effectiveStatus(e));
 
   const counts = BUCKETS.map((b) => {
     const rows = estimates.filter((e) => inBucket(e, b.key, b.statuses));
@@ -138,12 +143,12 @@ export function EstimatesView({
           <h1 className="module-title">Estimates &amp; Contracts</h1>
           <p className="module-sub">
             {(() => {
-              const contracts = estimates.filter((e) => e.kind !== "change_order").length;
+              const contracts = estimates.filter((e) => isSellableKind(e.kind)).length;
               const changes = estimates.length - contracts;
               if (contracts === 0 && changes === 0) return "No estimates yet";
               return (
                 `${contracts} document${contracts === 1 ? "" : "s"}` +
-                (changes ? ` · ${changes} change order${changes === 1 ? "" : "s"}` : "")
+                (changes ? ` · ${changes} attached document${changes === 1 ? "" : "s"}` : "")
               );
             })()}
           </p>

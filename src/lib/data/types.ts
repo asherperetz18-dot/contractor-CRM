@@ -1125,9 +1125,10 @@ export type Estimate = {
   // reads as a commitment.
   start_date: string | null;
   completion_date: string | null;
-  // "contract" or "change_order". A change order adds to a signed
+  // What sort of document this is. A change order adds to a signed
   // contract that stays exactly as signed -- unlike supersedes_id, which
-  // replaces one. Every pre-existing row is a contract.
+  // replaces one. A completion certificate carries no money at all.
+  // Every pre-existing row is a contract.
   kind: string;
   parent_estimate_id: string | null;
   tax_rate_bp: number;
@@ -1662,6 +1663,30 @@ export function leadDisplayName(l: {
  * quoted. Narrower than the full row on purpose: the calendar loads these
  * for every lead in the company, and it only ever shows a line per one.
  */
+export type EstimateKind = "contract" | "change_order" | "completion";
+
+/**
+ * Whether a document's total is money the business has sold.
+ *
+ * Stated once because it is asked in several places -- the funnel, the
+ * dispatcher's commission base, the lead's value -- and each of those got
+ * it wrong in turn when change orders arrived. A completion certificate
+ * carries no money at all; a change order carries money that belongs to
+ * its parent contract, not to a job of its own.
+ *
+ * Anything added later is excluded until somebody decides otherwise,
+ * which is the safe direction: a new kind quietly counted as revenue is
+ * how a total starts lying.
+ */
+export function isSellableKind(kind: string | null | undefined): boolean {
+  return (kind ?? "contract") === "contract";
+}
+
+/** Documents that carry no price at all, so no totals are shown. */
+export function isPricelessKind(kind: string | null | undefined): boolean {
+  return kind === "completion";
+}
+
 export type LinkedEstimate = Pick<
   Estimate,
   "id" | "lead_id" | "doc_number" | "title" | "status" | "total_cents" | "issued_at" | "created_at"

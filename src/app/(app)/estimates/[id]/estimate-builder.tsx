@@ -30,6 +30,7 @@ import {
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
+import { CompletionCertificate } from "./completion-certificate";
 import { ScopeEditor } from "./scope-editor";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
@@ -721,12 +722,15 @@ export function EstimateBuilder({
 
       {/* Only on a signed contract, and never on a change order itself --
           a change order to a change order is a chain nobody can read. */}
-      {estimate.status === "Signed" && estimate.kind !== "change_order" && (
-        <ChangeOrders
-          estimateId={estimate.id}
-          contractTotalCents={estimate.total_cents}
-          canEdit={canEdit}
-        />
+      {estimate.status === "Signed" && estimate.kind === "contract" && (
+        <>
+          <ChangeOrders
+            estimateId={estimate.id}
+            contractTotalCents={estimate.total_cents}
+            canEdit={canEdit}
+          />
+          <CompletionCertificate contractId={estimate.id} canEdit={canEdit} />
+        </>
       )}
 
       <div className="est-meta-grid">

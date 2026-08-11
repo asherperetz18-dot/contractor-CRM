@@ -126,7 +126,30 @@ export async function signEstimateAsCustomer(
       .update({ status: "Signed" as EstimateStatus, signed_at: now })
       .eq("id", estimateId);
 
-    if (estimate.kind === "change_order" && estimate.parent_estimate_id) {
+    if (estimate.kind === "completion" && estimate.parent_estimate_id) {
+      // Accepting the work makes what is left of the contract due. Every
+      // unbilled phase -- including any change order -- is marked billed
+      // and dated, so the balance is on the customer's portal the moment
+      // they accept rather than waiting on somebody to remember.
+      //
+      // No text goes out. Billing and telling them are separate acts, and
+      // a pay link arriving while the contractor is still standing in
+      // their kitchen reads as pushy.
+      const due = new Date();
+      due.setDate(due.getDate() + 7);
+      await admin
+        .from("estimate_payments")
+        .update({
+          requested_at: now,
+          due_date: due.toISOString().slice(0, 10),
+          updated_at: now,
+        })
+        .eq("estimate_id", estimate.parent_estimate_id)
+        .is("requested_at", null);
+
+      revalidatePath(`/estimates/${estimate.parent_estimate_id}`);
+      revalidatePath("/payments");
+    } else if (estimate.kind === "change_order" && estimate.parent_estimate_id) {
       // A signed change order becomes a payment phase on the contract it
       // belongs to, rather than editing the contract's own total. The
       // signed document is the record of what was agreed and must keep
