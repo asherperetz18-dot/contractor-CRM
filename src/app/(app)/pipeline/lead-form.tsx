@@ -57,8 +57,9 @@ import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
 import { DispatcherPicker } from "../calendar/dispatcher-picker";
 import { LeadFilesPanel } from "./lead-files-panel";
+import { CallsPanel } from "./calls-panel";
 
-type Tab = "Overview" | "Tasks" | "Notes" | "Texts" | "Files";
+type Tab = "Overview" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -695,7 +696,7 @@ export function LeadForm({
 
         {lead && (
           <div className="chip-row no-margin ta-tabs">
-            {(["Overview", "Tasks", "Notes", "Texts", "Files"] as Tab[]).map((t) => (
+            {(["Overview", "Tasks", "Notes", "Texts", "Calls", "Files"] as Tab[]).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -1093,6 +1094,8 @@ export function LeadForm({
         {lead && tab === "Texts" && (
           <MessagesPanel leadId={lead.id} phone={form.phone} readOnly={readOnly} />
         )}
+
+        {lead && tab === "Calls" && <CallsPanel leadId={lead.id} readOnly={readOnly} />}
 
         {lead && tab === "Files" && (
           <LeadFilesPanel
