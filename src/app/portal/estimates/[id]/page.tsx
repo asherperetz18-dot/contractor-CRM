@@ -98,6 +98,15 @@ export default async function PortalEstimatePage({
         expired={isExpired}
         canSign={!!mine}
         signerName={mine?.name ?? ""}
+        parentContract={
+          estimate.parent_estimate_id
+            ? {
+                id: estimate.parent_estimate_id,
+                doc_number:
+                  (await getParentContract(estimate.parent_estimate_id))?.doc_number ?? "your contract",
+              }
+            : null
+        }
       />
     </main>
   );

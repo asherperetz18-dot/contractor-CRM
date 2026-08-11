@@ -11,12 +11,15 @@ export function PortalEstimateActions({
   expired,
   canSign,
   signerName,
+  parentContract,
 }: {
   estimateId: string;
   status: EstimateStatus;
   expired: boolean;
   canSign: boolean;
   signerName: string;
+  /** Set only on a change order: the contract it was added to. */
+  parentContract?: { id: string; doc_number: string } | null;
 }) {
   const router = useRouter();
   const [typed, setTyped] = useState("");
@@ -30,6 +33,19 @@ export function PortalEstimateActions({
       <div className="portal-card estdoc-result estdoc-result-ok">
         <strong>Signed.</strong> Thank you — your contractor has been notified and will be in
         touch about scheduling.
+        {/* A signed change order has no Pay button of its own, and left at
+            that the customer is told nothing about how they pay for what
+            they just approved. Its amount is a phase on the contract's
+            schedule, so this says where it went and links there -- rather
+            than adding a second place to pay for one job, which is how a
+            customer pays twice. */}
+        {parentContract && (
+          <p style={{ marginTop: 8 }}>
+            This has been added to the payment schedule on your contract{" "}
+            <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>,
+            where you can pay it when it becomes due.
+          </p>
+        )}
       </div>
     );
   }
