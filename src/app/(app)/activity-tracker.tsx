@@ -3,6 +3,9 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { logActivityPing } from "@/lib/actions/activity";
+import { touchDevice } from "@/lib/actions/devices";
+import { describeDevice, getOrCreateDeviceId } from "@/lib/device";
+import { createClient } from "@/lib/supabase/client";
 
 const SESSION_KEY = "crm-activity-session-id";
 const HEARTBEAT_MS = 30000;
@@ -54,12 +57,38 @@ export function ActivityTracker() {
       window.addEventListener(evt, mark, { passive: true });
     }
 
+    /**
+     * The device this browser is, and whether it is still allowed.
+     *
+     * Rides the heartbeat that was already running rather than adding a
+     * timer of its own. The server can't identify a device on its own --
+     * it refreshes tokens on the user's behalf, so every session reaches
+     * Supabase looking like the Vercel machine that refreshed it. Only
+     * the browser knows, so the browser says.
+     */
+    const deviceId = getOrCreateDeviceId();
+    const deviceLabel = describeDevice(navigator.userAgent);
+
+    async function touch() {
+      const res = await touchDevice(deviceId, navigator.userAgent, deviceLabel);
+      // Revoked while signed in: end it here. There is no push channel to
+      // this browser, so this heartbeat is the only thing that can carry
+      // the news -- which is why it takes effect within a heartbeat
+      // rather than at once.
+      if (res?.revoked) {
+        await createClient().auth.signOut();
+        window.location.href = "/login";
+      }
+    }
+    touch();
+
     function ping() {
       const working =
         document.visibilityState === "visible" &&
         Date.now() - lastInteraction < IDLE_AFTER_MS;
       if (working) {
         logActivityPing(sessionId, window.location.pathname, "heartbeat");
+        touch();
       }
     }
 

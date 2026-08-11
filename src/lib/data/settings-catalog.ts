@@ -72,6 +72,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         adminOnly: true,
       },
       {
+        title: "Signed-in Devices",
+        desc: "Which phones and computers each person is logged in on, and how to sign one out",
+        icon: "📱",
+        href: "/settings/devices",
+        adminOnly: true,
+      },
+      {
         title: "Role Visibility",
         desc: "Choose which pages each role can open. Hidden pages are removed from the sidebar and blocked at the URL.",
         icon: "👁",
