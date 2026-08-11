@@ -667,9 +667,18 @@ export async function saveEstimatePayments(
  * Seeds a schedule: the standard remodel phases, splitting the balance
  * after the deposit evenly and to the cent.
  */
+/**
+ * Builds the default payment schedule.
+ *
+ * Returns the phases it wrote. The panel used to rely on router.refresh()
+ * handing it fresh props, which it does not do for this subtree -- so the
+ * five phases landed in the database and the screen went on showing
+ * whatever was there before, with no error. A button that silently
+ * succeeds while looking dead is worse than one that fails.
+ */
 export async function generateEstimateSchedule(
   estimateId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; phases?: { name: string; description: string; amount_cents: number }[] }> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
 
@@ -691,14 +700,15 @@ export async function generateEstimateSchedule(
   const balance = balanceAfterDepositCents(estimate.total_cents, deposit);
   const amounts = splitEvenlyCents(balance, DEFAULT_PAYMENT_PHASES.length);
 
-  return saveEstimatePayments(
-    estimateId,
-    DEFAULT_PAYMENT_PHASES.map((phase, i) => ({
-      name: phase.name,
-      description: phase.description,
-      amount_cents: amounts[i] ?? 0,
-    }))
-  );
+  const phases = DEFAULT_PAYMENT_PHASES.map((phase, i) => ({
+    name: phase.name,
+    description: phase.description,
+    amount_cents: amounts[i] ?? 0,
+  }));
+
+  const saved = await saveEstimatePayments(estimateId, phases);
+  if (saved.error) return { error: saved.error };
+  return { phases };
 }
 
 type LockCheck = { locked: boolean; recalled: boolean };

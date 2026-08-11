@@ -58,6 +58,30 @@ export function PaymentSchedule({
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  /**
+   * Re-reads the schedule when the server's copy actually changes.
+   *
+   * useState only takes its argument the first time. Build schedule wrote
+   * five named phases, refreshed the page, and this component kept
+   * rendering the rows it had captured on mount -- so a button that had
+   * done exactly what it promised looked completely dead, with no error
+   * to explain it. Anything else that rewrites the schedule from outside
+   * this panel had the same problem.
+   *
+   * Compared on content rather than identity: a refresh hands over new
+   * objects every time, so an identity check would reset the rows on
+   * every render and discard whatever was being typed.
+   */
+  const signature = payments
+    .map((p) => `${p.id}:${p.name}:${p.description ?? ""}:${p.amount_cents}`)
+    .join("|");
+  const [seenSignature, setSeenSignature] = useState(signature);
+  if (signature !== seenSignature) {
+    setSeenSignature(signature);
+    setRows(payments.map(toRow));
+    setSaved(null);
+  }
+
   // The deposit is computed, never typed. On a $28,500 job 10% is $2,850
   // but the cap holds it at $1,000 -- that ceiling is California's limit
   // for home improvement contracts, so it must not be editable per job.
@@ -103,6 +127,20 @@ export function PaymentSchedule({
     startTransition(async () => {
       const res = await generateEstimateSchedule(estimateId);
       if (res.error) return setError(res.error);
+      // Shown from what the server says it wrote, rather than waiting for
+      // a refresh to hand this component new props -- which it does not
+      // do here. The rows were saved either way; only the screen was
+      // stale, which is exactly the kind of silence that reads as a
+      // broken button.
+      if (res.phases) {
+        setRows(res.phases.map((p, i) => toRow({
+          id: `generated-${i}`,
+          name: p.name,
+          description: p.description,
+          amount_cents: p.amount_cents,
+        } as EstimatePayment)));
+        setSaved("Schedule built");
+      }
       onChanged();
     });
   }
