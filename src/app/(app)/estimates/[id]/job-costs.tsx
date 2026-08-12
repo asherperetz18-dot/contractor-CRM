@@ -17,8 +17,18 @@ import {
   deleteJobExpense,
   getJobExpenses,
 } from "@/lib/actions/job-expenses";
+import { createVendor, getVendors } from "@/lib/actions/vendors";
+import { vendorLabel, type Vendor } from "@/lib/data/types";
 
-const BLANK = { vendor: "", category: "", description: "", amount: "", spentOn: "" };
+const BLANK = {
+  vendorId: "",
+  vendor: "",
+  category: "",
+  description: "",
+  amount: "",
+  spentOn: "",
+};
+const BLANK_VENDOR = { name: "", trade: "", defaultCategory: "", phone: "" };
 
 /**
  * What the job cost, against what it bills, phase by phase.
@@ -48,19 +58,22 @@ export function JobCosts({
   canEdit: boolean;
 }) {
   const [expenses, setExpenses] = useState<JobExpense[] | null>(null);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(BLANK);
+  const [newVendor, setNewVendor] = useState<typeof BLANK_VENDOR | null>(null);
   const [pending, startTransition] = useTransition();
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await getJobExpenses(leadId);
+      const [res, vres] = await Promise.all([getJobExpenses(leadId), getVendors()]);
       if (cancelled) return;
       if (res.error) return setError(res.error);
       setExpenses(res.expenses ?? []);
+      setVendors(vres.vendors ?? []);
       setError("");
     })();
     return () => {
@@ -73,6 +86,7 @@ export function JobCosts({
   if (error && !expenses) return <p className="error-note">{error}</p>;
   if (!expenses) return null;
 
+  const vendorById = new Map(vendors.map((v) => [v.id, v]));
   const byPhase = expensesByPhase(expenses);
   const deposit = depositCents(totalCents, depositPercentBp, depositCapCents);
   const unfiled = byPhase.get(null) ?? [];
@@ -85,6 +99,7 @@ export function JobCosts({
       const res = await createJobExpense({
         leadId,
         estimatePaymentId: null,
+        vendorId: draft.vendorId || null,
         vendor: draft.vendor,
         category: draft.category,
         description: draft.description,
@@ -96,6 +111,58 @@ export function JobCosts({
       setAdding(false);
       setReloadKey((k) => k + 1);
     });
+  }
+
+  /**
+   * Adds a vendor without leaving the receipt being typed.
+   *
+   * Nobody should be stopped halfway through a stack of receipts because
+   * a supplier is not on the list yet -- that is how free text gets typed
+   * into whatever field will accept it.
+   */
+  function saveVendor() {
+    if (!newVendor) return;
+    setError("");
+    startTransition(async () => {
+      const res = await createVendor({
+        name: newVendor.name,
+        trade: newVendor.trade,
+        defaultCategory: newVendor.defaultCategory,
+        phone: newVendor.phone,
+      });
+      if (res.error) {
+        setError(res.error);
+        // The name is already taken, so select the vendor that has it
+        // rather than leaving them to invent "Home Depot 2".
+        if (res.duplicateOf) {
+          setVendors((v) =>
+            v.some((x) => x.id === res.duplicateOf!.id) ? v : [...v, res.duplicateOf!]
+          );
+          pickVendor(res.duplicateOf.id, [...vendors, res.duplicateOf]);
+          setNewVendor(null);
+        }
+        return;
+      }
+      if (res.vendor) {
+        const next = [...vendors, res.vendor].sort((a, b) => a.name.localeCompare(b.name));
+        setVendors(next);
+        pickVendor(res.vendor.id, next);
+        setNewVendor(null);
+      }
+    });
+  }
+
+  // Selecting a vendor fills in their usual category. The point of a
+  // picker is fewer keystrokes, not just tidier ones -- but it never
+  // overwrites a category already typed.
+  function pickVendor(id: string, list: Vendor[] = vendors) {
+    const v = list.find((x) => x.id === id);
+    setDraft((d) => ({
+      ...d,
+      vendorId: id,
+      vendor: "",
+      category: d.category || v?.default_category || "",
+    }));
   }
 
   return (
@@ -120,12 +187,28 @@ export function JobCosts({
       {adding && (
         <div className="est-pay-balance" style={{ display: "block" }}>
           <div className="form-row">
-            <input
+            <select
               className="est-item-name"
-              placeholder="Vendor (e.g. Home Depot)"
-              value={draft.vendor}
-              onChange={(e) => setDraft({ ...draft, vendor: e.target.value })}
-            />
+              value={draft.vendorId}
+              disabled={pending || !!newVendor}
+              onChange={(e) => {
+                if (e.target.value === "__new") {
+                  setNewVendor(BLANK_VENDOR);
+                  return;
+                }
+                pickVendor(e.target.value);
+              }}
+            >
+              <option value="">
+                {vendors.length ? "Choose a vendor…" : "No vendors yet"}
+              </option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {vendorLabel(v)}
+                </option>
+              ))}
+              <option value="__new">+ New vendor…</option>
+            </select>
             <input
               className="est-item-name"
               placeholder="Category (e.g. Job Materials)"
@@ -133,6 +216,59 @@ export function JobCosts({
               onChange={(e) => setDraft({ ...draft, category: e.target.value })}
             />
           </div>
+
+          {newVendor && (
+            <div className="second-contact-block" style={{ marginBottom: 10 }}>
+              <div className="second-contact-head">
+                <span>New vendor</span>
+                <span className="est-tax-note">
+                  Name is enough for now &mdash; licence, insurance and the rest go in
+                  Settings &rarr; Vendors
+                </span>
+              </div>
+              <div className="form-row">
+                <input
+                  className="est-item-name"
+                  placeholder="Name (e.g. Home Depot)"
+                  autoFocus
+                  value={newVendor.name}
+                  onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+                />
+                <input
+                  className="est-item-name"
+                  placeholder="Trade (e.g. Lumber, Electrical sub)"
+                  value={newVendor.trade}
+                  onChange={(e) => setNewVendor({ ...newVendor, trade: e.target.value })}
+                />
+              </div>
+              <div className="form-row">
+                <input
+                  className="est-item-name"
+                  placeholder="Usual category (fills in next time)"
+                  value={newVendor.defaultCategory}
+                  onChange={(e) =>
+                    setNewVendor({ ...newVendor, defaultCategory: e.target.value })
+                  }
+                />
+                <input
+                  className="est-item-name"
+                  placeholder="Phone"
+                  value={newVendor.phone}
+                  onChange={(e) => setNewVendor({ ...newVendor, phone: e.target.value })}
+                />
+              </div>
+              <button className="btn-primary small" onClick={saveVendor} disabled={pending}>
+                {pending ? "Saving…" : "Save vendor"}
+              </button>
+              <button
+                className="btn-ghost small"
+                onClick={() => setNewVendor(null)}
+                disabled={pending}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
           <input
             className="est-item-desc"
             placeholder="What it was for"
@@ -304,9 +440,17 @@ export function JobCosts({
                     })}
                   </td>
                   <td data-label="Vendor">
-                    {e.vendor || "—"}
+                    {/* The vendor record wins over the stored text. A cost
+                        keeps only one or the other, so correcting a
+                        vendor's name corrects it everywhere it appears
+                        rather than leaving old receipts on the old
+                        spelling. */}
+                    {vendorById.get(e.vendor_id ?? "")?.name ?? e.vendor ?? "—"}
                     {e.source === "quickbooks" && (
                       <div className="est-tax-note">from QuickBooks</div>
+                    )}
+                    {!e.vendor_id && e.vendor && (
+                      <div className="est-tax-note">not on the vendor list</div>
                     )}
                   </td>
                   <td data-label="What for">

@@ -7,7 +7,7 @@ import { selectAll } from "@/lib/data/select-all";
 import type { JobExpense, JobExpenseInput } from "@/lib/data/types";
 
 const COLUMNS =
-  "id, company_id, lead_id, estimate_payment_id, vendor, category, description, " +
+  "id, company_id, lead_id, estimate_payment_id, vendor, vendor_id, category, description, " +
   "amount_cents, spent_on, source, qb_txn_id, qb_txn_type, qb_project_id, created_at";
 
 /**
@@ -58,7 +58,11 @@ export async function createJobExpense(
       company_id: profile.company_id,
       lead_id: input.leadId,
       estimate_payment_id: input.estimatePaymentId || null,
-      vendor: input.vendor?.trim() || null,
+      vendor_id: input.vendorId || null,
+      // Only kept when no vendor record was picked. Storing both would
+      // be two names for one supplier, free to drift apart the moment
+      // somebody corrects the vendor record.
+      vendor: input.vendorId ? null : input.vendor?.trim() || null,
       category: input.category?.trim() || null,
       description: input.description?.trim() || null,
       amount_cents: amount,

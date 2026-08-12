@@ -1525,7 +1525,9 @@ export type JobExpense = {
   lead_id: string;
   /** The phase it is filed against. Null means "on the job, unfiled". */
   estimate_payment_id: string | null;
+  /** Free text, only set when no vendor record matched. */
   vendor: string | null;
+  vendor_id: string | null;
   category: string | null;
   description: string | null;
   amount_cents: number;
@@ -1541,12 +1543,72 @@ export type JobExpense = {
 export type JobExpenseInput = {
   leadId: string;
   estimatePaymentId: string | null;
+  vendorId: string | null;
+  /** Only used when no vendor record matches -- a QuickBooks import
+   *  whose supplier is not in the list yet still has to keep the name. */
   vendor: string;
   category: string;
   description: string;
   amountCents: number;
   spentOn: string;
 };
+
+// ── Vendors ──────────────────────────────────────────────────────────
+
+/**
+ * A supplier or subcontractor, as a record rather than a spelling.
+ *
+ * No tax ID field, on purpose. EINs and SSNs are needed for 1099s and
+ * belong in QuickBooks, which is built to hold them. This carries only
+ * whether the W-9 is on file, which answers the question actually asked
+ * in January without the CRM ever storing the number.
+ */
+export type Vendor = {
+  id: string;
+  company_id: string;
+  name: string;
+  trade: string | null;
+  default_category: string | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  license_number: string | null;
+  insurance_expires_on: string | null;
+  w9_on_file: boolean;
+  w9_received_on: string | null;
+  notes: string | null;
+  qb_vendor_id: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type VendorInsurance = "none" | "expired" | "expiring" | "current";
+
+/**
+ * Whether a sub's insurance still covers them.
+ *
+ * "expiring" is anything inside 30 days: a certificate that lapses next
+ * week is a problem you want while there is still time to ask for the
+ * new one, not on the day it stops covering you.
+ *
+ * "none" is not a failure -- a lumber yard has no reason to carry a
+ * certificate on your file, and flagging every supplier red would train
+ * everyone to ignore the flag that matters.
+ */
+export function vendorInsuranceState(vendor: Pick<Vendor, "insurance_expires_on">): VendorInsurance {
+  if (!vendor.insurance_expires_on) return "none";
+  const expires = new Date(vendor.insurance_expires_on + "T00:00:00");
+  const now = new Date();
+  const days = Math.floor((expires.getTime() - now.getTime()) / 86400000);
+  if (days < 0) return "expired";
+  if (days <= 30) return "expiring";
+  return "current";
+}
+
+export function vendorLabel(vendor: Pick<Vendor, "name" | "trade">): string {
+  return vendor.trade ? `${vendor.name} · ${vendor.trade}` : vendor.name;
+}
 
 export type PhaseProfit = {
   billedCents: number;

@@ -234,6 +234,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         desc: "Payment focus day and on-demand missing progress payment phase creation",
         icon: "💲",
       },
+      {
+        title: "Vendors",
+        desc: "Suppliers and subcontractors, with licence, insurance expiry and W-9 status",
+        icon: "🏗️",
+        href: "/settings/vendors",
+      },
       { title: "QuickBooks Integration", desc: "Connect QuickBooks, map fields, configure sync, matching rules", icon: "🔗" },
       {
         title: "Portal Payments",
