@@ -26,6 +26,7 @@ import {
   markEstimateSent,
   saveEstimateItems,
   sendEstimateToCustomer,
+  deleteEstimate,
   updateEstimateDetails,
   voidEstimate,
 } from "@/lib/actions/estimates";
@@ -100,6 +101,7 @@ export function EstimateBuilder({
   canEdit,
   canManageCosts,
   canVoid,
+  canDelete,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -113,6 +115,8 @@ export function EstimateBuilder({
   /** Admin only. Voiding cancels work the customer committed to and can
    *  strand money already collected. */
   canVoid: boolean;
+  /** Hard delete, drafts only. Same gate as deleting a lead. */
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
@@ -128,6 +132,7 @@ export function EstimateBuilder({
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   // Row being dragged, and the row it is currently hovering over.
   const [dragKey, setDragKey] = useState<string | null>(null);
@@ -325,6 +330,18 @@ export function EstimateBuilder({
               </button>
             </>
           )}
+          {/* Delete only while it is a draft nobody outside the company
+              has seen. There was no delete button at all before this --
+              deleteEstimate existed but nothing ever called it. */}
+          {canDelete && estimate.status === "Draft" && (
+            <button
+              className="btn-ghost est-void-btn"
+              onClick={() => setDeleting(true)}
+              disabled={pending}
+            >
+              Delete
+            </button>
+          )}
           {/* Void, not delete. Offered only on a document somebody has
               already seen, and only to an Admin -- cancelling signed work
               can strand money the customer has paid. */}
@@ -339,6 +356,40 @@ export function EstimateBuilder({
           )}
         </div>
       </div>
+
+      {deleting && (
+        <div className="est-locked-banner">
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>Delete {estimate.doc_number}?</strong>
+            {" "}This one is gone for good, along with its lines, photos and payment schedule.
+            It is a draft nobody outside the company has seen, so there is nothing to keep a
+            record of &mdash; but there is no undo either.
+          </p>
+          <button
+            className="btn-primary small"
+            disabled={pending}
+            onClick={() =>
+              startTransition(async () => {
+                const res = await deleteEstimate(estimate.id);
+                if (res.error) {
+                  setDeleting(false);
+                  return setError(res.error);
+                }
+                router.push("/estimates");
+              })
+            }
+          >
+            {pending ? "Deleting…" : "Delete permanently"}
+          </button>
+          <button
+            className="btn-ghost small"
+            onClick={() => setDeleting(false)}
+            disabled={pending}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {voiding && (
         <div className="est-locked-banner">

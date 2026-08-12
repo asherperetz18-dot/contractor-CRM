@@ -78,14 +78,12 @@ export function EstimatesView({
   signers,
   leads,
   reps,
-  canDelete,
   canCreate,
 }: {
   estimates: Estimate[];
   signers: EstimateSigner[];
   leads: EstimateLead[];
   reps: EstimateRep[];
-  canDelete: boolean;
   canCreate: boolean;
 }) {
   const router = useRouter();
@@ -274,7 +272,10 @@ export function EstimatesView({
         />
       )}
 
-      {!canDelete && null}
+      {/* canDelete is read on the document itself, where Delete and Void
+          live. This list had `{!canDelete && null}` -- a line that renders
+          nothing either way, and the only thing standing where a delete
+          control appeared to be. */}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import { canCreateEstimates, canDeleteLeads, canViewEstimates, type Estimate, type EstimateSigner } from "@/lib/data/types";
+import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateSigner } from "@/lib/data/types";
 import { EstimatesView, type EstimateLead, type EstimateRep } from "./estimates-view";
 
 export const dynamic = "force-dynamic";
@@ -65,7 +65,6 @@ export default async function EstimatesPage() {
       signers={signers}
       leads={leads}
       reps={reps}
-      canDelete={canDeleteLeads(profile)}
       canCreate={canCreateEstimates(profile)}
     />
   );
