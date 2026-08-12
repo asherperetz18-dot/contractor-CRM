@@ -32,6 +32,7 @@ import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
 import { JobCosts } from "./job-costs";
+import { PhotosPanel } from "./photos-panel";
 import { ScopeEditor } from "./scope-editor";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
@@ -712,6 +713,16 @@ export function EstimateBuilder({
           stops working. Send it again when you&apos;re done.
         </div>
       )}
+
+      {/* Above the payment schedule: the photos argue for the price, so
+          the customer should meet them before the number. */}
+      <PhotosPanel
+        estimateId={estimate.id}
+        leadId={estimate.lead_id}
+        items={items}
+        locked={locked}
+        kind={estimate.kind ?? "contract"}
+      />
 
       <PaymentSchedule
         estimateId={estimate.id}

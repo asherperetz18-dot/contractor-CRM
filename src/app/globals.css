@@ -3268,8 +3268,15 @@ body {
   cursor: pointer;
   text-align: center;
 }
-.dial-session-disposition-btn:hover {
+.dial-session-disposition-btn:hover:not(:disabled) {
   border-color: var(--blueprint);
+}
+/* Until the call is logged there is nothing to hang an outcome on. These
+   used to stay at full strength and keep a pointer cursor while disabled,
+   so a rep clicked "No Answer" over and over at a dead control. */
+.dial-session-disposition-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .dial-session-actions {
   display: flex;
@@ -5382,9 +5389,22 @@ body {
   .estdoc-signer,
   .estdoc-total-row,
   .estdoc-signatures,
+  /* A photo torn in half by a page break, or split from the caption that
+     says what it shows, is worse than a photo lower down the page.
+     Short enough to keep whole, unlike a scope of work. */
+  .estdoc-photo,
   .estdoc-schedule-table tr {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Photos are the first thing a printer drops to save ink, and a
+     contract whose evidence is missing from the printed copy is the one
+     that gets argued about. */
+  .estdoc-photo img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    max-width: 200px;
   }
 
   /* Rows and scope text flow, but never leave a single stranded line at
@@ -6029,6 +6049,82 @@ textarea.est-item-desc:disabled {
   font-size: 13px;
   line-height: 1.45;
   margin-bottom: 2px;
+}
+
+/* Photos on the customer's copy, under the line they pay for. */
+.estdoc-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.estdoc-photo {
+  margin: 0;
+  max-width: 220px;
+}
+.estdoc-photo img {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  display: block;
+}
+.estdoc-photo figcaption {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+.estdoc-photo-section {
+  margin: 18px 0;
+}
+.estdoc-photo-section .estdoc-h2 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+
+/* The builder's picker and editor, which never reach the customer. */
+.estdoc-photo-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.estdoc-photo-pick {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  width: 120px;
+  overflow: hidden;
+}
+.estdoc-photo-pick img {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  display: block;
+}
+.estdoc-photo-edit {
+  width: 220px;
+}
+.estdoc-photo-edit img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  display: block;
+  margin-bottom: 6px;
+}
+.estdoc-photo-edit input,
+.estdoc-photo-edit select {
+  width: 100%;
+  margin-bottom: 4px;
 }
 
 /* Lead modal -> estimate. */

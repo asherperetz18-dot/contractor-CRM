@@ -5,6 +5,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { getParentContract } from "@/lib/actions/change-orders";
+import { getEstimatePhotos } from "@/lib/actions/estimate-files";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -83,6 +84,7 @@ export default async function EstimatePreviewPage({
           signers={(signers ?? []) as EstimateSigner[]}
           payments={(payments ?? []) as EstimatePayment[]}
           paid={(paidRows ?? []) as PortalPayment[]}
+          photos={(await getEstimatePhotos(id)).photos ?? []}
           company={company ?? null}
           customer={lead ?? null}
           team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}

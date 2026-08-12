@@ -21,15 +21,28 @@ export function DialSession({
   const [calling, setCalling] = useState(false);
   const [calledCount, setCalledCount] = useState(0);
   const [ended, setEnded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   const lead = leads[index];
 
   useEffect(() => {
     function onLogged(e: Event) {
-      const detail = (e as CustomEvent<{ leadId: string | null; callLogId?: string }>).detail;
-      if (!detail?.callLogId || detail.leadId !== lead?.id) return;
-      setCallLogId(detail.callLogId);
+      const detail = (e as CustomEvent<{
+        leadId: string | null;
+        callLogId?: string;
+        error?: string;
+      }>).detail;
+      if (!detail || detail.leadId !== lead?.id) return;
       setCalling(false);
+      if (!detail.callLogId) {
+        setError(
+          detail.error ||
+            "That call wasn't logged, so an outcome can't be attached to it. Skip to the next contact."
+        );
+        return;
+      }
+      setCallLogId(detail.callLogId);
       setCalledCount((c) => c + 1);
     }
     window.addEventListener("crm:call-logged", onLogged);
@@ -45,6 +58,7 @@ export function DialSession({
     if (!lead?.phone) return;
     setCalling(true);
     setCallLogId(null);
+    setError("");
     window.dispatchEvent(
       new CustomEvent("crm:call", { detail: { phone: lead.phone, leadId: lead.id } })
     );
@@ -53,6 +67,7 @@ export function DialSession({
   function advance() {
     setCalling(false);
     setCallLogId(null);
+    setError("");
     if (index + 1 >= leads.length) {
       setEnded(true);
     } else {
@@ -61,8 +76,15 @@ export function DialSession({
   }
 
   async function setDisposition(name: string) {
-    if (callLogId) {
-      await updateCallDisposition(callLogId, name);
+    if (!callLogId) return;
+    setSaving(true);
+    // A failed update used to advance anyway, so the rep moved on believing
+    // the outcome was saved when nothing had been written.
+    const result = await updateCallDisposition(callLogId, name);
+    setSaving(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
     }
     advance();
   }
@@ -127,7 +149,8 @@ export function DialSession({
             <button
               key={d.id}
               className="dial-session-disposition-btn"
-              disabled={!callLogId}
+              disabled={!callLogId || saving}
+              title={callLogId ? undefined : "Place the call first"}
               onClick={() => setDisposition(d.name)}
               style={{ borderColor: callLogId ? d.color + "88" : undefined }}
             >
@@ -135,6 +158,17 @@ export function DialSession({
             </button>
           ))}
       </div>
+
+      {!callLogId && !calling && (
+        <p className="hint-note" style={{ textAlign: "center", marginTop: -8 }}>
+          Outcomes unlock once the call is placed — they are saved onto the call itself.
+        </p>
+      )}
+      {error && (
+        <p className="error-note" style={{ textAlign: "center" }}>
+          {error}
+        </p>
+      )}
 
       <div className="dial-session-actions">
         <button className="btn-ghost" onClick={handleClose}>

@@ -73,11 +73,14 @@ export function VoiceDialer() {
       twilioCallSid: sid,
       status: callStatus,
     }).then((result) => {
-      if (result.id) {
-        window.dispatchEvent(
-          new CustomEvent("crm:call-logged", { detail: { leadId, callLogId: result.id } })
-        );
-      }
+      // Fires either way. The dial session waits on this event to unlock its
+      // disposition buttons, so swallowing a failed log left the rep staring
+      // at a panel that could never be finished -- and never said why.
+      window.dispatchEvent(
+        new CustomEvent("crm:call-logged", {
+          detail: { leadId, callLogId: result.id, error: result.error },
+        })
+      );
     });
   }
 
@@ -91,6 +94,10 @@ export function VoiceDialer() {
     setStatus("connecting");
     leadIdRef.current = leadId ?? null;
     callSidRef.current = null;
+    // Only startTimer() reset this, and it only runs once a call is answered.
+    // A call that rang out was logged with the length of the previous one.
+    durationRef.current = 0;
+    setDuration(0);
     try {
       const device = await ensureDevice();
       const call = await device.connect({
@@ -120,6 +127,10 @@ export function VoiceDialer() {
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Could not place the call.");
       setStatus("error");
+      // A connect that throws -- no token, no mic, Twilio not set up -- never
+      // reached call.on("error"), so nothing was logged and a dial session had
+      // no way forward. The attempt still happened; record it as one.
+      finishCall(digits, "error");
     }
   }
 

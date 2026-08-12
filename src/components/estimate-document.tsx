@@ -6,10 +6,12 @@ import {
   paymentMethodLabel,
   signatureProgress,
   isPricelessKind,
+  photosByItem,
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
   type EstimatePayment,
+  type EstimatePhoto,
   type PortalPayment,
 } from "@/lib/data/types";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
@@ -117,6 +119,7 @@ export function EstimateDocument({
   signers,
   payments,
   paid = [],
+  photos = [],
   company,
   customer,
   team,
@@ -127,6 +130,9 @@ export function EstimateDocument({
   signers: EstimateSigner[];
   payments: EstimatePayment[];
   paid?: PortalPayment[];
+  /** Attached photos. Nothing on the contact reaches the customer unless
+   *  someone put it on this document deliberately. */
+  photos?: EstimatePhoto[];
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
   team?: DocumentTeam | null;
@@ -150,6 +156,10 @@ export function EstimateDocument({
   // those -- an unpriced "1 ls" that is now folded in must not keep an
   // otherwise empty Qty column alive.
   const showMeasures = groups.some((g) => quantityIsMeaningful(g.parent.quantity, g.parent.unit));
+  const byItem = photosByItem(photos);
+  // Photos with no line of their own: site context rather than the
+  // justification for one charge.
+  const documentPhotos = byItem.get(null) ?? [];
   const customerName =
     [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim() || "Customer";
 
@@ -277,6 +287,21 @@ export function EstimateDocument({
                         ))}
                       </div>
                     )}
+                    {/* Directly under the line they pay for. A gallery at
+                        the end leaves the customer matching pictures to
+                        charges themselves, which is exactly the work the
+                        photo was supposed to do for them. */}
+                    {(byItem.get(item.id) ?? []).length > 0 && (
+                      <div className="estdoc-photos">
+                        {(byItem.get(item.id) ?? []).map((p) => (
+                          <figure key={p.id} className="estdoc-photo">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={p.file_url} alt={p.caption ?? "Job photo"} />
+                            {p.caption && <figcaption>{p.caption}</figcaption>}
+                          </figure>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   {showMeasures && (
                     <>
@@ -304,6 +329,21 @@ export function EstimateDocument({
           )}
         </tbody>
       </table>
+      )}
+
+      {documentPhotos.length > 0 && (
+        <section className="estdoc-photo-section">
+          <h2 className="estdoc-h2">Photos</h2>
+          <div className="estdoc-photos">
+            {documentPhotos.map((p) => (
+              <figure key={p.id} className="estdoc-photo">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.file_url} alt={p.caption ?? "Job photo"} />
+                {p.caption && <figcaption>{p.caption}</figcaption>}
+              </figure>
+            ))}
+          </div>
+        </section>
       )}
 
       {priceless ? null : (

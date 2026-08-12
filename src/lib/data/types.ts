@@ -1721,6 +1721,48 @@ export function projectTriageOrder(a: ProjectRollup, b: ProjectRollup): number {
   return b.soldCents - a.soldCents;
 }
 
+// ── Photos on documents ──────────────────────────────────────────────
+
+/** A job photo, as offered in the picker. */
+export type LeadPhoto = {
+  id: string;
+  file_name: string;
+  file_url: string;
+  content_type: string | null;
+  created_at: string;
+};
+
+/**
+ * A photo attached to an estimate, contract or change order.
+ *
+ * The file stays owned by the lead -- this is a link, not a copy, so one
+ * photograph has one caption and one place to correct it.
+ */
+export type EstimatePhoto = {
+  id: string;
+  estimate_id: string;
+  /** The line it justifies. Null means it belongs to the document. */
+  estimate_item_id: string | null;
+  lead_file_id: string;
+  caption: string | null;
+  sort_order: number;
+  file_name: string;
+  file_url: string;
+  content_type: string | null;
+};
+
+/** Photos grouped by the line they sit under; null key = document-level. */
+export function photosByItem(photos: EstimatePhoto[]): Map<string | null, EstimatePhoto[]> {
+  const map = new Map<string | null, EstimatePhoto[]>();
+  for (const p of photos) {
+    const key = p.estimate_item_id ?? null;
+    const list = map.get(key) ?? [];
+    list.push(p);
+    map.set(key, list);
+  }
+  return map;
+}
+
 export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
 
 /**
