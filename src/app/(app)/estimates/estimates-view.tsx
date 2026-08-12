@@ -33,13 +33,18 @@ export type EstimateRep = { id: string; name: string | null; email: string | nul
 // twice. Kept visible rather than merely filtered out, because an unsent
 // change order is extra work nobody has agreed to yet, and hiding it is
 // how it gets built anyway.
-type Bucket = "drafts" | "sent" | "signed" | "declined" | "changes";
+type Bucket = "drafts" | "sent" | "signed" | "declined" | "void" | "changes";
 
 const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateStatus[] }[] = [
   { key: "drafts", label: "Drafts", hint: "not sent yet", statuses: ["Draft"] },
   { key: "sent", label: "Proposals", hint: "awaiting signature", statuses: ["Sent", "Viewed"] },
   { key: "signed", label: "Contracts", hint: "signed", statuses: ["Signed"] },
   { key: "declined", label: "Declined", hint: "lost or expired", statuses: ["Declined", "Expired"] },
+  // Voided documents get their own card rather than being folded into
+  // Declined. "The customer said no" and "we cancelled this" are
+  // different events, and the second is the one somebody comes looking
+  // for when they want to know what happened to a contract.
+  { key: "void", label: "Voided", hint: "cancelled", statuses: ["Void"] },
   // Every status: a change order matters most while it is unsigned, so
   // splitting these across the other cards would bury the ones that need
   // chasing among contracts that don't.
@@ -47,7 +52,7 @@ const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateSta
     key: "changes",
     label: "Attached",
     hint: "change orders & completions",
-    statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired"],
+    statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired", "Void"],
   },
 ];
 
@@ -122,6 +127,10 @@ export function EstimatesView({
       // proposal, and adding it here would report money nobody has
       // agreed to as though the job had grown.
       totalCents: rows
+        // Cancelled work is not money. Without this the Voided card would
+        // report the value of everything that was called off as though it
+        // were a pipeline worth chasing.
+        .filter((e) => effectiveStatus(e) !== "Void")
         .filter((e) => b.key !== "changes" || effectiveStatus(e) === "Signed")
         .reduce((sum, e) => sum + (e.total_cents || 0), 0),
     };

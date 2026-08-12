@@ -210,6 +210,18 @@ export function EstimateDocument({
         </div>
       </header>
 
+      {/* Said plainly, at the top, on the customer's own copy. A homeowner
+          following an old link should read that it was cancelled and when
+          -- not reach a dead page, and not read a live-looking contract
+          for work nobody is going to do. */}
+      {estimate.status === "Void" && (
+        <div className="estdoc-void">
+          <strong>This document has been cancelled</strong>
+          {estimate.voided_at && <> on {longDate(estimate.voided_at)}</>}. It is no longer an
+          offer and nothing on it is owed. Please contact us if you were expecting this work.
+        </div>
+      )}
+
       <section className="estdoc-parties">
         <div>
           <div className="estdoc-label">Prepared for</div>

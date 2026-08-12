@@ -12,8 +12,10 @@ import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
+  canDeleteEstimateStatus,
   canDeleteLeads,
   canViewEstimates,
+  isStrictAdmin,
   depositCents,
   editWillRecallEstimate,
   estimateLocked,
@@ -463,11 +465,36 @@ export async function deleteEstimate(estimateId: string): Promise<{ error?: stri
   if (!canDeleteLeads(profile)) return { error: "You don't have permission to delete estimates." };
 
   const supabase = await createClient();
+
+  // Status checked before the delete, not after. This check did not exist:
+  // a Signed contract could be hard-deleted, and portal_payments cascades
+  // on delete, so one click destroyed the agreement, the signatures, the
+  // schedule and the record that the customer had paid -- leaving nothing
+  // behind to say the document had ever existed.
+  const { data: existing } = await supabase
+    .from("estimates")
+    .select("status, doc_number")
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ status: EstimateStatus; doc_number: string }>();
+  if (!existing) return { error: "Estimate not found, or you can't delete it." };
+  if (!canDeleteEstimateStatus(existing.status)) {
+    return {
+      error:
+        `${existing.doc_number} has been ${existing.status.toLowerCase()} — it can't be deleted. ` +
+        `Void it instead, so the record and the reason survive.`,
+    };
+  }
+
   const { data, error } = await supabase
     .from("estimates")
     .delete()
     .eq("id", estimateId)
     .eq("company_id", profile.company_id)
+    // Belt and braces: the status is re-checked in the delete itself, so
+    // a document signed between the read above and this write cannot slip
+    // through the gap.
+    .eq("status", "Draft")
     .select("id, lead_id")
     .returns<{ id: string; lead_id: string }[]>();
   if (error) return { error: error.message };
@@ -475,6 +502,83 @@ export async function deleteEstimate(estimateId: string): Promise<{ error?: stri
 
   revalidateEstimates(null);
   return {};
+}
+
+/**
+ * Cancels a document without destroying it.
+ *
+ * Admin only. Voiding a signed agreement cancels work the customer
+ * committed to and can strand money already collected, which is not a
+ * decision to leave with whoever happens to be looking at the screen.
+ *
+ * Payments are never touched. Refunds here are handled by hand, by card
+ * or cheque, so a void that quietly reversed a payment row would put the
+ * books out of step with the bank.
+ */
+export async function voidEstimate(
+  estimateId: string,
+  reason: string
+): Promise<{ error?: string; cancelledPhases?: number; collectedCents?: number }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isStrictAdmin(profile)) {
+    return { error: "Only an Admin can void a document." };
+  }
+  if (!reason?.trim()) {
+    return { error: "Give a reason — it is what answers “why was this cancelled” later." };
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("estimates")
+    .select("id, status, doc_number")
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; status: EstimateStatus; doc_number: string }>();
+  if (!existing) return { error: "Document not found." };
+  if (existing.status === "Void") return { error: "That document is already void." };
+
+  const { data, error } = await supabase
+    .from("estimates")
+    .update({
+      status: "Void",
+      voided_at: new Date().toISOString(),
+      voided_by: profile.id,
+      void_reason: reason.trim(),
+    })
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That document couldn't be voided." };
+
+  // Unbilled phases stop being receivables. Billed ones stay: the request
+  // genuinely went out, and erasing it would leave a payment arriving
+  // later with nothing to settle against.
+  const { data: cancelled } = await supabase
+    .from("estimate_payments")
+    .update({ cancelled_at: new Date().toISOString() })
+    .eq("estimate_id", estimateId)
+    .eq("company_id", profile.company_id)
+    .is("requested_at", null)
+    .is("cancelled_at", null)
+    .select("id");
+
+  // Reported, never reversed. Somebody is owed this back and only a human
+  // can decide how it goes out.
+  const { data: paidRows } = await supabase
+    .from("portal_payments")
+    .select("amount_cents, status")
+    .eq("estimate_id", estimateId)
+    .eq("company_id", profile.company_id)
+    .returns<{ amount_cents: number; status: string }[]>();
+  const collectedCents = (paidRows ?? [])
+    .filter((p) => p.status === "succeeded")
+    .reduce((s, p) => s + p.amount_cents, 0);
+
+  revalidateEstimates(null);
+  revalidatePath("/projects");
+  return { cancelledPhases: cancelled?.length ?? 0, collectedCents };
 }
 
 // Sends the estimate to the customer as a portal link by text.

@@ -1090,7 +1090,26 @@ export type EstimateStatus =
   | "Viewed"
   | "Signed"
   | "Declined"
-  | "Expired";
+  | "Expired"
+  | "Void";
+
+/**
+ * Deletable only while nobody outside the company has seen it.
+ *
+ * deleteEstimate used to check nothing at all: a Signed contract could be
+ * hard-deleted, and portal_payments cascades, so one click took the
+ * agreement, the signatures, the schedule and the record that the
+ * customer had paid. Anything issued gets voided instead -- the document
+ * survives, marked, with a reason.
+ */
+export function canDeleteEstimateStatus(status: EstimateStatus): boolean {
+  return status === "Draft";
+}
+
+/** Cancelled documents are still documents. They just stop counting. */
+export function isVoid(status: EstimateStatus): boolean {
+  return status === "Void";
+}
 
 // Statuses a customer has already seen. Editing one of these supersedes it
 // with a new version rather than rewriting what they were shown.
@@ -1125,6 +1144,9 @@ export function estimateLocked(
   status: EstimateStatus,
   signers: Pick<EstimateSigner, "party" | "signed_at">[]
 ): boolean {
+  // A cancelled document is a record of what was cancelled. Editing one
+  // would quietly rewrite history that somebody voided on purpose.
+  if (status === "Void") return true;
   if (status === "Signed") return true;
   return signers.some((s) => s.party === "customer" && !!s.signed_at);
 }
@@ -1176,6 +1198,11 @@ export type Estimate = {
   assigned_to: string | null;
   issued_at: string | null;
   expires_at: string | null;
+  voided_at?: string | null;
+  voided_by?: string | null;
+  /** Why it was cancelled. Required when voiding: the status alone
+   *  cannot answer "why is EST-1021 cancelled" six months later. */
+  void_reason?: string | null;
   // Approximate, and nullable: California requires a home improvement
   // contract to state them, but a rep pricing a job on a kitchen counter
   // does not always know yet, and a date guessed to fill a required box
@@ -1509,6 +1536,10 @@ export type EstimatePayment = {
   /** When the contractor billed this phase. Null means not billed yet. */
   requested_at?: string | null;
   due_date?: string | null;
+  /** Set when the document was voided and this phase had not been billed.
+   *  Billed phases are left alone -- the request genuinely went out, and
+   *  erasing it would leave a later payment with nothing to settle. */
+  cancelled_at?: string | null;
 };
 
 // ── Job costs ────────────────────────────────────────────────────────

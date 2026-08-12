@@ -6051,6 +6051,18 @@ textarea.est-item-desc:disabled {
   margin-bottom: 2px;
 }
 
+/* A cancelled document, said on the customer's own copy. */
+.estdoc-void {
+  border: 2px solid #b42318;
+  background: #fef3f2;
+  color: #7a271a;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* Photos on the customer's copy, under the line they pay for. */
 .estdoc-photos {
   display: flex;

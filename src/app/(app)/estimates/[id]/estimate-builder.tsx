@@ -27,6 +27,7 @@ import {
   saveEstimateItems,
   sendEstimateToCustomer,
   updateEstimateDetails,
+  voidEstimate,
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
@@ -98,6 +99,7 @@ export function EstimateBuilder({
   lead,
   canEdit,
   canManageCosts,
+  canVoid,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -108,6 +110,9 @@ export function EstimateBuilder({
   canEdit: boolean;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
+  /** Admin only. Voiding cancels work the customer committed to and can
+   *  strand money already collected. */
+  canVoid: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
@@ -122,6 +127,8 @@ export function EstimateBuilder({
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [voiding, setVoiding] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
   // Row being dragged, and the row it is currently hovering over.
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
@@ -318,12 +325,81 @@ export function EstimateBuilder({
               </button>
             </>
           )}
+          {/* Void, not delete. Offered only on a document somebody has
+              already seen, and only to an Admin -- cancelling signed work
+              can strand money the customer has paid. */}
+          {canVoid && estimate.status !== "Draft" && estimate.status !== "Void" && (
+            <button
+              className="btn-ghost est-void-btn"
+              onClick={() => setVoiding(true)}
+              disabled={pending}
+            >
+              Void
+            </button>
+          )}
         </div>
       </div>
 
+      {voiding && (
+        <div className="est-locked-banner">
+          <p style={{ margin: "0 0 8px" }}>
+            {/* Explicit space: JSX drops the one between an element and the
+                text after it, which ran this into "CO2?The document". */}
+            <strong>Void {estimate.doc_number}?</strong>
+            {" "}The document stays on the customer&rsquo;s record marked as cancelled, and
+            stops counting towards any total. Phases you have not yet billed are cancelled;
+            anything already billed stays, and no payment is reversed &mdash; refunds are still
+            yours to send by card or cheque.
+          </p>
+          <input
+            className="est-item-name"
+            placeholder="Why is this being cancelled?"
+            value={voidReason}
+            autoFocus
+            disabled={pending}
+            onChange={(e) => setVoidReason(e.target.value)}
+          />
+          <button
+            className="btn-primary small"
+            disabled={pending || !voidReason.trim()}
+            onClick={() =>
+              startTransition(async () => {
+                const res = await voidEstimate(estimate.id, voidReason);
+                if (res.error) return setError(res.error);
+                setVoiding(false);
+                setSaved(
+                  res.collectedCents
+                    ? `Voided · ${moneyCents(res.collectedCents)} was collected on this document and has not been refunded`
+                    : "Voided"
+                );
+                router.refresh();
+              })
+            }
+          >
+            {pending ? "Voiding…" : "Void this document"}
+          </button>
+          <button
+            className="btn-ghost small"
+            onClick={() => setVoiding(false)}
+            disabled={pending}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {locked && (
         <div className="est-locked-banner">
-          {!canEdit ? (
+          {estimate.status === "Void" ? (
+            <>
+              Voided
+              {estimate.voided_at
+                ? ` on ${new Date(estimate.voided_at).toLocaleDateString("en-US")}`
+                : ""}
+              {estimate.void_reason ? ` — ${estimate.void_reason}` : ""}. The record is kept
+              deliberately; it no longer counts towards any total.
+            </>
+          ) : !canEdit ? (
             "You can view estimates but not change them. Ask an Office or Admin user for Create Estimates access."
           ) : (
             <>
