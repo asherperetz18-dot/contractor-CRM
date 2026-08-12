@@ -13,9 +13,11 @@ export function VoiceDialer() {
   const [phone, setPhone] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
   const [muted, setMuted] = useState(false);
-  const [recordEnabled, setRecordEnabled] = useState(false);
   const [duration, setDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
+  // On by default. Recording used to start off, which is why 1 call in 63
+  // has audio -- an unticked box is a decision nobody makes.
+  const [recordEnabled, setRecordEnabled] = useState(true);
 
   const deviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
   const callRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
@@ -192,6 +194,10 @@ export function VoiceDialer() {
             ))}
           </div>
 
+          {/* Ticked by default. Unticking stops the recording and the
+              notice together -- they are one decision, so a rep can never
+              record a homeowner in silence, nor tell them a call is
+              recorded when it is not. */}
           {!busy && (
             <label className="voice-dialer-record">
               <input
@@ -200,6 +206,11 @@ export function VoiceDialer() {
                 onChange={(e) => setRecordEnabled(e.target.checked)}
               />
               Record this call
+              <span className="est-tax-note">
+                {recordEnabled
+                  ? "They hear a recording notice when they answer"
+                  : "No recording, and no notice played"}
+              </span>
             </label>
           )}
 

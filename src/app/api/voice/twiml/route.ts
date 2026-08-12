@@ -48,7 +48,6 @@ export async function POST(req: NextRequest) {
   // seconds on "Invalid destination number", so only bare ten-digit
   // numbers ever connected.
   const to = toE164(params.To);
-  const shouldRecord = params.Record === "true";
 
   if (!/^\+[0-9]{7,15}$/.test(to)) {
     return new NextResponse(
@@ -57,17 +56,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let recordAttrs = "";
-  if (shouldRecord) {
-    const callbackUrl = `${new URL(req.url).origin}/api/voice/recording-status`;
-    recordAttrs =
-      ` record="record-from-answer-dual" recordingStatusCallback="${xmlEscape(callbackUrl)}"` +
-      ` recordingStatusCallbackEvent="completed"`;
-  }
+  const origin = new URL(req.url).origin;
+
+  // Recording defaults on: absent means record. A dropped parameter
+  // should fail towards the call being captured and announced, not
+  // towards a silent one.
+  const shouldRecord = params.Record !== "false";
+
+  // Recording and the notice are one decision, never two. California
+  // requires the consent of every party to record a confidential
+  // communication, so recording without the notice is unlawful -- and
+  // announcing without recording tells the customer something untrue.
+  // The toggle moves both or neither.
+  //
+  // The notice rides on <Number> rather than sitting before <Dial>,
+  // because TwiML on the <Number> runs on the called leg. Before the
+  // <Dial> it would announce the recording to the rep, who already
+  // knows, and leave the homeowner -- the only person whose consent is
+  // at issue -- hearing nothing. answerOnBridge keeps the rep on
+  // ringback until it finishes.
+  const recordAttrs = shouldRecord
+    ? ` answerOnBridge="true" record="record-from-answer-dual"` +
+      ` recordingStatusCallback="${xmlEscape(`${origin}/api/voice/recording-status`)}"` +
+      ` recordingStatusCallbackEvent="completed"`
+    : "";
+  const numberAttrs = shouldRecord
+    ? ` url="${xmlEscape(`${origin}/api/voice/announce`)}"`
+    : "";
+
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
     `<Response><Dial callerId="${xmlEscape(twilioEnv.phoneNumber)}"${recordAttrs}>` +
-    `<Number>${xmlEscape(to)}</Number>` +
+    `<Number${numberAttrs}>${xmlEscape(to)}</Number>` +
     `</Dial></Response>`;
 
   return new NextResponse(twiml, {

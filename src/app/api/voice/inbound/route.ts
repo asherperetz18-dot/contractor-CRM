@@ -4,6 +4,7 @@ import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
+import { recordingNoticeSay } from "@/lib/voice-notice";
 
 function xmlEscape(value: string): string {
   return value
@@ -113,15 +114,42 @@ export async function POST(req: NextRequest) {
   }
 
   if (!forwardTo) {
+    // There was no <Record> here. The caller was told to leave a message
+    // after the tone, then got no tone, no beep and a dead line -- the
+    // system promising something it did not do, to the customer, in their
+    // own words. Anyone who rang outside hours and waited politely for a
+    // beep was talking to nobody.
+    //
+    // The notice comes first because a voicemail is a recording of them.
     return twiml(
-      `<Say voice="alice">Thanks for calling. Please leave us a message after the tone, or send a text to this number.</Say>`
+      recordingNoticeSay() +
+        `<Say voice="alice">Thanks for calling. Please leave us a message after the tone, or send a text to this number.</Say>` +
+        `<Record maxLength="120" playBeep="true" trim="trim-silence"` +
+        ` recordingStatusCallback="${xmlEscape(`${new URL(req.url).origin}/api/voice/recording-status`)}"` +
+        ` recordingStatusCallbackEvent="completed" />`
     );
   }
 
   const timeout = company?.call_forward_timeout ?? 25;
-  const actionUrl = `${new URL(req.url).origin}/api/voice/inbound/status`;
+  const origin = new URL(req.url).origin;
+  const actionUrl = `${origin}/api/voice/inbound/status`;
+
+  // The notice goes before the Dial, which is the right place inbound:
+  // the caller is already expecting a greeting, and they are the party
+  // whose consent California requires. Outbound has to work harder --
+  // there the notice hangs off <Number> so it reaches the homeowner
+  // instead of the rep.
+  //
+  // Recording and the notice are added together on purpose. Inbound was
+  // not recorded at all before this, so half of every conversation was
+  // missing from the record -- and a customer disputing what was agreed
+  // is just as likely to have rung in as been rung.
   return twiml(
-    `<Dial timeout="${timeout}" action="${xmlEscape(actionUrl)}" method="POST">` +
+    recordingNoticeSay() +
+      `<Dial timeout="${timeout}" action="${xmlEscape(actionUrl)}" method="POST"` +
+      ` record="record-from-answer-dual"` +
+      ` recordingStatusCallback="${xmlEscape(`${origin}/api/voice/recording-status`)}"` +
+      ` recordingStatusCallbackEvent="completed">` +
       `<Number>${xmlEscape(forwardTo)}</Number>` +
       `</Dial>`
   );
