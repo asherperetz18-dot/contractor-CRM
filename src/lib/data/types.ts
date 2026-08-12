@@ -1,6 +1,13 @@
 export type ContactType = "Individual" | "Company";
 
-export type AppRole = "Office" | "Field" | "Admin" | "Sales" | "Call Center" | "Dispatch";
+export type AppRole =
+  | "Office"
+  | "Field"
+  | "Admin"
+  | "Sales"
+  | "Call Center"
+  | "Dispatch"
+  | "Bookkeeping";
 export const APP_ROLES: AppRole[] = [
   "Office",
   "Field",
@@ -8,6 +15,7 @@ export const APP_ROLES: AppRole[] = [
   "Sales",
   "Call Center",
   "Dispatch",
+  "Bookkeeping",
 ];
 
 export type UserStatus = "Active" | "Archived";
@@ -79,7 +87,28 @@ export function canViewEstimates(
 ) {
   if (!profile) return false;
   if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  // Bookkeeping has to open a contract to file a cost against the right
+  // phase. Reading one is the job; editing one is not -- canCreateEstimates
+  // deliberately does not follow.
+  if (profile.roles.includes("Bookkeeping")) return true;
   return profile.can_view_estimates;
+}
+
+/**
+ * Who may record what a job cost.
+ *
+ * Its own capability rather than a lean on canCreateEstimates. Before
+ * this, the only way to let a bookkeeper enter a receipt was to let them
+ * create and edit estimates -- putting a person hired to file paperwork
+ * one click from editing a signed contract.
+ */
+export function canManageCosts(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Bookkeeping") ||
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin")
+  );
 }
 
 export function canCreateEstimates(
@@ -212,7 +241,14 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
 // Admin Settings itself is deliberately not in PAGE_REGISTRY and is gated
 // by isAdminRole instead, so nothing in this matrix can lock an Office
 // user out of the screen they would use to undo it.
-export const VISIBILITY_MANAGED_ROLES: AppRole[] = ["Office", "Dispatch", "Field", "Sales", "Call Center"];
+export const VISIBILITY_MANAGED_ROLES: AppRole[] = [
+  "Office",
+  "Dispatch",
+  "Field",
+  "Sales",
+  "Call Center",
+  "Bookkeeping",
+];
 
 // A dispatcher receives leads, assigns them to reps, books and confirms
 // appointments, and works the schedule. They need everyone's leads and
@@ -232,11 +268,30 @@ const DISPATCH_DEFAULT_PAGES: PageKey[] = [
   "text-reports",
 ];
 
+// Projects is the point of the role: sold jobs, what they cost, what is
+// left. Estimates & Contracts because a cost is filed against a phase and
+// the phases live on the contract. Payments because reconciling what
+// arrived is the other half of the job.
+const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
+  "dashboard",
+  "projects",
+  "documents",
+  "payments",
+];
+
 // Platform default when no explicit override row exists for a role/page --
 // "untouched cells follow the default," same wording as the real product.
 // Most roles default to full access; Call Center and Dispatch default to
 // the pages their job actually needs.
 export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
+  // A bookkeeper files receipts and chases money. They are not given the
+  // pipeline, the dialer or the contact book -- every one of those is
+  // also the customers' names and phone numbers, and none of it is
+  // needed to enter a cost. Commissions stays off too: that is payroll,
+  // and letting someone see what every rep earns should be a decision
+  // taken on purpose in Role Visibility, not a side effect of hiring a
+  // bookkeeper.
+  if (role === "Bookkeeping") return BOOKKEEPING_DEFAULT_PAGES.includes(pageKey);
   if (role === "Call Center") {
     return (
       pageKey === "dashboard" ||

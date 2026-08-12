@@ -96,6 +96,7 @@ export function EstimateBuilder({
   paid,
   lead,
   canEdit,
+  canManageCosts,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -104,6 +105,8 @@ export function EstimateBuilder({
   paid: PortalPayment[];
   lead: BuilderLead | null;
   canEdit: boolean;
+  /** Recording costs, which Bookkeeping holds without contract editing. */
+  canManageCosts: boolean;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
@@ -733,7 +736,7 @@ export function EstimateBuilder({
           totalCents={estimate.total_cents}
           depositPercentBp={estimate.deposit_percent_bp}
           depositCapCents={estimate.deposit_cap_cents}
-          canEdit={canEdit}
+          canEdit={canManageCosts}
         />
       )}
 
