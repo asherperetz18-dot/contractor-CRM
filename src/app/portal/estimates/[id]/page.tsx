@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
-import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
+import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { getParentContract } from "@/lib/actions/change-orders";
 import {
@@ -47,7 +47,7 @@ export default async function PortalEstimatePage({
 
   await markEstimateViewed(id);
 
-  const [{ data: items }, { data: signers }, { data: payments }, { data: paidRows }, { data: company }, { data: photoRows }] = await Promise.all([
+  const [{ data: items }, { data: signers }, { data: payments }, { data: paidRows }, { data: company }, { data: photoRows }, { data: sectionRows }] = await Promise.all([
     admin.from("estimate_items").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_signers").select("*").eq("estimate_id", id).order("sort_order"),
     admin.from("estimate_payments").select("*").eq("estimate_id", id).order("sort_order"),
@@ -78,6 +78,14 @@ export default async function PortalEstimatePage({
           lead_files: { file_name: string; file_url: string; content_type: string | null } | null;
         }[]
       >(),
+    // Sections, read here rather than through the staff action: the
+    // portal has a customer session, not a CRM profile.
+    admin
+      .from("estimate_groups")
+      .select("id, estimate_id, name, description, sort_order")
+      .eq("estimate_id", id)
+      .order("sort_order")
+      .returns<EstimateGroup[]>(),
   ]);
 
   const photos: EstimatePhoto[] = (photoRows ?? []).map((r) => ({
@@ -111,6 +119,7 @@ export default async function PortalEstimatePage({
         payments={(payments ?? []) as EstimatePayment[]}
         paid={(paidRows ?? []) as PortalPayment[]}
         photos={photos}
+        sections={sectionRows ?? []}
         company={company ?? null}
         customer={viewer.lead}
         team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}

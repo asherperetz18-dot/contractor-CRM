@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   centsFromInput,
@@ -19,6 +19,7 @@ import {
   type Estimate,
   type EstimateItem,
   type EstimateSigner,
+  type EstimateGroup,
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
@@ -36,6 +37,8 @@ import { CompletionCertificate } from "./completion-certificate";
 import { JobCosts } from "./job-costs";
 import { PhotosPanel } from "./photos-panel";
 import { ScopeEditor } from "./scope-editor";
+import { SectionsBar } from "./sections-bar";
+import { getEstimateGroups } from "@/lib/actions/estimate-groups";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 
 export type BuilderLead = {
@@ -51,6 +54,10 @@ export type BuilderLead = {
 // half-finished "12." does not get normalised out from under the cursor.
 type Row = {
   key: string;
+  // The saved row this came from, so a save updates the line rather than
+  // replacing it. Null on a line that has never been saved.
+  id: string | null;
+  groupId: string | null;
   name: string;
   description: string;
   quantity: string;
@@ -65,6 +72,8 @@ function blankRow(): Row {
   rowSeq += 1;
   return {
     key: `row-${rowSeq}`,
+    id: null,
+    groupId: null,
     name: "",
     description: "",
     quantity: "",
@@ -79,6 +88,8 @@ function toRow(item: EstimateItem): Row {
   rowSeq += 1;
   return {
     key: `row-${rowSeq}`,
+    id: item.id,
+    groupId: item.group_id ?? null,
     name: item.name,
     description: item.description ?? "",
     quantity: String(item.quantity),
@@ -131,6 +142,7 @@ export function EstimateBuilder({
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [groups, setGroups] = useState<EstimateGroup[]>([]);
   const [voiding, setVoiding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [voidReason, setVoidReason] = useState("");
@@ -161,6 +173,24 @@ export function EstimateBuilder({
     cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
   }));
   const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp);
+
+  // Section totals from the rows on screen, not from what is saved. A
+  // subtotal that lags behind the price typed a moment ago reads as a bug
+  // even when the stored figure is right.
+  const sectionSubtotals = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.groupId) continue;
+    const cents = lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice));
+    sectionSubtotals.set(r.groupId, (sectionSubtotals.get(r.groupId) ?? 0) + cents);
+  }
+
+  const reloadGroups = useCallback(() => {
+    getEstimateGroups(estimate.id).then((res) => setGroups(res.groups ?? []));
+  }, [estimate.id]);
+
+  useEffect(() => {
+    reloadGroups();
+  }, [reloadGroups]);
   const margin = estimateMargin(parsed);
   const costsEntered = parsed.some((p) => p.cost_cents !== null);
   // Named rows only: a blank starter row is not an unpriced line item.
@@ -232,6 +262,8 @@ export function EstimateBuilder({
       const res = await saveEstimateItems(
         estimate.id,
         rows.map((r) => ({
+          id: r.id,
+          group_id: r.groupId,
           name: r.name,
           description: r.description || null,
           quantity: parseQuantity(r.quantity),
@@ -647,6 +679,24 @@ export function EstimateBuilder({
                   disabled={locked}
                   onChange={(e) => patch(r.key, { unit: e.target.value })}
                 />
+                {/* Only once sections exist. On a small job the column
+                    would be a permanently empty dropdown asking a
+                    question nobody has. */}
+                {groups.length > 0 && (
+                  <select
+                    className="est-item-unit"
+                    value={r.groupId ?? ""}
+                    disabled={locked}
+                    onChange={(e) => patch(r.key, { groupId: e.target.value || null })}
+                  >
+                    <option value="">No section</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </td>
               <td className="right est-internal-col" data-label="Your cost">
                 <input
@@ -751,6 +801,14 @@ export function EstimateBuilder({
           </button>
         </div>
       )}
+
+      <SectionsBar
+        estimateId={estimate.id}
+        groups={groups}
+        subtotals={sectionSubtotals}
+        locked={locked}
+        onChanged={reloadGroups}
+      />
 
       <div className="est-totals">
         <div className="est-total-row">

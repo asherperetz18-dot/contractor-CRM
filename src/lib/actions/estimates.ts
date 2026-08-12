@@ -81,6 +81,9 @@ type SendEstimateRow = {
 };
 
 export type ItemInput = {
+  /** The existing row, when this line is already saved. Carrying it is
+   *  what stops a save from destroying anything that points at the line. */
+  id?: string | null;
   name: string;
   description?: string | null;
   quantity: number;
@@ -88,6 +91,7 @@ export type ItemInput = {
   unit_price_cents: number;
   taxable: boolean;
   cost_cents?: number | null;
+  group_id?: string | null;
 };
 
 async function requireEstimateEditor(): Promise<
@@ -349,28 +353,48 @@ export async function saveEstimateItems(
     .map((item) => ({ ...item, name: (item.name ?? "").trim() }))
     .filter((item) => item.name || item.unit_price_cents);
 
-  const { error: deleteError } = await supabase
-    .from("estimate_items")
-    .delete()
-    .eq("estimate_id", estimateId);
+  // Lines that survive keep their id. This used to delete every row and
+  // re-insert with fresh ones, which quietly destroyed anything pointing
+  // at a line: a photo pinned to "Dry rot repair" vanished the next time
+  // anybody saved the estimate, with no error and nothing to notice.
+  // Rewriting a row's identity on every save is not a saving detail, it
+  // is a promise to break every reference to it.
+  const keptIds = clean.map((i) => i.id).filter((id): id is string => !!id);
+  let removal = supabase.from("estimate_items").delete().eq("estimate_id", estimateId);
+  if (keptIds.length) {
+    removal = removal.not("id", "in", `(${keptIds.join(",")})`);
+  }
+  const { error: deleteError } = await removal;
   if (deleteError) return { error: deleteError.message };
 
-  if (clean.length) {
-    const rows = clean.map((item, i) => ({
-      company_id: guard.companyId,
-      estimate_id: estimateId,
-      sort_order: i,
-      name: item.name,
-      description: item.description ?? null,
-      quantity: parseQuantity(item.quantity),
-      unit: item.unit ?? null,
-      unit_price_cents: item.unit_price_cents,
-      line_total_cents: lineTotalCents(parseQuantity(item.quantity), item.unit_price_cents),
-      taxable: item.taxable,
-      cost_cents: item.cost_cents ?? null,
-    }));
-    const { error: insertError } = await supabase.from("estimate_items").insert(rows);
-    if (insertError) return { error: insertError.message };
+  const toRow = (item: ItemInput, i: number) => ({
+    company_id: guard.companyId,
+    estimate_id: estimateId,
+    sort_order: i,
+    name: item.name,
+    description: item.description ?? null,
+    quantity: parseQuantity(item.quantity),
+    unit: item.unit ?? null,
+    unit_price_cents: item.unit_price_cents,
+    line_total_cents: lineTotalCents(parseQuantity(item.quantity), item.unit_price_cents),
+    taxable: item.taxable,
+    cost_cents: item.cost_cents ?? null,
+    group_id: item.group_id ?? null,
+  });
+
+  for (const [i, item] of clean.entries()) {
+    if (item.id) {
+      const { error } = await supabase
+        .from("estimate_items")
+        .update(toRow(item, i))
+        .eq("id", item.id)
+        .eq("estimate_id", estimateId)
+        .eq("company_id", guard.companyId);
+      if (error) return { error: error.message };
+    } else {
+      const { error } = await supabase.from("estimate_items").insert(toRow(item, i));
+      if (error) return { error: error.message };
+    }
   }
 
   const totals = computeEstimateTotals(clean, estimate.tax_rate_bp);

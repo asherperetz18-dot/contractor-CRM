@@ -1160,6 +1160,60 @@ export function editWillRecallEstimate(status: EstimateStatus): boolean {
   return status === "Sent" || status === "Viewed";
 }
 
+/**
+ * A section of an estimate: Kitchen, Bathroom, Exterior.
+ *
+ * Distinct from the "Includes" behaviour, where an unpriced line folds
+ * under the priced line above it. Sections sit above that -- a section
+ * holds priced lines, and each of those still carries its own detail.
+ */
+export type EstimateGroup = {
+  id: string;
+  estimate_id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+};
+
+export type EstimateSection = {
+  group: EstimateGroup | null;
+  items: EstimateItem[];
+  subtotalCents: number;
+};
+
+/**
+ * Items arranged into their sections, in section order, with ungrouped
+ * lines first.
+ *
+ * Ungrouped goes first rather than last on purpose: on an estimate that
+ * has never used sections every line is ungrouped, and this has to render
+ * exactly as it does today.
+ */
+export function groupEstimateItems(
+  items: EstimateItem[],
+  groups: EstimateGroup[]
+): EstimateSection[] {
+  const ordered = [...groups].sort((a, b) => a.sort_order - b.sort_order);
+  const sections: EstimateSection[] = [];
+
+  const ungrouped = items.filter((i) => !i.group_id);
+  if (ungrouped.length) {
+    sections.push({ group: null, items: ungrouped, subtotalCents: sumLines(ungrouped) });
+  }
+  for (const g of ordered) {
+    const mine = items.filter((i) => i.group_id === g.id);
+    // Empty sections are kept while editing -- somebody has named one and
+    // not filled it yet -- and dropped from the customer's copy by the
+    // caller, since a heading over nothing reads as an omission.
+    sections.push({ group: g, items: mine, subtotalCents: sumLines(mine) });
+  }
+  return sections;
+}
+
+function sumLines(items: EstimateItem[]): number {
+  return items.reduce((sum, i) => sum + (i.line_total_cents || 0), 0);
+}
+
 export type EstimateItem = {
   id: string;
   estimate_id: string;
@@ -1172,6 +1226,8 @@ export type EstimateItem = {
   line_total_cents: number;
   taxable: boolean;
   cost_cents: number | null;
+  /** The section this line sits in. Null renders exactly as before. */
+  group_id?: string | null;
 };
 
 export type EstimateSigner = {

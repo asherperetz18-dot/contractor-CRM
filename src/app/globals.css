@@ -5398,6 +5398,19 @@ body {
     page-break-inside: avoid;
   }
 
+  /* A section heading alone at the foot of a page, with its work
+     overleaf, reads as an empty section. Kept with what follows it. */
+  .estdoc-section-row {
+    break-after: avoid;
+    page-break-after: avoid;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .estdoc-subtotal-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
   /* Photos are the first thing a printer drops to save ink, and a
      contract whose evidence is missing from the printed copy is the one
      that gets argued about. */
@@ -6049,6 +6062,57 @@ textarea.est-item-desc:disabled {
   font-size: 13px;
   line-height: 1.45;
   margin-bottom: 2px;
+}
+
+/* Sections on the customer's copy. */
+.estdoc-section-row td {
+  padding-top: 16px;
+  border-bottom: none;
+}
+.estdoc-section-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  border-bottom: 2px solid var(--line);
+  padding-bottom: 4px;
+}
+.estdoc-subtotal-row td {
+  font-weight: 700;
+  border-top: 1px solid var(--line);
+  background: #fafafa;
+}
+
+/* The section editor on the builder, which the customer never sees. */
+.est-sections {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0 14px;
+}
+.est-sections-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.est-section-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.est-section-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+.est-section-chip input {
+  width: 160px;
 }
 
 /* A cancelled document, said on the customer's own copy. */

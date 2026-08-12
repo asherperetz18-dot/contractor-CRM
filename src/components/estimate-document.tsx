@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import {
   moneyCents,
   paymentPercentOfTotal,
@@ -11,6 +12,7 @@ import {
   type EstimateItem,
   type EstimateSigner,
   type EstimatePayment,
+  type EstimateGroup,
   type EstimatePhoto,
   type PortalPayment,
 } from "@/lib/data/types";
@@ -120,6 +122,7 @@ export function EstimateDocument({
   payments,
   paid = [],
   photos = [],
+  sections = [],
   company,
   customer,
   team,
@@ -133,6 +136,8 @@ export function EstimateDocument({
   /** Attached photos. Nothing on the contact reaches the customer unless
    *  someone put it on this document deliberately. */
   photos?: EstimatePhoto[];
+  /** Sections. Empty means the document has none and reads as before. */
+  sections?: EstimateGroup[];
   company: DocumentCompany | null;
   customer: DocumentCustomer | null;
   team?: DocumentTeam | null;
@@ -156,6 +161,23 @@ export function EstimateDocument({
   // those -- an unpriced "1 ls" that is now folded in must not keep an
   // otherwise empty Qty column alive.
   const showMeasures = groups.some((g) => quantityIsMeaningful(g.parent.quantity, g.parent.unit));
+  // Sections, resolved per line. A heading is drawn when a line's section
+  // differs from the previous line's, and the subtotal when the next one
+  // does -- so an estimate with no sections emits neither and reads
+  // exactly as it always has.
+  const groupById = new Map(sections.map((g) => [g.id, g]));
+  const sectionForItem = (item: EstimateItem) =>
+    item.group_id ? (groupById.get(item.group_id) ?? null) : null;
+  const endsSection = (i: number) => {
+    const mine = sectionForItem(groups[i].parent);
+    const next = i + 1 < groups.length ? sectionForItem(groups[i + 1].parent) : null;
+    return !!mine && mine.id !== next?.id;
+  };
+  const sectionTotal = (groupId: string) =>
+    items
+      .filter((i) => i.group_id === groupId)
+      .reduce((sum, i) => sum + (i.line_total_cents || 0), 0);
+
   const byItem = photosByItem(photos);
   // Photos with no line of their own: site context rather than the
   // justification for one charge.
@@ -279,10 +301,28 @@ export function EstimateDocument({
               </td>
             </tr>
           ) : (
-            groups.map(({ parent: item, included }) => {
+            groups.map(({ parent: item, included }, gi) => {
+              // The section heading is emitted before the first line that
+              // belongs to it, as a row spanning the table. A separate
+              // table per section would break the column widths apart and
+              // print as several unrelated grids.
+              const section = sectionForItem(item);
+              const prevSection = gi > 0 ? sectionForItem(groups[gi - 1].parent) : null;
+              const startsSection = !!section && section.id !== prevSection?.id;
               const measured = quantityIsMeaningful(item.quantity, item.unit);
               return (
-                <tr key={item.id}>
+                <Fragment key={item.id}>
+                {startsSection && section && (
+                  <tr className="estdoc-section-row">
+                    <td colSpan={showMeasures ? 4 : 2}>
+                      <div className="estdoc-section-name">{section.name}</div>
+                      {section.description && (
+                        <div className="estdoc-muted">{section.description}</div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+                <tr>
                   <td>
                     <div className="estdoc-strong">{item.name}</div>
                     {item.description && <div className="estdoc-muted">{item.description}</div>}
@@ -336,6 +376,16 @@ export function EstimateDocument({
                     {item.line_total_cents ? moneyCents(item.line_total_cents) : ""}
                   </td>
                 </tr>
+                {/* The subtotal goes after the last line of the section,
+                    which is what the customer is looking for when they ask
+                    "what is the kitchen costing me". */}
+                {section && endsSection(gi) && (
+                  <tr className="estdoc-subtotal-row">
+                    <td colSpan={showMeasures ? 3 : 1}>{section.name} subtotal</td>
+                    <td className="estdoc-num">{moneyCents(sectionTotal(section.id))}</td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })
           )}
