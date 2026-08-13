@@ -13,6 +13,7 @@ import { AdminToolsMenu } from "./admin-tools-menu";
 import { LiveUsersButton } from "./live-users-button";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
+import { UpdateNotice } from "./update-notice";
 import { CompanySwitcher } from "./company-switcher";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { AiAssistantButton } from "./ai-assistant-button";
@@ -121,6 +122,10 @@ export default async function AppLayout({
         </div>
         <ActivityTracker />
         <VoiceDialer />
+        {/* `version` here is baked into this render, so it is whatever the
+            browser actually loaded -- which is exactly what the banner
+            needs to compare against. */}
+        <UpdateNotice current={version} />
 
         <div className="app-body">
           <MobileNav

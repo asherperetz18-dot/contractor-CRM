@@ -2146,6 +2146,50 @@ body {
   background: #d6e4ef;
 }
 
+/* "A new version is out."
+   Bottom-left, above the dialer's own corner, so it never lands on the
+   Save button of whatever someone is in the middle of. Fixed rather than
+   in the flow: it must not push the page down and move the control
+   somebody was already reaching for. */
+.update-notice {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.update-notice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f855a;
+  flex: none;
+}
+.update-notice button {
+  flex: none;
+}
+@media (max-width: 700px) {
+  /* Full width at the bottom on a phone, where a floating card beside the
+     dialer would cover it. */
+  .update-notice {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+}
+
 /* Confirmation, marked without taking the colour channel.
    The chip's border-left is the calendar -- Estimate blue, Job Visit
    green -- so painting a confirmed appointment green would make a green
