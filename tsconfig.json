@@ -6,6 +6,11 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // The test files run under `node --test`, which resolves ESM imports
+    // and so needs the real extension on the path. Without this tsc
+    // rejects those imports (TS5097) and the typecheck fails on files
+    // that run perfectly well. Safe here because nothing is emitted.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

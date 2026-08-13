@@ -10,6 +10,9 @@ import {
   isStrictAdmin,
   costsForContract,
   paidTotalCents,
+  commissionHolds,
+  commissionQualifiedAt,
+  type CommissionHold,
   type RepCommission,
 } from "@/lib/data/types";
 
@@ -225,12 +228,20 @@ export type RepCommissionRow = {
   estimateId: string;
   docNumber: string;
   title: string;
+  customerName: string;
   signedAt: string | null;
+  repId: string;
   repName: string;
   /** This rep's share only, not the whole pot. */
   shareCents: number;
+  collectedCents: number;
   collectedPct: number;
-  /** The share backed by money actually banked. */
+  certificateSigned: boolean;
+  /** Empty when the job is finished and settled. */
+  holds: CommissionHold[];
+  /** The date it became payable, or null while anything is still held. */
+  qualifiedAt: string | null;
+  /** The share, once every hold is clear. Nil until then. */
   payableCents: number;
   detail: RepCommission;
 };
@@ -241,7 +252,10 @@ export type RepCommissionRow = {
  * A rep sees only their own lines. Enforced here rather than in the page,
  * because a page is a suggestion and an action is the boundary.
  */
-export async function getRepCommissions(): Promise<{
+export async function getRepCommissions(opts?: {
+  /** Admins only; ignored for a rep, who always gets their own. */
+  repId?: string;
+}): Promise<{
   error?: string;
   rows?: RepCommissionRow[];
   everyone?: boolean;
@@ -296,17 +310,24 @@ export async function getRepCommissions(): Promise<{
       estimate_id: string;
       amount_cents: number;
       status: "pending" | "succeeded" | "failed" | "cancelled";
+      paid_at: string | null;
     }>((from, to) =>
       supabase
         .from("portal_payments")
-        .select("estimate_id, amount_cents, status")
+        .select("estimate_id, amount_cents, status, paid_at")
         .eq("company_id", profile.company_id)
         .range(from, to)
     ),
-    selectAll<{ id: string; assigned_to: string | null }>((from, to) =>
+    selectAll<{
+      id: string;
+      assigned_to: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      company_name: string | null;
+    }>((from, to) =>
       supabase
         .from("leads")
-        .select("id, assigned_to")
+        .select("id, assigned_to, first_name, last_name, company_name")
         .eq("company_id", profile.company_id)
         .in("id", leadIds)
         .range(from, to)
@@ -322,6 +343,12 @@ export async function getRepCommissions(): Promise<{
 
   const nameById = new Map(members.map((m) => [m.id, m.name || m.email || "Unnamed"]));
   const assignedByLead = new Map(leads.map((l) => [l.id, l.assigned_to]));
+  const customerByLead = new Map(
+    leads.map((l) => [
+      l.id,
+      [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || "Customer",
+    ])
+  );
   const allPhaseIds = new Set(phases.map((p) => p.id));
   const contractsPerLead = new Map<string, number>();
   for (const c of contracts) {
@@ -331,20 +358,23 @@ export async function getRepCommissions(): Promise<{
   const rows: RepCommissionRow[] = [];
   for (const c of contracts) {
     // Change orders are extra work on the same job and belong in the same
-    // calculation, so their value joins the contract's.
-    const changeOrderCents = estimates
-      .filter((e) => e.parent_estimate_id === c.id && e.status === "Signed")
+    // calculation, so their value joins the contract's. The completion
+    // certificate is a child of the contract too but carries no money,
+    // so it is excluded by kind rather than relying on its zero total.
+    const children = estimates.filter((e) => e.parent_estimate_id === c.id);
+    const changeOrderCents = children
+      .filter((e) => e.status === "Signed" && (e.kind ?? "contract") !== "completion")
       .reduce((s, e) => s + e.total_cents, 0);
     const contractCents = c.total_cents + changeOrderCents;
+
+    const certificate = children.find((e) => e.kind === "completion") ?? null;
+    const certificateSigned = certificate?.status === "Signed";
 
     // Attributed the same way the projects list does it. Summing the
     // lead's costs here would count one receipt against every contract
     // that customer holds -- five, on one of these leads -- and on this
     // report that is somebody's pay.
-    const docIds = new Set([
-      c.id,
-      ...estimates.filter((e) => e.parent_estimate_id === c.id).map((e) => e.id),
-    ]);
+    const docIds = new Set([c.id, ...children.map((e) => e.id)]);
     const contractPhaseIds = new Set(
       phases.filter((p) => docIds.has(p.estimate_id)).map((p) => p.id)
     );
@@ -355,7 +385,19 @@ export async function getRepCommissions(): Promise<{
       leadHasOneContract: (contractsPerLead.get(c.lead_id) ?? 1) === 1,
     });
 
-    const collectedCents = paidTotalCents(paid.filter((p) => p.estimate_id === c.id));
+    // Every document on the job, not just the contract. Change orders are
+    // billed and paid against their own estimate id, so counting only the
+    // contract's payments made a fully paid job with a change order read
+    // as short -- and under the rule below, that is a commission the rep
+    // never gets paid.
+    const jobPayments = paid.filter((p) => docIds.has(p.estimate_id));
+    const collectedCents = paidTotalCents(jobPayments);
+    const lastPaymentAt =
+      jobPayments
+        .filter((p) => p.status === "succeeded" && p.paid_at)
+        .map((p) => p.paid_at as string)
+        .sort()
+        .at(-1) ?? null;
 
     const repOne = c.sales_rep_1 ?? assignedByLead.get(c.lead_id) ?? null;
     const detail = computeRepCommission({
@@ -368,10 +410,21 @@ export async function getRepCommissions(): Promise<{
       rep2Bp: c.sales_rep_2 ? c.sales_rep_2_bp : 0,
     });
 
-    // Earned when the job sells; payable as the money actually arrives.
-    // One number would either promise a rep money the company has not
-    // received, or hide what they have already earned.
+    // Earned when the job sells; paid when the job is finished and
+    // settled. One number would either promise a rep money the company
+    // has not received, or hide what they have already earned.
     const collectedPct = contractCents > 0 ? collectedCents / contractCents : 0;
+    const holds = commissionHolds({
+      hasCosts: counted > 0,
+      collectedCents,
+      contractCents,
+      certificateSigned,
+    });
+    const qualifiedAt = commissionQualifiedAt({
+      holds,
+      lastPaymentAt,
+      certificateSignedAt: certificate?.signed_at ?? null,
+    });
 
     for (const [repId, shareCents] of [
       [repOne, detail.rep1Cents],
@@ -379,15 +432,24 @@ export async function getRepCommissions(): Promise<{
     ] as [string | null, number][]) {
       if (!repId || shareCents <= 0) continue;
       if (!everyone && repId !== profile.id) continue;
+      if (everyone && opts?.repId && repId !== opts.repId) continue;
       rows.push({
         estimateId: c.id,
         docNumber: c.doc_number,
         title: c.title,
+        customerName: customerByLead.get(c.lead_id) ?? "Customer",
         signedAt: c.signed_at,
+        repId,
         repName: nameById.get(repId) ?? "Unnamed",
         shareCents,
+        collectedCents,
         collectedPct,
-        payableCents: Math.round(shareCents * collectedPct),
+        certificateSigned,
+        holds,
+        qualifiedAt,
+        // All or nothing. A part payment does not release a part of the
+        // commission -- the rule is the job is done and paid for.
+        payableCents: holds.length === 0 ? shareCents : 0,
         detail,
       });
     }

@@ -1,9 +1,11 @@
-import { moneyCents } from "@/lib/data/types";
+import Link from "next/link";
+import { moneyCents, COMMISSION_HOLD_LABEL } from "@/lib/data/types";
 import { getRepCommissions } from "@/lib/actions/rep-commission";
 
 /**
- * Sales rep commission: half the net profit, after the lead cost and
- * what the job actually spent.
+ * Sales rep commission: a share of the net profit, after the lead cost
+ * and what the job actually spent, paid once the job is finished and
+ * settled.
  *
  * Reps see their own lines only, enforced by the action rather than by
  * this page -- a page is a suggestion, an action is the boundary.
@@ -33,6 +35,11 @@ export async function RepCommissionTable() {
             what was spent.
           </p>
         </div>
+        <div className="toolbar-actions">
+          <Link href="/sales-commission/statement" className="btn-ghost">
+            Printable statement
+          </Link>
+        </div>
       </div>
 
       {!rows?.length ? (
@@ -51,7 +58,7 @@ export async function RepCommissionTable() {
             </div>
             <div className={"stat-card stat-static" + (totals.payable > 0 ? " stat-card-won" : "")}>
               <div className="stat-value mono">{moneyCents(totals.payable)}</div>
-              <div className="stat-label">Backed by cash</div>
+              <div className="stat-label">Payable now</div>
             </div>
             <div className="stat-card stat-static">
               <div className="stat-value mono">{pending.length}</div>
@@ -68,12 +75,12 @@ export async function RepCommissionTable() {
                   <th className="right">Contract</th>
                   <th className="right">Net profit</th>
                   <th className="right">Their share</th>
-                  <th className="right">Backed by cash</th>
+                  <th className="right">Payable</th>
                 </tr>
               </thead>
               <tbody>
                 {priced.map((r) => (
-                  <tr key={r.estimateId + r.repName}>
+                  <tr key={r.estimateId + r.repId}>
                     <td>
                       <div className="ur-name">{r.title || "Untitled job"}</div>
                       <div className="est-tax-note">{r.docNumber}</div>
@@ -88,11 +95,21 @@ export async function RepCommissionTable() {
                       </div>
                     </td>
                     <td className="right mono">{moneyCents(r.shareCents)}</td>
+                    {/* Nil with no reason reads as "you earned nothing".
+                        What is actually true is "you are owed this once
+                        they pay the last invoice" -- a different sentence,
+                        and the only one a rep can act on. */}
                     <td className="right mono">
-                      {moneyCents(r.payableCents)}
-                      <div className="est-tax-note">
-                        {(r.collectedPct * 100).toFixed(0)}% collected
-                      </div>
+                      {r.holds.length === 0 ? (
+                        moneyCents(r.payableCents)
+                      ) : (
+                        <>
+                          {moneyCents(0)}
+                          <div className="est-tax-note">
+                            {r.holds.map((h) => COMMISSION_HOLD_LABEL[h]).join(" · ")}
+                          </div>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -101,7 +118,7 @@ export async function RepCommissionTable() {
                     a figure here would promise a rep commission on the
                     sale rather than on its margin. */}
                 {pending.map((r) => (
-                  <tr key={r.estimateId + r.repName} style={{ opacity: 0.65 }}>
+                  <tr key={r.estimateId + r.repId} style={{ opacity: 0.65 }}>
                     <td>
                       <div className="ur-name">{r.title || "Untitled job"}</div>
                       <div className="est-tax-note">{r.docNumber}</div>
@@ -122,8 +139,8 @@ export async function RepCommissionTable() {
 
       <p className="est-tax-note">
         <strong>Earned</strong> is the share of net profit on jobs that have costs recorded.
-        <strong> Backed by cash</strong> is the part of it covered by money actually collected, so
-        a job signed but unpaid does not read as money in hand.
+        <strong> Payable</strong> is the part of it that has come due: commission is paid once
+        the job is paid in full and the customer has signed the completion certificate.
         {!everyone && " You are seeing your own jobs only."}
       </p>
     </section>

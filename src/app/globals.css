@@ -5407,6 +5407,7 @@ body {
   .estdoc-sign,
   .estdoc-result,
   .estdoc-print-bar,
+  .stmt-filters,
   .gsearch-backdrop,
   .quick-create-backdrop {
     display: none !important;
@@ -5633,6 +5634,26 @@ body {
   display: flex;
   justify-content: flex-end;
   padding: 12px 0 0;
+}
+
+/* Commission statement: the controls that choose whose statement this is
+   and which period. Screen furniture -- hidden by the print rules below,
+   so what comes out of the printer is the document alone. */
+.stmt-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.stmt-quick {
+  display: flex;
+  gap: 8px;
 }
 
 /* Payment schedule (builder) */

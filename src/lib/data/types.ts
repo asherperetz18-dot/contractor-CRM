@@ -2306,6 +2306,65 @@ export function computeRepCommission(input: {
   };
 }
 
+/**
+ * What still stands between an earned commission and a payable one.
+ *
+ * Commission is paid when the job is finished and settled: paid in full,
+ * and the customer has signed the completion certificate. Both, not
+ * either -- money without a signed certificate means the job may still
+ * come back, and a signed certificate without the money means the
+ * company would be paying commission out of its own pocket.
+ *
+ * Held back is not the same as not earned. The rep is owed it; the
+ * clock has not started. Every screen that shows a nil payable also
+ * shows this list, because "you are owed nothing" and "you are owed
+ * $3,000 once they pay the last invoice" are different sentences and a
+ * rep who cannot tell them apart has no idea what to chase.
+ */
+export type CommissionHold = "costs" | "payment" | "certificate";
+
+export function commissionHolds(input: {
+  hasCosts: boolean;
+  collectedCents: number;
+  contractCents: number;
+  certificateSigned: boolean;
+}): CommissionHold[] {
+  const holds: CommissionHold[] = [];
+  if (!input.hasCosts) holds.push("costs");
+  // Paid in full, not mostly paid. A retention still held, or the last
+  // change order unbilled, is exactly the case this rule exists for.
+  if (input.collectedCents < input.contractCents) holds.push("payment");
+  if (!input.certificateSigned) holds.push("certificate");
+  return holds;
+}
+
+export const COMMISSION_HOLD_LABEL: Record<CommissionHold, string> = {
+  costs: "Job costs not recorded yet",
+  payment: "Final payment outstanding",
+  certificate: "Completion certificate not signed",
+};
+
+/**
+ * The date a commission became payable: the later of the last payment
+ * landing and the certificate being signed.
+ *
+ * Which pay period a commission falls into is decided by whichever gate
+ * cleared last, not by when the job was sold. A job signed in March,
+ * paid off in June and signed off in July is July's payroll.
+ */
+export function commissionQualifiedAt(input: {
+  holds: CommissionHold[];
+  lastPaymentAt: string | null;
+  certificateSignedAt: string | null;
+}): string | null {
+  if (input.holds.length > 0) return null;
+  const dates = [input.lastPaymentAt, input.certificateSignedAt].filter(
+    (d): d is string => !!d
+  );
+  if (dates.length === 0) return null;
+  return dates.sort()[dates.length - 1];
+}
+
 export type CommissionInputs = {
   signed: { id: string; lead_id: string; total_cents: number }[];
   dispatcherByLead: Map<string, string>;
