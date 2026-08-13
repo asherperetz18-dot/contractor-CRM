@@ -26,13 +26,39 @@ function nonAsciiComplaint(label: string, value: string): string | null {
   return `${label} has an invalid character.${detail} Re-copy the full value and save it again.`;
 }
 
+// Every value dropped into an HTML email body -- a lead's name, an
+// estimate's title -- can originate from a public lead form or a rep's free
+// text, so it must be neutralized before it lands in markup one of our own
+// senders is the "from" address on. Covers both tag and attribute contexts
+// (quotes included), unlike the TwiML-only escapeXml in the SMS webhook.
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return ch;
+    }
+  });
+}
+
 export type SendEmailResult = { id?: string; error?: string };
+export type SendEmailOptions = { replyTo?: string };
 
 export async function sendEmail(
   to: string,
   subject: string,
   html: string,
-  text: string
+  text: string,
+  options: SendEmailOptions = {}
 ): Promise<SendEmailResult> {
   const env = getEmailEnv();
   if (!env) {
@@ -47,6 +73,9 @@ export async function sendEmail(
   const fromProblem = nonAsciiComplaint("The sender address (EMAIL_FROM)", env.from);
   if (fromProblem) return { error: fromProblem };
 
+  const body: Record<string, unknown> = { from: env.from, to: [to], subject, html, text };
+  if (options.replyTo) body.reply_to = options.replyTo;
+
   // Network faults and malformed values surface as a readable message
   // instead of a 500 from an unhandled throw.
   try {
@@ -56,7 +85,7 @@ export async function sendEmail(
         Authorization: `Bearer ${env.apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from: env.from, to: [to], subject, html, text }),
+      body: JSON.stringify(body),
     });
 
     const json = (await res.json().catch(() => null)) as

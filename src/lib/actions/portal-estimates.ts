@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortalViewer } from "@/lib/portal/session";
+import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
+import { sendEmail, escapeHtml } from "@/lib/email-env";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {
@@ -18,7 +19,60 @@ type EstimateRow = {
   parent_estimate_id: string | null;
   doc_number: string;
   title: string | null;
+  assigned_to: string | null;
 };
+
+/**
+ * Best-effort email to whoever is assigned the lead, once every signer has
+ * signed. Never allowed to affect the sign itself -- the signature is
+ * already committed by the time this runs, so a failed notification here
+ * must not read back to the customer as a failed sign.
+ */
+async function notifyRepOfSignature(
+  admin: ReturnType<typeof createAdminClient>,
+  estimate: EstimateRow
+): Promise<void> {
+  if (!estimate.assigned_to) return;
+
+  const { data: rep } = await admin
+    .from("profiles")
+    .select("email, name")
+    .eq("id", estimate.assigned_to)
+    .maybeSingle<{ email: string | null; name: string | null }>();
+  if (!rep?.email) return;
+
+  const link = `${portalBaseUrl()}/estimates/${estimate.id}`;
+  const label =
+    estimate.kind === "change_order"
+      ? "change order"
+      : estimate.kind === "completion"
+        ? "completion certificate"
+        : "estimate";
+  const subject = `${estimate.doc_number} was just signed`;
+  const greeting = rep.name ? rep.name.split(" ")[0] : "there";
+  const text = [
+    `Hi ${greeting},`,
+    ``,
+    `Your customer just signed ${label} ${estimate.doc_number}.`,
+    `View it here: ${link}`,
+  ].join("\n");
+
+  // rep.name is a staff-entered profile field and label is one of three
+  // hardcoded strings, but escaped anyway rather than judging each value
+  // safe on its own -- doc_number is the one that could ever change shape,
+  // and consistency here is cheaper than re-litigating it later.
+  const safeGreeting = escapeHtml(greeting);
+  const safeDocNumber = escapeHtml(estimate.doc_number);
+  const safeLink = escapeHtml(link);
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
+      <p>Hi ${safeGreeting},</p>
+      <p>Your customer just signed ${label} <strong>${safeDocNumber}</strong>.</p>
+      <p><a href="${safeLink}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">View it</a></p>
+    </div>
+  `;
+  await sendEmail(rep.email, subject, html, text);
+}
 
 /**
  * Loads an estimate on behalf of the signed-in customer.
@@ -37,7 +91,9 @@ async function loadForViewer(
   const admin = createAdminClient();
   const { data } = await admin
     .from("estimates")
-    .select("id, lead_id, company_id, status, total_cents, expires_at, kind, parent_estimate_id, doc_number, title")
+    .select(
+      "id, lead_id, company_id, status, total_cents, expires_at, kind, parent_estimate_id, doc_number, title, assigned_to"
+    )
     .eq("id", estimateId)
     .maybeSingle<EstimateRow>();
 
@@ -206,6 +262,13 @@ export async function signEstimateAsCustomer(
     // missed -- and a won job sitting in "Appointment Scheduled" is
     // missing from the pipeline's won figure.
     await advanceStageOnEstimateSigned(admin, estimate.lead_id, estimate.company_id);
+
+    try {
+      await notifyRepOfSignature(admin, estimate);
+    } catch {
+      // Swallowed on purpose -- see notifyRepOfSignature's doc comment.
+      // The signature above has already been committed regardless.
+    }
   }
 
   revalidatePath("/estimates");
