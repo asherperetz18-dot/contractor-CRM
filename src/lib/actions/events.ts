@@ -23,7 +23,31 @@ function toRow(input: EventInput) {
   };
 }
 
-export type ConfirmationTouched = { customer: boolean; rep: boolean };
+export type ConfirmationTouched = { customer: boolean; rep: boolean; status?: boolean };
+
+/**
+ * What the server currently holds for the three fields a text message can
+ * change underneath an open form.
+ *
+ * The calendar renders once. A rep or customer replying YES a minute
+ * later changes the row, and the appointment somebody then opens still
+ * shows what the page loaded -- which is how a confirmed appointment sat
+ * there reading "Unconfirmed" while the database said otherwise.
+ */
+export async function getEventLiveState(
+  eventId: string
+): Promise<{ customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus } | null> {
+  const profile = await getCurrentProfile();
+  if (!profile) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("events")
+    .select("customer_confirmed, rep_confirmed, status")
+    .eq("id", eventId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus }>();
+  return data ?? null;
+}
 
 function revalidateCalendarRoutes() {
   revalidatePath("/calendar");
@@ -105,6 +129,14 @@ export async function updateEvent(
     ...(confirmationTouched?.rep ? { rep_confirmed: input.rep_confirmed } : {}),
   };
   const row = toRow(input);
+  // Status joins the confirmation flags in only being written when somebody
+  // actually chose it. A customer's YES now sets the status as well as the
+  // flag, so a form opened beforehand and saved afterwards would have
+  // quietly put a Confirmed appointment back to New -- undoing the reply
+  // through a field nobody touched.
+  if (confirmationTouched && !confirmationTouched.status) {
+    delete (row as { status?: unknown }).status;
+  }
   const { error } = await supabase
     .from("events")
     .update({

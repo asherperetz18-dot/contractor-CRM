@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
@@ -41,6 +41,7 @@ import {
   deleteEvent,
   markRepInfoSent,
   setEventResult,
+  getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
@@ -188,7 +189,42 @@ export function EventForm({
   // Tracks whether the user actually toggled each confirmation badge, so a
   // form left open while a rep/client texts YES doesn't save the stale
   // value back over their reply.
-  const [confirmTouched, setConfirmTouched] = useState({ customer: false, rep: false });
+  const [confirmTouched, setConfirmTouched] = useState({
+    customer: false,
+    rep: false,
+    status: false,
+  });
+
+  /**
+   * Re-reads what the server holds the moment this opens.
+   *
+   * The calendar renders once and then sits there. A rep texting YES a
+   * minute later changes the row, but the appointment opened afterwards
+   * still showed what the page had loaded -- a confirmed appointment
+   * reading "Unconfirmed" while the database said otherwise.
+   *
+   * Anything the person has already touched is left alone, so this can
+   * never overwrite a change being made right now.
+   */
+  useEffect(() => {
+    if (!event?.id) return;
+    let cancelled = false;
+    getEventLiveState(event.id).then((live) => {
+      if (cancelled || !live) return;
+      setForm((f) => ({
+        ...f,
+        customer_confirmed: confirmTouched.customer ? f.customer_confirmed : live.customer_confirmed,
+        rep_confirmed: confirmTouched.rep ? f.rep_confirmed : live.rep_confirmed,
+        status: confirmTouched.status ? f.status : live.status,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately only on the appointment: this is a snapshot taken when
+    // the form opens, not a subscription that fights the person typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id]);
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -631,7 +667,13 @@ export function EventForm({
             <Field label="Status">
               <select
                 value={form.status}
-                onChange={(e) => set("status", e.target.value as EventStatus)}
+                onChange={(e) => {
+                  // Marks status as chosen, so the save writes it. Left
+                  // untouched it is not written at all, which is what
+                  // stops a stale form undoing a texted confirmation.
+                  setConfirmTouched((t) => ({ ...t, status: true }));
+                  set("status", e.target.value as EventStatus);
+                }}
               >
                 {EVENT_STATUSES.map((s) => (
                   <option key={s} value={s}>
