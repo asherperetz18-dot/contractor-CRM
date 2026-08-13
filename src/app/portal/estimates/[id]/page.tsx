@@ -122,7 +122,7 @@ export default async function PortalEstimatePage({
         sections={sectionRows ?? []}
         company={company ?? null}
         customer={viewer.lead}
-        team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}
+        team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
         parent={await getParentContract(estimate.parent_estimate_id)}
       />
       <DepositPayment

@@ -89,7 +89,7 @@ export default async function EstimatePreviewPage({
           sections={(await getEstimateGroups(id)).groups ?? []}
           company={company ?? null}
           customer={lead ?? null}
-          team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to)}
+          team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
           parent={await getParentContract(estimate.parent_estimate_id)}
         />
       </div>
