@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
+import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
@@ -167,17 +168,16 @@ export async function signEstimateAsCustomer(
   // Kept as evidence of who signed from where -- the whole point of an
   // e-signature is being able to show this later.
   const head = await headers();
-  const ip =
-    head.get("x-forwarded-for")?.split(",")[0]?.trim() || head.get("x-real-ip") || null;
-
   const now = new Date().toISOString();
+  const evidence = collectSignatureEvidence(head, now);
+
   const { data: signed, error } = await admin
     .from("estimate_signers")
     .update({
-      signed_at: now,
+      signed_at: evidence.signedAt,
       signature_name: name,
-      signature_ip: ip,
-      signature_user_agent: head.get("user-agent"),
+      signature_ip: evidence.ip,
+      signature_user_agent: evidence.userAgent,
     })
     .eq("id", mine.id)
     .select("id");
