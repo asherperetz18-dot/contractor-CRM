@@ -6,6 +6,7 @@ import { useTimeFormat } from "@/components/time-format-context";
 import {
   EVENT_STATUSES,
   EVENT_STATUS_COLOR,
+  eventVisualState,
   formatClock,
   formatTimeRange,
   stageColor,
@@ -302,10 +303,20 @@ export function CalendarBoard({
                     key={ev.id}
                     className={
                       "cal-event-chip" +
+                      ` cal-ev-${eventVisualState(ev)}` +
                       (canWrite ? " cal-event-draggable" : "") +
                       (draggingId === ev.id ? " cal-event-dragging" : "")
                     }
                     style={{ borderLeftColor: stageColor(calendars, ev.event_type) }}
+                    title={
+                      eventVisualState(ev) === "cancelled"
+                        ? "Cancelled"
+                        : eventVisualState(ev) === "noshow"
+                          ? "Customer did not show"
+                          : ev.customer_confirmed
+                            ? "Customer confirmed"
+                            : "Not confirmed yet"
+                    }
                     draggable={canWrite}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", ev.id);
@@ -321,6 +332,11 @@ export function CalendarBoard({
                       setEditing(ev);
                     }}
                   >
+                    {/* The dot sits alongside the calendar colour rather
+                        than replacing it, so one chip can say both what
+                        kind of visit it is and whether the customer has
+                        confirmed. */}
+                    <span className="cal-ev-dot" />
                     <span className="mono cal-event-time">{formatClock(ev.time, timeFormat)}</span>{" "}
                     {ev.title}
                   </div>
@@ -348,7 +364,11 @@ export function CalendarBoard({
     return (
       <div className="schedule-list">
         {list.map((ev) => (
-          <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
+          <div
+            className={"schedule-row cal-ev-" + eventVisualState(ev)}
+            key={ev.id}
+            onClick={() => setEditing(ev)}
+          >
             <div className="schedule-date">
               <span className="mono schedule-time">{formatTimeRange(ev.time, ev.end_time, timeFormat)}</span>
             </div>

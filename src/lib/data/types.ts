@@ -662,6 +662,34 @@ export const EVENT_STATUSES: EventStatus[] = [
   "No-show",
   "Cancelled",
 ];
+export type EventVisual = "cancelled" | "noshow" | "confirmed" | "pending";
+
+/**
+ * How an appointment should read on the calendar.
+ *
+ * Deliberately not a colour: the chip's colour already carries which
+ * calendar the appointment belongs to, and Job Visit is green. Painting
+ * confirmations green too would make a green block mean either "job
+ * visit" or "confirmed estimate", which is worse than not marking it.
+ *
+ * Confirmation comes from customer_confirmed, not from status. The status
+ * dropdown is set by hand; customer_confirmed is what the "reply YES to
+ * confirm" text actually sets. On this calendar 30 appointments are
+ * confirmed by the customer while only 7 carry the Confirmed status, so
+ * reading status would show most of the week as unconfirmed when the
+ * customer has already said yes.
+ *
+ * Status still wins for Cancelled and No-show, because those are
+ * decisions somebody records rather than something the customer replies.
+ */
+export function eventVisualState(
+  event: Pick<Event, "status" | "customer_confirmed">
+): EventVisual {
+  if (event.status === "Cancelled") return "cancelled";
+  if (event.status === "No-show") return "noshow";
+  return event.customer_confirmed ? "confirmed" : "pending";
+}
+
 export const EVENT_STATUS_COLOR: Record<EventStatus, string> = {
   New: "#7C8798",
   Confirmed: "#2F855A",

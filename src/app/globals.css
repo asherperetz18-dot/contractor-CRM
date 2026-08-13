@@ -2145,6 +2145,56 @@ body {
 .cal-event-chip:hover {
   background: #d6e4ef;
 }
+
+/* Confirmation, marked without taking the colour channel.
+   The chip's border-left is the calendar -- Estimate blue, Job Visit
+   green -- so painting a confirmed appointment green would make a green
+   chip mean either "job visit" or "confirmed". The dot is a second
+   channel, so one chip carries both facts. */
+.cal-ev-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex: none;
+}
+/* Filled: the customer has said yes. */
+.cal-ev-confirmed .cal-ev-dot {
+  background: #2f855a;
+}
+/* Hollow: nobody has confirmed. This is the one worth chasing, so it
+   reads as an empty box rather than a colour competing for attention. */
+.cal-ev-pending .cal-ev-dot {
+  background: transparent;
+  border: 1.5px solid #97a3b0;
+}
+.cal-ev-noshow .cal-ev-dot {
+  background: #c7691b;
+}
+
+/* Cancelled is struck through and faded, not painted red. Red is the
+   loudest thing on the page and means "deal with this now"; a cancelled
+   appointment is the opposite -- a non-event, kept so nobody wonders
+   where it went. Loud red on four cancellations would pull the eye to
+   the only blocks on the calendar that need nothing. */
+.cal-ev-cancelled {
+  opacity: 0.5;
+}
+.cal-ev-cancelled .cal-event-time,
+.cal-ev-cancelled .schedule-title,
+.cal-event-chip.cal-ev-cancelled {
+  text-decoration: line-through;
+}
+.cal-ev-cancelled .cal-ev-dot {
+  background: #c0392b;
+}
+/* The agenda rows carry a status badge already, so they need the strike
+   and the fade but not a second dot. */
+.schedule-row.cal-ev-cancelled .schedule-meta {
+  text-decoration: none;
+}
 .cal-event-time {
   font-size: 10px;
 }
