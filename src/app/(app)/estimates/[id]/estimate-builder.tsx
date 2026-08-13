@@ -142,6 +142,9 @@ export function EstimateBuilder({
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // The section the generator was opened from, so accepted lines land in
+  // it. Null means the main button -- lines land ungrouped, as before.
+  const [generateInto, setGenerateInto] = useState<string | null>(null);
   const [groups, setGroups] = useState<EstimateGroup[]>([]);
   const [voiding, setVoiding] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -808,6 +811,10 @@ export function EstimateBuilder({
         subtotals={sectionSubtotals}
         locked={locked}
         onChanged={reloadGroups}
+        onGenerate={(groupId) => {
+          setGenerateInto(groupId);
+          setGenerating(true);
+        }}
       />
 
       <div className="est-totals">
@@ -983,7 +990,11 @@ export function EstimateBuilder({
 
       {generating && (
         <GenerateLinesModal
-          onClose={() => setGenerating(false)}
+          sectionName={groups.find((g) => g.id === generateInto)?.name ?? null}
+          onClose={() => {
+            setGenerating(false);
+            setGenerateInto(null);
+          }}
           onAccept={(accepted: AcceptedLine[]) => {
             setRows((prev) => {
               // A single untouched blank starter row is replaced rather
@@ -996,6 +1007,11 @@ export function EstimateBuilder({
                 ...base,
                 ...accepted.map((a) => ({
                   ...blankRow(),
+                  // Straight into the section the generator was opened
+                  // from. Landing ungrouped meant assigning twenty
+                  // dropdowns by hand, which in practice meant not using
+                  // sections at all.
+                  groupId: generateInto,
                   name: a.name,
                   description: a.description,
                   quantity: a.quantity,
@@ -1006,6 +1022,7 @@ export function EstimateBuilder({
             });
             setSaved(null);
             setGenerating(false);
+            setGenerateInto(null);
           }}
         />
       )}

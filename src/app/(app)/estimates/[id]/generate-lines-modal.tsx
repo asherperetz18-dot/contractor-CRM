@@ -24,9 +24,15 @@ export type AcceptedLine = {
 export function GenerateLinesModal({
   onClose,
   onAccept,
+  sectionName,
 }: {
   onClose: () => void;
   onAccept: (lines: AcceptedLine[]) => void;
+  /** Set when generating into a section, so the brief and the button say
+   *  where the work is going. Generated lines used to land ungrouped
+   *  whatever was on screen, which meant assigning twenty dropdowns by
+   *  hand and, in practice, giving up on sections. */
+  sectionName?: string | null;
 }) {
   const [brief, setBrief] = useState("");
   const [lines, setLines] = useState<ProposedLine[] | null>(null);
@@ -58,10 +64,14 @@ export function GenerateLinesModal({
       <div className="modal scope-modal" onClick={(e) => e.stopPropagation()}>
         <div className="scope-modal-head">
           <div>
-            <h2 className="est-pay-title">Generate priced estimate</h2>
+            <h2 className="est-pay-title">
+              {sectionName ? `Generate lines for ${sectionName}` : "Generate priced estimate"}
+            </h2>
             <p className="est-pay-sub">
-              Paste the scope of work, or describe the job. Nothing is added until you review it
-              below.
+              {sectionName
+                ? `Describe the ${sectionName} work. Everything you accept lands in that section.`
+                : "Paste the scope of work, or describe the job."}{" "}
+              Nothing is added until you review it below.
             </p>
           </div>
         </div>
@@ -190,6 +200,7 @@ export function GenerateLinesModal({
                 disabled={pending || selected.length === 0}
               >
                 Add {selected.length} line{selected.length === 1 ? "" : "s"}
+                {sectionName ? ` to ${sectionName}` : ""}
               </button>
             </div>
           </>

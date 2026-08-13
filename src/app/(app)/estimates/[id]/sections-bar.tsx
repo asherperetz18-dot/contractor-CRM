@@ -22,6 +22,7 @@ export function SectionsBar({
   subtotals,
   locked,
   onChanged,
+  onGenerate,
 }: {
   estimateId: string;
   groups: EstimateGroup[];
@@ -29,6 +30,8 @@ export function SectionsBar({
   subtotals: Map<string, number>;
   locked: boolean;
   onChanged: () => void;
+  /** Opens the generator aimed at this section. */
+  onGenerate: (groupId: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -80,6 +83,20 @@ export function SectionsBar({
                 />
               )}
               <span className="mono">{moneyCents(subtotals.get(g.id) ?? 0)}</span>
+              {/* Generating from the section is the whole workflow: name
+                  the room, describe the work, and the lines land in it.
+                  The button at the bottom of the line items still exists
+                  and still produces ungrouped lines. */}
+              {!locked && (
+                <button
+                  className="btn-ghost small"
+                  title={`Generate lines for ${g.name}`}
+                  disabled={pending}
+                  onClick={() => onGenerate(g.id)}
+                >
+                  ✨
+                </button>
+              )}
               {!locked && (
                 <button
                   className="btn-ghost est-row-remove"
