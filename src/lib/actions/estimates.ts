@@ -9,6 +9,7 @@ import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/porta
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
+import { sendEmail } from "@/lib/email-env";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -23,6 +24,7 @@ import {
   splitEvenlyCents,
   computeEstimateTotals,
   lineTotalCents,
+  moneyCents,
   parseQuantity,
   paidTotalCents,
   type EstimateStatus,
@@ -63,6 +65,40 @@ type SendToCustomerRow = {
   doc_number: string;
   title: string;
 };
+
+function buildEstimateEmail(params: {
+  firstName: string | null;
+  companyName: string;
+  docNumber: string;
+  title: string | null;
+  totalCents: number;
+  link: string;
+}) {
+  const { firstName, companyName, docNumber, title, totalCents, link } = params;
+  const greeting = firstName || "there";
+  const amount = moneyCents(totalCents);
+  const subject = `${companyName}: your estimate ${docNumber} is ready to review`;
+  return {
+    subject,
+    text: [
+      `Hi ${greeting},`,
+      ``,
+      `${companyName} has sent you an estimate${title ? ` for "${title}"` : ""} (${docNumber}), totaling ${amount}.`,
+      `Review and sign it here:`,
+      link,
+      ``,
+      `This link works once and expires in 7 days.`,
+    ].join("\n"),
+    html: `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
+      <p>Hi ${greeting},</p>
+      <p><strong>${companyName}</strong> has sent you an estimate${title ? ` for "${title}"` : ""} (${docNumber}), totaling <strong>${amount}</strong>.</p>
+      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Review &amp; Sign</a></p>
+      <p style="color:#666;font-size:13px">This link works once and expires in 7 days.</p>
+    </div>
+  `,
+  };
+}
 
 type PaymentEstimateRow = {
   id: string;
@@ -605,15 +641,21 @@ export async function voidEstimate(
   return { cancelledPhases: cancelled?.length ?? 0, collectedCents };
 }
 
-// Sends the estimate to the customer as a portal link by text.
+// Sends the estimate to the customer as a portal link, by text or email.
 //
 // Reuses the client portal rather than inventing a second customer-facing
 // auth: the token, session, address challenge and access window all
 // already exist and are already hardened. The link deep-links straight to
 // the document instead of the portal home.
+//
+// One channel per call, not both like sendPortalLink: unlike a portal
+// invite, this send has one-time side effects (the contractor "signs" at
+// send time, the pipeline stage advances, the lead's value is written) that
+// must not fire twice for a single click.
 export async function sendEstimateToCustomer(
-  estimateId: string
-): Promise<{ error?: string; sentTo?: string }> {
+  estimateId: string,
+  channel: "text" | "email"
+): Promise<{ error?: string; sentTo?: string; channel?: "text" | "email" }> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
 
@@ -630,14 +672,24 @@ export async function sendEstimateToCustomer(
 
   const { data: lead } = await admin
     .from("leads")
-    .select("id, first_name, phone, company_id")
+    .select("id, first_name, phone, email, company_id")
     .eq("id", estimate.lead_id)
-    .maybeSingle<{ id: string; first_name: string | null; phone: string | null; company_id: string }>();
+    .maybeSingle<{
+      id: string;
+      first_name: string | null;
+      phone: string | null;
+      email: string | null;
+      company_id: string;
+    }>();
   if (!lead) return { error: "Customer not found." };
-  if (!lead.phone) return { error: "This customer has no phone number on file." };
 
-  const twilioEnv = await getTwilioForCompany(guard.companyId);
-  if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
+  const twilioEnv = channel === "text" ? await getTwilioForCompany(guard.companyId) : null;
+  if (channel === "text") {
+    if (!lead.phone) return { error: "This customer has no phone number on file." };
+    if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
+  } else {
+    if (!lead.email) return { error: "This customer has no email address on file." };
+  }
 
   const { data: companyRow } = await admin
     .from("company_profile")
@@ -659,11 +711,53 @@ export async function sendEstimateToCustomer(
   const next = encodeURIComponent(`/portal/estimates/${estimateId}`);
   const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}&next=${next}`;
 
-  // Plain hyphens and no emoji: an em dash or emoji flips the message to
-  // UCS-2 and cuts each segment from 160 characters to 70.
-  const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
-  const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
-  if (sent.error) return { error: `Text failed (${sent.error})` };
+  const sender = await getCurrentProfile();
+
+  let sentTo: string;
+  let logRow: {
+    from_number: string;
+    to_number: string;
+    body: string;
+    twilio_sid: string | null;
+    channel: string;
+  };
+
+  if (channel === "text") {
+    // Plain hyphens and no emoji: an em dash or emoji flips the message to
+    // UCS-2 and cuts each segment from 160 characters to 70.
+    const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
+    const sent = await sendTwilioSms(lead.phone!, body, twilioEnv!);
+    if (sent.error) return { error: `Text failed (${sent.error})` };
+    sentTo = lead.phone!;
+    logRow = {
+      from_number: twilioEnv!.phoneNumber,
+      to_number: lead.phone!,
+      body,
+      twilio_sid: sent.sid || null,
+      channel: "sms",
+    };
+  } else {
+    const mail = buildEstimateEmail({
+      firstName: lead.first_name,
+      companyName,
+      docNumber: estimate.doc_number,
+      title: estimate.title,
+      totalCents: estimate.total_cents,
+      link,
+    });
+    const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
+      replyTo: sender?.email ?? undefined,
+    });
+    if (sent.error) return { error: `Email failed (${sent.error})` };
+    sentTo = lead.email!;
+    logRow = {
+      from_number: "email",
+      to_number: lead.email!,
+      body: `[Estimate emailed] ${mail.subject}`,
+      twilio_sid: sent.id || null,
+      channel: "email",
+    };
+  }
 
   await fillContractMoney(estimateId, guard.companyId);
 
@@ -681,7 +775,6 @@ export async function sendEstimateToCustomer(
   // "1 of 2 signed" with the rep already on them. Recording it at send
   // time means the customer sees a document the contractor has stood
   // behind, not a blank pair of signature lines.
-  const sender = await getCurrentProfile();
   if (sender) {
     await admin.from("estimate_signers").insert({
       company_id: guard.companyId,
@@ -700,13 +793,9 @@ export async function sendEstimateToCustomer(
   await admin.from("sms_messages").insert({
     lead_id: lead.id,
     direction: "outbound",
-    from_number: twilioEnv.phoneNumber,
-    to_number: lead.phone,
     sent_by: guard.userId,
-    body,
-    twilio_sid: sent.sid || null,
     company_id: guard.companyId,
-    channel: "sms",
+    ...logRow,
   });
 
   await admin
@@ -715,7 +804,7 @@ export async function sendEstimateToCustomer(
     .eq("id", lead.id);
 
   revalidateEstimates(estimateId);
-  return { sentTo: lead.phone };
+  return { sentTo, channel };
 }
 
 export type PaymentInput = { name: string; description?: string | null; amount_cents: number };

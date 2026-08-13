@@ -288,20 +288,21 @@ export function EstimateBuilder({
     });
   }
 
-  // Texting the portal link is the normal path; marking it sent without
-  // texting is the fallback for a customer with no mobile number, or one
-  // the rep is handing a printout to in person.
-  function send(deliver: "text" | "manual") {
+  // Texting the portal link is the normal path; emailing it is the
+  // alternative for a customer who prefers or only has email; marking it
+  // sent without either is the fallback for a customer with no mobile
+  // number or email, or one the rep is handing a printout to in person.
+  function send(deliver: "text" | "email" | "manual") {
     setError(null);
     startTransition(async () => {
       const res =
-        deliver === "text"
-          ? await sendEstimateToCustomer(estimate.id)
-          : await markEstimateSent(estimate.id);
+        deliver === "manual"
+          ? await markEstimateSent(estimate.id)
+          : await sendEstimateToCustomer(estimate.id, deliver);
       if (res.error) return setError(res.error);
       setSaved(
-        deliver === "text" && "sentTo" in res && res.sentTo
-          ? `Texted to ${res.sentTo}`
+        "sentTo" in res && res.sentTo
+          ? `${deliver === "email" ? "Emailed" : "Texted"} to ${res.sentTo}`
           : "Marked as sent"
       );
       router.refresh();
@@ -352,9 +353,16 @@ export function EstimateBuilder({
                 className="btn-ghost"
                 onClick={() => save(() => send("manual"))}
                 disabled={pending}
-                title="Mark as sent without texting -- for a customer with no mobile number"
+                title="Mark as sent without texting or emailing -- for a customer with no mobile number or email"
               >
                 Mark Sent
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => save(() => send("email"))}
+                disabled={pending}
+              >
+                Save &amp; Email to Customer
               </button>
               <button
                 className="btn-primary"
