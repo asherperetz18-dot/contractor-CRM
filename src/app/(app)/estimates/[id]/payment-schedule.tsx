@@ -20,7 +20,21 @@ import { generateEstimateSchedule, saveEstimatePayments } from "@/lib/actions/es
 import { PhaseBilling } from "./phase-billing";
 import { RecordPayment } from "./record-payment";
 
-type Row = { key: string; name: string; description: string; amount: string };
+type Row = {
+  key: string;
+  name: string;
+  description: string;
+  amount: string;
+  /**
+   * What the rep typed in the percent box, held raw while they are in it.
+   *
+   * Null means "derive it from the amount", which is the resting state.
+   * Without this, typing "3" in a 33% field would immediately be
+   * rewritten to "3.00%" by the recalculation and the second digit would
+   * never land.
+   */
+  percentDraft?: string | null;
+};
 
 let seq = 0;
 const newKey = () => `pay-${(seq += 1)}`;
@@ -280,8 +294,52 @@ export function PaymentSchedule({
                     onChange={(e) => patch(r.key, { description: e.target.value })}
                   />
                 </td>
-                <td className="right mono" data-label="Percent">
-                  {pct === null ? "—" : `${pct.toFixed(2)}%`}
+                <td className="right" data-label="Percent">
+                  {/* Typeable, not just displayed. Contractors think in
+                      percentages -- 10 / 30 / 30 / 20 / 10 -- and were
+                      having to do the arithmetic themselves and type the
+                      dollars. The amount stays the stored figure: a
+                      contract commits the customer to dollars, so the
+                      percentage is a way of entering one, not a second
+                      source of truth that could drift from it. */}
+                  {locked ? (
+                    <span className="mono">{pct === null ? "—" : `${pct.toFixed(2)}%`}</span>
+                  ) : (
+                    <input
+                      className="est-item-price"
+                      inputMode="decimal"
+                      // The typed text while in the box, the computed
+                      // figure the rest of the time.
+                      value={
+                        r.percentDraft ?? (pct === null ? "" : pct.toFixed(2))
+                      }
+                      placeholder={totalCents ? "0.00" : "—"}
+                      disabled={!totalCents}
+                      title={
+                        totalCents
+                          ? "Type a percentage and the amount follows"
+                          : "Add a priced line item first — there is nothing to take a percentage of"
+                      }
+                      onChange={(e) => {
+                        const typed = e.target.value;
+                        const value = Number(typed.replace(/[^0-9.]/g, ""));
+                        patch(r.key, {
+                          percentDraft: typed,
+                          // Rounded to the cent. Three phases at 33.33%
+                          // of $80,000 leave $8 unaccounted, which the
+                          // balance line below already reports and the
+                          // "put it on the last phase" button clears.
+                          amount: Number.isFinite(value)
+                            ? centsToInput(Math.round((totalCents * value) / 100))
+                            : r.amount,
+                        });
+                      }}
+                      // Released on blur so the cell goes back to showing
+                      // what the amount actually is -- including after the
+                      // difference has been applied elsewhere.
+                      onBlur={() => patch(r.key, { percentDraft: null })}
+                    />
+                  )}
                 </td>
                 <td className="right" data-label="Amount">
                   <input
