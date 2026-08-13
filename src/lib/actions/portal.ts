@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import {
   completeChallenge,
   createLoginToken,
@@ -288,11 +289,9 @@ export async function portalSetAppointmentConfirmed(
     .maybeSingle();
   if (!owned) return { error: "That appointment isn't available." };
 
-  const { error } = await admin
-    .from("events")
-    .update({ customer_confirmed: confirmed })
-    .eq("id", eventId);
-  if (error) return { error: error.message };
+  // Same helper as the text reply, so confirming from the portal and
+  // confirming by SMS leave the appointment in the same state.
+  await applyCustomerConfirmation(admin, eventId, confirmed);
 
   await admin.from("lead_notes").insert({
     lead_id: viewer.lead.id,
