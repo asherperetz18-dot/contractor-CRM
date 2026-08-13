@@ -8,6 +8,7 @@ import {
   depositCents,
   moneyCents,
   paymentPercentOfTotal,
+  redistributePhases,
   scheduleBalance,
   splitEvenlyCents,
   depositPayment,
@@ -68,6 +69,14 @@ export function PaymentSchedule({
   onChanged: () => void;
 }) {
   const [rows, setRows] = useState<Row[]>(payments.map(toRow));
+  /**
+   * The phase touched most recently, which Auto adjust holds fixed while
+   * the others absorb the difference.
+   *
+   * Without it the button would have to guess: scaling every phase to fit
+   * would undo the very change that unbalanced the schedule.
+   */
+  const [lastEdited, setLastEdited] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -166,6 +175,40 @@ export function PaymentSchedule({
     if (rows.length === 0) return;
     const amounts = splitEvenlyCents(balance, rows.length);
     setRows((prev) => prev.map((r, i) => ({ ...r, amount: centsToInput(amounts[i] ?? 0) })));
+    setSaved(null);
+  }
+
+  /**
+   * Rebalances the schedule around the phase just edited.
+   *
+   * Set a phase to 30% and press this: the others share what is left, in
+   * proportion to what they already were, so 30/30/20/10 keeps its shape
+   * instead of flattening into equal parts.
+   *
+   * The deposit is not in `rows` and cannot move. It is computed from the
+   * company's percentage and held under California's $1,000 home
+   * improvement cap -- adjusting it to make a phase fit would be the one
+   * change nobody is allowed to make.
+   */
+  function autoAdjust() {
+    if (rows.length < 2) return;
+    // Falls back to the last row, which is the one people treat as the
+    // balancing phase anyway.
+    const anchorKey = rows.some((r) => r.key === lastEdited)
+      ? lastEdited!
+      : rows[rows.length - 1].key;
+    const anchor = rows.find((r) => r.key === anchorKey)!;
+    const moved = redistributePhases({
+      balanceCents: balance,
+      targetKey: anchorKey,
+      targetCents: centsFromInput(anchor.amount),
+      baseOthers: rows
+        .filter((r) => r.key !== anchorKey)
+        .map((r) => ({ key: r.key, amountCents: centsFromInput(r.amount) })),
+    });
+    setRows((prev) =>
+      prev.map((r) => (moved.has(r.key) ? { ...r, amount: centsToInput(moved.get(r.key)!) } : r))
+    );
     setSaved(null);
   }
 
@@ -323,20 +366,20 @@ export function PaymentSchedule({
                       onChange={(e) => {
                         const typed = e.target.value;
                         const value = Number(typed.replace(/[^0-9.]/g, ""));
+                        setLastEdited(r.key);
                         patch(r.key, {
                           percentDraft: typed,
-                          // Rounded to the cent. Three phases at 33.33%
-                          // of $80,000 leave $8 unaccounted, which the
-                          // balance line below already reports and the
-                          // "put it on the last phase" button clears.
+                          // Rounded to the cent. The other phases are left
+                          // alone -- rewriting four of them on every
+                          // keystroke would move money the rep is not
+                          // looking at. Auto adjust does it on request.
                           amount: Number.isFinite(value)
                             ? centsToInput(Math.round((totalCents * value) / 100))
                             : r.amount,
                         });
                       }}
                       // Released on blur so the cell goes back to showing
-                      // what the amount actually is -- including after the
-                      // difference has been applied elsewhere.
+                      // what the amount actually is.
                       onBlur={() => patch(r.key, { percentDraft: null })}
                     />
                   )}
@@ -347,7 +390,13 @@ export function PaymentSchedule({
                     inputMode="decimal"
                     value={r.amount}
                     disabled={locked}
-                    onChange={(e) => patch(r.key, { amount: e.target.value })}
+                    onChange={(e) => {
+                      // Tracked here too: typing a dollar figure is just
+                      // as much "this is the phase I mean" as typing a
+                      // percentage, and Auto adjust should hold it.
+                      setLastEdited(r.key);
+                      patch(r.key, { amount: e.target.value });
+                    }}
                   />
                 </td>
                 <td>
@@ -404,6 +453,22 @@ export function PaymentSchedule({
             <span className="est-margin-label">Difference</span>
             <span className="mono">{moneyCents(bal.differenceCents)}</span>
           </div>
+          {/* Beside the difference, which is where the problem is being
+              read. Offered even when balanced, so it can also be used to
+              tidy a schedule that adds up but is not shaped how you want
+              it. */}
+          {!locked && rows.length > 1 && (
+            <div>
+              <button
+                className="btn-ghost"
+                onClick={autoAdjust}
+                disabled={pending}
+                title="Keeps the phase you just changed and shares the rest across the others, in proportion. The deposit is never touched."
+              >
+                Auto adjust
+              </button>
+            </div>
+          )}
         </div>
         <div className="est-pay-verdict">
           {bal.balanced ? (

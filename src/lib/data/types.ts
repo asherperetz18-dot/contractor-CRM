@@ -1850,6 +1850,62 @@ export function photosByItem(photos: EstimatePhoto[]): Map<string | null, Estima
   return map;
 }
 
+/**
+ * Sets one phase and lets the others absorb the difference.
+ *
+ * The deposit is deliberately not a party to this. It is computed from
+ * the company's percentage and held under California's $1,000 home
+ * improvement cap, so `balanceCents` is what is left after it and the
+ * phases divide only that.
+ *
+ * The others move in proportion to what they were, so a schedule of
+ * 30/30/20/10 keeps its shape when one phase changes rather than
+ * flattening into equal parts.
+ *
+ * `baseOthers` is a snapshot taken when editing began, not the current
+ * amounts. Recomputing from live values on every keystroke would feed
+ * each result into the next: typing "3" then "0" would redistribute
+ * twice, from already-redistributed figures, and the original ratios
+ * would be gone by the second digit.
+ */
+export function redistributePhases(input: {
+  balanceCents: number;
+  targetKey: string;
+  targetCents: number;
+  /** Amounts as they were when editing started, excluding the target. */
+  baseOthers: { key: string; amountCents: number }[];
+}): Map<string, number> {
+  const out = new Map<string, number>();
+  // Never negative: a phase cannot bill less than nothing, so an entry
+  // larger than the whole balance leaves the others at zero and the
+  // difference is reported rather than hidden in a negative line.
+  const remaining = Math.max(0, input.balanceCents - input.targetCents);
+  const baseTotal = input.baseOthers.reduce((s, o) => s + o.amountCents, 0);
+
+  if (input.baseOthers.length === 0) return out;
+
+  if (baseTotal <= 0) {
+    // Nothing to be proportional to -- an even split is the only
+    // defensible reading of "share what is left".
+    const each = splitEvenlyCents(remaining, input.baseOthers.length);
+    input.baseOthers.forEach((o, i) => out.set(o.key, each[i] ?? 0));
+    return out;
+  }
+
+  let assigned = 0;
+  input.baseOthers.forEach((o, i) => {
+    const isLast = i === input.baseOthers.length - 1;
+    // The last one takes the rounding remainder, so the schedule lands
+    // exactly on the balance instead of a cent short.
+    const cents = isLast
+      ? remaining - assigned
+      : Math.round((remaining * o.amountCents) / baseTotal);
+    out.set(o.key, Math.max(0, cents));
+    assigned += cents;
+  });
+  return out;
+}
+
 export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
 
 /**
