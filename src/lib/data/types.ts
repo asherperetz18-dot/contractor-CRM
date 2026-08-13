@@ -171,6 +171,7 @@ export type PageKey =
   | "documents"
   | "payments"
   | "commissions"
+  | "sales-commission"
   | "calendar"
   | "schedule"
   | "contracts";
@@ -225,7 +226,17 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
-  { key: "commissions", label: "Commissions", href: "/commissions", group: "General" },
+  // Two separate schemes, two separate screens. The dispatcher earns a
+  // percentage of the gross sale for bringing the lead in; the rep earns
+  // a share of what the job actually made. One page showing both invites
+  // them to be read as a single figure.
+  { key: "commissions", label: "Dispatch Commission", href: "/commissions", group: "General" },
+  {
+    key: "sales-commission",
+    label: "Sales Commission",
+    href: "/sales-commission",
+    group: "General",
+  },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
@@ -308,11 +319,22 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // off for the field roles and an Admin can turn it on per role in Role
   // Visibility. Office and Admin keep it: that is who chases the money.
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
-  // Commission is payroll: what each person earns, side by side. Office
-  // and Admin only by default -- including dispatchers themselves, who
-  // would otherwise see each other's pay. An Admin can grant it per role
-  // in Role Visibility if they want dispatchers to see their own line.
+  // Commission is payroll, so who sees whose matters, and the two schemes
+  // are gated separately now that they are separate screens.
+  //
+  // Dispatch commission stays Office and Admin, as it was.
   if (pageKey === "commissions" && role !== "Office" && role !== "Admin") return false;
+  // Sales commission adds the Sales role, so a rep can check their own
+  // earnings without asking. The report itself filters to the signed-in
+  // person unless they are Office or Admin, and that is enforced in the
+  // action rather than here -- this only decides whether the page appears.
+  if (
+    pageKey === "sales-commission" &&
+    role !== "Office" &&
+    role !== "Admin" &&
+    role !== "Sales"
+  )
+    return false;
   return true;
 }
 
@@ -2174,6 +2196,114 @@ export type LinkedEstimate = Pick<
 
 export function repMessagePreview(jobLabel: string, body: string) {
   return `Re: ${jobLabel}\n${body.trim()}`;
+}
+
+/**
+ * What one contract may claim of a job's costs.
+ *
+ * Costs hang off the lead, but a customer can hold several signed
+ * contracts -- one here holds five. Summing the lead's costs against each
+ * of them counts the same money over and over, which on the commission
+ * report is somebody's pay.
+ *
+ * So a cost belongs to a contract when a phase of that contract claims
+ * it. A cost nobody has filed belongs to the customer rather than to any
+ * one document, and is only attributed when there is exactly one contract
+ * it could possibly mean.
+ *
+ * Shared with the projects list rather than written twice: the two must
+ * agree about what a job cost, or the same job reports two profits.
+ */
+export function costsForContract(input: {
+  leadExpenses: { amount_cents: number; estimate_payment_id: string | null }[];
+  /** Phase ids belonging to this contract and its change orders. */
+  contractPhaseIds: Set<string>;
+  /** Every phase id on the job, to tell "filed elsewhere" from "unfiled". */
+  allPhaseIds: Set<string>;
+  leadHasOneContract: boolean;
+}): { cents: number; counted: number } {
+  let cents = 0;
+  let counted = 0;
+  for (const e of input.leadExpenses) {
+    const filedHere = e.estimate_payment_id && input.contractPhaseIds.has(e.estimate_payment_id);
+    const unfiled = !e.estimate_payment_id || !input.allPhaseIds.has(e.estimate_payment_id);
+    if (filedHere || (unfiled && input.leadHasOneContract)) {
+      cents += e.amount_cents;
+      counted += 1;
+    }
+  }
+  return { cents, counted };
+}
+
+// ── Sales rep commission ─────────────────────────────────────────────
+
+export type RepCommission = {
+  contractCents: number;
+  leadCostCents: number;
+  expensesCents: number;
+  netProfitCents: number;
+  /** The whole pot before it is split between the reps. */
+  poolCents: number;
+  rep1Cents: number;
+  rep2Cents: number;
+  /**
+   * True when no cost has been recorded against the job at all.
+   *
+   * Not the same as costs of zero. With nothing entered, net profit
+   * equals the whole contract and the commission looks enormous -- on an
+   * $80,000 job with no costs the pot reads $34,000 rather than the few
+   * thousand it will actually be. Callers show "pending" rather than a
+   * figure, the same way the projects list refuses to colour net cash
+   * green on a job that is unmeasured rather than profitable.
+   */
+  unmeasured: boolean;
+};
+
+/**
+ * What the reps earn on one contract.
+ *
+ * Lead cost first, then the job's actual costs, then the reps take their
+ * share of what is left -- so a rep who discounts to close, or who lets
+ * the job run over, earns less. Both percentages are stamped on the
+ * contract rather than read from settings at report time: a contract
+ * signed at 50% must still pay 50% after the company moves to 40%, or
+ * changing the setting would silently restate what everybody has already
+ * been paid.
+ */
+export function computeRepCommission(input: {
+  contractCents: number;
+  /** Basis points of the contract. 1500 = 15%. */
+  leadCostBp: number;
+  /** Basis points of net profit paid to the reps together. 5000 = 50%. */
+  commissionRateBp: number;
+  /** Actual money spent on the job, and whether any was recorded. */
+  expensesCents: number;
+  hasCosts: boolean;
+  /** How the pot divides. 6000/4000 is a 60/40 split. */
+  rep1Bp: number;
+  rep2Bp: number;
+}): RepCommission {
+  const leadCostCents = Math.round((input.contractCents * input.leadCostBp) / 10000);
+  const netProfitCents = input.contractCents - leadCostCents - input.expensesCents;
+  // Never negative: a job that lost money owes the rep nothing, but it
+  // does not owe the company a refund out of this calculation either.
+  const poolCents = Math.max(0, Math.round((netProfitCents * input.commissionRateBp) / 10000));
+
+  const rep1Cents = Math.round((poolCents * input.rep1Bp) / 10000);
+  // The remainder, so the two shares always add up to the pot exactly
+  // rather than losing a cent to rounding on a 1/3 split.
+  const rep2Cents = input.rep2Bp > 0 ? poolCents - rep1Cents : 0;
+
+  return {
+    contractCents: input.contractCents,
+    leadCostCents,
+    expensesCents: input.expensesCents,
+    netProfitCents,
+    poolCents,
+    rep1Cents,
+    rep2Cents,
+    unmeasured: !input.hasCosts,
+  };
 }
 
 export type CommissionInputs = {
