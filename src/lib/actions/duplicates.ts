@@ -18,7 +18,8 @@ export type DuplicatePair = {
 async function requireCanEditLeads(): Promise<{ error: string } | { companyId: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!canEditDispatch(profile)) return { error: "Only Office or Sales users can manage duplicates." };
+  if (!canEditDispatch(profile))
+    return { error: "Office, Sales, Dispatch or Call Center can manage duplicates." };
   return { companyId: profile.company_id };
 }
 
