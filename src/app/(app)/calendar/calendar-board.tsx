@@ -95,6 +95,7 @@ export function CalendarBoard({
   const [statusFilter, setStatusFilter] = useState<Set<EventStatus>>(new Set());
   const [calendarFilter, setCalendarFilter] = useState<Set<string>>(new Set());
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
+  const [dispatcherFilter, setDispatcherFilter] = useState<Set<string>>(new Set());
   const router = useRouter();
   const [draggingId, setDraggingId] = useState("");
   const [dragOverDate, setDragOverDate] = useState("");
@@ -130,9 +131,25 @@ export function CalendarBoard({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
 
+  // The dispatcher is held on the lead, not the appointment -- one person
+  // owns the customer from arrival until the job sells, across however
+  // many visits it takes. So an appointment's dispatcher is its lead's.
+  const dispatcherByLead = new Map<string, string>();
+  for (const l of leads ?? []) {
+    if (l.dispatcher_id) dispatcherByLead.set(l.id, l.dispatcher_id);
+  }
+  // Built from who actually holds leads, not from who has the role.
+  const dispatchers = [...new Set(dispatcherByLead.values())]
+    .map((id) => ({ id, name: reps.find((r) => r.id === id)?.name || "Unnamed" }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const filteredEvents = events.filter((ev) => {
     if (statusFilter.size > 0 && !statusFilter.has(ev.status)) return false;
     if (calendarFilter.size > 0 && !calendarFilter.has(ev.event_type)) return false;
+    if (dispatcherFilter.size > 0) {
+      const owner = ev.lead_id ? dispatcherByLead.get(ev.lead_id) : null;
+      if (!owner || !dispatcherFilter.has(owner)) return false;
+    }
     if (
       repFilter.size > 0 &&
       !(ev.assigned_to && repFilter.has(ev.assigned_to)) &&
@@ -477,6 +494,41 @@ export function CalendarBoard({
               </label>
             ))}
           </div>
+
+          {/* Only shown when someone actually holds leads as dispatcher.
+              Listing every member with the role would put permanently
+              empty checkboxes on the page -- a filter that can only ever
+              return nothing is worse than no filter. */}
+          {dispatchers.length > 0 && (
+            <div className="cal-filter-group">
+              <div className="cal-filter-group-head">
+                <span>DISPATCHER</span>
+                <button
+                  type="button"
+                  className="cal-select-all"
+                  onClick={() =>
+                    setDispatcherFilter((prev) =>
+                      prev.size === dispatchers.length
+                        ? new Set()
+                        : new Set(dispatchers.map((d) => d.id))
+                    )
+                  }
+                >
+                  Select all
+                </button>
+              </div>
+              {dispatchers.map((d) => (
+                <label key={d.id} className="cal-filter-item">
+                  <input
+                    type="checkbox"
+                    checked={dispatcherFilter.has(d.id)}
+                    onChange={() => toggleInSet(setDispatcherFilter, d.id)}
+                  />
+                  {d.name}
+                </label>
+              ))}
+            </div>
+          )}
         </aside>
 
         <div className="cal-main">
