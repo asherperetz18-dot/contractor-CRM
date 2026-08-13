@@ -6158,6 +6158,24 @@ textarea.est-item-desc:disabled {
   margin-bottom: 2px;
 }
 
+/* Settings cards with nothing behind them yet. Dimmed rather than
+   hidden: the list is a roadmap worth keeping visible, but it must not
+   look like working configuration. */
+.settings-card-soon {
+  opacity: 0.6;
+}
+.settings-soon-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
 /* Sections on the customer's copy. */
 .estdoc-section-row td {
   padding-top: 16px;

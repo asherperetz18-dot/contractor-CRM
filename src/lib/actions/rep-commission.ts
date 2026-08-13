@@ -144,6 +144,65 @@ export async function saveSalesTeam(
   return {};
 }
 
+/**
+ * The company's starting figures for a new contract.
+ *
+ * Only a starting point: each contract stamps its own rate when its sales
+ * team is saved, and the panel there is where a particular job is
+ * adjusted. Changing these cannot restate what has already been earned.
+ */
+export async function getSalesCommissionDefaults(): Promise<{
+  sales_commission_bp: number;
+  sales_lead_cost_bp: number;
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { sales_commission_bp: 5000, sales_lead_cost_bp: 1500 };
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("company_profile")
+    .select("sales_commission_bp, sales_lead_cost_bp")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ sales_commission_bp: number; sales_lead_cost_bp: number }>();
+  return {
+    sales_commission_bp: data?.sales_commission_bp ?? 5000,
+    sales_lead_cost_bp: data?.sales_lead_cost_bp ?? 1500,
+  };
+}
+
+export async function saveSalesCommissionDefaults(input: {
+  commissionBp: number;
+  leadCostBp: number;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin can change this." };
+
+  // A lead cost over 100% would make every job show a loss, and a
+  // commission over 100% would pay out more than the job made. Neither is
+  // a rate somebody meant to type.
+  if (input.leadCostBp < 0 || input.leadCostBp > 10000) {
+    return { error: "Lead cost must be between 0 and 100%." };
+  }
+  if (input.commissionBp < 0 || input.commissionBp > 10000) {
+    return { error: "Commission must be between 0 and 100%." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({
+      sales_commission_bp: Math.round(input.commissionBp),
+      sales_lead_cost_bp: Math.round(input.leadCostBp),
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Couldn't save those defaults." };
+
+  revalidatePath("/settings/sales-commission");
+  return {};
+}
+
 /** Active members, for the two salesperson pickers. */
 export async function getCommissionReps(): Promise<{ id: string; name: string }[]> {
   const profile = await getCurrentProfile();

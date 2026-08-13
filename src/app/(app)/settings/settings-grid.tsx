@@ -148,14 +148,23 @@ export function SettingsGrid({
                     </div>
                   </Link>
                 ) : (
+                  // A card with no page behind it. Marked before it is
+                  // clicked rather than after: 53 of these look identical
+                  // to the 26 that work, so the only way to find out was
+                  // to open one and be told it does nothing. On a screen
+                  // being shown to other contractors that reads as a
+                  // product two thirds finished rather than one with a
+                  // roadmap.
                   <div
                     key={c.title}
-                    className="settings-card"
+                    className="settings-card settings-card-soon"
                     onClick={() => openCard(c)}
                   >
                     <span className="settings-card-icon">{c.icon}</span>
                     <div>
-                      <div className="settings-card-title">{c.title}</div>
+                      <div className="settings-card-title">
+                        {c.title} <span className="settings-soon-tag">SOON</span>
+                      </div>
                       <div className="settings-card-desc">{c.desc}</div>
                     </div>
                   </div>
