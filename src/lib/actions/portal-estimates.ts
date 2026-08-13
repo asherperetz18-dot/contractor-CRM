@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
-import { sendEmail } from "@/lib/email-env";
+import { sendEmail, escapeHtml } from "@/lib/email-env";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {
@@ -56,11 +56,19 @@ async function notifyRepOfSignature(
     `Your customer just signed ${label} ${estimate.doc_number}.`,
     `View it here: ${link}`,
   ].join("\n");
+
+  // rep.name is a staff-entered profile field and label is one of three
+  // hardcoded strings, but escaped anyway rather than judging each value
+  // safe on its own -- doc_number is the one that could ever change shape,
+  // and consistency here is cheaper than re-litigating it later.
+  const safeGreeting = escapeHtml(greeting);
+  const safeDocNumber = escapeHtml(estimate.doc_number);
+  const safeLink = escapeHtml(link);
   const html = `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${greeting},</p>
-      <p>Your customer just signed ${label} <strong>${estimate.doc_number}</strong>.</p>
-      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">View it</a></p>
+      <p>Hi ${safeGreeting},</p>
+      <p>Your customer just signed ${label} <strong>${safeDocNumber}</strong>.</p>
+      <p><a href="${safeLink}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">View it</a></p>
     </div>
   `;
   await sendEmail(rep.email, subject, html, text);

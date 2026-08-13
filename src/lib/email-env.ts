@@ -26,6 +26,30 @@ function nonAsciiComplaint(label: string, value: string): string | null {
   return `${label} has an invalid character.${detail} Re-copy the full value and save it again.`;
 }
 
+// Every value dropped into an HTML email body -- a lead's name, an
+// estimate's title -- can originate from a public lead form or a rep's free
+// text, so it must be neutralized before it lands in markup one of our own
+// senders is the "from" address on. Covers both tag and attribute contexts
+// (quotes included), unlike the TwiML-only escapeXml in the SMS webhook.
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (ch) => {
+    switch (ch) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return ch;
+    }
+  });
+}
+
 export type SendEmailResult = { id?: string; error?: string };
 export type SendEmailOptions = { replyTo?: string };
 

@@ -9,7 +9,7 @@ import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/porta
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
-import { sendEmail } from "@/lib/email-env";
+import { sendEmail, escapeHtml } from "@/lib/email-env";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -78,6 +78,18 @@ function buildEstimateEmail(params: {
   const greeting = firstName || "there";
   const amount = moneyCents(totalCents);
   const subject = `${companyName}: your estimate ${docNumber} is ready to review`;
+
+  // The plain-text body is not HTML, so these go in unescaped -- only the
+  // markup below needs it. Every one of these can come from a public lead
+  // form or a rep's free text, not just system-generated values like
+  // docNumber, so all of them are escaped rather than picking and choosing.
+  const safeGreeting = escapeHtml(greeting);
+  const safeCompanyName = escapeHtml(companyName);
+  const safeDocNumber = escapeHtml(docNumber);
+  const safeTitle = title ? escapeHtml(title) : null;
+  const safeAmount = escapeHtml(amount);
+  const safeLink = escapeHtml(link);
+
   return {
     subject,
     text: [
@@ -91,9 +103,9 @@ function buildEstimateEmail(params: {
     ].join("\n"),
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${greeting},</p>
-      <p><strong>${companyName}</strong> has sent you an estimate${title ? ` for "${title}"` : ""} (${docNumber}), totaling <strong>${amount}</strong>.</p>
-      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Review &amp; Sign</a></p>
+      <p>Hi ${safeGreeting},</p>
+      <p><strong>${safeCompanyName}</strong> has sent you an estimate${safeTitle ? ` for "${safeTitle}"` : ""} (${safeDocNumber}), totaling <strong>${safeAmount}</strong>.</p>
+      <p><a href="${safeLink}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Review &amp; Sign</a></p>
       <p style="color:#666;font-size:13px">This link works once and expires in 7 days.</p>
     </div>
   `,
