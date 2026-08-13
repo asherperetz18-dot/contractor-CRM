@@ -5,8 +5,9 @@ import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
+import { notifyRepOfSignature } from "@/lib/portal/rep-signed-notification";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
-import { sendEmail, escapeHtml } from "@/lib/email-env";
+import { sendEmail } from "@/lib/email-env";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {
@@ -24,55 +25,44 @@ type EstimateRow = {
 };
 
 /**
- * Best-effort email to whoever is assigned the lead, once every signer has
- * signed. Never allowed to affect the sign itself -- the signature is
- * already committed by the time this runs, so a failed notification here
- * must not read back to the customer as a failed sign.
+ * Tells the assigned rep a document was fully signed, and logs server-side
+ * (never surfaced to the customer) exactly why when it doesn't go out.
+ * Production shipped this silently swallowing a real Resend failure:
+ * sendEmail resolves with `{ error }` rather than throwing, and the caller
+ * here never inspected that result, so a failed send and a successful one
+ * looked identical from the outside. notifyRepOfSignature (the pure,
+ * tested core of this) now returns which of those happened; this wrapper's
+ * only job is to log it and supply the real Supabase lookup and sendEmail.
  */
-async function notifyRepOfSignature(
+async function reportSignatureToRep(
   admin: ReturnType<typeof createAdminClient>,
   estimate: EstimateRow
 ): Promise<void> {
-  if (!estimate.assigned_to) return;
+  const result = await notifyRepOfSignature({
+    assignedTo: estimate.assigned_to,
+    lookupRep: async (profileId) => {
+      const { data } = await admin
+        .from("profiles")
+        .select("email, name")
+        .eq("id", profileId)
+        .maybeSingle<{ email: string | null; name: string | null }>();
+      return data ?? null;
+    },
+    sendEmail,
+    docNumber: estimate.doc_number,
+    kind: estimate.kind,
+    link: `${portalBaseUrl()}/estimates/${estimate.id}`,
+  });
 
-  const { data: rep } = await admin
-    .from("profiles")
-    .select("email, name")
-    .eq("id", estimate.assigned_to)
-    .maybeSingle<{ email: string | null; name: string | null }>();
-  if (!rep?.email) return;
-
-  const link = `${portalBaseUrl()}/estimates/${estimate.id}`;
-  const label =
-    estimate.kind === "change_order"
-      ? "change order"
-      : estimate.kind === "completion"
-        ? "completion certificate"
-        : "estimate";
-  const subject = `${estimate.doc_number} was just signed`;
-  const greeting = rep.name ? rep.name.split(" ")[0] : "there";
-  const text = [
-    `Hi ${greeting},`,
-    ``,
-    `Your customer just signed ${label} ${estimate.doc_number}.`,
-    `View it here: ${link}`,
-  ].join("\n");
-
-  // rep.name is a staff-entered profile field and label is one of three
-  // hardcoded strings, but escaped anyway rather than judging each value
-  // safe on its own -- doc_number is the one that could ever change shape,
-  // and consistency here is cheaper than re-litigating it later.
-  const safeGreeting = escapeHtml(greeting);
-  const safeDocNumber = escapeHtml(estimate.doc_number);
-  const safeLink = escapeHtml(link);
-  const html = `
-    <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${safeGreeting},</p>
-      <p>Your customer just signed ${label} <strong>${safeDocNumber}</strong>.</p>
-      <p><a href="${safeLink}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">View it</a></p>
-    </div>
-  `;
-  await sendEmail(rep.email, subject, html, text);
+  if (result.outcome !== "sent") {
+    // Server logs only -- the signature already succeeded regardless of
+    // whether the rep gets told, and nothing here ever includes the email
+    // API key or its response body, only sendEmail's own safe message.
+    const detail = "error" in result ? `: ${result.error}` : "";
+    console.error(
+      `[estimate ${estimate.id}] rep sign-notification not sent (${result.outcome}${detail})`
+    );
+  }
 }
 
 /**
@@ -264,10 +254,13 @@ export async function signEstimateAsCustomer(
     await advanceStageOnEstimateSigned(admin, estimate.lead_id, estimate.company_id);
 
     try {
-      await notifyRepOfSignature(admin, estimate);
-    } catch {
-      // Swallowed on purpose -- see notifyRepOfSignature's doc comment.
-      // The signature above has already been committed regardless.
+      await reportSignatureToRep(admin, estimate);
+    } catch (e) {
+      // Swallowed on purpose -- see reportSignatureToRep's doc comment.
+      // The signature above has already been committed regardless. This
+      // only catches an unexpected throw (e.g. the profiles lookup itself
+      // erroring); notifyRepOfSignature's own outcomes are never thrown.
+      console.error(`[estimate ${estimate.id}] rep sign-notification threw`, e);
     }
   }
 
