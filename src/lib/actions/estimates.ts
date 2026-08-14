@@ -165,7 +165,7 @@ function buildEstimateEmail(params: {
       ``,
       `Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.`,
       ``,
-      `View Proposal:`,
+      `Review & Sign:`,
       link,
       ``,
       `If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.`,
@@ -176,7 +176,7 @@ function buildEstimateEmail(params: {
       disclaimer,
     ].join("\n"),
     // The CTA is a real button: its visible text is the fixed label
-    // "View Proposal", never the link itself. The secure, single-use
+    // "Review & Sign", never the link itself. The secure, single-use
     // token lives only in href, where a customer forwarding or
     // screen-sharing this email won't read it off the page by accident.
     html: `
@@ -185,7 +185,7 @@ function buildEstimateEmail(params: {
       <p>Thank you for the opportunity to work with you${safeOnProjectClause}.</p>
       <p>${safe.companyName} has prepared proposal #${safe.docNumber} for your project${safeAtAddressClause}. The grand total of the proposal is <strong>${safe.amount}</strong>.</p>
       <p>Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.</p>
-      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">View Proposal</a></p>
+      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Review &amp; Sign</a></p>
       <p>If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.</p>
       <p style="margin:16px 0 2px">Thank you,<br><strong>${safe.companyName}</strong></p>
       ${htmlFooterLines.join("\n      ")}
