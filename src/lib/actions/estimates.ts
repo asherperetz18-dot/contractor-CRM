@@ -100,14 +100,14 @@ function buildEstimateEmail(params: {
   const { customerName, company, docNumber, title, projectAddress, totalCents, link } = params;
   const greeting = customerName || "there";
   const amount = moneyCents(totalCents);
-  const project = projectAddress || (title ? `"${title}"` : "your project");
   const subject = `${company.name}: your proposal ${docNumber} is ready to review`;
 
   const safe = {
     greeting: escapeHtml(greeting),
     companyName: escapeHtml(company.name),
     docNumber: escapeHtml(docNumber),
-    project: escapeHtml(project),
+    title: title ? escapeHtml(title) : null,
+    projectAddress: projectAddress ? escapeHtml(projectAddress) : null,
     amount: escapeHtml(amount),
     link: escapeHtml(link),
     dba: company.dba ? escapeHtml(company.dba) : null,
@@ -123,8 +123,16 @@ function buildEstimateEmail(params: {
     "If you are not the intended recipient, please notify the sender immediately by return email " +
     "and delete this communication and destroy all copies.";
 
+  // "on your {title} project" / "at {address}" are each dropped whole
+  // rather than left with a blank behind them -- an estimate with no
+  // title or a lead with no address must still read as a complete
+  // sentence, not one with a hole in it.
+  const onProjectClause = title ? ` on your ${title} project` : "";
+  const atAddressClause = projectAddress ? ` at ${projectAddress}` : "";
+  const safeOnProjectClause = safe.title ? ` on your ${safe.title} project` : "";
+  const safeAtAddressClause = safe.projectAddress ? ` at ${safe.projectAddress}` : "";
+
   const textFooterLines = [
-    ``,
     company.name,
     ...(company.address ? [company.address] : []),
     ...(company.website ? [company.website] : []),
@@ -134,7 +142,6 @@ function buildEstimateEmail(params: {
   ];
 
   const htmlFooterLines = [
-    `<p style="margin:16px 0 2px"><strong>${safe.companyName}</strong></p>`,
     ...(safe.address ? [`<p style="margin:0">${safe.address}</p>`] : []),
     ...(safe.website ? [`<p style="margin:0">${safe.website}</p>`] : []),
     ...(safe.dba || safe.licenseNumber
@@ -152,27 +159,35 @@ function buildEstimateEmail(params: {
     text: [
       `Hi ${greeting},`,
       ``,
-      `Here is a new proposal for ${project}, #${docNumber}. The grand total of your proposal is ${amount}.`,
+      `Thank you for the opportunity to work with you${onProjectClause}.`,
       ``,
-      `You can see the full proposal details and sign it via the link below.`,
+      `${company.name} has prepared proposal #${docNumber} for your project${atAddressClause}. The grand total of the proposal is ${amount}.`,
       ``,
-      `View proposal:`,
+      `Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.`,
+      ``,
+      `View Proposal:`,
       link,
       ``,
-      `If you have any questions, let me know!`,
+      `If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.`,
+      ``,
+      `Thank you,`,
       ...textFooterLines,
       ``,
       disclaimer,
     ].join("\n"),
+    // The CTA is a real button: its visible text is the fixed label
+    // "View Proposal", never the link itself. The secure, single-use
+    // token lives only in href, where a customer forwarding or
+    // screen-sharing this email won't read it off the page by accident.
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
       <p>Hi ${safe.greeting},</p>
-      <p>Here is a new proposal for ${safe.project}, #${safe.docNumber}. The grand total of your
-        proposal is <strong>${safe.amount}</strong>.</p>
-      <p>You can see the full proposal details and sign it via the link below.</p>
-      <p style="margin:20px 0 6px;font-weight:600">View proposal:</p>
-      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${safe.link}</a></p>
-      <p>If you have any questions, let me know!</p>
+      <p>Thank you for the opportunity to work with you${safeOnProjectClause}.</p>
+      <p>${safe.companyName} has prepared proposal #${safe.docNumber} for your project${safeAtAddressClause}. The grand total of the proposal is <strong>${safe.amount}</strong>.</p>
+      <p>Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.</p>
+      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">View Proposal</a></p>
+      <p>If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.</p>
+      <p style="margin:16px 0 2px">Thank you,<br><strong>${safe.companyName}</strong></p>
       ${htmlFooterLines.join("\n      ")}
       <p style="color:#888;font-size:11px;margin-top:24px;border-top:1px solid #eee;padding-top:12px">${escapeHtml(disclaimer)}</p>
     </div>
