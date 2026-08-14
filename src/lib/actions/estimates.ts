@@ -83,9 +83,10 @@ type EstimateEmailCompany = {
  * link this module builds itself -- so all of it is escaped for the HTML
  * version rather than picking and choosing which fields to trust.
  *
- * The wording is the client's own literal template, including "attached
- * PDF file" language even though this app has no PDF generation yet --
- * that phrasing is deliberate on their part, not a bug here.
+ * The wording is the client's own template, adjusted only where it
+ * assumed a PDF attachment -- this app has no PDF generation, so the
+ * customer's copy of record is the portal link, which is also where they
+ * sign.
  */
 function buildEstimateEmail(params: {
   customerName: string | null;
@@ -151,9 +152,9 @@ function buildEstimateEmail(params: {
     text: [
       `Hi ${greeting},`,
       ``,
-      `Attached is a new proposal for ${project}, #${docNumber}. The grand total of your proposal is ${amount}.`,
+      `Here is a new proposal for ${project}, #${docNumber}. The grand total of your proposal is ${amount}.`,
       ``,
-      `You can see the details in the attached PDF file or via the link below.`,
+      `You can see the full proposal details and sign it via the link below.`,
       ``,
       `View proposal:`,
       link,
@@ -166,9 +167,9 @@ function buildEstimateEmail(params: {
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
       <p>Hi ${safe.greeting},</p>
-      <p>Attached is a new proposal for ${safe.project}, #${safe.docNumber}. The grand total of your
+      <p>Here is a new proposal for ${safe.project}, #${safe.docNumber}. The grand total of your
         proposal is <strong>${safe.amount}</strong>.</p>
-      <p>You can see the details in the attached PDF file or via the link below.</p>
+      <p>You can see the full proposal details and sign it via the link below.</p>
       <p style="margin:20px 0 6px;font-weight:600">View proposal:</p>
       <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${safe.link}</a></p>
       <p>If you have any questions, let me know!</p>
