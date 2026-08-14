@@ -5481,6 +5481,10 @@ body {
      than a whole page, the row then cannot fit anywhere, and the browser
      pushes the entire table to page 2 -- leaving page 1 empty below the
      header. A long row has to be allowed to flow across pages. */
+  /* The punch list must not be torn from the signature it qualifies:
+     "these items remain outstanding" on page 1 and the signature on
+     page 2 is how a signed certificate ends up looking unconditional. */
+  .estdoc-punch,
   .estdoc-signer,
   .estdoc-total-row,
   .estdoc-signatures,
@@ -5634,6 +5638,58 @@ body {
   display: flex;
   justify-content: flex-end;
   padding: 12px 0 0;
+}
+
+/* Completion certificate editor. Two fields and a signature -- nothing
+   priced, because a certificate carries no money. */
+.comp-editor {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.comp-customer-items,
+.comp-signers {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+/* The customer's own words. Kept as typed -- reflowing somebody's punch
+   list into a paragraph loses the line breaks that made it a list. */
+.comp-customer-text {
+  margin: 6px 0 8px;
+  white-space: pre-wrap;
+}
+
+.comp-signer-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comp-signed,
+.comp-unsigned {
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.comp-signed {
+  color: var(--good, #157347);
+}
+
+.comp-unsigned {
+  color: var(--muted);
 }
 
 /* Commission statement: the controls that choose whose statement this is

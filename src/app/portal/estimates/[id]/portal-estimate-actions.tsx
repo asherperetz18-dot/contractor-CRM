@@ -12,6 +12,7 @@ export function PortalEstimateActions({
   canSign,
   signerName,
   parentContract,
+  kind,
 }: {
   estimateId: string;
   status: EstimateStatus;
@@ -20,9 +21,12 @@ export function PortalEstimateActions({
   signerName: string;
   /** Set only on a change order: the contract it was added to. */
   parentContract?: { id: string; doc_number: string } | null;
+  kind?: string | null;
 }) {
   const router = useRouter();
   const [typed, setTyped] = useState("");
+  const [items, setItems] = useState("");
+  const isCompletion = kind === "completion";
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,8 +35,10 @@ export function PortalEstimateActions({
   if (status === "Signed") {
     return (
       <div className="portal-card estdoc-result estdoc-result-ok">
-        <strong>Signed.</strong> Thank you — your contractor has been notified and will be in
-        touch about scheduling.
+        <strong>Signed.</strong>{" "}
+        {isCompletion
+          ? "Thank you — your contractor has been notified. Anything you listed is recorded on this certificate and remains their responsibility."
+          : "Thank you — your contractor has been notified and will be in touch about scheduling."}
         {/* A signed change order has no Pay button of its own, and left at
             that the customer is told nothing about how they pay for what
             they just approved. Its amount is a phase on the contract's
@@ -41,9 +47,25 @@ export function PortalEstimateActions({
             customer pays twice. */}
         {parentContract && (
           <p style={{ marginTop: 8 }}>
-            This has been added to the payment schedule on your contract{" "}
-            <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>,
-            where you can pay it when it becomes due.
+            {/* A certificate carries no money, so it is never "added to"
+                a schedule -- but signing it does make the rest of the
+                contract due, which is the thing the customer needs told.
+                The change-order wording here said an amount had been
+                added, on a document whose whole point is that it has
+                none. */}
+            {isCompletion ? (
+              <>
+                Any remaining balance on your contract{" "}
+                <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>{" "}
+                is now due, and can be paid there.
+              </>
+            ) : (
+              <>
+                This has been added to the payment schedule on your contract{" "}
+                <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>,
+                where you can pay it when it becomes due.
+              </>
+            )}
           </p>
         )}
       </div>
@@ -84,7 +106,7 @@ export function PortalEstimateActions({
     }
     setError(null);
     startTransition(async () => {
-      const res = await signEstimateAsCustomer(estimateId, typed);
+      const res = await signEstimateAsCustomer(estimateId, typed, items);
       if (res.error) return setError(res.error);
       router.refresh();
     });
@@ -103,16 +125,24 @@ export function PortalEstimateActions({
     <div className="portal-card estdoc-sign">
       {declining ? (
         <>
-          <h2 className="portal-card-title">Decline this estimate</h2>
+          <h2 className="portal-card-title">
+            {isCompletion ? "The work isn't finished" : "Decline this estimate"}
+          </h2>
           <p className="estdoc-muted">
-            A short reason helps your contractor come back with something that works. Optional.
+            {isCompletion
+              ? "Tell your contractor what is still outstanding and they'll come back to finish it. Use this rather than signing if the job is not done."
+              : "A short reason helps your contractor come back with something that works. Optional."}
           </p>
           <textarea
             className="est-textarea"
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. over budget, going a different direction, timing"
+            placeholder={
+              isCompletion
+                ? "e.g. the bathroom tiling is unfinished"
+                : "e.g. over budget, going a different direction, timing"
+            }
           />
           {error && <p className="error-note">{error}</p>}
           <div className="estdoc-sign-actions">
@@ -120,17 +150,42 @@ export function PortalEstimateActions({
               Back
             </button>
             <button className="btn-primary" onClick={decline} disabled={pending}>
-              {pending ? "Sending…" : "Decline estimate"}
+              {pending ? "Sending…" : isCompletion ? "Send to contractor" : "Decline estimate"}
             </button>
           </div>
         </>
       ) : (
         <>
-          <h2 className="portal-card-title">Accept and sign</h2>
+          <h2 className="portal-card-title">
+            {isCompletion ? "Sign off the completed work" : "Accept and sign"}
+          </h2>
           <p className="estdoc-muted">
-            Type your full name below to sign. This is a legal signature and records the date and
-            time.
+            {isCompletion
+              ? "Sign below to confirm the work is finished. If anything still needs putting right, list it first — signing does not waive it."
+              : "Type your full name below to sign. This is a legal signature and records the date and time."}
           </p>
+          {/* Offered before the signature box, not after. Asked afterwards
+              it reads as an afterthought to a document already signed --
+              and whatever is typed here is printed on that document, so it
+              has to be part of signing rather than a note sent alongside. */}
+          {isCompletion && (
+            <label className="field">
+              <span className="field-label">
+                Anything still to put right? <span className="estdoc-muted">(optional)</span>
+              </span>
+              <textarea
+                className="est-textarea"
+                rows={4}
+                value={items}
+                onChange={(e) => setItems(e.target.value)}
+                placeholder={"One per line, e.g.\nPaint touch-up needed in the hallway\nKitchen tap drips"}
+              />
+              <span className="estdoc-muted">
+                These are recorded on this certificate and stay your contractor&apos;s
+                responsibility. Leave empty if you&apos;re happy with everything.
+              </span>
+            </label>
+          )}
           <label className="field">
             <span className="field-label">Your full name</span>
             <input
@@ -144,10 +199,10 @@ export function PortalEstimateActions({
           {error && <p className="error-note">{error}</p>}
           <div className="estdoc-sign-actions">
             <button className="btn-ghost" onClick={() => setDeclining(true)} disabled={pending}>
-              Decline
+              {isCompletion ? "Work isn't finished" : "Decline"}
             </button>
             <button className="btn-primary" onClick={sign} disabled={pending || !typed.trim()}>
-              {pending ? "Signing…" : "Sign estimate"}
+              {pending ? "Signing…" : isCompletion ? "Sign certificate" : "Sign estimate"}
             </button>
           </div>
         </>

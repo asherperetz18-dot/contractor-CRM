@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageCosts, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
+import { CompletionEditor } from "./completion-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,27 @@ export default async function EstimateDetailPage({
       .eq("id", estimate.lead_id)
       .maybeSingle<BuilderLead>(),
   ]);
+
+  // A completion certificate has no prices, so it does not get the
+  // pricing editor. Branching here rather than hiding controls inside the
+  // builder: half a builder with the money taken out still reads as an
+  // estimate, and every one of those controls would need its own guard.
+  if (estimate.kind === "completion") {
+    return (
+      <CompletionEditor
+        estimate={estimate}
+        signers={(signers ?? []) as EstimateSigner[]}
+        customer={{
+          name:
+            [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() ||
+            "Unnamed lead",
+          address: lead?.address ?? null,
+        }}
+        canEdit={canCreateEstimates(profile)}
+        canDelete={canDeleteLeads(profile)}
+      />
+    );
+  }
 
   return (
     <EstimateBuilder

@@ -148,6 +148,7 @@ export default async function PortalEstimatePage({
               }
             : null
         }
+        kind={estimate.kind}
       />
     </main>
   );

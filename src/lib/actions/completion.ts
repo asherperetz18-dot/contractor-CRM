@@ -126,11 +126,12 @@ export async function createCompletionCertificate(
         .map((c) => `- ${c.doc_number}: ${c.title} (${moneyCents(c.total_cents)})`)
         .join("\n");
   }
-  if (outstanding.trim()) {
-    body += `\n\nOutstanding items:\n${outstanding.trim()}`;
-  } else {
-    body += "\n\nOutstanding items: none. The Owner accepts the work in full.";
-  }
+  // Outstanding items are deliberately NOT baked into the body here.
+  // They are rendered on the document from completion_notes, so editing
+  // them later actually changes the certificate -- frozen into this text
+  // they would keep saying whatever was true the day it was raised, and
+  // the customer's own items (added when they sign, long after this runs)
+  // could never appear at all.
 
   const { count } = await supabase
     .from("estimates")
@@ -192,6 +193,62 @@ export async function createCompletionCertificate(
 
   revalidatePath(`/estimates/${contractId}`);
   return { id: created[0].id };
+}
+
+/**
+ * The certificate's own two fields: when the job finished, and what is
+ * still outstanding.
+ *
+ * A certificate has no prices, no line items and no payment schedule, so
+ * it is not saved through the estimate builder's route. Kept here with
+ * a kind check, so nothing else can be edited into one by passing its id.
+ */
+export async function saveCompletionDetails(
+  certificateId: string,
+  fields: { completedOn: string; notes: string }
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canCreateEstimates(profile))
+    return { error: "You don't have permission to do that." };
+  if (!fields.completedOn) return { error: "Set the date the work was completed." };
+
+  const supabase = await createClient();
+  const { data: cert } = await supabase
+    .from("estimates")
+    .select("id, kind, status, terms")
+    .eq("id", certificateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; kind: string; status: EstimateStatus; terms: string | null }>();
+  if (!cert) return { error: "Certificate not found." };
+  if (cert.kind !== "completion") return { error: "That isn't a completion certificate." };
+  if (cert.status === "Signed")
+    return { error: "This certificate is signed and can no longer be changed." };
+
+  // Certificates raised before the items moved out of the body still
+  // carry them appended to the wording. Left alone they would print
+  // twice, and the stale copy would contradict the edit just made.
+  const legacy = cert.terms?.indexOf("\n\nOutstanding items:") ?? -1;
+  const terms = legacy >= 0 ? cert.terms!.slice(0, legacy) : cert.terms;
+
+  const { data, error } = await supabase
+    .from("estimates")
+    .update({
+      completed_on: fields.completedOn,
+      completion_notes: fields.notes.trim() || null,
+      terms,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", certificateId)
+    .eq("company_id", profile.company_id)
+    .select("id, parent_estimate_id")
+    .returns<{ id: string; parent_estimate_id: string | null }[]>();
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Certificate not found, or you can't edit it." };
+
+  revalidatePath(`/estimates/${certificateId}`);
+  if (data[0].parent_estimate_id) revalidatePath(`/estimates/${data[0].parent_estimate_id}`);
+  return {};
 }
 
 export type CompletionRow = {

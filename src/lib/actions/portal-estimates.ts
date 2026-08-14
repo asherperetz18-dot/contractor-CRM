@@ -128,7 +128,9 @@ export async function markEstimateViewed(estimateId: string): Promise<void> {
 
 export async function signEstimateAsCustomer(
   estimateId: string,
-  typedName: string
+  typedName: string,
+  /** Completion certificates only: anything the customer wants put right. */
+  customerItems?: string
 ): Promise<{ error?: string; complete?: boolean }> {
   const name = typedName.trim();
   if (!name) return { error: "Type your full name to sign." };
@@ -173,6 +175,28 @@ export async function signEstimateAsCustomer(
     .select("id");
   if (error) return { error: error.message };
   if (!signed?.length) return { error: "Could not record your signature." };
+
+  // Recorded before the document is marked signed, and on the first
+  // signature rather than the last: with co-owners, whoever signs first
+  // must not lose what they raised. Appended rather than replaced for the
+  // same reason -- a second owner's concerns are not a correction of the
+  // first owner's.
+  if (estimate.kind === "completion" && customerItems?.trim()) {
+    const { data: existing } = await admin
+      .from("estimates")
+      .select("completion_customer_items")
+      .eq("id", estimateId)
+      .maybeSingle<{ completion_customer_items: string | null }>();
+    const prior = existing?.completion_customer_items?.trim();
+    await admin
+      .from("estimates")
+      .update({
+        completion_customer_items: prior
+          ? `${prior}\n\n${name}:\n${customerItems.trim()}`
+          : customerItems.trim(),
+      })
+      .eq("id", estimateId);
+  }
 
   // Only a fully signed document becomes a contract. With co-owners, one
   // signature leaves it pending rather than binding.

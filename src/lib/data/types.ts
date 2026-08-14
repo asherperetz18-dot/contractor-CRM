@@ -1321,6 +1321,16 @@ export type Estimate = {
   // Every pre-existing row is a contract.
   kind: string;
   parent_estimate_id: string | null;
+  /** Completion certificates only: the date the work actually finished,
+   *  which is when the contract's labour warranty starts running. */
+  completed_on?: string | null;
+  /** The contractor's list of what is still outstanding, typed in the
+   *  office when the certificate is raised. */
+  completion_notes?: string | null;
+  /** The customer's own list, written by them at the moment they sign.
+   *  Kept apart from completion_notes so it stays clear later who said a
+   *  thing was outstanding. */
+  completion_customer_items?: string | null;
   tax_rate_bp: number;
   subtotal_cents: number;
   tax_cents: number;
