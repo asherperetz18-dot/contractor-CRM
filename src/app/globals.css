@@ -5736,6 +5736,32 @@ body {
   padding: 12px 0 0;
 }
 
+/* Filter bar above a list. The dropdowns are the shared FilterSelect, so
+   they size themselves; this only lays them out in a row. */
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+/* The dropdowns are fluid inside the calendar's narrow sidebar; in a row
+   they need a floor so the label and its value are not squeezed onto two
+   lines, and a ceiling so two of them do not span the whole table. */
+.list-filters .cal-filter-select {
+  margin-bottom: 0;
+  min-width: 210px;
+  max-width: 280px;
+}
+
+/* Says a filter is on, and by how much. A shortened table with no note
+   reads as missing data rather than as a filter doing its job. */
+.list-filters-count {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
 /* Completion certificate editor. Two fields and a signature -- nothing
    priced, because a certificate carries no money. */
 .comp-editor {

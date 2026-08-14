@@ -12,6 +12,7 @@ import {
   type EstimateStatus,
 } from "@/lib/data/types";
 import { NewEstimateDialog } from "./new-estimate-dialog";
+import { FilterSelect } from "@/components/filter-select";
 
 export type EstimateLead = {
   id: string;
@@ -89,6 +90,19 @@ export function EstimatesView({
   const router = useRouter();
   const [bucket, setBucket] = useState<Bucket>("drafts");
   const [creating, setCreating] = useState(false);
+  const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+
+  // Both filters clear when the card changes. Their options are drawn
+  // from the current bucket, so a rep carried across to a card they have
+  // no documents on would leave an empty table under a dropdown whose
+  // boxes are all unticked -- the filter still applied, with nothing on
+  // screen explaining why.
+  function pickBucket(next: Bucket) {
+    setBucket(next);
+    setRepFilter(new Set());
+    setStatusFilter(new Set());
+  }
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r]));
@@ -135,7 +149,34 @@ export function EstimatesView({
   });
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const rows = estimates.filter((e) => inBucket(e, active.key, active.statuses));
+  const inThisBucket = estimates.filter((e) => inBucket(e, active.key, active.statuses));
+
+  // Options come from what is actually in the bucket, never from the
+  // full list of reps or statuses.
+  //
+  // The funnel cards are already a status filter, so a second one drawn
+  // from every status would offer Signed inside Drafts and return an
+  // empty table -- the user then has to work out that the two controls
+  // disagree. Derived this way the two cannot contradict each other:
+  // Drafts offers only Draft, while Attached, which spans every status,
+  // offers the real spread. Same for the salesperson: only people who
+  // actually have a document here.
+  const repOptions = [...new Set(inThisBucket.map((e) => e.assigned_to).filter(Boolean))]
+    .map((id) => {
+      const rep = repById.get(id as string);
+      return { id: id as string, label: rep?.name || rep?.email || "Unnamed" };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const statusOptions = [...new Set(inThisBucket.map((e) => effectiveStatus(e)))]
+    .sort()
+    .map((s) => ({ id: s, label: s }));
+
+  const rows = inThisBucket.filter(
+    (e) =>
+      (repFilter.size === 0 || (e.assigned_to && repFilter.has(e.assigned_to))) &&
+      (statusFilter.size === 0 || statusFilter.has(effectiveStatus(e)))
+  );
 
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
@@ -172,7 +213,7 @@ export function EstimatesView({
           <button
             key={b.key}
             className={"est-funnel-card" + (bucket === b.key ? " est-funnel-active" : "")}
-            onClick={() => setBucket(b.key)}
+            onClick={() => pickBucket(b.key)}
             aria-pressed={bucket === b.key}
           >
             <span className="est-funnel-label">{b.label}</span>
@@ -183,6 +224,36 @@ export function EstimatesView({
           </button>
         ))}
       </div>
+
+      {/* Only offered when there is something to choose between. A
+          dropdown holding one option filters nothing, and on the Drafts
+          card -- where every row is a draft by definition -- a Status
+          filter is exactly that. */}
+      {(repOptions.length > 1 || statusOptions.length > 1) && (
+        <div className="list-filters">
+          {repOptions.length > 1 && (
+            <FilterSelect
+              title="SALESPERSON"
+              options={repOptions}
+              selected={repFilter}
+              onChange={setRepFilter}
+            />
+          )}
+          {statusOptions.length > 1 && (
+            <FilterSelect
+              title="STATUS"
+              options={statusOptions}
+              selected={statusFilter}
+              onChange={setStatusFilter}
+            />
+          )}
+          {rows.length !== inThisBucket.length && (
+            <span className="list-filters-count">
+              Showing {rows.length} of {inThisBucket.length}
+            </span>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="empty-state">

@@ -12,9 +12,10 @@ export type FilterOption = {
 /**
  * A collapsed multi-select for one filter group.
  *
- * The calendar sidebar listed every option as a checkbox, which for the
- * rep list meant sixteen rows pushing the dispatcher filter off the
- * bottom of the screen and squeezing the calendar itself.
+ * Shared by the calendar sidebar and the estimates list. The calendar
+ * listed every option as a checkbox, which for the rep list meant
+ * sixteen rows pushing the dispatcher filter off the bottom of the
+ * screen and squeezing the calendar itself.
  *
  * The summary on the button is the whole point of collapsing it: once
  * the options are hidden, the button is the only thing saying what the

@@ -24,7 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
-import { FilterSelect } from "./filter-select";
+import { FilterSelect } from "@/components/filter-select";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
