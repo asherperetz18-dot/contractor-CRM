@@ -348,7 +348,7 @@ export function EstimateBuilder({
           </button>
           {!locked && (
             <>
-              <button className="btn-ghost" onClick={() => save()} disabled={pending}>
+              <button className="btn-save-red" onClick={() => save()} disabled={pending}>
                 {pending ? "Saving…" : "Save"}
               </button>
               <button
