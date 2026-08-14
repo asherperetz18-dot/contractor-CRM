@@ -145,6 +145,7 @@ export function EventForm({
   stages,
   readOnly,
   canDelete,
+  canAddNotes,
   onCancel,
   onSaved,
   onDeleted,
@@ -163,6 +164,9 @@ export function EventForm({
   /** Deleting an appointment is a narrower right than editing one:
    *  Dispatch books and moves visits but may not remove them. */
   canDelete?: boolean;
+  /** Wider than editing the appointment: a rep who cannot reschedule a
+   *  visit still has to be able to write down what the customer said. */
+  canAddNotes?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -1122,7 +1126,7 @@ export function EventForm({
             leadId={lead.id}
             notes={linkedNotes}
             reps={reps}
-            readOnly={readOnly}
+            readOnly={!canAddNotes}
             onChanged={() => router.refresh()}
           />
         </div>

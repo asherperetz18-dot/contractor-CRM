@@ -72,6 +72,25 @@ export function canEditDispatch(profile: Pick<Profile, "roles"> | null) {
   );
 }
 
+/**
+ * Who may write a note on a customer they can already see.
+ *
+ * Everyone signed in. Writing down what a customer said is not an
+ * administrative act -- it is the job -- and the database already draws
+ * the only boundary that matters: a Sales-only rep can reach their own
+ * leads and no one else's, so "any role" still means "their own
+ * customers".
+ *
+ * Separate from canEditSchedule on purpose. The appointment modal was
+ * gating its Notes tab on that, which excludes Sales, so a rep could
+ * open the appointment, read the history and have no way to add to it.
+ * Rescheduling somebody's visit and recording what they told you on the
+ * phone are different rights.
+ */
+export function canWriteLeadNotes(profile: Pick<Profile, "roles"> | null) {
+  return !!profile;
+}
+
 export function canDeleteLeads(profile: Pick<Profile, "roles" | "can_delete_leads"> | null) {
   if (!profile) return false;
   if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;

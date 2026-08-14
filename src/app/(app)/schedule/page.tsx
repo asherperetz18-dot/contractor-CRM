@@ -12,7 +12,7 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
-import { canDeleteAppointments, canEditSchedule } from "@/lib/data/types";
+import { canDeleteAppointments, canEditSchedule, canWriteLeadNotes } from "@/lib/data/types";
 import { ScheduleList } from "./schedule-list";
 
 export default async function SchedulePage() {
@@ -72,6 +72,7 @@ export default async function SchedulePage() {
       calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
       canDeleteEvents={canDeleteAppointments(profile)}
+      canAddNotes={canWriteLeadNotes(profile)}
     />
   );
 }
