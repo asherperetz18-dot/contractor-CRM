@@ -5084,6 +5084,32 @@ body {
   margin: 10px 0 18px;
 }
 
+/* Solid red, as asked for on Save payment schedule.
+   Deliberately its own class rather than btn-danger-ghost: red is the
+   destructive colour everywhere else in this app (Delete, Void, Remove),
+   and those are all outlined. A filled button reads as the main action
+   on the panel rather than as something that throws work away. */
+.btn-save-red {
+  background: var(--danger);
+  border: 1px solid var(--danger);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save-red:hover:not(:disabled) {
+  background: #a93226;
+  border-color: #a93226;
+}
+
+.btn-save-red:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .est-totals {
   margin-left: auto;
   max-width: 320px;

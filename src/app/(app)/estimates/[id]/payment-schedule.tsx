@@ -547,7 +547,7 @@ export function PaymentSchedule({
       {saved && <p className="hint-note">{saved}</p>}
 
       {!locked && (
-        <button className="btn-ghost est-add-row" onClick={save} disabled={pending}>
+        <button className="btn-save-red est-add-row" onClick={save} disabled={pending}>
           {pending ? "Saving…" : "Save payment schedule"}
         </button>
       )}
