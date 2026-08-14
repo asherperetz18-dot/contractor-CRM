@@ -24,6 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
+import { FilterSelect } from "./filter-select";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -438,96 +439,34 @@ export function CalendarBoard({
         <aside className="cal-filters">
           <div className="cal-filters-head">FILTERS</div>
 
-          <div className="cal-filter-group">
-            <div className="cal-filter-group-head">
-              <span>CALENDARS</span>
-              <button
-                type="button"
-                className="cal-select-all"
-                onClick={() =>
-                  setCalendarFilter((prev) =>
-                    prev.size === calendars.length
-                      ? new Set()
-                      : new Set(calendars.map((c) => c.name))
-                  )
-                }
-              >
-                Select all
-              </button>
-            </div>
-            {calendars.map((c) => (
-              <label key={c.id} className="cal-filter-item">
-                <input
-                  type="checkbox"
-                  checked={calendarFilter.has(c.name)}
-                  onChange={() => toggleInSet(setCalendarFilter, c.name)}
-                />
-                <span className="tick" style={{ background: c.color }} />
-                {c.name}
-              </label>
-            ))}
-          </div>
+          <FilterSelect
+            title="CALENDARS"
+            options={calendars.map((c) => ({ id: c.name, label: c.name, color: c.color }))}
+            selected={calendarFilter}
+            onChange={setCalendarFilter}
+          />
 
-          <div className="cal-filter-group">
-            <div className="cal-filter-group-head">
-              <span>REP AVAILABILITY</span>
-              <button
-                type="button"
-                className="cal-select-all"
-                onClick={() =>
-                  setRepFilter((prev) =>
-                    prev.size === reps.length ? new Set() : new Set(reps.map((r) => r.id))
-                  )
-                }
-              >
-                Select all
-              </button>
-            </div>
-            {reps.map((r) => (
-              <label key={r.id} className="cal-filter-item">
-                <input
-                  type="checkbox"
-                  checked={repFilter.has(r.id)}
-                  onChange={() => toggleInSet(setRepFilter, r.id)}
-                />
-                {r.name || r.email}
-              </label>
-            ))}
-          </div>
+          <FilterSelect
+            title="REP AVAILABILITY"
+            // A member with neither name nor email rendered as a blank
+            // row with a checkbox beside it -- a filter you cannot tell
+            // apart from the one above it.
+            options={reps.map((r) => ({ id: r.id, label: r.name || r.email || "Unnamed" }))}
+            selected={repFilter}
+            onChange={setRepFilter}
+          />
 
           {/* Only shown when someone actually holds leads as dispatcher.
               Listing every member with the role would put permanently
               empty checkboxes on the page -- a filter that can only ever
               return nothing is worse than no filter. */}
           {dispatchers.length > 0 && (
-            <div className="cal-filter-group">
-              <div className="cal-filter-group-head">
-                <span>DISPATCHER</span>
-                <button
-                  type="button"
-                  className="cal-select-all"
-                  onClick={() =>
-                    setDispatcherFilter((prev) =>
-                      prev.size === dispatchers.length
-                        ? new Set()
-                        : new Set(dispatchers.map((d) => d.id))
-                    )
-                  }
-                >
-                  Select all
-                </button>
-              </div>
-              {dispatchers.map((d) => (
-                <label key={d.id} className="cal-filter-item">
-                  <input
-                    type="checkbox"
-                    checked={dispatcherFilter.has(d.id)}
-                    onChange={() => toggleInSet(setDispatcherFilter, d.id)}
-                  />
-                  {d.name}
-                </label>
-              ))}
-            </div>
+            <FilterSelect
+              title="DISPATCHER"
+              options={dispatchers.map((d) => ({ id: d.id, label: d.name }))}
+              selected={dispatcherFilter}
+              onChange={setDispatcherFilter}
+            />
           )}
         </aside>
 

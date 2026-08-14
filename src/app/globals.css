@@ -1995,8 +1995,10 @@ body {
   padding: 14px;
   position: sticky;
   top: 16px;
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
+  /* No max-height or overflow. It scrolled because the groups listed
+     every option; now they are collapsed the panel is a few buttons
+     tall, and an overflow here would clip the open dropdown instead of
+     letting it hang over the calendar. Each menu caps its own height. */
 }
 .cal-filters-head {
   font-size: 11px;
@@ -2033,6 +2035,100 @@ body {
   font-size: 12.5px;
   padding: 4px 0;
   cursor: pointer;
+}
+
+/* Collapsed filter groups. The sidebar previously listed every option --
+   sixteen reps on this company -- which pushed the dispatcher filter off
+   the bottom and narrowed the calendar for a list nobody reads twice. */
+.cal-filter-select {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.cal-filter-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cal-filter-btn:hover,
+.cal-filter-btn-open {
+  border-color: var(--blueprint);
+}
+
+.cal-filter-btn-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* Pushed hard right and allowed to shrink, so a long rep name truncates
+   rather than wrapping the button to two lines. */
+.cal-filter-btn-value {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* A filter that is actually narrowing the calendar looks different from
+   one that is not -- otherwise "All" and "3 of 16" read the same at a
+   glance, and a rep wonders where their appointments went. */
+.cal-filter-btn-active {
+  color: var(--blueprint);
+  font-weight: 600;
+}
+
+.cal-filter-caret {
+  font-size: 10px;
+  color: var(--ink-soft);
+  flex: 0 0 auto;
+}
+
+.cal-filter-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  padding: 8px 10px;
+}
+
+.cal-filter-menu-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cal-filter-menu-head .cal-select-all:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+/* Capped so a long team scrolls inside the menu instead of running off
+   the bottom of the window, which is the problem being solved. */
+.cal-filter-menu-list {
+  max-height: 260px;
+  overflow-y: auto;
 }
 .cal-main {
   flex: 1;
