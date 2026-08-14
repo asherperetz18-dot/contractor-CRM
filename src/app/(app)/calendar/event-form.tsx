@@ -69,6 +69,20 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** What a rep can record as the result of an appointment they attended. */
+const OUTCOME_STATUSES: EventStatus[] = ["Showed", "Won", "No-show", "Cancelled"];
+
+/**
+ * Outcomes that require a job value.
+ *
+ * A rep who stood in the room can price it, and on a won job they
+ * certainly can. On a no-show or a cancellation there is nothing to
+ * price, and demanding a number there teaches people to type a zero --
+ * worse than blank, because a zero looks like an answer in the pipeline
+ * total.
+ */
+const VALUED_OUTCOMES: EventStatus[] = ["Showed", "Won"];
+
 /**
  * Where a lead most likely belongs once the appointment is over. Only a
  * starting suggestion -- the stage dropdown stays editable, because only
@@ -247,15 +261,9 @@ export function EventForm({
     resultNote.trim().length > 0 ||
     (!!resultStage && !!lead && resultStage !== lead.stage);
 
-  /**
-   * A job value is only asked for on Showed.
-   *
-   * A rep who stood in the room can price it. On a no-show or a
-   * cancellation there is nothing to price, and demanding a number there
-   * teaches people to type a zero -- which is worse than leaving it
-   * blank, because a zero looks like an answer in the pipeline total.
-   */
-  const outcomeNeedsValue = (pendingOutcome || form.status) === "Showed";
+  const outcomeNeedsValue = VALUED_OUTCOMES.includes(
+    (pendingOutcome || form.status) as EventStatus
+  );
   const parsedResultValue = Number(resultValue.replace(/[^0-9.]/g, ""));
   const resultValueOk =
     !outcomeNeedsValue ||
@@ -290,7 +298,7 @@ export function EventForm({
     // Checked here as well as on the button. The button is the courtesy;
     // this is the rule, and a Showed with no value is the exact hole it
     // exists to close.
-    if (outcome === "Showed" && !resultValueOk) {
+    if (VALUED_OUTCOMES.includes(outcome) && !resultValueOk) {
       setError("Enter the estimated job value before saving this result.");
       return;
     }
@@ -301,7 +309,7 @@ export function EventForm({
     // The value goes first, because the server now refuses a Showed on a
     // lead worth nothing -- writing the outcome first would have it
     // reject the very save that was about to supply the number.
-    if (outcome === "Showed" && parsedResultValue > 0 && parsedResultValue !== lead.value) {
+    if (VALUED_OUTCOMES.includes(outcome) && parsedResultValue > 0 && parsedResultValue !== lead.value) {
       const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
       if (valueResult?.error) {
         setResultPending(false);
@@ -898,7 +906,7 @@ export function EventForm({
 
           <Field label="Outcome">
             <div className="chip-row no-margin">
-              {(["Showed", "No-show", "Cancelled"] as EventStatus[]).map((s) => (
+              {OUTCOME_STATUSES.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -933,8 +941,9 @@ export function EventForm({
               />
               {!resultValueOk && (
                 <p className="est-tax-note">
-                  Required on a Showed. Every money figure on the pipeline is a sum of this, so a
-                  visit logged without one reads as a slow month rather than as missing data.
+                  Required on a {(pendingOutcome || form.status) === "Won" ? "Won" : "Showed"}.
+                  Every money figure on the pipeline is a sum of this, so a visit logged without
+                  one reads as a slow month rather than as missing data.
                 </p>
               )}
             </Field>

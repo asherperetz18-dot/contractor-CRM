@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, isSettledStage } from "@/lib/data/types";
+import { appointmentAttended, isAdminRole, isSettledStage, type EventStatus } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
 
 type BriefLead = {
@@ -139,7 +139,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
       leadsAdded: leadRows.filter((l) => l.created_at >= since).length,
       apptsBooked: eventRows.filter((e) => e.created_at >= since).length,
       apptsScheduled: periodEvents.length,
-      showed: periodEvents.filter((e) => e.status === "Showed").length,
+      showed: periodEvents.filter((e) => appointmentAttended(e.status as EventStatus)).length,
       noShow: periodEvents.filter((e) => e.status === "No-show").length,
       calls: periodCalls.length,
       talkMinutes: Math.round(periodCalls.reduce((t, c) => t + (c.duration_seconds || 0), 0) / 60),

@@ -7,6 +7,7 @@ import {
   EVENT_STATUS_COLOR,
   appointmentResultOverdue,
   formatTimeRange,
+  appointmentAttended,
   hasAppointmentResult,
   leadDisplayName,
   shortReceivedDate,
@@ -71,7 +72,8 @@ export function AppointmentReportsView({
     });
   }, [events, range, repFilter, nowMs, todayISO]);
 
-  const showed = inRange.filter((e) => e.status === "Showed");
+  // Won counts as a show -- see appointmentAttended.
+  const showed = inRange.filter((e) => appointmentAttended(e.status));
   const noShow = inRange.filter((e) => e.status === "No-show");
   const cancelled = inRange.filter((e) => e.status === "Cancelled");
   const pending = inRange.filter((e) => !hasAppointmentResult(e.status));
@@ -86,7 +88,7 @@ export function AppointmentReportsView({
       const key = e.assigned_to ?? "unassigned";
       const row = map.get(key) ?? { total: 0, showed: 0, noShow: 0, pending: 0 };
       row.total += 1;
-      if (e.status === "Showed") row.showed += 1;
+      if (appointmentAttended(e.status)) row.showed += 1;
       if (e.status === "No-show") row.noShow += 1;
       if (!hasAppointmentResult(e.status)) row.pending += 1;
       map.set(key, row);

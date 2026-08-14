@@ -676,11 +676,21 @@ export type LeadSourceRow = {
   created_at: string;
 };
 
-export type EventStatus = "New" | "Confirmed" | "Showed" | "No-show" | "Cancelled";
+export type EventStatus =
+  | "New"
+  | "Confirmed"
+  | "Showed"
+  | "Won"
+  | "No-show"
+  | "Cancelled";
+// Ordered as the appointment actually progresses, so the chip row reads
+// left to right the way the day does: booked, confirmed, turned up,
+// sold -- then the two ways it can fail.
 export const EVENT_STATUSES: EventStatus[] = [
   "New",
   "Confirmed",
   "Showed",
+  "Won",
   "No-show",
   "Cancelled",
 ];
@@ -716,6 +726,10 @@ export const EVENT_STATUS_COLOR: Record<EventStatus, string> = {
   New: "#7C8798",
   Confirmed: "#2F855A",
   Showed: "#2D5F8A",
+  // Gold rather than another green. Confirmed is already green, and the
+  // one status worth spotting across a month of chips is the one that
+  // made money.
+  Won: "#B7791F",
   "No-show": "#C7691B",
   Cancelled: "#C0392B",
 };
@@ -753,7 +767,15 @@ export type Event = {
 // definition of "has a result" -- rather than a separate result column
 // that could disagree with the status shown on the calendar -- is what
 // lets the modal badge and the follow-up cron stay in step.
-export const RESOLVED_EVENT_STATUSES: EventStatus[] = ["Showed", "No-show", "Cancelled"];
+// Won belongs here: it is the strongest possible outcome, so an
+// appointment marked Won must not be chased by the follow-up cron for
+// never having had its result recorded.
+export const RESOLVED_EVENT_STATUSES: EventStatus[] = [
+  "Showed",
+  "Won",
+  "No-show",
+  "Cancelled",
+];
 
 /**
  * Where a lead lands when an appointment came and went without an outcome.
@@ -765,6 +787,19 @@ export const FOLLOW_UP_STAGE = "Appointment Follow Up";
 
 export function hasAppointmentResult(status: EventStatus): boolean {
   return RESOLVED_EVENT_STATUSES.includes(status);
+}
+
+/**
+ * The rep turned up and the customer was there.
+ *
+ * Won means they showed AND sold, so it has to count as a show. Reports
+ * that tested `status === "Showed"` would otherwise have dropped a rep's
+ * show rate the moment they recorded their best appointments properly --
+ * punishing the better data entry, and making Won look like it cost them
+ * business.
+ */
+export function appointmentAttended(status: EventStatus): boolean {
+  return status === "Showed" || status === "Won";
 }
 
 /** Breathing room after an appointment ends before a missing result is late. */

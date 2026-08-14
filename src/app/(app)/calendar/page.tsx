@@ -59,7 +59,27 @@ export default async function CalendarPage() {
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
-  const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  // Who is actually on the calendar, past or future.
+  const onCalendar = new Set<string>();
+  for (const e of ((events as Event[]) ?? [])) {
+    if (e.assigned_to) onCalendar.add(e.assigned_to);
+    if (e.second_assigned_to) onCalendar.add(e.second_assigned_to);
+  }
+
+  // The rep filter listed every active member of the company, so
+  // bookkeepers, dispatchers, the shared phone account and anyone added
+  // for any other reason all appeared as reps -- sixteen names, ten of
+  // whom could ever match an appointment.
+  //
+  // Two ways in, because either alone is wrong. Role alone drops somebody
+  // in dispatch who is running an appointment anyway, and their booking
+  // becomes unreachable through the filter. Appointments alone hides a
+  // newly hired rep until their first booking, so they look missing on
+  // the day they need to be picked.
+  const reps = allReps
+    .filter((r) => r.status === "Active")
+    .filter((r) => r.roles?.includes("Sales") || onCalendar.has(r.id))
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <CalendarBoard
