@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
@@ -63,6 +63,26 @@ function toggleInSet<T>(setter: (updater: (prev: Set<T>) => Set<T>) => void, val
 
 type Cell = { inMonth: boolean; day: number; dateStr: string | null };
 
+/**
+ * Whether this is a phone-width screen.
+ *
+ * useSyncExternalStore rather than reading window during render: the
+ * server has no window, and a render that disagrees with the server's is
+ * a hydration mismatch. The server snapshot says "not narrow", matching
+ * what it renders, and the real value arrives on hydration.
+ */
+function useIsNarrowScreen(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(max-width: 640px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(max-width: 640px)").matches,
+    () => false
+  );
+}
+
 export function CalendarBoard({
   events,
   jobs,
@@ -93,7 +113,28 @@ export function CalendarBoard({
   canDeleteEvents: boolean;
 }) {
   const timeFormat = useTimeFormat();
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  /**
+   * Null until the user picks a view for themselves, so the default can
+   * depend on the screen without overriding a deliberate choice.
+   */
+  const [chosenView, setChosenView] = useState<ViewMode | null>(null);
+  const narrow = useIsNarrowScreen();
+
+  /**
+   * Phones open on Day, not Month.
+   *
+   * Seven columns across a 375px screen leaves each appointment chip
+   * about 30 pixels wide: the time and the customer's name are still in
+   * the markup, and none of it is readable. A rep checking their round
+   * from the van got a grid of coloured dots. The same appointments in
+   * Day view get 270px and read in full.
+   *
+   * Derived rather than set in an effect: this is a value computed from
+   * the screen and the user's choice, not state to synchronise, and
+   * setting it from an effect cascades an extra render on every load.
+   */
+  const viewMode: ViewMode = chosenView ?? (narrow ? "day" : "month");
+  const setViewMode = setChosenView;
   const [cursorDate, setCursorDate] = useState(todayISO());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);

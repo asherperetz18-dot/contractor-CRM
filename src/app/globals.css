@@ -5733,7 +5733,10 @@ body {
   margin: 0 auto 10px;
   display: flex;
   justify-content: flex-end;
-  padding: 12px 0 0;
+  /* Horizontal padding, not just top. On a phone the document fills the
+     width, so with none the Print button sat hard against the right edge
+     of the screen -- on the page a customer opens to sign. */
+  padding: 12px 12px 0;
 }
 
 /* Filter bar above a list. The dropdowns are the shared FilterSelect, so
