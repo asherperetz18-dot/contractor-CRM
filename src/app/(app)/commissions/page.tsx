@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, moneyCents } from "@/lib/data/types";
+import { isAdminRole, moneyCents, COMMISSION_HOLD_LABEL } from "@/lib/data/types";
 import { getDispatcherCommissions } from "@/lib/actions/dispatcher";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +24,9 @@ export default async function CommissionsPage() {
       jobs: acc.jobs + r.jobsSold,
       contract: acc.contract + r.contractCents,
       commission: acc.commission + r.commissionCents,
-      collected: acc.collected + r.earnedOnCollectedCents,
+      payable: acc.payable + r.payableCents,
     }),
-    { jobs: 0, contract: 0, commission: 0, collected: 0 }
+    { jobs: 0, contract: 0, commission: 0, payable: 0 }
   );
 
   return (
@@ -38,6 +38,11 @@ export default async function CommissionsPage() {
             {(ratePercent ?? 1).toFixed(2)}% of the gross sale on every signed contract, to the
             dispatcher who brought the lead in.
           </p>
+        </div>
+        <div className="toolbar-actions">
+          <Link href="/commissions/statement" className="btn-ghost">
+            Printable statement
+          </Link>
         </div>
       </div>
 
@@ -66,13 +71,13 @@ export default async function CommissionsPage() {
               <div className="stat-value mono">{moneyCents(totals.commission)}</div>
               <div className="stat-label">Commission Earned</div>
             </div>
-            <div className={"stat-card stat-static" + (totals.collected > 0 ? " stat-card-won" : "")}>
-              <div className="stat-value mono">{moneyCents(totals.collected)}</div>
-              <div className="stat-label">Backed By Cash</div>
+            <div className={"stat-card stat-static" + (totals.payable > 0 ? " stat-card-won" : "")}>
+              <div className="stat-value mono">{moneyCents(totals.payable)}</div>
+              <div className="stat-label">Payable Now</div>
             </div>
             <div className="stat-card stat-static">
-              <div className="stat-value mono">{moneyCents(totals.commission - totals.collected)}</div>
-              <div className="stat-label">Not Yet Collected</div>
+              <div className="stat-value mono">{moneyCents(totals.commission - totals.payable)}</div>
+              <div className="stat-label">Held Back</div>
             </div>
           </div>
 
@@ -83,7 +88,7 @@ export default async function CommissionsPage() {
                 <th className="right">Jobs sold</th>
                 <th className="right">Contract value</th>
                 <th className="right">Commission</th>
-                <th className="right">Backed by cash</th>
+                <th className="right">Payable</th>
               </tr>
             </thead>
             <tbody>
@@ -102,11 +107,10 @@ export default async function CommissionsPage() {
                       <strong>{moneyCents(r.commissionCents)}</strong>
                     </td>
                     <td className="right mono">
-                      {moneyCents(r.earnedOnCollectedCents)}
-                      {r.earnedOnCollectedCents < r.commissionCents && (
+                      {moneyCents(r.payableCents)}
+                      {r.payableCents < r.commissionCents && (
                         <div className="ur-add-phone">
-                          {moneyCents(r.commissionCents - r.earnedOnCollectedCents)} still owed on
-                          the contract
+                          {moneyCents(r.commissionCents - r.payableCents)} not released yet
                         </div>
                       )}
                     </td>
@@ -129,8 +133,21 @@ export default async function CommissionsPage() {
                       <td></td>
                       <td className="right mono">{moneyCents(j.contractCents)}</td>
                       <td className="right mono">{moneyCents(j.commissionCents)}</td>
+                      {/* Nil with no reason reads as "this job earned
+                          nothing". What is true is "this is owed once the
+                          job is signed off" -- a different sentence, and
+                          the only one a dispatcher can act on. */}
                       <td className="right mono">
-                        {j.collectedCents > 0 ? `${moneyCents(j.collectedCents)} collected` : "nothing collected"}
+                        {j.holds.length === 0 ? (
+                          moneyCents(j.payableCents)
+                        ) : (
+                          <>
+                            {moneyCents(0)}
+                            <div className="ur-add-phone">
+                              {j.holds.map((h) => COMMISSION_HOLD_LABEL[h]).join(" · ")}
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -144,9 +161,9 @@ export default async function CommissionsPage() {
       {/* The distinction that decides when it is safe to pay out. */}
       <p className="est-tax-note">
         <strong>Commission</strong> is earned on the gross sale the moment a contract is signed.
-        <strong> Backed by cash</strong> is the share of it covered by money actually collected —
-        paying the full amount on a contract that has taken a deposit and nothing since is a
-        cash-flow trap, so both are shown and the choice of what to pay against is yours.
+        <strong> Payable</strong> is the part of it that has come due: it releases once the job is
+        paid in full and the customer has signed the completion certificate — the same two
+        conditions the sales reps are paid on.
         {!everyone && " You are seeing your own line only."}
       </p>
     </div>

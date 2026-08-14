@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { computeDispatcherCommissions, isAdminRole } from "@/lib/data/types";
+import {
+  computeDispatcherCommissions,
+  commissionHolds,
+  commissionQualifiedAt,
+  isAdminRole,
+  type CommissionHold,
+} from "@/lib/data/types";
 
 export type DispatcherOption = { id: string; name: string };
 
@@ -113,6 +119,15 @@ export type CommissionJob = {
   contractCents: number;
   collectedCents: number;
   commissionCents: number;
+  /** The whole job including change orders -- what "paid in full" means. */
+  jobValueCents: number;
+  certificateSigned: boolean;
+  /** Empty once the job is finished and settled. */
+  holds: CommissionHold[];
+  qualifiedAt: string | null;
+  /** The commission, once every hold is clear. Nil until then. */
+  payableCents: number;
+  signedAt: string | null;
 };
 
 export type CommissionRow = {
@@ -125,6 +140,8 @@ export type CommissionRow = {
   commissionCents: number;
   /** The share of that backed by money actually in the bank. */
   earnedOnCollectedCents: number;
+  /** Earned AND released: paid in full with the certificate signed. */
+  payableCents: number;
   /** The contracts behind the total, so the number can be checked. */
   jobs: CommissionJob[];
 };
@@ -137,6 +154,17 @@ export type CommissionRow = {
  * cash-flow trap -- so the collected-backed figure sits beside it and
  * the contractor decides which one they pay against.
  */
+type DocRow = {
+  id: string;
+  doc_number: string;
+  lead_id: string;
+  total_cents: number;
+  status: string;
+  kind: string | null;
+  parent_estimate_id: string | null;
+  signed_at: string | null;
+};
+
 export async function getDispatcherCommissions(): Promise<{
   error?: string;
   rows?: CommissionRow[];
@@ -153,19 +181,25 @@ export async function getDispatcherCommissions(): Promise<{
     .maybeSingle<{ dispatcher_commission_bp: number }>();
   const bp = settings?.dispatcher_commission_bp ?? 100;
 
-  const { data: signed } = await admin
+  // Every document, not only the contracts. The commission base is still
+  // the contract alone, but the two release conditions are about the
+  // whole job: change orders are part of what has to be paid off, and
+  // the completion certificate is a child document of its own.
+  const { data: allDocs } = await admin
     .from("estimates")
-    .select("id, doc_number, lead_id, total_cents")
+    .select("id, doc_number, lead_id, total_cents, status, kind, parent_estimate_id, signed_at")
     .eq("company_id", profile.company_id)
-    .eq("status", "Signed")
+    .returns<DocRow[]>();
+
+  const signed = (allDocs ?? []).filter(
     // Contracts only. Change orders and completion certificates are
     // signed estimates too; without this an extra would quietly enter the
     // commission base, and commission was deliberately set to the
     // original contract. See isSellableKind, which states the same rule
     // for the funnel and the lead's value.
-    .eq("kind", "contract")
-    .returns<{ id: string; doc_number: string; lead_id: string; total_cents: number }[]>();
-  if (!signed?.length) return { rows: [], ratePercent: bp / 100 };
+    (e) => e.status === "Signed" && (e.kind ?? "contract") === "contract"
+  );
+  if (!signed.length) return { rows: [], ratePercent: bp / 100 };
 
   const leadIds = [...new Set(signed.map((e) => e.lead_id))];
   // Names come along so each contract can be listed by customer rather
@@ -191,13 +225,68 @@ export async function getDispatcherCommissions(): Promise<{
 
   const { data: payments } = await admin
     .from("portal_payments")
-    .select("estimate_id, amount_cents, status")
+    .select("estimate_id, amount_cents, status, paid_at")
     .eq("company_id", profile.company_id)
     .eq("status", "succeeded")
-    .returns<{ estimate_id: string; amount_cents: number; status: string }[]>();
+    .returns<{ estimate_id: string; amount_cents: number; status: string; paid_at: string | null }[]>();
   const collectedByEstimate = new Map<string, number>();
   for (const p of payments ?? []) {
     collectedByEstimate.set(p.estimate_id, (collectedByEstimate.get(p.estimate_id) ?? 0) + p.amount_cents);
+  }
+
+  // Children by parent, for the two release conditions.
+  const childrenByParent = new Map<string, DocRow[]>();
+  for (const d of allDocs ?? []) {
+    if (!d.parent_estimate_id) continue;
+    const list = childrenByParent.get(d.parent_estimate_id) ?? [];
+    list.push(d);
+    childrenByParent.set(d.parent_estimate_id, list);
+  }
+
+  /**
+   * Whether one contract's commission has been released, and when.
+   *
+   * The commission base is the contract alone, but the settlement test
+   * is the whole job -- a $5,000 contract with a $1,000 change order is
+   * not paid off at $5,000. Basing the release on the contract alone
+   * would pay out while the customer still owed for the extra work.
+   *
+   * No costs condition, unlike the reps: this commission is a share of
+   * the gross sale, so what the job spent has no bearing on it.
+   */
+  function releaseFor(contract: DocRow) {
+    const children = childrenByParent.get(contract.id) ?? [];
+    const changeOrders = children
+      .filter((c) => c.status === "Signed" && (c.kind ?? "contract") !== "completion")
+      .reduce((s, c) => s + c.total_cents, 0);
+    const jobValueCents = contract.total_cents + changeOrders;
+
+    const docIds = [contract.id, ...children.map((c) => c.id)];
+    const jobPayments = (payments ?? []).filter((p) => docIds.includes(p.estimate_id));
+    const collectedOnJob = jobPayments.reduce((s, p) => s + p.amount_cents, 0);
+    const lastPaymentAt =
+      jobPayments.map((p) => p.paid_at).filter((d): d is string => !!d).sort().at(-1) ?? null;
+
+    const certificate = children.find((c) => c.kind === "completion") ?? null;
+    const certificateSigned = certificate?.status === "Signed";
+
+    const holds = commissionHolds({
+      // Gross-based, so costs never gate it.
+      hasCosts: true,
+      collectedCents: collectedOnJob,
+      contractCents: jobValueCents,
+      certificateSigned,
+    });
+    return {
+      jobValueCents,
+      certificateSigned,
+      holds,
+      qualifiedAt: commissionQualifiedAt({
+        holds,
+        lastPaymentAt,
+        certificateSignedAt: certificate?.signed_at ?? null,
+      }),
+    };
   }
 
   const computed = computeDispatcherCommissions({
@@ -207,7 +296,10 @@ export async function getDispatcherCommissions(): Promise<{
     commissionBp: bp,
   });
   const byDispatcher = new Map<string, CommissionRow>(
-    computed.map((c) => [c.dispatcherId, { ...c, dispatcherName: "Unknown", jobs: [] }])
+    computed.map((c) => [
+      c.dispatcherId,
+      { ...c, dispatcherName: "Unknown", payableCents: 0, jobs: [] },
+    ])
   );
 
   // The contracts behind each total. Without these the report is a
@@ -219,13 +311,25 @@ export async function getDispatcherCommissions(): Promise<{
     const row = byDispatcher.get(who);
     if (!row) continue;
     const collected = Math.min(collectedByEstimate.get(estimate.id) ?? 0, estimate.total_cents);
+    const commissionCents = Math.round((estimate.total_cents * bp) / 10000);
+    const release = releaseFor(estimate);
+    // All or nothing. A part payment does not release part of the
+    // commission -- the rule is the job is done, signed off and paid for.
+    const payableCents = release.holds.length === 0 ? commissionCents : 0;
+    row.payableCents += payableCents;
     row.jobs.push({
       estimateId: estimate.id,
       docNumber: estimate.doc_number,
       customerName: customerByLead.get(estimate.lead_id) ?? "Unnamed",
       contractCents: estimate.total_cents,
       collectedCents: collected,
-      commissionCents: Math.round((estimate.total_cents * bp) / 10000),
+      commissionCents,
+      jobValueCents: release.jobValueCents,
+      certificateSigned: release.certificateSigned,
+      holds: release.holds,
+      qualifiedAt: release.qualifiedAt,
+      payableCents,
+      signedAt: estimate.signed_at,
     });
   }
   for (const row of byDispatcher.values()) {
