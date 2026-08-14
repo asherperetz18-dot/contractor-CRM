@@ -81,8 +81,23 @@ function journeyStep(stage: string, estimates: PortalEstimate[]): number | null 
 
   const s = stage.toLowerCase();
   if (s === "lost" || s === "dnc") return null; // show no tracker at all
+  // Won is a fact about the deal, not a promise about a document, so it
+  // still stands on the stage alone.
   if (s === "won") return 4;
-  if (s.includes("proposal") || s.includes("finance") || s.includes("close to sale")) return 3;
+
+  /**
+   * Nothing here the customer can open, so the stage alone cannot claim
+   * a proposal was sent.
+   *
+   * "Proposal Sent" on the lead with the estimate still a Draft showed
+   * the customer a ticked "Proposal sent" and then no proposal anywhere
+   * on the page -- so they went looking for something that was never
+   * sent, and the portal was the thing that told them it had been.
+   *
+   * Capped at "Estimate in progress": true whatever the stage says, and
+   * it moves on by itself the moment the estimate is actually sent.
+   */
+  if (s.includes("proposal") || s.includes("finance") || s.includes("close to sale")) return 2;
   if (s.includes("estimate")) return 2;
   if (s.includes("appointment") || s.includes("2nd")) return 1;
   return 0;
