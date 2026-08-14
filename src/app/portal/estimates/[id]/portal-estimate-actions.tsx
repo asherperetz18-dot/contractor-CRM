@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { declineEstimateAsCustomer, signEstimateAsCustomer } from "@/lib/actions/portal-estimates";
+import { SignaturePad } from "@/components/signature-pad";
 import type { EstimateStatus } from "@/lib/data/types";
 
 export function PortalEstimateActions({
@@ -23,6 +24,8 @@ export function PortalEstimateActions({
 }) {
   const router = useRouter();
   const [typed, setTyped] = useState("");
+  const [mode, setMode] = useState<"type" | "draw">("type");
+  const [drawnImage, setDrawnImage] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +80,16 @@ export function PortalEstimateActions({
   }
 
   function sign() {
+    if (mode === "draw") {
+      if (!drawnImage) return setError("Draw your signature above before signing.");
+      setError(null);
+      return startTransition(async () => {
+        const res = await signEstimateAsCustomer(estimateId, { type: "drawn", image: drawnImage });
+        if (res.error) return setError(res.error);
+        router.refresh();
+      });
+    }
+
     // Typing your own name is the signature, so it has to be the name on
     // the document rather than any text at all.
     if (typed.trim().toLowerCase() !== signerName.trim().toLowerCase()) {
@@ -84,7 +97,7 @@ export function PortalEstimateActions({
     }
     setError(null);
     startTransition(async () => {
-      const res = await signEstimateAsCustomer(estimateId, typed);
+      const res = await signEstimateAsCustomer(estimateId, { type: "typed", name: typed });
       if (res.error) return setError(res.error);
       router.refresh();
     });
@@ -128,25 +141,60 @@ export function PortalEstimateActions({
         <>
           <h2 className="portal-card-title">Accept and sign</h2>
           <p className="estdoc-muted">
-            Type your full name below to sign. This is a legal signature and records the date and
-            time.
+            {mode === "type"
+              ? "Type your full name below to sign. This is a legal signature and records the date and time."
+              : "Draw your signature below. It's recorded along with the date and time as your legal signature."}
           </p>
-          <label className="field">
-            <span className="field-label">Your full name</span>
-            <input
-              className="est-title-input estdoc-sign-input"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={signerName}
-              autoComplete="off"
-            />
-          </label>
+          <div className="sig-mode-toggle">
+            <button
+              type="button"
+              className={"sig-mode-btn" + (mode === "type" ? " active" : "")}
+              onClick={() => {
+                setMode("type");
+                setError(null);
+              }}
+            >
+              Type
+            </button>
+            <button
+              type="button"
+              className={"sig-mode-btn" + (mode === "draw" ? " active" : "")}
+              onClick={() => {
+                setMode("draw");
+                setError(null);
+                // The pad remounts blank every time this tab is opened --
+                // clear any signature captured on a previous visit so what
+                // gets submitted always matches what's actually on screen.
+                setDrawnImage(null);
+              }}
+            >
+              Draw
+            </button>
+          </div>
+          {mode === "type" ? (
+            <label className="field">
+              <span className="field-label">Your full name</span>
+              <input
+                className="est-title-input estdoc-sign-input"
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+                placeholder={signerName}
+                autoComplete="off"
+              />
+            </label>
+          ) : (
+            <SignaturePad onChange={setDrawnImage} />
+          )}
           {error && <p className="error-note">{error}</p>}
           <div className="estdoc-sign-actions">
             <button className="btn-ghost" onClick={() => setDeclining(true)} disabled={pending}>
               Decline
             </button>
-            <button className="btn-primary" onClick={sign} disabled={pending || !typed.trim()}>
+            <button
+              className="btn-primary"
+              onClick={sign}
+              disabled={pending || (mode === "type" ? !typed.trim() : !drawnImage)}
+            >
               {pending ? "Signing…" : "Sign estimate"}
             </button>
           </div>

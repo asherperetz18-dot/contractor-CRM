@@ -9,6 +9,7 @@ import { isAdminRole, type TimeFormat } from "@/lib/data/types";
 
 export type CompanyProfileInput = {
   name: string;
+  dba: string;
   address: string;
   email: string;
   phone: string;
@@ -36,6 +37,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
     .from("company_profile")
     .update({
       name: input.name || null,
+      dba: input.dba || null,
       address: input.address || null,
       email: input.email || null,
       phone: input.phone || null,

@@ -66,47 +66,113 @@ type SendToCustomerRow = {
   title: string;
 };
 
+type EstimateEmailCompany = {
+  name: string;
+  dba: string | null;
+  address: string | null;
+  website: string | null;
+  licenseNumber: string | null;
+};
+
+/**
+ * The customer-facing proposal email. Every value here can come from a
+ * public lead form, a rep's free text, or a company's own settings --
+ * none of it is system-generated except docNumber and the amount and
+ * link this module builds itself -- so all of it is escaped for the HTML
+ * version rather than picking and choosing which fields to trust.
+ *
+ * There is no PDF attached: this app has no PDF generation, so the
+ * customer's copy of record is the portal link, which is also where they
+ * sign. That's why this reads "Here's a new proposal" rather than the
+ * "attached" language a document-with-a-PDF would use.
+ */
 function buildEstimateEmail(params: {
-  firstName: string | null;
-  companyName: string;
+  customerName: string | null;
+  company: EstimateEmailCompany;
   docNumber: string;
   title: string | null;
+  projectAddress: string | null;
   totalCents: number;
   link: string;
 }) {
-  const { firstName, companyName, docNumber, title, totalCents, link } = params;
-  const greeting = firstName || "there";
+  const { customerName, company, docNumber, title, projectAddress, totalCents, link } = params;
+  const greeting = customerName || "there";
   const amount = moneyCents(totalCents);
-  const subject = `${companyName}: your estimate ${docNumber} is ready to review`;
+  const project = projectAddress || (title ? `"${title}"` : "your project");
+  const subject = `${company.name}: your proposal ${docNumber} is ready to review`;
 
-  // The plain-text body is not HTML, so these go in unescaped -- only the
-  // markup below needs it. Every one of these can come from a public lead
-  // form or a rep's free text, not just system-generated values like
-  // docNumber, so all of them are escaped rather than picking and choosing.
-  const safeGreeting = escapeHtml(greeting);
-  const safeCompanyName = escapeHtml(companyName);
-  const safeDocNumber = escapeHtml(docNumber);
-  const safeTitle = title ? escapeHtml(title) : null;
-  const safeAmount = escapeHtml(amount);
-  const safeLink = escapeHtml(link);
+  const safe = {
+    greeting: escapeHtml(greeting),
+    companyName: escapeHtml(company.name),
+    docNumber: escapeHtml(docNumber),
+    project: escapeHtml(project),
+    amount: escapeHtml(amount),
+    link: escapeHtml(link),
+    dba: company.dba ? escapeHtml(company.dba) : null,
+    address: company.address ? escapeHtml(company.address) : null,
+    website: company.website ? escapeHtml(company.website) : null,
+    licenseNumber: company.licenseNumber ? escapeHtml(company.licenseNumber) : null,
+  };
+
+  const disclaimer =
+    "This communication, including attachments, is for the exclusive use of the addressee and " +
+    "may contain proprietary, confidential or privileged information. If you are not the intended " +
+    "recipient, any use, copying, disclosure, dissemination or distribution is strictly prohibited. " +
+    "If you are not the intended recipient, please notify the sender immediately by return email " +
+    "and delete this communication and destroy all copies.";
+
+  const textFooterLines = [
+    ``,
+    company.name,
+    ...(company.address ? [company.address] : []),
+    ...(company.website ? [company.website] : []),
+    ``,
+    ...(company.dba ? [`• Dba: ${company.dba}`] : []),
+    ...(company.licenseNumber ? [`• License: #${company.licenseNumber}`] : []),
+  ];
+
+  const htmlFooterLines = [
+    `<p style="margin:16px 0 2px"><strong>${safe.companyName}</strong></p>`,
+    ...(safe.address ? [`<p style="margin:0">${safe.address}</p>`] : []),
+    ...(safe.website ? [`<p style="margin:0">${safe.website}</p>`] : []),
+    ...(safe.dba || safe.licenseNumber
+      ? [
+          `<ul style="margin:10px 0 0;padding-left:18px;color:#444">`,
+          ...(safe.dba ? [`<li>Dba: ${safe.dba}</li>`] : []),
+          ...(safe.licenseNumber ? [`<li>License: #${safe.licenseNumber}</li>`] : []),
+          `</ul>`,
+        ]
+      : []),
+  ];
 
   return {
     subject,
     text: [
       `Hi ${greeting},`,
       ``,
-      `${companyName} has sent you an estimate${title ? ` for "${title}"` : ""} (${docNumber}), totaling ${amount}.`,
-      `Review and sign it here:`,
+      `Here's a new proposal for ${project}, #${docNumber}. The grand total of your proposal is ${amount}.`,
+      ``,
+      `You can see the details via the link below.`,
+      ``,
+      `View proposal:`,
       link,
       ``,
-      `This link works once and expires in 7 days.`,
+      `If you have any questions, let me know!`,
+      ...textFooterLines,
+      ``,
+      disclaimer,
     ].join("\n"),
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${safeGreeting},</p>
-      <p><strong>${safeCompanyName}</strong> has sent you an estimate${safeTitle ? ` for "${safeTitle}"` : ""} (${safeDocNumber}), totaling <strong>${safeAmount}</strong>.</p>
-      <p><a href="${safeLink}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Review &amp; Sign</a></p>
-      <p style="color:#666;font-size:13px">This link works once and expires in 7 days.</p>
+      <p>Hi ${safe.greeting},</p>
+      <p>Here's a new proposal for ${safe.project}, #${safe.docNumber}. The grand total of your
+        proposal is <strong>${safe.amount}</strong>.</p>
+      <p>You can see the details via the link below.</p>
+      <p style="margin:20px 0 6px;font-weight:600">View proposal:</p>
+      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">${safe.link}</a></p>
+      <p>If you have any questions, let me know!</p>
+      ${htmlFooterLines.join("\n      ")}
+      <p style="color:#888;font-size:11px;margin-top:24px;border-top:1px solid #eee;padding-top:12px">${escapeHtml(disclaimer)}</p>
     </div>
   `,
   };
@@ -666,8 +732,14 @@ export async function voidEstimate(
 // must not fire twice for a single click.
 export async function sendEstimateToCustomer(
   estimateId: string,
-  channel: "text" | "email"
-): Promise<{ error?: string; sentTo?: string; channel?: "text" | "email" }> {
+  channel: "text" | "email" | "both"
+): Promise<{
+  error?: string;
+  sentTo?: string;
+  channel?: "text" | "email" | "both";
+  /** Set on a "both" send where one of the two channels didn't go out. */
+  warning?: string;
+}> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
 
@@ -684,30 +756,50 @@ export async function sendEstimateToCustomer(
 
   const { data: lead } = await admin
     .from("leads")
-    .select("id, first_name, phone, email, company_id")
+    .select("id, first_name, last_name, address, phone, email, company_id")
     .eq("id", estimate.lead_id)
     .maybeSingle<{
       id: string;
       first_name: string | null;
+      last_name: string | null;
+      address: string | null;
       phone: string | null;
       email: string | null;
       company_id: string;
     }>();
   if (!lead) return { error: "Customer not found." };
 
-  const twilioEnv = channel === "text" ? await getTwilioForCompany(guard.companyId) : null;
+  const wantsText = channel !== "email";
+  const wantsEmail = channel !== "text";
+
+  const twilioEnv = wantsText ? await getTwilioForCompany(guard.companyId) : null;
+
+  // A single explicit channel is a hard requirement, same as before this
+  // supported "both": asking to text a customer with no phone on file is
+  // an error, not something to quietly skip. "both" is permissive instead,
+  // the same way sendPortalLink is -- it sends whichever of the two the
+  // customer actually has, rather than refusing both because one is short
+  // a channel.
   if (channel === "text") {
     if (!lead.phone) return { error: "This customer has no phone number on file." };
     if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
-  } else {
+  } else if (channel === "email") {
     if (!lead.email) return { error: "This customer has no email address on file." };
+  } else if (!lead.phone && !lead.email) {
+    return { error: "This customer has no phone number or email address on file." };
   }
 
   const { data: companyRow } = await admin
     .from("company_profile")
-    .select("name")
+    .select("name, dba, address, website, license_number")
     .eq("company_id", guard.companyId)
-    .maybeSingle<{ name: string | null }>();
+    .maybeSingle<{
+      name: string | null;
+      dba: string | null;
+      address: string | null;
+      website: string | null;
+      license_number: string | null;
+    }>();
   const companyName = companyRow?.name || "Your contractor";
 
   // Sending the link is the act of granting access, same as the existing
@@ -725,50 +817,80 @@ export async function sendEstimateToCustomer(
 
   const sender = await getCurrentProfile();
 
-  let sentTo: string;
-  let logRow: {
+  const canText = wantsText && !!lead.phone && !!twilioEnv;
+  const canEmail = wantsEmail && !!lead.email;
+
+  const sentTo: string[] = [];
+  const problems: string[] = [];
+  const logRows: {
     from_number: string;
     to_number: string;
     body: string;
     twilio_sid: string | null;
     channel: string;
-  };
+  }[] = [];
 
-  if (channel === "text") {
+  if (canText) {
     // Plain hyphens and no emoji: an em dash or emoji flips the message to
     // UCS-2 and cuts each segment from 160 characters to 70.
     const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
     const sent = await sendTwilioSms(lead.phone!, body, twilioEnv!);
-    if (sent.error) return { error: `Text failed (${sent.error})` };
-    sentTo = lead.phone!;
-    logRow = {
-      from_number: twilioEnv!.phoneNumber,
-      to_number: lead.phone!,
-      body,
-      twilio_sid: sent.sid || null,
-      channel: "sms",
-    };
-  } else {
+    if (sent.error) {
+      problems.push(`Text failed (${sent.error})`);
+    } else {
+      sentTo.push(lead.phone!);
+      logRows.push({
+        from_number: twilioEnv!.phoneNumber,
+        to_number: lead.phone!,
+        body,
+        twilio_sid: sent.sid || null,
+        channel: "sms",
+      });
+    }
+  } else if (wantsText && channel === "both") {
+    problems.push(lead.phone ? "texting isn't configured for this company yet" : "no phone number on file");
+  }
+
+  if (canEmail) {
+    const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
     const mail = buildEstimateEmail({
-      firstName: lead.first_name,
-      companyName,
+      customerName: customerName || null,
+      company: {
+        name: companyName,
+        dba: companyRow?.dba ?? null,
+        address: companyRow?.address ?? null,
+        website: companyRow?.website ?? null,
+        licenseNumber: companyRow?.license_number ?? null,
+      },
       docNumber: estimate.doc_number,
       title: estimate.title,
+      projectAddress: lead.address,
       totalCents: estimate.total_cents,
       link,
     });
     const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
       replyTo: sender?.email ?? undefined,
     });
-    if (sent.error) return { error: `Email failed (${sent.error})` };
-    sentTo = lead.email!;
-    logRow = {
-      from_number: "email",
-      to_number: lead.email!,
-      body: `[Estimate emailed] ${mail.subject}`,
-      twilio_sid: sent.id || null,
-      channel: "email",
-    };
+    if (sent.error) {
+      problems.push(`Email failed (${sent.error})`);
+    } else {
+      sentTo.push(lead.email!);
+      logRows.push({
+        from_number: "email",
+        to_number: lead.email!,
+        body: `[Estimate emailed] ${mail.subject}`,
+        twilio_sid: sent.id || null,
+        channel: "email",
+      });
+    }
+  } else if (wantsEmail && channel === "both" && !lead.email) {
+    problems.push("no email address on file");
+  }
+
+  // Nothing went out at all -- report the failure and leave the estimate
+  // untouched (still Draft), same as a single-channel send always has.
+  if (sentTo.length === 0) {
+    return { error: problems.join("; ") || "Could not send the estimate." };
   }
 
   await fillContractMoney(estimateId, guard.companyId);
@@ -801,14 +923,17 @@ export async function sendEstimateToCustomer(
   }
 
   // Logged in the same thread the team already watches, so "did they ever
-  // get anything?" stays answerable from data.
-  await admin.from("sms_messages").insert({
-    lead_id: lead.id,
-    direction: "outbound",
-    sent_by: guard.userId,
-    company_id: guard.companyId,
-    ...logRow,
-  });
+  // get anything?" stays answerable from data. One row per channel that
+  // actually went out.
+  for (const logRow of logRows) {
+    await admin.from("sms_messages").insert({
+      lead_id: lead.id,
+      direction: "outbound",
+      sent_by: guard.userId,
+      company_id: guard.companyId,
+      ...logRow,
+    });
+  }
 
   await admin
     .from("leads")
@@ -816,7 +941,13 @@ export async function sendEstimateToCustomer(
     .eq("id", lead.id);
 
   revalidateEstimates(estimateId);
-  return { sentTo, channel };
+  return {
+    sentTo: sentTo.join(" and "),
+    channel,
+    // Only on "both": a single explicit channel either already errored
+    // above or fully succeeded, so it never has a partial problem to show.
+    warning: channel === "both" && problems.length ? problems.join("; ") : undefined,
+  };
 }
 
 export type PaymentInput = { name: string; description?: string | null; amount_cents: number };

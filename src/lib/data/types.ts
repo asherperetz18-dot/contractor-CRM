@@ -360,6 +360,8 @@ export function pathToPageKey(pathname: string): PageKey | null {
 export type CompanyProfile = {
   company_id: string;
   name: string | null;
+  /** "Doing business as" name, shown on customer-facing documents and emails when set. */
+  dba: string | null;
   address: string | null;
   email: string | null;
   phone: string | null;
@@ -1240,6 +1242,9 @@ export type EstimateSigner = {
   sort_order: number;
   signed_at: string | null;
   signature_name: string | null;
+  /** A hand-drawn signature, as a base64 PNG data URL. Null for a typed-only signature. */
+  signature_image: string | null;
+  signature_type: "typed" | "drawn";
 };
 
 export type Estimate = {
