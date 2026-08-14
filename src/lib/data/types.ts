@@ -128,24 +128,19 @@ export function canCreateEstimates(
 /**
  * Who may remove an appointment outright.
  *
- * Deliberately NOT the same as canEditSchedule, which includes Dispatch.
- * Booking, moving and confirming is a dispatcher's whole day; deleting
- * the record of a visit that happened is not, and the database has
- * always refused it. The UI offered the button anyway, so a dispatcher
- * could press Delete, watch the dialog close, and find the appointment
- * still there -- the app reporting a deletion it had not performed.
+ * Office and Admin only. Deliberately NOT canEditSchedule, which also
+ * includes Dispatch and Field: booking, moving and confirming visits is
+ * those roles' daily work, but destroying the record of a visit that
+ * happened is a different act. An appointment is the evidence a trip was
+ * made -- it is what the show rate, the follow-up cron and a rep's
+ * commission all read -- so removing one is an office decision.
  *
- * Mirrors what the events delete policy actually allows: Office, Admin
- * and Field. Verified against the live database rather than read off a
- * migration, because the two have drifted before.
+ * Cancelled is the tool for "it isn't happening", and it keeps the
+ * history. Delete is for a booking made in error.
  */
 export function canDeleteAppointments(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
-  return (
-    profile.roles.includes("Office") ||
-    profile.roles.includes("Admin") ||
-    profile.roles.includes("Field")
-  );
+  return profile.roles.includes("Office") || profile.roles.includes("Admin");
 }
 
 export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {

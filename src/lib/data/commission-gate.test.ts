@@ -160,11 +160,15 @@ test("two reps always split the pot exactly, with no cent lost to rounding", () 
 
 // ── Appointment delete permission ────────────────────────────────────
 //
-// Verified against the live database's delete policy on 2026-08-14:
-// Office, Admin and Field may delete an appointment; Dispatch and Sales
-// may not. The UI gate has to agree with that, or it offers a button the
-// database will refuse -- which is how a dispatcher came to press Delete
-// and be told an appointment was gone while it was still there.
+// Office and Admin only. An appointment is the evidence a trip was made
+// -- the show rate, the follow-up cron and a rep's commission all read
+// it -- so removing one is an office decision. Cancelled is the tool for
+// "it isn't happening", and it keeps the history.
+//
+// The UI gate has to agree with the database policy, or it offers a
+// button the database will refuse -- which is how a dispatcher came to
+// press Delete and be told an appointment was gone while it was still
+// there.
 
 import { canDeleteAppointments, canEditSchedule } from "./types.ts";
 
@@ -175,10 +179,14 @@ test("dispatch may work the calendar but not delete from it", () => {
   assert.equal(canDeleteAppointments(who(["Dispatch"])), false);
 });
 
-test("office, admin and field may delete an appointment", () => {
+test("office and admin may delete an appointment", () => {
   assert.equal(canDeleteAppointments(who(["Office"])), true);
   assert.equal(canDeleteAppointments(who(["Admin"])), true);
-  assert.equal(canDeleteAppointments(who(["Field"])), true);
+});
+
+test("field works the calendar but does not delete from it", () => {
+  assert.equal(canEditSchedule(who(["Field"])), true);
+  assert.equal(canDeleteAppointments(who(["Field"])), false);
 });
 
 test("sales may not delete an appointment", () => {
