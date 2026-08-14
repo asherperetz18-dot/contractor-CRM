@@ -126,14 +126,39 @@ export async function markEstimateViewed(estimateId: string): Promise<void> {
     .eq("id", estimateId);
 }
 
+export type CustomerSignature =
+  | { type: "typed"; name: string }
+  | { type: "drawn"; image: string };
+
+/**
+ * A drawn signature is a base64 PNG data URL from the portal's own canvas
+ * (signature-pad.tsx), never larger than the sign panel it was drawn in.
+ * Anything wildly bigger than that is not a real signature and is rejected
+ * outright rather than stored -- the column has no length cap of its own,
+ * and this is the one place free-form data from an unauthenticated portal
+ * request lands directly in a text column.
+ */
+const MAX_SIGNATURE_IMAGE_BYTES = 300 * 1024;
+
+function validSignatureImage(image: string): boolean {
+  return (
+    image.startsWith("data:image/png;base64,") &&
+    image.length <= MAX_SIGNATURE_IMAGE_BYTES
+  );
+}
+
 export async function signEstimateAsCustomer(
   estimateId: string,
-  typedName: string,
+  signature: CustomerSignature,
   /** Completion certificates only: anything the customer wants put right. */
   customerItems?: string
 ): Promise<{ error?: string; complete?: boolean }> {
-  const name = typedName.trim();
-  if (!name) return { error: "Type your full name to sign." };
+  const image = signature.type === "drawn" ? signature.image : null;
+  if (image !== null && !validSignatureImage(image)) {
+    return { error: "That signature didn't come through. Please draw it again." };
+  }
+  const typedName = signature.type === "typed" ? signature.name.trim() : "";
+  if (signature.type === "typed" && !typedName) return { error: "Type your full name to sign." };
 
   const loaded = await loadForViewer(estimateId);
   if ("error" in loaded) return loaded;
@@ -170,11 +195,18 @@ export async function signEstimateAsCustomer(
   const now = new Date().toISOString();
   const evidence = collectSignatureEvidence(head, now);
 
+  // A drawn signature is the mark, not a name the customer retyped -- it
+  // is attributed to the name already on the document rather than asking
+  // them to type it a second time on top of drawing it.
+  const signedName = signature.type === "drawn" ? mine.name : typedName;
+
   const { data: signed, error } = await admin
     .from("estimate_signers")
     .update({
       signed_at: evidence.signedAt,
-      signature_name: name,
+      signature_name: signedName,
+      signature_image: image,
+      signature_type: signature.type,
       signature_ip: evidence.ip,
       signature_user_agent: evidence.userAgent,
     })
@@ -199,7 +231,7 @@ export async function signEstimateAsCustomer(
       .from("estimates")
       .update({
         completion_customer_items: prior
-          ? `${prior}\n\n${name}:\n${customerItems.trim()}`
+          ? `${prior}\n\n${signedName}:\n${customerItems.trim()}`
           : customerItems.trim(),
       })
       .eq("id", estimateId);

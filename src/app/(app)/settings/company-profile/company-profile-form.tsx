@@ -40,6 +40,7 @@ function guessStateFromAddress(address: string) {
 function toInput(p: CompanyProfile | null): CompanyProfileInput {
   return {
     name: p?.name ?? "",
+    dba: p?.dba ?? "",
     address: p?.address ?? "",
     email: p?.email ?? "",
     phone: p?.phone ?? "",
@@ -137,6 +138,16 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
         <Field label="Company Name">
           <input value={form.name} onChange={(e) => set("name", e.target.value)} />
         </Field>
+        <Field label="Dba (Doing Business As)">
+          <input
+            value={form.dba}
+            onChange={(e) => set("dba", e.target.value)}
+            placeholder="Leave blank if same as company name"
+          />
+        </Field>
+        <p className="cp-hint">
+          Shown as the &quot;Dba&quot; line on proposal emails when set. Leave blank to omit it.
+        </p>
         <Field label="Company Phone">
           <input value={form.phone} onChange={(e) => set("phone", e.target.value)} />
         </Field>

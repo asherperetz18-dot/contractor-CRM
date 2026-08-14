@@ -20,6 +20,7 @@ import { fillContract, lateContractValues, parseContract } from "@/lib/contracts
 
 export type DocumentCompany = {
   name: string | null;
+  dba: string | null;
   address: string | null;
   phone: string | null;
   email: string | null;
@@ -590,7 +591,14 @@ export function EstimateDocument({
             {signers.map((s) => (
               <div key={s.id} className="estdoc-signer">
                 <div className="estdoc-signer-line">
-                  {s.signature_name ? (
+                  {s.signature_image ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={s.signature_image}
+                      alt={`${s.signature_name ?? s.name}'s signature`}
+                      className="estdoc-signature-img"
+                    />
+                  ) : s.signature_name ? (
                     <span className="estdoc-signed-name">{s.signature_name}</span>
                   ) : (
                     <span className="estdoc-unsigned">Awaiting signature</span>

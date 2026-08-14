@@ -290,10 +290,11 @@ export function EstimateBuilder({
   }
 
   // Texting the portal link is the normal path; emailing it is the
-  // alternative for a customer who prefers or only has email; marking it
-  // sent without either is the fallback for a customer with no mobile
+  // alternative for a customer who prefers or only has email; sending both
+  // at once covers a customer who checks whichever they see first; marking
+  // it sent without either is the fallback for a customer with no mobile
   // number or email, or one the rep is handing a printout to in person.
-  function send(deliver: "text" | "email" | "manual") {
+  function send(deliver: "text" | "email" | "both" | "manual") {
     setError(null);
     startTransition(async () => {
       const res =
@@ -301,10 +302,10 @@ export function EstimateBuilder({
           ? await markEstimateSent(estimate.id)
           : await sendEstimateToCustomer(estimate.id, deliver);
       if (res.error) return setError(res.error);
+      const label = deliver === "email" ? "Emailed" : deliver === "text" ? "Texted" : "Sent";
+      const warning = "warning" in res && res.warning ? ` — but ${res.warning}` : "";
       setSaved(
-        "sentTo" in res && res.sentTo
-          ? `${deliver === "email" ? "Emailed" : "Texted"} to ${res.sentTo}`
-          : "Marked as sent"
+        "sentTo" in res && res.sentTo ? `${label} to ${res.sentTo}${warning}` : "Marked as sent"
       );
       router.refresh();
     });
@@ -366,11 +367,19 @@ export function EstimateBuilder({
                 Save &amp; Email to Customer
               </button>
               <button
-                className="btn-primary"
+                className="btn-ghost"
                 onClick={() => save(() => send("text"))}
                 disabled={pending}
               >
                 Save &amp; Text to Customer
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => save(() => send("both"))}
+                disabled={pending}
+                title="Sends both the email and the text -- whichever the customer has on file"
+              >
+                Save &amp; Send Email + Text
               </button>
             </>
           )}
