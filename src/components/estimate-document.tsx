@@ -5,6 +5,7 @@ import {
   quantityIsMeaningful,
   depositPayment,
   paymentMethodLabel,
+  attachmentIsImage,
   signatureProgress,
   isPricelessKind,
   photosByItem,
@@ -96,6 +97,40 @@ export function groupIncludedItems(items: EstimateItem[]): {
 function pct(amountCents: number, totalCents: number): string {
   const p = paymentPercentOfTotal(amountCents, totalCents);
   return p === null ? "—" : `${p.toFixed(2)}%`;
+}
+
+/**
+ * One attachment on the document: a picture, or a link to a file.
+ *
+ * A PDF cannot go in an <img> -- it renders as a broken image, and this
+ * is the copy the customer reads before signing. Plans and permits are
+ * shown as a named link instead, which is also what a printed copy needs:
+ * paper cannot open a PDF either, so the name has to be legible on it.
+ */
+function AttachmentFigure({
+  attachment,
+}: {
+  attachment: { file_url: string; file_name?: string; caption: string | null; content_type: string | null };
+}) {
+  const image = attachmentIsImage(attachment.content_type, attachment.file_name);
+  return (
+    <figure className={"estdoc-photo" + (image ? "" : " estdoc-attachment")}>
+      {image ? (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={attachment.file_url} alt={attachment.caption ?? "Job photo"} />
+      ) : (
+        <a href={attachment.file_url} target="_blank" rel="noopener noreferrer">
+          <span className="estdoc-attachment-icon" aria-hidden>
+            📄
+          </span>
+          <span className="estdoc-attachment-name">
+            {attachment.file_name || "Attachment"}
+          </span>
+        </a>
+      )}
+      {attachment.caption && <figcaption>{attachment.caption}</figcaption>}
+    </figure>
+  );
 }
 
 function longDate(value: string | null) {
@@ -347,11 +382,7 @@ export function EstimateDocument({
                     {(byItem.get(item.id) ?? []).length > 0 && (
                       <div className="estdoc-photos">
                         {(byItem.get(item.id) ?? []).map((p) => (
-                          <figure key={p.id} className="estdoc-photo">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={p.file_url} alt={p.caption ?? "Job photo"} />
-                            {p.caption && <figcaption>{p.caption}</figcaption>}
-                          </figure>
+                          <AttachmentFigure key={p.id} attachment={p} />
                         ))}
                       </div>
                     )}
@@ -399,11 +430,7 @@ export function EstimateDocument({
           <h2 className="estdoc-h2">Photos</h2>
           <div className="estdoc-photos">
             {documentPhotos.map((p) => (
-              <figure key={p.id} className="estdoc-photo">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.file_url} alt={p.caption ?? "Job photo"} />
-                {p.caption && <figcaption>{p.caption}</figcaption>}
-              </figure>
+              <AttachmentFigure key={p.id} attachment={p} />
             ))}
           </div>
         </section>

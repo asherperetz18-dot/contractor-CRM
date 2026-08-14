@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { downscaleImage } from "@/lib/images/downscale";
-import { uploadLeadFile } from "@/lib/actions/lead-files";
+import { createLeadFileUploadUrl, recordLeadFile } from "@/lib/actions/lead-files";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { attachmentIsImage } from "@/lib/data/types";
 import {
   attachEstimatePhoto,
   detachEstimatePhoto,
@@ -13,15 +15,43 @@ import {
 import type { EstimateItem, EstimatePhoto, LeadPhoto } from "@/lib/data/types";
 
 /**
- * Photos on the document the customer signs.
+ * The tile for one attachment in this panel.
  *
- * Attaching is what makes a job photo customer-visible -- files on the
+ * A PDF has no thumbnail, so it gets its name and an icon rather than an
+ * <img> pointed at a file no browser will draw -- which is a broken
+ * image on the screen a rep uses to decide what the customer sees.
+ */
+function Thumb({
+  url,
+  name,
+  type,
+}: {
+  url: string;
+  name: string;
+  type: string | null;
+}) {
+  if (attachmentIsImage(type, name)) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={url} alt={name} loading="lazy" />;
+  }
+  return (
+    <span className="estdoc-photo-file" title={name}>
+      <span aria-hidden>📄</span>
+      <span className="estdoc-photo-file-name">{name}</span>
+    </span>
+  );
+}
+
+/**
+ * Photos and documents on the paper the customer signs.
+ *
+ * Attaching is what makes a job file customer-visible -- files on the
  * contact stay internal until somebody puts one here on purpose. That is
  * a simpler rule than a visibility checkbox per file, and there is no way
  * to tick it wrong.
  *
- * A photo can sit under the line it justifies or under the document as a
- * whole. On a change order the first is the point: "Dry rot repair,
+ * An attachment can sit under the line it justifies or under the document
+ * as a whole. On a change order the first is the point: "Dry rot repair,
  * $4,200" with the picture of the rot directly beneath it is a different
  * conversation from a gallery at the end that the customer has to match
  * up themselves.
@@ -88,11 +118,38 @@ export function PhotosPanel({
     startTransition(async () => {
       // Shrunk in the browser first. A phone photo is 3-12MB, and ten of
       // them is a proposal a homeowner on mobile data closes before it
-      // loads.
+      // loads. A PDF is passed through untouched -- downscaleImage only
+      // touches jpeg/png/webp and returns everything else as it came.
       const file = await downscaleImage(chosen);
-      const form = new FormData();
-      form.append("file", file);
-      const up = await uploadLeadFile(leadId, form);
+
+      // Straight to storage rather than through a server action. A set of
+      // plans is routinely bigger than the ~4.5MB body Vercel will accept,
+      // and that limit rejects the request before any of our own checks
+      // get a say.
+      const signed = await createLeadFileUploadUrl(leadId, file.name, file.size);
+      if (signed.error || !signed.path || !signed.token) {
+        return setError(signed.error ?? "Could not start that upload.");
+      }
+      const storage = createBrowserClient();
+      const { error: uploadError } = await storage.storage
+        .from("lead-files")
+        .uploadToSignedUrl(signed.path, signed.token, file, {
+          contentType: file.type || undefined,
+        });
+      if (uploadError) {
+        return setError(
+          /exceeded the maximum allowed size/i.test(uploadError.message)
+            ? "That file is larger than the storage limit on this project."
+            : uploadError.message
+        );
+      }
+      const up = await recordLeadFile(
+        leadId,
+        signed.path,
+        file.name,
+        file.size,
+        file.type || null
+      );
       if (up.error) return setError(up.error);
 
       const lib = await getLeadPhotos(leadId);
@@ -110,10 +167,11 @@ export function PhotosPanel({
     <section className="est-pay">
       <div className="est-pay-head">
         <div>
-          <h2 className="est-pay-title">Photos</h2>
+          <h2 className="est-pay-title">Photos &amp; documents</h2>
           <p className="est-pay-sub">
-            Shown to the customer on this {noun}. Put a photo under the line it pays for and it
-            stops being a picture and starts being the reason for the price.
+            Shown to the customer on this {noun}. Photos and PDFs &mdash; plans, permits, spec
+            sheets. Put one under the line it pays for and it stops being an attachment and
+            starts being the reason for the price.
           </p>
         </div>
         {!locked && (
@@ -124,20 +182,20 @@ export function PhotosPanel({
               disabled={pending || unattached.length === 0}
             >
               {unattached.length === 0
-                ? "No unused job photos"
-                : `Add from job photos (${unattached.length})`}
+                ? "No unused job files"
+                : `Add from job files (${unattached.length})`}
             </button>
             <button
               className="btn-ghost"
               onClick={() => fileInput.current?.click()}
               disabled={pending}
             >
-              {pending ? "Working…" : "Upload photo"}
+              {pending ? "Working…" : "Upload file"}
             </button>
             <input
               ref={fileInput}
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf,.pdf"
               hidden
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -170,8 +228,7 @@ export function PhotosPanel({
                 onClick={() => attach(a.id)}
                 title={a.file_name}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={a.file_url} alt={a.file_name} loading="lazy" />
+                <Thumb url={a.file_url} name={a.file_name} type={a.content_type} />
               </button>
             ))}
           </div>
@@ -187,8 +244,7 @@ export function PhotosPanel({
         <div className="estdoc-photo-grid">
           {photos.map((p) => (
             <div key={p.id} className="estdoc-photo-edit">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.file_url} alt={p.caption ?? p.file_name} loading="lazy" />
+              <Thumb url={p.file_url} name={p.file_name} type={p.content_type} />
               {locked ? (
                 <>
                   <div className="est-tax-note">{p.caption || "No caption"}</div>

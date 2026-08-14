@@ -1987,6 +1987,26 @@ export type LeadPhoto = {
 };
 
 /**
+ * Whether an attachment can be drawn, or only linked to.
+ *
+ * A PDF in an <img> renders as a broken image, and on the customer's
+ * copy of a proposal that is worse than not attaching it. Everything
+ * that is not a picture is shown as a named link instead.
+ *
+ * Falls back to the file extension because content_type is whatever the
+ * browser claimed at upload, and some send application/octet-stream for
+ * a perfectly ordinary PDF.
+ */
+export function attachmentIsImage(
+  contentType: string | null | undefined,
+  fileName?: string | null
+): boolean {
+  if (contentType && /^image\//i.test(contentType)) return true;
+  if (contentType && /^application\/pdf$/i.test(contentType)) return false;
+  return /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(fileName ?? "");
+}
+
+/**
  * A photo attached to an estimate, contract or change order.
  *
  * The file stays owned by the lead -- this is a link, not a copy, so one

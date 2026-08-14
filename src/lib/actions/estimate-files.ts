@@ -86,7 +86,11 @@ export async function getLeadPhotos(
       .select("id, file_name, file_url, content_type, created_at")
       .eq("lead_id", leadId)
       .eq("company_id", profile.company_id)
-      .like("content_type", "image/%")
+      // Pictures and PDFs. Plans, permits and spec sheets belong on a
+      // proposal for the same reason a photograph does -- they are the
+      // reason for the price -- and this was images only, so a rep who
+      // uploaded the drawings to the contact could not attach them.
+      .or("content_type.like.image/%,content_type.eq.application/pdf")
       .order("created_at", { ascending: false })
       .range(from, to)
   );
