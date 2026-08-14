@@ -1,23 +1,41 @@
 import type { Metadata } from "next";
-import { Oswald, Inter, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const oswald = Oswald({
+/**
+ * The fonts are in the repo, not fetched from Google at build time.
+ *
+ * next/font/google downloads the woff2 files during the build, which
+ * makes every deploy depend on fonts.gstatic.com answering. It does not
+ * always: two production deploys failed inside 20 seconds on 404s for
+ * Inter, and one of them was a commit that changed nothing but a .sql
+ * file. A build that cannot fail on its own code should not fail on
+ * somebody else's CDN.
+ *
+ * These are the same files Google serves, and they are variable fonts --
+ * one file per family covers every weight, which is why a range is
+ * declared rather than three copies of the same 48KB. Both licences
+ * (SIL OFL) permit self-hosting.
+ */
+const oswald = localFont({
+  src: "./fonts/oswald.woff2",
   variable: "--font-oswald",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: "500 700",
+  display: "swap",
 });
 
-const inter = Inter({
+const inter = localFont({
+  src: "./fonts/inter.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: "400 600",
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono.woff2",
   variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: "400 500",
+  display: "swap",
 });
 
 // Kept static (no per-request DB/cookie lookup here) so public routes
