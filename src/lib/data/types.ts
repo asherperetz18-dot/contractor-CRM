@@ -1214,6 +1214,36 @@ export function isVoid(status: EstimateStatus): boolean {
   return status === "Void";
 }
 
+/**
+ * Whose name belongs on an estimate as the salesperson.
+ *
+ * estimates.assigned_to is stamped when the document is created and
+ * never moves again. Reassigning the lead therefore left every list and
+ * every document naming whoever happened to raise the draft -- often the
+ * dispatcher who took the call, not a salesperson at all.
+ *
+ * Until it is signed, the document follows the lead: the point of naming
+ * a rep is saying who the customer will actually meet. Once signed it
+ * stops moving, like the terms and the photos -- a contract records who
+ * sold the job, and reassigning the lead a year later must not rewrite
+ * that.
+ *
+ * Shared so the office list and the customer's copy answer identically.
+ * They did not: the customer's proposal already followed this rule while
+ * the estimates list still read the stamped id, so one screen said Simon
+ * and the other said josh.c about the same document.
+ */
+export function effectiveEstimateRepId(input: {
+  status: EstimateStatus | string;
+  /** Stamped on the document when it was created. */
+  estimateAssignedTo: string | null;
+  /** Who holds the customer now. */
+  leadAssignedTo: string | null | undefined;
+}): string | null {
+  const frozen = input.status === "Signed" || input.status === "Void";
+  return (!frozen && input.leadAssignedTo) || input.estimateAssignedTo || null;
+}
+
 // Statuses a customer has already seen. Editing one of these supersedes it
 // with a new version rather than rewriting what they were shown.
 export const ISSUED_ESTIMATE_STATUSES: EstimateStatus[] = [

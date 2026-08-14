@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  effectiveEstimateRepId,
   estimateExpired,
   moneyCents,
   isSellableKind,
@@ -21,6 +22,9 @@ export type EstimateLead = {
   email: string | null;
   address: string | null;
   stage: string;
+  /** Who holds the customer now -- the salesperson an unsigned document
+   *  should name, rather than whoever happened to raise the draft. */
+  assigned_to: string | null;
 };
 
 export type EstimateRep = { id: string; name: string | null; email: string | null };
@@ -120,6 +124,17 @@ export function EstimatesView({
   const effectiveStatus = (e: Estimate): EstimateStatus =>
     estimateExpired(e) ? "Expired" : e.status;
 
+  // Who this document's salesperson actually is. Not e.assigned_to: that
+  // is stamped at creation and never moves, so a draft raised by the
+  // dispatcher who took the call kept naming them long after the lead
+  // was handed to a rep. Same rule the customer's copy uses.
+  const repIdFor = (e: Estimate) =>
+    effectiveEstimateRepId({
+      status: e.status,
+      estimateAssignedTo: e.assigned_to,
+      leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
+    });
+
   // One list or the other, never both. Each card counts only its own
   // kind, so a change order cannot be tallied as a contract.
   // isSellableKind rather than a hand-written kind check: the funnel, the
@@ -161,7 +176,7 @@ export function EstimatesView({
   // Drafts offers only Draft, while Attached, which spans every status,
   // offers the real spread. Same for the salesperson: only people who
   // actually have a document here.
-  const repOptions = [...new Set(inThisBucket.map((e) => e.assigned_to).filter(Boolean))]
+  const repOptions = [...new Set(inThisBucket.map(repIdFor).filter(Boolean))]
     .map((id) => {
       const rep = repById.get(id as string);
       return { id: id as string, label: rep?.name || rep?.email || "Unnamed" };
@@ -174,7 +189,7 @@ export function EstimatesView({
 
   const rows = inThisBucket.filter(
     (e) =>
-      (repFilter.size === 0 || (e.assigned_to && repFilter.has(e.assigned_to))) &&
+      (repFilter.size === 0 || (() => { const id = repIdFor(e); return !!id && repFilter.has(id); })()) &&
       (statusFilter.size === 0 || statusFilter.has(effectiveStatus(e)))
   );
 
@@ -280,7 +295,8 @@ export function EstimatesView({
           <tbody>
             {rows.map((e) => {
               const lead = leadById.get(e.lead_id);
-              const rep = e.assigned_to ? repById.get(e.assigned_to) : null;
+              const repId = repIdFor(e);
+              const rep = repId ? repById.get(repId) : null;
               const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
               const status = effectiveStatus(e);
               // Nobody owes a signature on a document that is over.

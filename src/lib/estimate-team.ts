@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { effectiveEstimateRepId } from "@/lib/data/types";
 import type { DocumentTeam } from "@/components/estimate-document";
 
 /**
@@ -32,22 +33,14 @@ export async function getEstimateTeam(
     : null;
   const dispatcherId = lead?.dispatcher_id ?? null;
 
-  /**
-   * Whose name the customer sees.
-   *
-   * estimates.assigned_to is stamped when the document is created and
-   * never moves again, so reassigning the lead left the proposal naming
-   * the previous rep -- a customer reading EST-1032 was told to expect
-   * Brendan when Simon is the one turning up.
-   *
-   * Until it is signed, the document follows the lead: the point of the
-   * team block is telling the customer who they will actually meet.
-   * Once signed it stops moving, like the terms and the photos -- a
-   * contract records who sold the job, and reassigning the lead a year
-   * later must not rewrite that.
-   */
-  const signed = status === "Signed" || status === "Void";
-  const repId = (!signed && lead?.assigned_to) || assignedTo;
+  // Whose name the customer sees. The rule lives in
+  // effectiveEstimateRepId so the office list and this copy of the
+  // document cannot answer the question differently.
+  const repId = effectiveEstimateRepId({
+    status: status ?? "",
+    estimateAssignedTo: assignedTo,
+    leadAssignedTo: lead?.assigned_to,
+  });
 
   const ids = [repId, dispatcherId].filter(Boolean) as string[];
   if (ids.length === 0) return null;
