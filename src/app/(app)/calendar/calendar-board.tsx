@@ -67,6 +67,7 @@ export function CalendarBoard({
   events,
   jobs,
   reps,
+  filterReps,
   leads,
   leadTasks,
   leadNotes,
@@ -77,7 +78,10 @@ export function CalendarBoard({
 }: {
   events: Event[];
   jobs: Job[];
+  /** Every active member: name lookups and the assignee picker. */
   reps: Profile[];
+  /** Just the salespeople, for the rep filter. */
+  filterReps: Profile[];
   leads: Lead[];
   leadTasks: LeadTask[];
   leadNotes: LeadNote[];
@@ -140,8 +144,15 @@ export function CalendarBoard({
     if (l.dispatcher_id) dispatcherByLead.set(l.id, l.dispatcher_id);
   }
   // Built from who actually holds leads, not from who has the role.
+  //
+  // Resolved against the full member list, not the narrowed rep filter
+  // list: dispatchers are precisely the people that list leaves out, so
+  // looking them up there returned nothing and every name read "Unnamed".
   const dispatchers = [...new Set(dispatcherByLead.values())]
-    .map((id) => ({ id, name: reps.find((r) => r.id === id)?.name || "Unnamed" }))
+    .map((id) => {
+      const person = reps.find((r) => r.id === id);
+      return { id, name: person?.name || person?.email || "Unnamed" };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const filteredEvents = events.filter((ev) => {
@@ -451,7 +462,7 @@ export function CalendarBoard({
             // A member with neither name nor email rendered as a blank
             // row with a checkbox beside it -- a filter you cannot tell
             // apart from the one above it.
-            options={reps.map((r) => ({ id: r.id, label: r.name || r.email || "Unnamed" }))}
+            options={filterReps.map((r) => ({ id: r.id, label: r.name || r.email || "Unnamed" }))}
             selected={repFilter}
             onChange={setRepFilter}
           />

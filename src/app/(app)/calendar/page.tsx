@@ -66,26 +66,33 @@ export default async function CalendarPage() {
     if (e.second_assigned_to) onCalendar.add(e.second_assigned_to);
   }
 
-  // The rep filter listed every active member of the company, so
-  // bookkeepers, dispatchers, the shared phone account and anyone added
-  // for any other reason all appeared as reps -- sixteen names, ten of
-  // whom could ever match an appointment.
+  // Everyone active. This is the list the board resolves names from and
+  // the appointment form assigns to, so it must stay whole: narrowing it
+  // left every dispatcher in the filter reading "Unnamed", because their
+  // names are looked up here -- and quietly removed office staff from the
+  // list of people an appointment can be booked to.
+  const reps = allReps
+    .filter((r) => r.status === "Active")
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+
+  // The narrowed list, for the rep filter only. It listed every active
+  // member, so bookkeepers, dispatchers, the shared phone account and
+  // anyone added for any other reason all appeared as reps -- sixteen
+  // names, ten of whom could ever match an appointment.
   //
   // Two ways in, because either alone is wrong. Role alone drops somebody
   // in dispatch who is running an appointment anyway, and their booking
   // becomes unreachable through the filter. Appointments alone hides a
   // newly hired rep until their first booking, so they look missing on
   // the day they need to be picked.
-  const reps = allReps
-    .filter((r) => r.status === "Active")
-    .filter((r) => r.roles?.includes("Sales") || onCalendar.has(r.id))
-    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  const filterReps = reps.filter((r) => r.roles?.includes("Sales") || onCalendar.has(r.id));
 
   return (
     <CalendarBoard
       events={(events as Event[]) ?? []}
       jobs={(jobs as Job[]) ?? []}
       reps={reps}
+      filterReps={filterReps}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}
