@@ -124,6 +124,34 @@ export function PaymentSchedule({
     setSaved(null);
   }
 
+  /**
+   * Moves a phase up or down the schedule.
+   *
+   * The order is the order the customer is billed in, so a schedule that
+   * reads rough-in before demolition is wrong even when every amount is
+   * right -- and the only way to correct it was to delete the phases and
+   * retype them in order.
+   *
+   * Arrows rather than dragging, matching the line items above: this sits
+   * next to amount fields a rep is typing into, and a drag handle beside
+   * a text input is easy to catch by accident. sort_order is written from
+   * array position on save, so moving the row here is the whole change.
+   *
+   * The deposit is deliberately not movable. It is not one of these rows
+   * -- it is computed from the contract and always due first.
+   */
+  function movePhase(key: string, delta: -1 | 1) {
+    setRows((prev) => {
+      const i = prev.findIndex((r) => r.key === key);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+    setSaved(null);
+  }
+
   function save() {
     setError(null);
     startTransition(async () => {
@@ -421,16 +449,40 @@ export function PaymentSchedule({
                       </>
                     )
                   ) : (
-                    <button
-                      className="btn-ghost est-row-remove"
-                      onClick={() => {
-                        setRows((p) => p.filter((x) => x.key !== r.key));
-                        setSaved(null);
-                      }}
-                      aria-label="Remove phase"
-                    >
-                      ×
-                    </button>
+                    <span className="est-row-tools">
+                      {rows.length > 1 && (
+                        <span className="est-move-group">
+                          <button
+                            className="btn-ghost est-move"
+                            onClick={() => movePhase(r.key, -1)}
+                            disabled={rows[0].key === r.key}
+                            aria-label="Move this phase earlier"
+                            title="Move up"
+                          >
+                            ▲
+                          </button>
+                          <button
+                            className="btn-ghost est-move"
+                            onClick={() => movePhase(r.key, 1)}
+                            disabled={rows[rows.length - 1].key === r.key}
+                            aria-label="Move this phase later"
+                            title="Move down"
+                          >
+                            ▼
+                          </button>
+                        </span>
+                      )}
+                      <button
+                        className="btn-ghost est-row-remove"
+                        onClick={() => {
+                          setRows((p) => p.filter((x) => x.key !== r.key));
+                          setSaved(null);
+                        }}
+                        aria-label="Remove phase"
+                      >
+                        ×
+                      </button>
+                    </span>
                   )}
                 </td>
               </tr>
