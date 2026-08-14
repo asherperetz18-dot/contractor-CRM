@@ -125,6 +125,29 @@ export function canCreateEstimates(
 // complete work. Field crews need this alongside Office; Admin is the
 // full-access role. These pages each used to inline "Office || Field",
 // which silently left Admins unable to touch the calendar at all.
+/**
+ * Who may remove an appointment outright.
+ *
+ * Deliberately NOT the same as canEditSchedule, which includes Dispatch.
+ * Booking, moving and confirming is a dispatcher's whole day; deleting
+ * the record of a visit that happened is not, and the database has
+ * always refused it. The UI offered the button anyway, so a dispatcher
+ * could press Delete, watch the dialog close, and find the appointment
+ * still there -- the app reporting a deletion it had not performed.
+ *
+ * Mirrors what the events delete policy actually allows: Office, Admin
+ * and Field. Verified against the live database rather than read off a
+ * migration, because the two have drifted before.
+ */
+export function canDeleteAppointments(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Field")
+  );
+}
+
 export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
   return (

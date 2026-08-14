@@ -242,8 +242,19 @@ export async function setEventResult(id: string, status: EventStatus) {
 
 export async function deleteEvent(id: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("events").delete().eq("id", id);
+  // .select() so a delete the policy refused surfaces as an error rather
+  // than as silence. Without it this matched zero rows and returned
+  // success, and the caller closed the dialog -- so a dispatcher pressing
+  // Delete was told the appointment was gone while it was still there.
+  const { data, error } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "That appointment couldn't be deleted — your role may not have permission." };
+  }
   revalidateCalendarRoutes();
   return {};
 }

@@ -144,6 +144,7 @@ export function EventForm({
   calendars,
   stages,
   readOnly,
+  canDelete,
   onCancel,
   onSaved,
   onDeleted,
@@ -159,6 +160,9 @@ export function EventForm({
   calendars: CalendarRow[];
   stages?: PipelineStageRow[];
   readOnly?: boolean;
+  /** Deleting an appointment is a narrower right than editing one:
+   *  Dispatch books and moves visits but may not remove them. */
+  canDelete?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -1154,7 +1158,7 @@ export function EventForm({
               be scrolled to before anything could be committed. */}
           <div className="modal-actions modal-actions-sticky">
             <div className="modal-actions-left">
-              {event && !readOnly && !selfSaving && (
+              {event && !readOnly && canDelete && !selfSaving && (
                 <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
                   Delete
                 </button>

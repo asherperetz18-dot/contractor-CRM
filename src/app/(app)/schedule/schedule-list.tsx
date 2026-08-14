@@ -44,6 +44,7 @@ export function ScheduleList({
   estimates,
   calendars,
   canWrite,
+  canDeleteEvents,
 }: {
   events: Event[];
   jobs: Job[];
@@ -55,6 +56,7 @@ export function ScheduleList({
   estimates: LinkedEstimate[];
   calendars: CalendarRow[];
   canWrite: boolean;
+  canDeleteEvents: boolean;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -149,6 +151,7 @@ export function ScheduleList({
           calendars={calendars}
           stages={stages}
           readOnly={!canWrite}
+          canDelete={canDeleteEvents}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

@@ -75,6 +75,7 @@ export function CalendarBoard({
   calendars,
   stages,
   canWrite,
+  canDeleteEvents,
 }: {
   events: Event[];
   jobs: Job[];
@@ -89,6 +90,7 @@ export function CalendarBoard({
   calendars: CalendarRow[];
   stages: PipelineStageRow[];
   canWrite: boolean;
+  canDeleteEvents: boolean;
 }) {
   const timeFormat = useTimeFormat();
   const [viewMode, setViewMode] = useState<ViewMode>("month");
@@ -571,6 +573,7 @@ export function CalendarBoard({
           calendars={calendars}
           stages={stages}
           readOnly={!canWrite}
+          canDelete={canDeleteEvents}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

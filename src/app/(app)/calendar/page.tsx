@@ -12,7 +12,7 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
-import { canEditSchedule } from "@/lib/data/types";
+import { canDeleteAppointments, canEditSchedule } from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
@@ -93,6 +93,7 @@ export default async function CalendarPage() {
       jobs={(jobs as Job[]) ?? []}
       reps={reps}
       filterReps={filterReps}
+      canDeleteEvents={canDeleteAppointments(profile)}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}

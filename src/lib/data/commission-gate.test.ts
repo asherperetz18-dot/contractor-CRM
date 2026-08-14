@@ -157,3 +157,38 @@ test("two reps always split the pot exactly, with no cent lost to rounding", () 
   });
   assert.equal(c.rep1Cents + c.rep2Cents, c.poolCents);
 });
+
+// ── Appointment delete permission ────────────────────────────────────
+//
+// Verified against the live database's delete policy on 2026-08-14:
+// Office, Admin and Field may delete an appointment; Dispatch and Sales
+// may not. The UI gate has to agree with that, or it offers a button the
+// database will refuse -- which is how a dispatcher came to press Delete
+// and be told an appointment was gone while it was still there.
+
+import { canDeleteAppointments, canEditSchedule } from "./types.ts";
+
+const who = (roles: string[]) => ({ roles: roles as never });
+
+test("dispatch may work the calendar but not delete from it", () => {
+  assert.equal(canEditSchedule(who(["Dispatch"])), true);
+  assert.equal(canDeleteAppointments(who(["Dispatch"])), false);
+});
+
+test("office, admin and field may delete an appointment", () => {
+  assert.equal(canDeleteAppointments(who(["Office"])), true);
+  assert.equal(canDeleteAppointments(who(["Admin"])), true);
+  assert.equal(canDeleteAppointments(who(["Field"])), true);
+});
+
+test("sales may not delete an appointment", () => {
+  assert.equal(canDeleteAppointments(who(["Sales"])), false);
+});
+
+test("a second role still grants it", () => {
+  assert.equal(canDeleteAppointments(who(["Dispatch", "Office"])), true);
+});
+
+test("nobody signed in deletes nothing", () => {
+  assert.equal(canDeleteAppointments(null), false);
+});
