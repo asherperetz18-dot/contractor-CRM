@@ -20,6 +20,7 @@ import {
   depositCents,
   editWillRecallEstimate,
   estimateLocked,
+  isPricelessKind,
   DEFAULT_PAYMENT_PHASES,
   splitEvenlyCents,
   computeEstimateTotals,
@@ -62,6 +63,7 @@ type SendToCustomerRow = {
   company_id: string;
   status: EstimateStatus;
   total_cents: number;
+  kind: string | null;
   doc_number: string;
   title: string;
 };
@@ -192,6 +194,7 @@ type SendEstimateRow = {
   lead_id: string;
   status: EstimateStatus;
   total_cents: number;
+  kind: string | null;
 };
 
 export type ItemInput = {
@@ -549,14 +552,20 @@ export async function markEstimateSent(estimateId: string): Promise<{ error?: st
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, lead_id, status, total_cents")
+    .select("id, lead_id, status, total_cents, kind")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<SendEstimateRow>();
   if (readError) return { error: readError.message };
   if (!estimate) return { error: "Estimate not found." };
   if (estimate.status !== "Draft") return { error: "This estimate has already been sent." };
-  if (!estimate.total_cents) return { error: "Add at least one line item before sending." };
+  // A completion certificate is worth nothing on purpose -- it records
+  // acceptance, not a price. This guard exists to stop an empty estimate
+  // going out at $0.00, and it was catching every certificate too, so a
+  // certificate could never be sent and therefore never signed.
+  if (!estimate.total_cents && !isPricelessKind(estimate.kind)) {
+    return { error: "Add at least one line item before sending." };
+  }
 
   // Before the status flips, so the contract carries its price the first
   // time anyone can open it.
@@ -746,13 +755,19 @@ export async function sendEstimateToCustomer(
   const admin = createAdminClient();
   const { data: estimate } = await admin
     .from("estimates")
-    .select("id, lead_id, company_id, status, total_cents, doc_number, title")
+    .select("id, lead_id, company_id, status, total_cents, kind, doc_number, title")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<SendToCustomerRow>();
   if (!estimate) return { error: "Estimate not found." };
   if (estimate.status !== "Draft") return { error: "This estimate has already been sent." };
-  if (!estimate.total_cents) return { error: "Add at least one line item before sending." };
+  // A completion certificate is worth nothing on purpose -- it records
+  // acceptance, not a price. This guard exists to stop an empty estimate
+  // going out at $0.00, and it was catching every certificate too, so a
+  // certificate could never be sent and therefore never signed.
+  if (!estimate.total_cents && !isPricelessKind(estimate.kind)) {
+    return { error: "Add at least one line item before sending." };
+  }
 
   const { data: lead } = await admin
     .from("leads")

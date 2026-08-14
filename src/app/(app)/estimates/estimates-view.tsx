@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  effectiveEstimateRepId,
   estimateExpired,
   moneyCents,
   isSellableKind,
@@ -12,6 +13,7 @@ import {
   type EstimateStatus,
 } from "@/lib/data/types";
 import { NewEstimateDialog } from "./new-estimate-dialog";
+import { FilterSelect } from "@/components/filter-select";
 
 export type EstimateLead = {
   id: string;
@@ -20,6 +22,9 @@ export type EstimateLead = {
   email: string | null;
   address: string | null;
   stage: string;
+  /** Who holds the customer now -- the salesperson an unsigned document
+   *  should name, rather than whoever happened to raise the draft. */
+  assigned_to: string | null;
 };
 
 export type EstimateRep = { id: string; name: string | null; email: string | null };
@@ -89,6 +94,19 @@ export function EstimatesView({
   const router = useRouter();
   const [bucket, setBucket] = useState<Bucket>("drafts");
   const [creating, setCreating] = useState(false);
+  const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+
+  // Both filters clear when the card changes. Their options are drawn
+  // from the current bucket, so a rep carried across to a card they have
+  // no documents on would leave an empty table under a dropdown whose
+  // boxes are all unticked -- the filter still applied, with nothing on
+  // screen explaining why.
+  function pickBucket(next: Bucket) {
+    setBucket(next);
+    setRepFilter(new Set());
+    setStatusFilter(new Set());
+  }
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r]));
@@ -105,6 +123,17 @@ export function EstimatesView({
   // worse than none.
   const effectiveStatus = (e: Estimate): EstimateStatus =>
     estimateExpired(e) ? "Expired" : e.status;
+
+  // Who this document's salesperson actually is. Not e.assigned_to: that
+  // is stamped at creation and never moves, so a draft raised by the
+  // dispatcher who took the call kept naming them long after the lead
+  // was handed to a rep. Same rule the customer's copy uses.
+  const repIdFor = (e: Estimate) =>
+    effectiveEstimateRepId({
+      status: e.status,
+      estimateAssignedTo: e.assigned_to,
+      leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
+    });
 
   // One list or the other, never both. Each card counts only its own
   // kind, so a change order cannot be tallied as a contract.
@@ -135,7 +164,34 @@ export function EstimatesView({
   });
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const rows = estimates.filter((e) => inBucket(e, active.key, active.statuses));
+  const inThisBucket = estimates.filter((e) => inBucket(e, active.key, active.statuses));
+
+  // Options come from what is actually in the bucket, never from the
+  // full list of reps or statuses.
+  //
+  // The funnel cards are already a status filter, so a second one drawn
+  // from every status would offer Signed inside Drafts and return an
+  // empty table -- the user then has to work out that the two controls
+  // disagree. Derived this way the two cannot contradict each other:
+  // Drafts offers only Draft, while Attached, which spans every status,
+  // offers the real spread. Same for the salesperson: only people who
+  // actually have a document here.
+  const repOptions = [...new Set(inThisBucket.map(repIdFor).filter(Boolean))]
+    .map((id) => {
+      const rep = repById.get(id as string);
+      return { id: id as string, label: rep?.name || rep?.email || "Unnamed" };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const statusOptions = [...new Set(inThisBucket.map((e) => effectiveStatus(e)))]
+    .sort()
+    .map((s) => ({ id: s, label: s }));
+
+  const rows = inThisBucket.filter(
+    (e) =>
+      (repFilter.size === 0 || (() => { const id = repIdFor(e); return !!id && repFilter.has(id); })()) &&
+      (statusFilter.size === 0 || statusFilter.has(effectiveStatus(e)))
+  );
 
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
@@ -172,7 +228,7 @@ export function EstimatesView({
           <button
             key={b.key}
             className={"est-funnel-card" + (bucket === b.key ? " est-funnel-active" : "")}
-            onClick={() => setBucket(b.key)}
+            onClick={() => pickBucket(b.key)}
             aria-pressed={bucket === b.key}
           >
             <span className="est-funnel-label">{b.label}</span>
@@ -183,6 +239,36 @@ export function EstimatesView({
           </button>
         ))}
       </div>
+
+      {/* Only offered when there is something to choose between. A
+          dropdown holding one option filters nothing, and on the Drafts
+          card -- where every row is a draft by definition -- a Status
+          filter is exactly that. */}
+      {(repOptions.length > 1 || statusOptions.length > 1) && (
+        <div className="list-filters">
+          {repOptions.length > 1 && (
+            <FilterSelect
+              title="SALESPERSON"
+              options={repOptions}
+              selected={repFilter}
+              onChange={setRepFilter}
+            />
+          )}
+          {statusOptions.length > 1 && (
+            <FilterSelect
+              title="STATUS"
+              options={statusOptions}
+              selected={statusFilter}
+              onChange={setStatusFilter}
+            />
+          )}
+          {rows.length !== inThisBucket.length && (
+            <span className="list-filters-count">
+              Showing {rows.length} of {inThisBucket.length}
+            </span>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="empty-state">
@@ -209,9 +295,15 @@ export function EstimatesView({
           <tbody>
             {rows.map((e) => {
               const lead = leadById.get(e.lead_id);
-              const rep = e.assigned_to ? repById.get(e.assigned_to) : null;
+              const repId = repIdFor(e);
+              const rep = repId ? repById.get(repId) : null;
               const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
               const status = effectiveStatus(e);
+              // Nobody owes a signature on a document that is over.
+              // Expired belongs here too: the price lapsed, so a partial
+              // signature on it is history rather than an outstanding ask.
+              const settled =
+                status === "Void" || status === "Declined" || status === "Expired";
               return (
                 <tr
                   key={e.id}
@@ -244,13 +336,20 @@ export function EstimatesView({
                       <div className="ur-add-phone">Exp: {shortDate(e.expires_at)}</div>
                     )}
                   </td>
+                  {/* Signature progress is shown INSTEAD of the status,
+                      so a document that is finished with has to say so
+                      first. A voided change order carrying one of two
+                      signatures was reading "1/2 Signed — Pending: <the
+                      customer>": it hid that the document was cancelled,
+                      and named a real person as still owing a signature
+                      on it. Somebody chases that. */}
                   <td>
                     <span className={"est-badge est-badge-" + status.toLowerCase()}>
-                      {sig.total > 0 && sig.signed > 0 && !sig.complete
+                      {!settled && sig.total > 0 && sig.signed > 0 && !sig.complete
                         ? `${sig.signed}/${sig.total} Signed`
                         : status}
                     </span>
-                    {sig.pending.length > 0 && sig.signed > 0 && (
+                    {!settled && sig.pending.length > 0 && sig.signed > 0 && (
                       <div className="ur-add-phone">Pending: {sig.pending.join(", ")}</div>
                     )}
                   </td>

@@ -36,6 +36,7 @@ import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
 import { JobCosts } from "./job-costs";
 import { PhotosPanel } from "./photos-panel";
+import { SalesTeamPanel } from "./sales-team";
 import { ScopeEditor } from "./scope-editor";
 import { SectionsBar } from "./sections-bar";
 import { getEstimateGroups } from "@/lib/actions/estimate-groups";
@@ -517,7 +518,14 @@ export function EstimateBuilder({
             <>
               {" "}
               Signatures: {sig.signed} of {sig.total}
-              {sig.pending.length > 0 && ` · Pending: ${sig.pending.join(", ")}`}
+              {/* The count is history and worth keeping, but "Pending"
+                  states an outstanding obligation. On a cancelled or
+                  declined document there is none, and naming the customer
+                  there had this banner contradict its own first line. */}
+              {sig.pending.length > 0 &&
+                estimate.status !== "Void" &&
+                estimate.status !== "Declined" &&
+                ` · Pending: ${sig.pending.join(", ")}`}
             </>
           )}
         </div>
@@ -957,6 +965,17 @@ export function EstimateBuilder({
           depositPercentBp={estimate.deposit_percent_bp}
           depositCapCents={estimate.deposit_cap_cents}
           canEdit={canManageCosts}
+        />
+      )}
+
+            {/* Commission is settled on the signed contract, so it lives here
+          rather than on a proposal nobody has agreed to. */}
+      {estimate.status === "Signed" && estimate.kind === "contract" && (
+        <SalesTeamPanel
+          estimateId={estimate.id}
+          leadId={estimate.lead_id}
+          contractCents={estimate.total_cents}
+          canEdit={canVoid}
         />
       )}
 

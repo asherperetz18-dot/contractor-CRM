@@ -15,7 +15,12 @@ import { getTwilioForCompany } from "@/lib/twilio-company";
 async function requireCanSendSms(): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!canEditDispatch(profile)) return { error: "Only Office or Sales users can send messages." };
+  // Named from what canEditDispatch actually allows. It said "Office or
+  // Sales" while granting Dispatch and Call Center too -- a message that
+  // tells a dispatcher they are not allowed to do the thing they are
+  // allowed to do sends them looking for a permission they already have.
+  if (!canEditDispatch(profile))
+    return { error: "Office, Sales, Dispatch or Call Center can send messages." };
   return {};
 }
 

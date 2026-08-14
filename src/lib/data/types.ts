@@ -125,6 +125,24 @@ export function canCreateEstimates(
 // complete work. Field crews need this alongside Office; Admin is the
 // full-access role. These pages each used to inline "Office || Field",
 // which silently left Admins unable to touch the calendar at all.
+/**
+ * Who may remove an appointment outright.
+ *
+ * Office and Admin only. Deliberately NOT canEditSchedule, which also
+ * includes Dispatch and Field: booking, moving and confirming visits is
+ * those roles' daily work, but destroying the record of a visit that
+ * happened is a different act. An appointment is the evidence a trip was
+ * made -- it is what the show rate, the follow-up cron and a rep's
+ * commission all read -- so removing one is an office decision.
+ *
+ * Cancelled is the tool for "it isn't happening", and it keeps the
+ * history. Delete is for a booking made in error.
+ */
+export function canDeleteAppointments(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return profile.roles.includes("Office") || profile.roles.includes("Admin");
+}
+
 export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
   return (
@@ -171,6 +189,7 @@ export type PageKey =
   | "documents"
   | "payments"
   | "commissions"
+  | "sales-commission"
   | "calendar"
   | "schedule"
   | "contracts";
@@ -225,7 +244,17 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
-  { key: "commissions", label: "Commissions", href: "/commissions", group: "General" },
+  // Two separate schemes, two separate screens. The dispatcher earns a
+  // percentage of the gross sale for bringing the lead in; the rep earns
+  // a share of what the job actually made. One page showing both invites
+  // them to be read as a single figure.
+  { key: "commissions", label: "Dispatch Commission", href: "/commissions", group: "General" },
+  {
+    key: "sales-commission",
+    label: "Sales Commission",
+    href: "/sales-commission",
+    group: "General",
+  },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
@@ -308,11 +337,22 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // off for the field roles and an Admin can turn it on per role in Role
   // Visibility. Office and Admin keep it: that is who chases the money.
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
-  // Commission is payroll: what each person earns, side by side. Office
-  // and Admin only by default -- including dispatchers themselves, who
-  // would otherwise see each other's pay. An Admin can grant it per role
-  // in Role Visibility if they want dispatchers to see their own line.
+  // Commission is payroll, so who sees whose matters, and the two schemes
+  // are gated separately now that they are separate screens.
+  //
+  // Dispatch commission stays Office and Admin, as it was.
   if (pageKey === "commissions" && role !== "Office" && role !== "Admin") return false;
+  // Sales commission adds the Sales role, so a rep can check their own
+  // earnings without asking. The report itself filters to the signed-in
+  // person unless they are Office or Admin, and that is enforced in the
+  // action rather than here -- this only decides whether the page appears.
+  if (
+    pageKey === "sales-commission" &&
+    role !== "Office" &&
+    role !== "Admin" &&
+    role !== "Sales"
+  )
+    return false;
   return true;
 }
 
@@ -656,18 +696,60 @@ export type LeadSourceRow = {
   created_at: string;
 };
 
-export type EventStatus = "New" | "Confirmed" | "Showed" | "No-show" | "Cancelled";
+export type EventStatus =
+  | "New"
+  | "Confirmed"
+  | "Showed"
+  | "Won"
+  | "No-show"
+  | "Cancelled";
+// Ordered as the appointment actually progresses, so the chip row reads
+// left to right the way the day does: booked, confirmed, turned up,
+// sold -- then the two ways it can fail.
 export const EVENT_STATUSES: EventStatus[] = [
   "New",
   "Confirmed",
   "Showed",
+  "Won",
   "No-show",
   "Cancelled",
 ];
+export type EventVisual = "cancelled" | "noshow" | "confirmed" | "pending";
+
+/**
+ * How an appointment should read on the calendar.
+ *
+ * Deliberately not a colour: the chip's colour already carries which
+ * calendar the appointment belongs to, and Job Visit is green. Painting
+ * confirmations green too would make a green block mean either "job
+ * visit" or "confirmed estimate", which is worse than not marking it.
+ *
+ * Confirmation comes from customer_confirmed, not from status. The status
+ * dropdown is set by hand; customer_confirmed is what the "reply YES to
+ * confirm" text actually sets. On this calendar 30 appointments are
+ * confirmed by the customer while only 7 carry the Confirmed status, so
+ * reading status would show most of the week as unconfirmed when the
+ * customer has already said yes.
+ *
+ * Status still wins for Cancelled and No-show, because those are
+ * decisions somebody records rather than something the customer replies.
+ */
+export function eventVisualState(
+  event: Pick<Event, "status" | "customer_confirmed">
+): EventVisual {
+  if (event.status === "Cancelled") return "cancelled";
+  if (event.status === "No-show") return "noshow";
+  return event.customer_confirmed ? "confirmed" : "pending";
+}
+
 export const EVENT_STATUS_COLOR: Record<EventStatus, string> = {
   New: "#7C8798",
   Confirmed: "#2F855A",
   Showed: "#2D5F8A",
+  // Gold rather than another green. Confirmed is already green, and the
+  // one status worth spotting across a month of chips is the one that
+  // made money.
+  Won: "#B7791F",
   "No-show": "#C7691B",
   Cancelled: "#C0392B",
 };
@@ -705,7 +787,15 @@ export type Event = {
 // definition of "has a result" -- rather than a separate result column
 // that could disagree with the status shown on the calendar -- is what
 // lets the modal badge and the follow-up cron stay in step.
-export const RESOLVED_EVENT_STATUSES: EventStatus[] = ["Showed", "No-show", "Cancelled"];
+// Won belongs here: it is the strongest possible outcome, so an
+// appointment marked Won must not be chased by the follow-up cron for
+// never having had its result recorded.
+export const RESOLVED_EVENT_STATUSES: EventStatus[] = [
+  "Showed",
+  "Won",
+  "No-show",
+  "Cancelled",
+];
 
 /**
  * Where a lead lands when an appointment came and went without an outcome.
@@ -717,6 +807,19 @@ export const FOLLOW_UP_STAGE = "Appointment Follow Up";
 
 export function hasAppointmentResult(status: EventStatus): boolean {
   return RESOLVED_EVENT_STATUSES.includes(status);
+}
+
+/**
+ * The rep turned up and the customer was there.
+ *
+ * Won means they showed AND sold, so it has to count as a show. Reports
+ * that tested `status === "Showed"` would otherwise have dropped a rep's
+ * show rate the moment they recorded their best appointments properly --
+ * punishing the better data entry, and making Won look like it cost them
+ * business.
+ */
+export function appointmentAttended(status: EventStatus): boolean {
+  return status === "Showed" || status === "Won";
 }
 
 /** Breathing room after an appointment ends before a missing result is late. */
@@ -1113,6 +1216,36 @@ export function isVoid(status: EstimateStatus): boolean {
   return status === "Void";
 }
 
+/**
+ * Whose name belongs on an estimate as the salesperson.
+ *
+ * estimates.assigned_to is stamped when the document is created and
+ * never moves again. Reassigning the lead therefore left every list and
+ * every document naming whoever happened to raise the draft -- often the
+ * dispatcher who took the call, not a salesperson at all.
+ *
+ * Until it is signed, the document follows the lead: the point of naming
+ * a rep is saying who the customer will actually meet. Once signed it
+ * stops moving, like the terms and the photos -- a contract records who
+ * sold the job, and reassigning the lead a year later must not rewrite
+ * that.
+ *
+ * Shared so the office list and the customer's copy answer identically.
+ * They did not: the customer's proposal already followed this rule while
+ * the estimates list still read the stamped id, so one screen said Simon
+ * and the other said josh.c about the same document.
+ */
+export function effectiveEstimateRepId(input: {
+  status: EstimateStatus | string;
+  /** Stamped on the document when it was created. */
+  estimateAssignedTo: string | null;
+  /** Who holds the customer now. */
+  leadAssignedTo: string | null | undefined;
+}): string | null {
+  const frozen = input.status === "Signed" || input.status === "Void";
+  return (!frozen && input.leadAssignedTo) || input.estimateAssignedTo || null;
+}
+
 // Statuses a customer has already seen. Editing one of these supersedes it
 // with a new version rather than rewriting what they were shown.
 export const ISSUED_ESTIMATE_STATUSES: EstimateStatus[] = [
@@ -1276,6 +1409,16 @@ export type Estimate = {
   // Every pre-existing row is a contract.
   kind: string;
   parent_estimate_id: string | null;
+  /** Completion certificates only: the date the work actually finished,
+   *  which is when the contract's labour warranty starts running. */
+  completed_on?: string | null;
+  /** The contractor's list of what is still outstanding, typed in the
+   *  office when the certificate is raised. */
+  completion_notes?: string | null;
+  /** The customer's own list, written by them at the moment they sign.
+   *  Kept apart from completion_notes so it stays clear later who said a
+   *  thing was outstanding. */
+  completion_customer_items?: string | null;
   tax_rate_bp: number;
   subtotal_cents: number;
   tax_cents: number;
@@ -2151,6 +2294,173 @@ export type LinkedEstimate = Pick<
 
 export function repMessagePreview(jobLabel: string, body: string) {
   return `Re: ${jobLabel}\n${body.trim()}`;
+}
+
+/**
+ * What one contract may claim of a job's costs.
+ *
+ * Costs hang off the lead, but a customer can hold several signed
+ * contracts -- one here holds five. Summing the lead's costs against each
+ * of them counts the same money over and over, which on the commission
+ * report is somebody's pay.
+ *
+ * So a cost belongs to a contract when a phase of that contract claims
+ * it. A cost nobody has filed belongs to the customer rather than to any
+ * one document, and is only attributed when there is exactly one contract
+ * it could possibly mean.
+ *
+ * Shared with the projects list rather than written twice: the two must
+ * agree about what a job cost, or the same job reports two profits.
+ */
+export function costsForContract(input: {
+  leadExpenses: { amount_cents: number; estimate_payment_id: string | null }[];
+  /** Phase ids belonging to this contract and its change orders. */
+  contractPhaseIds: Set<string>;
+  /** Every phase id on the job, to tell "filed elsewhere" from "unfiled". */
+  allPhaseIds: Set<string>;
+  leadHasOneContract: boolean;
+}): { cents: number; counted: number } {
+  let cents = 0;
+  let counted = 0;
+  for (const e of input.leadExpenses) {
+    const filedHere = e.estimate_payment_id && input.contractPhaseIds.has(e.estimate_payment_id);
+    const unfiled = !e.estimate_payment_id || !input.allPhaseIds.has(e.estimate_payment_id);
+    if (filedHere || (unfiled && input.leadHasOneContract)) {
+      cents += e.amount_cents;
+      counted += 1;
+    }
+  }
+  return { cents, counted };
+}
+
+// ── Sales rep commission ─────────────────────────────────────────────
+
+export type RepCommission = {
+  contractCents: number;
+  leadCostCents: number;
+  expensesCents: number;
+  netProfitCents: number;
+  /** The whole pot before it is split between the reps. */
+  poolCents: number;
+  rep1Cents: number;
+  rep2Cents: number;
+  /**
+   * True when no cost has been recorded against the job at all.
+   *
+   * Not the same as costs of zero. With nothing entered, net profit
+   * equals the whole contract and the commission looks enormous -- on an
+   * $80,000 job with no costs the pot reads $34,000 rather than the few
+   * thousand it will actually be. Callers show "pending" rather than a
+   * figure, the same way the projects list refuses to colour net cash
+   * green on a job that is unmeasured rather than profitable.
+   */
+  unmeasured: boolean;
+};
+
+/**
+ * What the reps earn on one contract.
+ *
+ * Lead cost first, then the job's actual costs, then the reps take their
+ * share of what is left -- so a rep who discounts to close, or who lets
+ * the job run over, earns less. Both percentages are stamped on the
+ * contract rather than read from settings at report time: a contract
+ * signed at 50% must still pay 50% after the company moves to 40%, or
+ * changing the setting would silently restate what everybody has already
+ * been paid.
+ */
+export function computeRepCommission(input: {
+  contractCents: number;
+  /** Basis points of the contract. 1500 = 15%. */
+  leadCostBp: number;
+  /** Basis points of net profit paid to the reps together. 5000 = 50%. */
+  commissionRateBp: number;
+  /** Actual money spent on the job, and whether any was recorded. */
+  expensesCents: number;
+  hasCosts: boolean;
+  /** How the pot divides. 6000/4000 is a 60/40 split. */
+  rep1Bp: number;
+  rep2Bp: number;
+}): RepCommission {
+  const leadCostCents = Math.round((input.contractCents * input.leadCostBp) / 10000);
+  const netProfitCents = input.contractCents - leadCostCents - input.expensesCents;
+  // Never negative: a job that lost money owes the rep nothing, but it
+  // does not owe the company a refund out of this calculation either.
+  const poolCents = Math.max(0, Math.round((netProfitCents * input.commissionRateBp) / 10000));
+
+  const rep1Cents = Math.round((poolCents * input.rep1Bp) / 10000);
+  // The remainder, so the two shares always add up to the pot exactly
+  // rather than losing a cent to rounding on a 1/3 split.
+  const rep2Cents = input.rep2Bp > 0 ? poolCents - rep1Cents : 0;
+
+  return {
+    contractCents: input.contractCents,
+    leadCostCents,
+    expensesCents: input.expensesCents,
+    netProfitCents,
+    poolCents,
+    rep1Cents,
+    rep2Cents,
+    unmeasured: !input.hasCosts,
+  };
+}
+
+/**
+ * What still stands between an earned commission and a payable one.
+ *
+ * Commission is paid when the job is finished and settled: paid in full,
+ * and the customer has signed the completion certificate. Both, not
+ * either -- money without a signed certificate means the job may still
+ * come back, and a signed certificate without the money means the
+ * company would be paying commission out of its own pocket.
+ *
+ * Held back is not the same as not earned. The rep is owed it; the
+ * clock has not started. Every screen that shows a nil payable also
+ * shows this list, because "you are owed nothing" and "you are owed
+ * $3,000 once they pay the last invoice" are different sentences and a
+ * rep who cannot tell them apart has no idea what to chase.
+ */
+export type CommissionHold = "costs" | "payment" | "certificate";
+
+export function commissionHolds(input: {
+  hasCosts: boolean;
+  collectedCents: number;
+  contractCents: number;
+  certificateSigned: boolean;
+}): CommissionHold[] {
+  const holds: CommissionHold[] = [];
+  if (!input.hasCosts) holds.push("costs");
+  // Paid in full, not mostly paid. A retention still held, or the last
+  // change order unbilled, is exactly the case this rule exists for.
+  if (input.collectedCents < input.contractCents) holds.push("payment");
+  if (!input.certificateSigned) holds.push("certificate");
+  return holds;
+}
+
+export const COMMISSION_HOLD_LABEL: Record<CommissionHold, string> = {
+  costs: "Job costs not recorded yet",
+  payment: "Final payment outstanding",
+  certificate: "Completion certificate not signed",
+};
+
+/**
+ * The date a commission became payable: the later of the last payment
+ * landing and the certificate being signed.
+ *
+ * Which pay period a commission falls into is decided by whichever gate
+ * cleared last, not by when the job was sold. A job signed in March,
+ * paid off in June and signed off in July is July's payroll.
+ */
+export function commissionQualifiedAt(input: {
+  holds: CommissionHold[];
+  lastPaymentAt: string | null;
+  certificateSignedAt: string | null;
+}): string | null {
+  if (input.holds.length > 0) return null;
+  const dates = [input.lastPaymentAt, input.certificateSignedAt].filter(
+    (d): d is string => !!d
+  );
+  if (dates.length === 0) return null;
+  return dates.sort()[dates.length - 1];
 }
 
 export type CommissionInputs = {

@@ -12,7 +12,7 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
-import { canEditSchedule } from "@/lib/data/types";
+import { canDeleteAppointments, canEditSchedule } from "@/lib/data/types";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
@@ -59,13 +59,41 @@ export default async function CalendarPage() {
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
-  const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  // Who is actually on the calendar, past or future.
+  const onCalendar = new Set<string>();
+  for (const e of ((events as Event[]) ?? [])) {
+    if (e.assigned_to) onCalendar.add(e.assigned_to);
+    if (e.second_assigned_to) onCalendar.add(e.second_assigned_to);
+  }
+
+  // Everyone active. This is the list the board resolves names from and
+  // the appointment form assigns to, so it must stay whole: narrowing it
+  // left every dispatcher in the filter reading "Unnamed", because their
+  // names are looked up here -- and quietly removed office staff from the
+  // list of people an appointment can be booked to.
+  const reps = allReps
+    .filter((r) => r.status === "Active")
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+
+  // The narrowed list, for the rep filter only. It listed every active
+  // member, so bookkeepers, dispatchers, the shared phone account and
+  // anyone added for any other reason all appeared as reps -- sixteen
+  // names, ten of whom could ever match an appointment.
+  //
+  // Two ways in, because either alone is wrong. Role alone drops somebody
+  // in dispatch who is running an appointment anyway, and their booking
+  // becomes unreachable through the filter. Appointments alone hides a
+  // newly hired rep until their first booking, so they look missing on
+  // the day they need to be picked.
+  const filterReps = reps.filter((r) => r.roles?.includes("Sales") || onCalendar.has(r.id));
 
   return (
     <CalendarBoard
       events={(events as Event[]) ?? []}
       jobs={(jobs as Job[]) ?? []}
       reps={reps}
+      filterReps={filterReps}
+      canDeleteEvents={canDeleteAppointments(profile)}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}

@@ -1,13 +1,13 @@
 {
   "name": "contractor-crm",
-  "version": "1.26.0",
+  "version": "1.44.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test 'src/**/*.test.ts'"
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

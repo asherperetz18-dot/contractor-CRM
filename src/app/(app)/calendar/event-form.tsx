@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
@@ -41,6 +41,7 @@ import {
   deleteEvent,
   markRepInfoSent,
   setEventResult,
+  getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
@@ -67,6 +68,20 @@ type Tab =
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
+
+/** What a rep can record as the result of an appointment they attended. */
+const OUTCOME_STATUSES: EventStatus[] = ["Showed", "Won", "No-show", "Cancelled"];
+
+/**
+ * Outcomes that require a job value.
+ *
+ * A rep who stood in the room can price it, and on a won job they
+ * certainly can. On a no-show or a cancellation there is nothing to
+ * price, and demanding a number there teaches people to type a zero --
+ * worse than blank, because a zero looks like an answer in the pipeline
+ * total.
+ */
+const VALUED_OUTCOMES: EventStatus[] = ["Showed", "Won"];
 
 /**
  * Where a lead most likely belongs once the appointment is over. Only a
@@ -129,6 +144,7 @@ export function EventForm({
   calendars,
   stages,
   readOnly,
+  canDelete,
   onCancel,
   onSaved,
   onDeleted,
@@ -144,6 +160,9 @@ export function EventForm({
   calendars: CalendarRow[];
   stages?: PipelineStageRow[];
   readOnly?: boolean;
+  /** Deleting an appointment is a narrower right than editing one:
+   *  Dispatch books and moves visits but may not remove them. */
+  canDelete?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -188,7 +207,42 @@ export function EventForm({
   // Tracks whether the user actually toggled each confirmation badge, so a
   // form left open while a rep/client texts YES doesn't save the stale
   // value back over their reply.
-  const [confirmTouched, setConfirmTouched] = useState({ customer: false, rep: false });
+  const [confirmTouched, setConfirmTouched] = useState({
+    customer: false,
+    rep: false,
+    status: false,
+  });
+
+  /**
+   * Re-reads what the server holds the moment this opens.
+   *
+   * The calendar renders once and then sits there. A rep texting YES a
+   * minute later changes the row, but the appointment opened afterwards
+   * still showed what the page had loaded -- a confirmed appointment
+   * reading "Unconfirmed" while the database said otherwise.
+   *
+   * Anything the person has already touched is left alone, so this can
+   * never overwrite a change being made right now.
+   */
+  useEffect(() => {
+    if (!event?.id) return;
+    let cancelled = false;
+    getEventLiveState(event.id).then((live) => {
+      if (cancelled || !live) return;
+      setForm((f) => ({
+        ...f,
+        customer_confirmed: confirmTouched.customer ? f.customer_confirmed : live.customer_confirmed,
+        rep_confirmed: confirmTouched.rep ? f.rep_confirmed : live.rep_confirmed,
+        status: confirmTouched.status ? f.status : live.status,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately only on the appointment: this is a snapshot taken when
+    // the form opens, not a subscription that fights the person typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id]);
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -211,15 +265,9 @@ export function EventForm({
     resultNote.trim().length > 0 ||
     (!!resultStage && !!lead && resultStage !== lead.stage);
 
-  /**
-   * A job value is only asked for on Showed.
-   *
-   * A rep who stood in the room can price it. On a no-show or a
-   * cancellation there is nothing to price, and demanding a number there
-   * teaches people to type a zero -- which is worse than leaving it
-   * blank, because a zero looks like an answer in the pipeline total.
-   */
-  const outcomeNeedsValue = (pendingOutcome || form.status) === "Showed";
+  const outcomeNeedsValue = VALUED_OUTCOMES.includes(
+    (pendingOutcome || form.status) as EventStatus
+  );
   const parsedResultValue = Number(resultValue.replace(/[^0-9.]/g, ""));
   const resultValueOk =
     !outcomeNeedsValue ||
@@ -254,7 +302,7 @@ export function EventForm({
     // Checked here as well as on the button. The button is the courtesy;
     // this is the rule, and a Showed with no value is the exact hole it
     // exists to close.
-    if (outcome === "Showed" && !resultValueOk) {
+    if (VALUED_OUTCOMES.includes(outcome) && !resultValueOk) {
       setError("Enter the estimated job value before saving this result.");
       return;
     }
@@ -265,7 +313,7 @@ export function EventForm({
     // The value goes first, because the server now refuses a Showed on a
     // lead worth nothing -- writing the outcome first would have it
     // reject the very save that was about to supply the number.
-    if (outcome === "Showed" && parsedResultValue > 0 && parsedResultValue !== lead.value) {
+    if (VALUED_OUTCOMES.includes(outcome) && parsedResultValue > 0 && parsedResultValue !== lead.value) {
       const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
       if (valueResult?.error) {
         setResultPending(false);
@@ -631,7 +679,13 @@ export function EventForm({
             <Field label="Status">
               <select
                 value={form.status}
-                onChange={(e) => set("status", e.target.value as EventStatus)}
+                onChange={(e) => {
+                  // Marks status as chosen, so the save writes it. Left
+                  // untouched it is not written at all, which is what
+                  // stops a stale form undoing a texted confirmation.
+                  setConfirmTouched((t) => ({ ...t, status: true }));
+                  set("status", e.target.value as EventStatus);
+                }}
               >
                 {EVENT_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -856,7 +910,7 @@ export function EventForm({
 
           <Field label="Outcome">
             <div className="chip-row no-margin">
-              {(["Showed", "No-show", "Cancelled"] as EventStatus[]).map((s) => (
+              {OUTCOME_STATUSES.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -891,8 +945,9 @@ export function EventForm({
               />
               {!resultValueOk && (
                 <p className="est-tax-note">
-                  Required on a Showed. Every money figure on the pipeline is a sum of this, so a
-                  visit logged without one reads as a slow month rather than as missing data.
+                  Required on a {(pendingOutcome || form.status) === "Won" ? "Won" : "Showed"}.
+                  Every money figure on the pipeline is a sum of this, so a visit logged without
+                  one reads as a slow month rather than as missing data.
                 </p>
               )}
             </Field>
@@ -1103,7 +1158,7 @@ export function EventForm({
               be scrolled to before anything could be committed. */}
           <div className="modal-actions modal-actions-sticky">
             <div className="modal-actions-left">
-              {event && !readOnly && !selfSaving && (
+              {event && !readOnly && canDelete && !selfSaving && (
                 <button type="button" className="btn-danger-ghost" onClick={handleDelete}>
                   Delete
                 </button>

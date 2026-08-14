@@ -50,7 +50,7 @@ export default async function EstimatesPage() {
     selectAll<EstimateLead>((from, to) =>
       supabase
         .from("leads")
-        .select("id, first_name, last_name, email, address, stage")
+        .select("id, first_name, last_name, email, address, stage, assigned_to")
         .eq("company_id", profile.company_id)
         .range(from, to)
     ),

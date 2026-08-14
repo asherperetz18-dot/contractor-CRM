@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone, type Lead } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
+import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 
@@ -239,7 +240,7 @@ export async function POST(req: NextRequest) {
     targetEvent = pickNearest((candidateEvents as EventRow[] | null) ?? []);
 
     if (targetEvent) {
-      await admin.from("events").update({ customer_confirmed: confirmed }).eq("id", targetEvent.id);
+      await applyCustomerConfirmation(admin, targetEvent.id, confirmed);
       await admin.from("lead_notes").insert({
         lead_id: matchedLead.id,
         author_id: null,

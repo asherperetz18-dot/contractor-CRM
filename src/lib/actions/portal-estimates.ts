@@ -149,7 +149,9 @@ function validSignatureImage(image: string): boolean {
 
 export async function signEstimateAsCustomer(
   estimateId: string,
-  signature: CustomerSignature
+  signature: CustomerSignature,
+  /** Completion certificates only: anything the customer wants put right. */
+  customerItems?: string
 ): Promise<{ error?: string; complete?: boolean }> {
   const image = signature.type === "drawn" ? signature.image : null;
   if (image !== null && !validSignatureImage(image)) {
@@ -164,6 +166,13 @@ export async function signEstimateAsCustomer(
 
   if (estimate.status === "Signed") return { error: "This estimate is already signed." };
   if (estimate.status === "Declined") return { error: "This estimate was declined." };
+  // Void was missing here. A cancelled document was still signable by
+  // anyone holding the link, and signing one is not harmless: a signed
+  // change order appends a payment phase to its contract, so the company
+  // would have billed for work it had already cancelled.
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled. Ask your contractor for an updated one." };
+  }
   if (expired(estimate)) {
     return { error: "This estimate has expired. Ask your contractor for an updated one." };
   }
@@ -189,11 +198,13 @@ export async function signEstimateAsCustomer(
   // A drawn signature is the mark, not a name the customer retyped -- it
   // is attributed to the name already on the document rather than asking
   // them to type it a second time on top of drawing it.
+  const signedName = signature.type === "drawn" ? mine.name : typedName;
+
   const { data: signed, error } = await admin
     .from("estimate_signers")
     .update({
       signed_at: evidence.signedAt,
-      signature_name: signature.type === "drawn" ? mine.name : typedName,
+      signature_name: signedName,
       signature_image: image,
       signature_type: signature.type,
       signature_ip: evidence.ip,
@@ -203,6 +214,28 @@ export async function signEstimateAsCustomer(
     .select("id");
   if (error) return { error: error.message };
   if (!signed?.length) return { error: "Could not record your signature." };
+
+  // Recorded before the document is marked signed, and on the first
+  // signature rather than the last: with co-owners, whoever signs first
+  // must not lose what they raised. Appended rather than replaced for the
+  // same reason -- a second owner's concerns are not a correction of the
+  // first owner's.
+  if (estimate.kind === "completion" && customerItems?.trim()) {
+    const { data: existing } = await admin
+      .from("estimates")
+      .select("completion_customer_items")
+      .eq("id", estimateId)
+      .maybeSingle<{ completion_customer_items: string | null }>();
+    const prior = existing?.completion_customer_items?.trim();
+    await admin
+      .from("estimates")
+      .update({
+        completion_customer_items: prior
+          ? `${prior}\n\n${signedName}:\n${customerItems.trim()}`
+          : customerItems.trim(),
+      })
+      .eq("id", estimateId);
+  }
 
   // Only a fully signed document becomes a contract. With co-owners, one
   // signature leaves it pending rather than binding.
@@ -308,6 +341,11 @@ export async function declineEstimateAsCustomer(
   const { estimate } = loaded;
 
   if (estimate.status === "Signed") return { error: "This estimate is already signed." };
+  // Declining a cancelled document would overwrite Void with Declined,
+  // losing the record of who cancelled it and why.
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled, so there is nothing to decline." };
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin

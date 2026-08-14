@@ -116,8 +116,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       {
         title: "Commission & Lead Cost Defaults",
-        desc: "Default lead cost and commission split percentages applied to new projects",
+        desc: "Starting lead cost and commission percentages for new contracts — each contract can then be set on its own",
         icon: "%",
+        href: "/settings/sales-commission",
       },
       {
         title: "Contracts",

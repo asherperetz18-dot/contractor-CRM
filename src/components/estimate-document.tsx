@@ -536,6 +536,52 @@ export function EstimateDocument({
         </section>
       )}
 
+      {/* Outstanding items, between the wording and the signature.
+          Clause 2 of the certificate promises that anything listed stays
+          the contractor's responsibility and is not waived by signing --
+          a promise only kept if the items are on the document that was
+          signed, rather than filed somewhere off to the side. Rendered
+          from the columns rather than frozen into the body text, so the
+          customer's own list (written at the moment they sign, long
+          after the wording was composed) appears here too. */}
+      {priceless && (
+        <section className="estdoc-terms estdoc-punch">
+          <h4 className="estdoc-terms-head">Outstanding items</h4>
+          {estimate.completion_notes?.trim() ? (
+            <ul className="estdoc-terms-list">
+              {estimate.completion_notes
+                .split("\n")
+                .map((l) => l.replace(/^[-•*]\s*/, "").trim())
+                .filter(Boolean)
+                .map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+            </ul>
+          ) : (
+            <p>None recorded by the contractor.</p>
+          )}
+
+          <h4 className="estdoc-terms-head">Raised by the owner on signing</h4>
+          {estimate.completion_customer_items?.trim() ? (
+            <ul className="estdoc-terms-list">
+              {estimate.completion_customer_items
+                .split("\n")
+                .map((l) => l.replace(/^[-•*]\s*/, "").trim())
+                .filter(Boolean)
+                .map((l, i) => (
+                  <li key={i}>{l}</li>
+                ))}
+            </ul>
+          ) : (
+            <p>
+              {estimate.status === "Signed"
+                ? "None. The Owner accepted the work without raising any items."
+                : "To be completed by the Owner when signing."}
+            </p>
+          )}
+        </section>
+      )}
+
       {signers.length > 0 && (
         <section className="estdoc-signatures">
           <div className="estdoc-label">

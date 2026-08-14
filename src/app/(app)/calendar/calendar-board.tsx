@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
   EVENT_STATUSES,
   EVENT_STATUS_COLOR,
+  eventVisualState,
   formatClock,
   formatTimeRange,
   stageColor,
@@ -23,6 +24,7 @@ import {
 import { useRouter } from "next/navigation";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
+import { FilterSelect } from "@/components/filter-select";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -61,10 +63,31 @@ function toggleInSet<T>(setter: (updater: (prev: Set<T>) => Set<T>) => void, val
 
 type Cell = { inMonth: boolean; day: number; dateStr: string | null };
 
+/**
+ * Whether this is a phone-width screen.
+ *
+ * useSyncExternalStore rather than reading window during render: the
+ * server has no window, and a render that disagrees with the server's is
+ * a hydration mismatch. The server snapshot says "not narrow", matching
+ * what it renders, and the real value arrives on hydration.
+ */
+function useIsNarrowScreen(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia("(max-width: 640px)");
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => window.matchMedia("(max-width: 640px)").matches,
+    () => false
+  );
+}
+
 export function CalendarBoard({
   events,
   jobs,
   reps,
+  filterReps,
   leads,
   leadTasks,
   leadNotes,
@@ -72,10 +95,14 @@ export function CalendarBoard({
   calendars,
   stages,
   canWrite,
+  canDeleteEvents,
 }: {
   events: Event[];
   jobs: Job[];
+  /** Every active member: name lookups and the assignee picker. */
   reps: Profile[];
+  /** Just the salespeople, for the rep filter. */
+  filterReps: Profile[];
   leads: Lead[];
   leadTasks: LeadTask[];
   leadNotes: LeadNote[];
@@ -83,9 +110,31 @@ export function CalendarBoard({
   calendars: CalendarRow[];
   stages: PipelineStageRow[];
   canWrite: boolean;
+  canDeleteEvents: boolean;
 }) {
   const timeFormat = useTimeFormat();
-  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  /**
+   * Null until the user picks a view for themselves, so the default can
+   * depend on the screen without overriding a deliberate choice.
+   */
+  const [chosenView, setChosenView] = useState<ViewMode | null>(null);
+  const narrow = useIsNarrowScreen();
+
+  /**
+   * Phones open on Day, not Month.
+   *
+   * Seven columns across a 375px screen leaves each appointment chip
+   * about 30 pixels wide: the time and the customer's name are still in
+   * the markup, and none of it is readable. A rep checking their round
+   * from the van got a grid of coloured dots. The same appointments in
+   * Day view get 270px and read in full.
+   *
+   * Derived rather than set in an effect: this is a value computed from
+   * the screen and the user's choice, not state to synchronise, and
+   * setting it from an effect cascades an extra render on every load.
+   */
+  const viewMode: ViewMode = chosenView ?? (narrow ? "day" : "month");
+  const setViewMode = setChosenView;
   const [cursorDate, setCursorDate] = useState(todayISO());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
@@ -94,6 +143,7 @@ export function CalendarBoard({
   const [statusFilter, setStatusFilter] = useState<Set<EventStatus>>(new Set());
   const [calendarFilter, setCalendarFilter] = useState<Set<string>>(new Set());
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
+  const [dispatcherFilter, setDispatcherFilter] = useState<Set<string>>(new Set());
   const router = useRouter();
   const [draggingId, setDraggingId] = useState("");
   const [dragOverDate, setDragOverDate] = useState("");
@@ -129,9 +179,32 @@ export function CalendarBoard({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
 
+  // The dispatcher is held on the lead, not the appointment -- one person
+  // owns the customer from arrival until the job sells, across however
+  // many visits it takes. So an appointment's dispatcher is its lead's.
+  const dispatcherByLead = new Map<string, string>();
+  for (const l of leads ?? []) {
+    if (l.dispatcher_id) dispatcherByLead.set(l.id, l.dispatcher_id);
+  }
+  // Built from who actually holds leads, not from who has the role.
+  //
+  // Resolved against the full member list, not the narrowed rep filter
+  // list: dispatchers are precisely the people that list leaves out, so
+  // looking them up there returned nothing and every name read "Unnamed".
+  const dispatchers = [...new Set(dispatcherByLead.values())]
+    .map((id) => {
+      const person = reps.find((r) => r.id === id);
+      return { id, name: person?.name || person?.email || "Unnamed" };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   const filteredEvents = events.filter((ev) => {
     if (statusFilter.size > 0 && !statusFilter.has(ev.status)) return false;
     if (calendarFilter.size > 0 && !calendarFilter.has(ev.event_type)) return false;
+    if (dispatcherFilter.size > 0) {
+      const owner = ev.lead_id ? dispatcherByLead.get(ev.lead_id) : null;
+      if (!owner || !dispatcherFilter.has(owner)) return false;
+    }
     if (
       repFilter.size > 0 &&
       !(ev.assigned_to && repFilter.has(ev.assigned_to)) &&
@@ -302,10 +375,20 @@ export function CalendarBoard({
                     key={ev.id}
                     className={
                       "cal-event-chip" +
+                      ` cal-ev-${eventVisualState(ev)}` +
                       (canWrite ? " cal-event-draggable" : "") +
                       (draggingId === ev.id ? " cal-event-dragging" : "")
                     }
                     style={{ borderLeftColor: stageColor(calendars, ev.event_type) }}
+                    title={
+                      eventVisualState(ev) === "cancelled"
+                        ? "Cancelled"
+                        : eventVisualState(ev) === "noshow"
+                          ? "Customer did not show"
+                          : ev.customer_confirmed
+                            ? "Customer confirmed"
+                            : "Not confirmed yet"
+                    }
                     draggable={canWrite}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", ev.id);
@@ -321,6 +404,11 @@ export function CalendarBoard({
                       setEditing(ev);
                     }}
                   >
+                    {/* The dot sits alongside the calendar colour rather
+                        than replacing it, so one chip can say both what
+                        kind of visit it is and whether the customer has
+                        confirmed. */}
+                    <span className="cal-ev-dot" />
                     <span className="mono cal-event-time">{formatClock(ev.time, timeFormat)}</span>{" "}
                     {ev.title}
                   </div>
@@ -348,7 +436,11 @@ export function CalendarBoard({
     return (
       <div className="schedule-list">
         {list.map((ev) => (
-          <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
+          <div
+            className={"schedule-row cal-ev-" + eventVisualState(ev)}
+            key={ev.id}
+            onClick={() => setEditing(ev)}
+          >
             <div className="schedule-date">
               <span className="mono schedule-time">{formatTimeRange(ev.time, ev.end_time, timeFormat)}</span>
             </div>
@@ -401,62 +493,35 @@ export function CalendarBoard({
         <aside className="cal-filters">
           <div className="cal-filters-head">FILTERS</div>
 
-          <div className="cal-filter-group">
-            <div className="cal-filter-group-head">
-              <span>CALENDARS</span>
-              <button
-                type="button"
-                className="cal-select-all"
-                onClick={() =>
-                  setCalendarFilter((prev) =>
-                    prev.size === calendars.length
-                      ? new Set()
-                      : new Set(calendars.map((c) => c.name))
-                  )
-                }
-              >
-                Select all
-              </button>
-            </div>
-            {calendars.map((c) => (
-              <label key={c.id} className="cal-filter-item">
-                <input
-                  type="checkbox"
-                  checked={calendarFilter.has(c.name)}
-                  onChange={() => toggleInSet(setCalendarFilter, c.name)}
-                />
-                <span className="tick" style={{ background: c.color }} />
-                {c.name}
-              </label>
-            ))}
-          </div>
+          <FilterSelect
+            title="CALENDARS"
+            options={calendars.map((c) => ({ id: c.name, label: c.name, color: c.color }))}
+            selected={calendarFilter}
+            onChange={setCalendarFilter}
+          />
 
-          <div className="cal-filter-group">
-            <div className="cal-filter-group-head">
-              <span>REP AVAILABILITY</span>
-              <button
-                type="button"
-                className="cal-select-all"
-                onClick={() =>
-                  setRepFilter((prev) =>
-                    prev.size === reps.length ? new Set() : new Set(reps.map((r) => r.id))
-                  )
-                }
-              >
-                Select all
-              </button>
-            </div>
-            {reps.map((r) => (
-              <label key={r.id} className="cal-filter-item">
-                <input
-                  type="checkbox"
-                  checked={repFilter.has(r.id)}
-                  onChange={() => toggleInSet(setRepFilter, r.id)}
-                />
-                {r.name || r.email}
-              </label>
-            ))}
-          </div>
+          <FilterSelect
+            title="REP AVAILABILITY"
+            // A member with neither name nor email rendered as a blank
+            // row with a checkbox beside it -- a filter you cannot tell
+            // apart from the one above it.
+            options={filterReps.map((r) => ({ id: r.id, label: r.name || r.email || "Unnamed" }))}
+            selected={repFilter}
+            onChange={setRepFilter}
+          />
+
+          {/* Only shown when someone actually holds leads as dispatcher.
+              Listing every member with the role would put permanently
+              empty checkboxes on the page -- a filter that can only ever
+              return nothing is worse than no filter. */}
+          {dispatchers.length > 0 && (
+            <FilterSelect
+              title="DISPATCHER"
+              options={dispatchers.map((d) => ({ id: d.id, label: d.name }))}
+              selected={dispatcherFilter}
+              onChange={setDispatcherFilter}
+            />
+          )}
         </aside>
 
         <div className="cal-main">
@@ -549,6 +614,7 @@ export function CalendarBoard({
           calendars={calendars}
           stages={stages}
           readOnly={!canWrite}
+          canDelete={canDeleteEvents}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

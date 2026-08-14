@@ -1995,8 +1995,10 @@ body {
   padding: 14px;
   position: sticky;
   top: 16px;
-  max-height: calc(100vh - 140px);
-  overflow-y: auto;
+  /* No max-height or overflow. It scrolled because the groups listed
+     every option; now they are collapsed the panel is a few buttons
+     tall, and an overflow here would clip the open dropdown instead of
+     letting it hang over the calendar. Each menu caps its own height. */
 }
 .cal-filters-head {
   font-size: 11px;
@@ -2033,6 +2035,100 @@ body {
   font-size: 12.5px;
   padding: 4px 0;
   cursor: pointer;
+}
+
+/* Collapsed filter groups. The sidebar previously listed every option --
+   sixteen reps on this company -- which pushed the dispatcher filter off
+   the bottom and narrowed the calendar for a list nobody reads twice. */
+.cal-filter-select {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.cal-filter-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cal-filter-btn:hover,
+.cal-filter-btn-open {
+  border-color: var(--blueprint);
+}
+
+.cal-filter-btn-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+/* Pushed hard right and allowed to shrink, so a long rep name truncates
+   rather than wrapping the button to two lines. */
+.cal-filter-btn-value {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* A filter that is actually narrowing the calendar looks different from
+   one that is not -- otherwise "All" and "3 of 16" read the same at a
+   glance, and a rep wonders where their appointments went. */
+.cal-filter-btn-active {
+  color: var(--blueprint);
+  font-weight: 600;
+}
+
+.cal-filter-caret {
+  font-size: 10px;
+  color: var(--ink-soft);
+  flex: 0 0 auto;
+}
+
+.cal-filter-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+  padding: 8px 10px;
+}
+
+.cal-filter-menu-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cal-filter-menu-head .cal-select-all:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
+/* Capped so a long team scrolls inside the menu instead of running off
+   the bottom of the window, which is the problem being solved. */
+.cal-filter-menu-list {
+  max-height: 260px;
+  overflow-y: auto;
 }
 .cal-main {
   flex: 1;
@@ -2144,6 +2240,100 @@ body {
 }
 .cal-event-chip:hover {
   background: #d6e4ef;
+}
+
+/* "A new version is out."
+   Bottom-left, above the dialer's own corner, so it never lands on the
+   Save button of whatever someone is in the middle of. Fixed rather than
+   in the flow: it must not push the page down and move the control
+   somebody was already reaching for. */
+.update-notice {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.update-notice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2f855a;
+  flex: none;
+}
+.update-notice button {
+  flex: none;
+}
+@media (max-width: 700px) {
+  /* Full width at the bottom on a phone, where a floating card beside the
+     dialer would cover it. */
+  .update-notice {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+}
+
+/* Confirmation, marked without taking the colour channel.
+   The chip's border-left is the calendar -- Estimate blue, Job Visit
+   green -- so painting a confirmed appointment green would make a green
+   chip mean either "job visit" or "confirmed". The dot is a second
+   channel, so one chip carries both facts. */
+.cal-ev-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex: none;
+}
+/* Filled: the customer has said yes. */
+.cal-ev-confirmed .cal-ev-dot {
+  background: #2f855a;
+}
+/* Hollow: nobody has confirmed. This is the one worth chasing, so it
+   reads as an empty box rather than a colour competing for attention. */
+.cal-ev-pending .cal-ev-dot {
+  background: transparent;
+  border: 1.5px solid #97a3b0;
+}
+.cal-ev-noshow .cal-ev-dot {
+  background: #c7691b;
+}
+
+/* Cancelled is struck through and faded, not painted red. Red is the
+   loudest thing on the page and means "deal with this now"; a cancelled
+   appointment is the opposite -- a non-event, kept so nobody wonders
+   where it went. Loud red on four cancellations would pull the eye to
+   the only blocks on the calendar that need nothing. */
+.cal-ev-cancelled {
+  opacity: 0.5;
+}
+.cal-ev-cancelled .cal-event-time,
+.cal-ev-cancelled .schedule-title,
+.cal-event-chip.cal-ev-cancelled {
+  text-decoration: line-through;
+}
+.cal-ev-cancelled .cal-ev-dot {
+  background: #c0392b;
+}
+/* The agenda rows carry a status badge already, so they need the strike
+   and the fade but not a second dot. */
+.schedule-row.cal-ev-cancelled .schedule-meta {
+  text-decoration: none;
 }
 .cal-event-time {
   font-size: 10px;
@@ -5368,6 +5558,7 @@ body {
   .estdoc-sign,
   .estdoc-result,
   .estdoc-print-bar,
+  .stmt-filters,
   .gsearch-backdrop,
   .quick-create-backdrop {
     display: none !important;
@@ -5441,6 +5632,10 @@ body {
      than a whole page, the row then cannot fit anywhere, and the browser
      pushes the entire table to page 2 -- leaving page 1 empty below the
      header. A long row has to be allowed to flow across pages. */
+  /* The punch list must not be torn from the signature it qualifies:
+     "these items remain outstanding" on page 1 and the signature on
+     page 2 is how a signed certificate ends up looking unconditional. */
+  .estdoc-punch,
   .estdoc-signer,
   .estdoc-total-row,
   .estdoc-signatures,
@@ -5593,7 +5788,108 @@ body {
   margin: 0 auto 10px;
   display: flex;
   justify-content: flex-end;
-  padding: 12px 0 0;
+  /* Horizontal padding, not just top. On a phone the document fills the
+     width, so with none the Print button sat hard against the right edge
+     of the screen -- on the page a customer opens to sign. */
+  padding: 12px 12px 0;
+}
+
+/* Filter bar above a list. The dropdowns are the shared FilterSelect, so
+   they size themselves; this only lays them out in a row. */
+.list-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+/* The dropdowns are fluid inside the calendar's narrow sidebar; in a row
+   they need a floor so the label and its value are not squeezed onto two
+   lines, and a ceiling so two of them do not span the whole table. */
+.list-filters .cal-filter-select {
+  margin-bottom: 0;
+  min-width: 210px;
+  max-width: 280px;
+}
+
+/* Says a filter is on, and by how much. A shortened table with no note
+   reads as missing data rather than as a filter doing its job. */
+.list-filters-count {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+/* Completion certificate editor. Two fields and a signature -- nothing
+   priced, because a certificate carries no money. */
+.comp-editor {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.comp-customer-items,
+.comp-signers {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+/* The customer's own words. Kept as typed -- reflowing somebody's punch
+   list into a paragraph loses the line breaks that made it a list. */
+.comp-customer-text {
+  margin: 6px 0 8px;
+  white-space: pre-wrap;
+}
+
+.comp-signer-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comp-signed,
+.comp-unsigned {
+  display: block;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.comp-signed {
+  color: var(--good, #157347);
+}
+
+.comp-unsigned {
+  color: var(--muted);
+}
+
+/* Commission statement: the controls that choose whose statement this is
+   and which period. Screen furniture -- hidden by the print rules below,
+   so what comes out of the printer is the document alone. */
+.stmt-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-end;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.stmt-quick {
+  display: flex;
+  gap: 8px;
 }
 
 /* Payment schedule (builder) */
@@ -6117,6 +6413,24 @@ textarea.est-item-desc:disabled {
   font-size: 13px;
   line-height: 1.45;
   margin-bottom: 2px;
+}
+
+/* Settings cards with nothing behind them yet. Dimmed rather than
+   hidden: the list is a roadmap worth keeping visible, but it must not
+   look like working configuration. */
+.settings-card-soon {
+  opacity: 0.6;
+}
+.settings-soon-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  vertical-align: middle;
+  margin-left: 4px;
 }
 
 /* Sections on the customer's copy. */

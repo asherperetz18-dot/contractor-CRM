@@ -23,7 +23,31 @@ function toRow(input: EventInput) {
   };
 }
 
-export type ConfirmationTouched = { customer: boolean; rep: boolean };
+export type ConfirmationTouched = { customer: boolean; rep: boolean; status?: boolean };
+
+/**
+ * What the server currently holds for the three fields a text message can
+ * change underneath an open form.
+ *
+ * The calendar renders once. A rep or customer replying YES a minute
+ * later changes the row, and the appointment somebody then opens still
+ * shows what the page loaded -- which is how a confirmed appointment sat
+ * there reading "Unconfirmed" while the database said otherwise.
+ */
+export async function getEventLiveState(
+  eventId: string
+): Promise<{ customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus } | null> {
+  const profile = await getCurrentProfile();
+  if (!profile) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("events")
+    .select("customer_confirmed, rep_confirmed, status")
+    .eq("id", eventId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus }>();
+  return data ?? null;
+}
 
 function revalidateCalendarRoutes() {
   revalidatePath("/calendar");
@@ -105,6 +129,14 @@ export async function updateEvent(
     ...(confirmationTouched?.rep ? { rep_confirmed: input.rep_confirmed } : {}),
   };
   const row = toRow(input);
+  // Status joins the confirmation flags in only being written when somebody
+  // actually chose it. A customer's YES now sets the status as well as the
+  // flag, so a form opened beforehand and saved afterwards would have
+  // quietly put a Confirmed appointment back to New -- undoing the reply
+  // through a field nobody touched.
+  if (confirmationTouched && !confirmationTouched.status) {
+    delete (row as { status?: unknown }).status;
+  }
   const { error } = await supabase
     .from("events")
     .update({
@@ -170,18 +202,19 @@ export async function setEventResult(id: string, status: EventStatus) {
   const supabase = await createClient();
 
   /**
-   * A Showed has to carry a job value.
+   * A Showed or a Won has to carry a job value.
    *
    * Enforced here rather than only in the form, because a disabled
    * button is a suggestion -- this is the rule. Every money figure on
    * the pipeline sums leads.value, so a visit marked Showed with nothing
    * against it quietly reads as a slow month rather than as missing
-   * data.
+   * data. A Won worth nothing is the same hole, wider: the one outcome
+   * that definitely has a number attached.
    *
-   * Only Showed. There is nothing to price on a no-show, and demanding a
-   * number there would only produce zeros.
+   * Not the failures. There is nothing to price on a no-show, and
+   * demanding a number there would only produce zeros.
    */
-  if (status === "Showed") {
+  if (status === "Showed" || status === "Won") {
     const { data: withLead } = await supabase
       .from("events")
       .select("lead_id, leads(value)")
@@ -189,7 +222,7 @@ export async function setEventResult(id: string, status: EventStatus) {
       .maybeSingle<{ lead_id: string | null; leads: { value: number } | null }>();
     if (withLead?.lead_id && !((withLead.leads?.value ?? 0) > 0)) {
       return {
-        error: "Enter the estimated job value before marking this appointment as Showed.",
+        error: `Enter the estimated job value before marking this appointment as ${status}.`,
       };
     }
   }
@@ -209,8 +242,19 @@ export async function setEventResult(id: string, status: EventStatus) {
 
 export async function deleteEvent(id: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("events").delete().eq("id", id);
+  // .select() so a delete the policy refused surfaces as an error rather
+  // than as silence. Without it this matched zero rows and returned
+  // success, and the caller closed the dialog -- so a dispatcher pressing
+  // Delete was told the appointment was gone while it was still there.
+  const { data, error } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "That appointment couldn't be deleted — your role may not have permission." };
+  }
   revalidateCalendarRoutes();
   return {};
 }
