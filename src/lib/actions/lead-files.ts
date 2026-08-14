@@ -11,12 +11,32 @@ import {
   uploadFileToDrive,
 } from "./google-drive";
 
-// Matches serverActions.bodySizeLimit in next.config. This was 1500KB,
-// which is below a single phone photo -- the reason no rep had ever
-// successfully uploaded one. Images are downscaled in the browser before
-// they get here, so this ceiling is now only reached by video.
-const MAX_SUPABASE_FILE_BYTES = 25 * 1024 * 1024;
-const MAX_DRIVE_FILE_BYTES = 20 * 1024 * 1024;
+/**
+ * The ceiling for a file going straight to Supabase Storage.
+ *
+ * Deliberately NOT bounded by serverActions.bodySizeLimit any more.
+ * That setting said 25MB and never meant anything: Vercel rejects a
+ * request body over about 4.5MB with a 413 before the function is even
+ * invoked, so every one of these limits above 4.5MB was decoration.
+ * Measured against production -- a 3MB body reached the app, a 5MB body
+ * came back 413 -- which is why the largest file ever uploaded here was
+ * 1.39MB despite the config promising twenty times that.
+ *
+ * Files now go from the browser to Supabase directly (see
+ * createLeadFileUploadUrl), so the only real ceilings left are this one
+ * and the storage project's own upload limit.
+ */
+const MAX_SUPABASE_FILE_BYTES = 80 * 1024 * 1024;
+
+/**
+ * Drive is the exception and stays small.
+ *
+ * A Drive upload still goes through the server, so it is stuck under
+ * Vercel's 4.5MB body limit whatever this says. Left at 4MB to state the
+ * truth rather than promise 20MB that 413s -- raising Drive properly
+ * means resumable uploads from the browser, which is a separate job.
+ */
+const MAX_DRIVE_FILE_BYTES = 4 * 1024 * 1024;
 const BUCKET = "lead-files";
 
 export async function uploadLeadFile(
@@ -97,6 +117,113 @@ export async function uploadLeadFile(
     company_id: profile.company_id,
   });
   if (error) return { error: error.message };
+
+  revalidatePath("/pipeline");
+  revalidatePath("/contacts");
+  return {};
+}
+
+/**
+ * Step one of a large upload: permission, then a one-time URL.
+ *
+ * The file itself never passes through here. Vercel caps a request body
+ * at about 4.5MB, so anything bigger has to go from the browser to
+ * Supabase directly -- this only decides whether it is allowed to, and
+ * hands back a short-lived token for one specific path.
+ *
+ * The size is taken on trust for the check, which is fine: the token is
+ * scoped to a single path in one bucket, and the storage project's own
+ * upload limit is the real backstop. Lying about the number here buys
+ * nothing that uploading a big file honestly would not.
+ */
+export async function createLeadFileUploadUrl(
+  leadId: string,
+  fileName: string,
+  fileSize: number
+): Promise<{ error?: string; path?: string; token?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!fileName) return { error: "No file selected." };
+  if (fileSize > MAX_SUPABASE_FILE_BYTES) {
+    return {
+      error: `That file is over ${Math.round(MAX_SUPABASE_FILE_BYTES / 1024 / 1024)}MB.`,
+    };
+  }
+
+  // The lead is read as the signed-in user, so a rep cannot get an
+  // upload URL for a colleague's customer just by knowing the id.
+  const supabase = await createClient();
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id")
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string }>();
+  if (!lead) return { error: "That contact isn't available." };
+
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const path = `${leadId}/${Date.now()}-${safeName}`;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (error) return { error: error.message };
+  return { path: data.path, token: data.token };
+}
+
+/**
+ * Step two: the file is in storage, record what it is.
+ *
+ * Separate from step one because between them the browser does the
+ * upload, and a row written before that would list a file that may never
+ * have arrived. The object is checked to exist here rather than trusted,
+ * so a failed or abandoned upload cannot leave a phantom attachment.
+ */
+export async function recordLeadFile(
+  leadId: string,
+  path: string,
+  fileName: string,
+  fileSize: number,
+  contentType: string | null,
+  eventId?: string | null
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!path.startsWith(`${leadId}/`)) return { error: "That upload doesn't belong here." };
+
+  const admin = createAdminClient();
+  const slash = path.lastIndexOf("/");
+  const { data: found } = await admin.storage
+    .from(BUCKET)
+    .list(path.slice(0, slash), { search: path.slice(slash + 1) });
+  if (!found?.length) return { error: "That upload didn't finish. Please try again." };
+
+  const {
+    data: { publicUrl },
+  } = admin.storage.from(BUCKET).getPublicUrl(path);
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_files")
+    .insert({
+      lead_id: leadId,
+      uploaded_by: profile.id,
+      file_name: fileName,
+      file_path: path,
+      file_url: publicUrl,
+      file_size: fileSize,
+      content_type: contentType,
+      storage_provider: "supabase",
+      event_id: eventId ?? null,
+      company_id: profile.company_id,
+    })
+    .select("id");
+  if (error) return { error: error.message };
+  // A blocked insert matches zero rows without erroring, which would
+  // leave the object in storage and nothing pointing at it.
+  if (!data?.length) {
+    await admin.storage.from(BUCKET).remove([path]);
+    return { error: "That file couldn't be attached to this contact." };
+  }
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");

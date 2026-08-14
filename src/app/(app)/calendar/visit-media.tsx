@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { uploadLeadFile, deleteLeadFile } from "@/lib/actions/lead-files";
+import {
+  createLeadFileUploadUrl,
+  recordLeadFile,
+  deleteLeadFile,
+} from "@/lib/actions/lead-files";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { getVisitMedia, type VisitFile } from "@/lib/actions/visit-media";
 import { downscaleImage } from "@/lib/images/downscale";
 
@@ -69,9 +74,39 @@ export function VisitMedia({
       // Shrunk here rather than server-side: it saves the upload itself,
       // which is the slow part on a job site.
       const file = await downscaleImage(original);
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await uploadLeadFile(leadId, fd, eventId);
+
+      // Browser straight to storage. This panel is where site video from
+      // a visit lands, and a video posted through a server action never
+      // arrives: Vercel rejects a body over about 4.5MB with a 413
+      // before the action runs.
+      const signed = await createLeadFileUploadUrl(leadId, file.name, file.size);
+      if (signed.error || !signed.path || !signed.token) {
+        setError(`${original.name}: ${signed.error ?? "could not start that upload"}`);
+        break;
+      }
+      const storage = createBrowserClient();
+      const { error: uploadError } = await storage.storage
+        .from("lead-files")
+        .uploadToSignedUrl(signed.path, signed.token, file, {
+          contentType: file.type || undefined,
+        });
+      if (uploadError) {
+        setError(
+          `${original.name}: ` +
+            (/exceeded the maximum allowed size/i.test(uploadError.message)
+              ? "larger than the storage limit on this project"
+              : uploadError.message)
+        );
+        break;
+      }
+      const res = await recordLeadFile(
+        leadId,
+        signed.path,
+        file.name,
+        file.size,
+        file.type || null,
+        eventId
+      );
       if (res?.error) {
         setError(`${original.name}: ${res.error}`);
         break;

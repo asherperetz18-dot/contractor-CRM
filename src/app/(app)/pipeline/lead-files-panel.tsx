@@ -2,7 +2,12 @@
 
 import { useRef, useState } from "react";
 import type { LeadFile, Profile } from "@/lib/data/types";
-import { deleteLeadFile, uploadLeadFile } from "@/lib/actions/lead-files";
+import {
+  createLeadFileUploadUrl,
+  deleteLeadFile,
+  recordLeadFile,
+} from "@/lib/actions/lead-files";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { downscaleImage } from "@/lib/images/downscale";
 
 function formatSize(bytes: number | null): string {
@@ -47,9 +52,45 @@ export function LeadFilesPanel({
     // Same shrink as the visit uploader: a 12MB phone photo becomes a
     // few hundred KB before it ever leaves the device.
     const file = await downscaleImage(chosen);
-    const formData = new FormData();
-    formData.append("file", file);
-    const result = await uploadLeadFile(leadId, formData);
+
+    // Straight to storage, not through the server. A file posted to a
+    // server action goes through Vercel, which rejects a body over about
+    // 4.5MB with a 413 before the action runs -- so the old path could
+    // never carry the video and drawing files this panel is for.
+    const signed = await createLeadFileUploadUrl(leadId, file.name, file.size);
+    if (signed.error || !signed.path || !signed.token) {
+      setPending(false);
+      if (inputRef.current) inputRef.current.value = "";
+      setError(signed.error ?? "Could not start that upload.");
+      return;
+    }
+
+    const storage = createBrowserClient();
+    const { error: uploadError } = await storage.storage
+      .from("lead-files")
+      .uploadToSignedUrl(signed.path, signed.token, file, {
+        contentType: file.type || undefined,
+      });
+    if (uploadError) {
+      setPending(false);
+      if (inputRef.current) inputRef.current.value = "";
+      // The storage project's own upload ceiling surfaces here, and it is
+      // the one limit this app cannot raise for itself.
+      setError(
+        /exceeded the maximum allowed size/i.test(uploadError.message)
+          ? "That file is larger than the storage limit on this project."
+          : uploadError.message
+      );
+      return;
+    }
+
+    const result = await recordLeadFile(
+      leadId,
+      signed.path,
+      file.name,
+      file.size,
+      file.type || null
+    );
     setPending(false);
     if (inputRef.current) inputRef.current.value = "";
     if (result.error) {
