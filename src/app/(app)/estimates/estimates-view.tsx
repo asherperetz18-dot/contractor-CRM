@@ -212,6 +212,11 @@ export function EstimatesView({
               const rep = e.assigned_to ? repById.get(e.assigned_to) : null;
               const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
               const status = effectiveStatus(e);
+              // Nobody owes a signature on a document that is over.
+              // Expired belongs here too: the price lapsed, so a partial
+              // signature on it is history rather than an outstanding ask.
+              const settled =
+                status === "Void" || status === "Declined" || status === "Expired";
               return (
                 <tr
                   key={e.id}
@@ -244,13 +249,20 @@ export function EstimatesView({
                       <div className="ur-add-phone">Exp: {shortDate(e.expires_at)}</div>
                     )}
                   </td>
+                  {/* Signature progress is shown INSTEAD of the status,
+                      so a document that is finished with has to say so
+                      first. A voided change order carrying one of two
+                      signatures was reading "1/2 Signed — Pending: <the
+                      customer>": it hid that the document was cancelled,
+                      and named a real person as still owing a signature
+                      on it. Somebody chases that. */}
                   <td>
                     <span className={"est-badge est-badge-" + status.toLowerCase()}>
-                      {sig.total > 0 && sig.signed > 0 && !sig.complete
+                      {!settled && sig.total > 0 && sig.signed > 0 && !sig.complete
                         ? `${sig.signed}/${sig.total} Signed`
                         : status}
                     </span>
-                    {sig.pending.length > 0 && sig.signed > 0 && (
+                    {!settled && sig.pending.length > 0 && sig.signed > 0 && (
                       <div className="ur-add-phone">Pending: {sig.pending.join(", ")}</div>
                     )}
                   </td>

@@ -509,7 +509,14 @@ export function EstimateBuilder({
             <>
               {" "}
               Signatures: {sig.signed} of {sig.total}
-              {sig.pending.length > 0 && ` · Pending: ${sig.pending.join(", ")}`}
+              {/* The count is history and worth keeping, but "Pending"
+                  states an outstanding obligation. On a cancelled or
+                  declined document there is none, and naming the customer
+                  there had this banner contradict its own first line. */}
+              {sig.pending.length > 0 &&
+                estimate.status !== "Void" &&
+                estimate.status !== "Declined" &&
+                ` · Pending: ${sig.pending.join(", ")}`}
             </>
           )}
         </div>

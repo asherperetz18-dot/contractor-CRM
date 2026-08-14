@@ -141,6 +141,13 @@ export async function signEstimateAsCustomer(
 
   if (estimate.status === "Signed") return { error: "This estimate is already signed." };
   if (estimate.status === "Declined") return { error: "This estimate was declined." };
+  // Void was missing here. A cancelled document was still signable by
+  // anyone holding the link, and signing one is not harmless: a signed
+  // change order appends a payment phase to its contract, so the company
+  // would have billed for work it had already cancelled.
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled. Ask your contractor for an updated one." };
+  }
   if (expired(estimate)) {
     return { error: "This estimate has expired. Ask your contractor for an updated one." };
   }
@@ -302,6 +309,11 @@ export async function declineEstimateAsCustomer(
   const { estimate } = loaded;
 
   if (estimate.status === "Signed") return { error: "This estimate is already signed." };
+  // Declining a cancelled document would overwrite Void with Declined,
+  // losing the record of who cancelled it and why.
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled, so there is nothing to decline." };
+  }
 
   const admin = createAdminClient();
   const { data, error } = await admin

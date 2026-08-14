@@ -81,6 +81,18 @@ export function PortalEstimateActions({
     );
   }
 
+  // Checked before the sign form is offered. Without this a cancelled
+  // document still showed "Accept and sign", so a customer could put
+  // their name to something the contractor had already withdrawn.
+  if (status === "Void") {
+    return (
+      <div className="portal-card estdoc-result">
+        This {isCompletion ? "certificate" : "document"} has been cancelled by your contractor
+        and can no longer be signed. Contact them if you were expecting an updated one.
+      </div>
+    );
+  }
+
   if (expired) {
     return (
       <div className="portal-card estdoc-result">
