@@ -367,7 +367,7 @@ export function EstimateBuilder({
                 Save &amp; Email to Customer
               </button>
               <button
-                className="btn-ghost"
+                className="btn-save-blue"
                 onClick={() => save(() => send("text"))}
                 disabled={pending}
               >

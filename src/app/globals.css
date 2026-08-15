@@ -5110,6 +5110,30 @@ body {
   cursor: default;
 }
 
+/* Solid blue, on Save & Text to Customer. Sits beside the orange
+   "Save & Send Email + Text" so the two sending actions read as
+   different weights rather than one being the obvious default. */
+.btn-save-blue {
+  background: var(--blueprint);
+  border: 1px solid var(--blueprint);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-save-blue:hover:not(:disabled) {
+  background: #24496b;
+  border-color: #24496b;
+}
+
+.btn-save-blue:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .est-totals {
   margin-left: auto;
   max-width: 320px;
