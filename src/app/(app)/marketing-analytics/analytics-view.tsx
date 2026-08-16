@@ -27,14 +27,23 @@ function withinRange(dateStr: string | null, days: number | null) {
   return daysSince(dateStr) <= days;
 }
 
+export type SignedContract = {
+  lead_id: string;
+  status: string;
+  kind: string | null;
+  total_cents: number;
+};
+
 export function AnalyticsView({
   leads,
   reps,
   stages,
+  signedContracts,
 }: {
   leads: Lead[];
   reps: Profile[];
   stages: PipelineStageRow[];
+  signedContracts: SignedContract[];
 }) {
   const [range, setRange] = useState<RangeKey>("30");
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
@@ -56,19 +65,60 @@ export function AnalyticsView({
 
   const wonValue = wonInRange.reduce((s, l) => s + (Number(l.value) || 0), 0);
 
+  /**
+   * What each source costs and what it sells.
+   *
+   * This is where cost per lead earns its place: it is a fact about the
+   * source, not about a salesperson, and the decision it informs -- keep
+   * buying from here, or stop -- is made by comparing spend against the
+   * contracts it produced. On a rep report the same number would read
+   * $375 on every one of them and say nothing about anybody.
+   *
+   * Sold counts leads with a signed contract rather than a "Won" stage,
+   * so a source is credited with revenue somebody actually committed to.
+   */
   const bySource = useMemo(() => {
-    const map = new Map<string, { count: number; withAppt: number }>();
+    const signedByLead = new Map<string, number>();
+    for (const c of signedContracts) {
+      if ((c.kind ?? "contract") !== "contract") continue;
+      signedByLead.set(c.lead_id, (signedByLead.get(c.lead_id) ?? 0) + (c.total_cents || 0));
+    }
+
+    const map = new Map<
+      string,
+      { count: number; withAppt: number; spend: number; costKnown: number; sold: number; revenue: number }
+    >();
     for (const l of createdInRange) {
       const key = l.source || "Unknown";
-      const entry = map.get(key) ?? { count: 0, withAppt: 0 };
+      const entry =
+        map.get(key) ?? { count: 0, withAppt: 0, spend: 0, costKnown: 0, sold: 0, revenue: 0 };
       entry.count += 1;
       if (l.has_appt) entry.withAppt += 1;
+      const cost = Number(l.lead_cost) || 0;
+      if (cost > 0) {
+        entry.spend += cost;
+        entry.costKnown += 1;
+      }
+      const signed = signedByLead.get(l.id) ?? 0;
+      if (signed > 0) {
+        entry.sold += 1;
+        entry.revenue += signed;
+      }
       map.set(key, entry);
     }
     return Array.from(map.entries())
-      .map(([source, v]) => ({ source, ...v }))
+      .map(([source, v]) => ({
+        source,
+        ...v,
+        // Averaged over the leads that carry a cost, never over all of
+        // them: dividing recorded spend by every lead would read a few
+        // dollars and look like a cheap source rather than an unfilled
+        // field.
+        costPerLead: v.costKnown > 0 ? v.spend / v.costKnown : null,
+        costPerSale: v.spend > 0 && v.sold > 0 ? v.spend / v.sold : null,
+      }))
       .sort((a, b) => b.count - a.count);
-  }, [createdInRange]);
+  }, [createdInRange, signedContracts]);
 
   const repStats = useMemo(() => {
     return reps
@@ -167,6 +217,9 @@ export function AnalyticsView({
                   <th>Source</th>
                   <th className="right">Leads</th>
                   <th className="right">With Appt</th>
+                  <th className="right">Cost / lead</th>
+                  <th className="right">Sold</th>
+                  <th className="right">Cost / sale</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,6 +229,33 @@ export function AnalyticsView({
                     <td className="right mono">{s.count}</td>
                     <td className="right mono">
                       {s.count ? Math.round((s.withAppt / s.count) * 100) : 0}%
+                    </td>
+                    <td className="right mono">
+                      {s.costPerLead === null ? (
+                        <span className="ur-add-phone">no cost set</span>
+                      ) : (
+                        <>
+                          {money(s.costPerLead)}
+                          {/* Says how much of the source the average
+                              actually covers. Without it, one priced lead
+                              out of two hundred reads as the price of the
+                              whole source. */}
+                          {s.costKnown < s.count && (
+                            <div className="ur-add-phone">
+                              {s.costKnown} of {s.count} priced
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td className="right mono">
+                      {s.sold}
+                      {s.revenue > 0 && (
+                        <div className="ur-add-phone">{money(s.revenue / 100)}</div>
+                      )}
+                    </td>
+                    <td className="right mono">
+                      {s.costPerSale === null ? "—" : money(s.costPerSale)}
                     </td>
                   </tr>
                 ))}
