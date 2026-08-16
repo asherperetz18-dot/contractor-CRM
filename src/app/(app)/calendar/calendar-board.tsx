@@ -97,6 +97,9 @@ export function CalendarBoard({
   canWrite,
   canDeleteEvents,
   canAddNotes,
+  viewerId,
+  viewerIsDispatchScoped,
+  appointmentHolders,
 }: {
   events: Event[];
   jobs: Job[];
@@ -113,6 +116,9 @@ export function CalendarBoard({
   canWrite: boolean;
   canDeleteEvents: boolean;
   canAddNotes: boolean;
+  viewerId: string | null;
+  viewerIsDispatchScoped: boolean;
+  appointmentHolders: Record<string, string | null>;
 }) {
   const timeFormat = useTimeFormat();
   /**
@@ -618,6 +624,9 @@ export function CalendarBoard({
           readOnly={!canWrite}
           canDelete={canDeleteEvents}
           canAddNotes={canAddNotes}
+          viewerId={viewerId}
+          viewerIsDispatchScoped={viewerIsDispatchScoped}
+          appointmentHolders={appointmentHolders}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

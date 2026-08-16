@@ -46,6 +46,9 @@ export function ScheduleList({
   canWrite,
   canDeleteEvents,
   canAddNotes,
+  viewerId,
+  viewerIsDispatchScoped,
+  appointmentHolders,
 }: {
   events: Event[];
   jobs: Job[];
@@ -59,6 +62,9 @@ export function ScheduleList({
   canWrite: boolean;
   canDeleteEvents: boolean;
   canAddNotes: boolean;
+  viewerId: string | null;
+  viewerIsDispatchScoped: boolean;
+  appointmentHolders: Record<string, string | null>;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -155,6 +161,9 @@ export function ScheduleList({
           readOnly={!canWrite}
           canDelete={canDeleteEvents}
           canAddNotes={canAddNotes}
+          viewerId={viewerId}
+          viewerIsDispatchScoped={viewerIsDispatchScoped}
+          appointmentHolders={appointmentHolders}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

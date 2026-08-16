@@ -9,6 +9,7 @@ import {
   commissionHolds,
   commissionQualifiedAt,
   isAdminRole,
+  isDispatchScoped,
   type CommissionHold,
 } from "@/lib/data/types";
 
@@ -480,4 +481,45 @@ export async function setDispatcherCommissionRate(
   revalidatePath("/commissions");
   revalidatePath("/settings/dispatcher-commission");
   return { ok: true };
+}
+
+/**
+ * The lead-holder for each appointment, keyed by event id.
+ *
+ * Called from the page rather than the window so the read-only state is
+ * settled before anything paints. The client cannot work this out for
+ * itself: leads_select hides the very lead whose holder is in question,
+ * so the answer has to come from the service role, exactly as
+ * getEventOwners does for the name.
+ *
+ * Returns nothing for people the restriction does not apply to, so no
+ * admin-side lookup runs for the users who can edit everything anyway.
+ */
+export async function getAppointmentHolders(): Promise<Record<string, string | null>> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isDispatchScoped(profile)) return {};
+
+  const admin = createAdminClient();
+  const { data: events } = await admin
+    .from("events")
+    .select("id, lead_id")
+    .eq("company_id", profile.company_id)
+    .returns<{ id: string; lead_id: string | null }[]>();
+  if (!events?.length) return {};
+
+  const leadIds = [...new Set(events.map((e) => e.lead_id).filter(Boolean) as string[])];
+  if (!leadIds.length) return {};
+
+  const { data: leads } = await admin
+    .from("leads")
+    .select("id, dispatcher_id")
+    .in("id", leadIds)
+    .returns<{ id: string; dispatcher_id: string | null }[]>();
+  const holderByLead = new Map((leads ?? []).map((l) => [l.id, l.dispatcher_id]));
+
+  const out: Record<string, string | null> = {};
+  for (const e of events) {
+    out[e.id] = e.lead_id ? holderByLead.get(e.lead_id) ?? null : null;
+  }
+  return out;
 }

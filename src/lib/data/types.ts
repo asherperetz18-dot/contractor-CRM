@@ -2569,3 +2569,43 @@ export function computeDispatcherCommissions({
 
   return [...byDispatcher.values()].sort((a, b) => b.commissionCents - a.commissionCents);
 }
+
+/**
+ * Whether this person only gets their own leads.
+ *
+ * The app-side twin of is_dispatch_scoped in the database (0069): a
+ * dispatcher is narrowed to their own book, and holding Office or Admin
+ * alongside lifts the narrowing entirely. Other roles are unaffected.
+ */
+export function isDispatchScoped(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return false;
+  return profile.roles.includes("Dispatch");
+}
+
+/**
+ * Whether an appointment belongs to somebody else's book.
+ *
+ * The mirror of migration 0090's policy: an appointment is workable when
+ * its lead is unclaimed or held by you, and one with no lead has no
+ * holder to defer to.
+ *
+ * Takes the holder rather than reading it from a lead, because the
+ * client cannot look it up. leads_select narrows a dispatcher to their
+ * own leads and the unclaimed pool, so the lead they are being kept out
+ * of is precisely the one absent from their data -- the holder has to be
+ * resolved server-side and handed down.
+ */
+export function appointmentLockedForViewer(input: {
+  /** leads.dispatcher_id for the appointment's lead, resolved server-side. */
+  holderId: string | null | undefined;
+  // Both accept undefined, which is what an omitted prop looks like.
+  // Unknown scoping means "not scoped", and an unknown viewer is not the
+  // holder -- so the omission locks rather than unlocks.
+  viewerId: string | null | undefined;
+  viewerIsDispatchScoped: boolean | undefined;
+}): boolean {
+  if (!input.viewerIsDispatchScoped) return false;
+  if (!input.holderId) return false;
+  return input.holderId !== input.viewerId;
+}

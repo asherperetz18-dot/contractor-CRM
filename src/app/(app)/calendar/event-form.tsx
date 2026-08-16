@@ -22,6 +22,7 @@ import {
   mapsUrl,
   money,
   moneyCents,
+  appointmentLockedForViewer,
   normalizePhone,
   type CalendarRow,
   type LinkedEstimate,
@@ -52,7 +53,6 @@ import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
 import { DispatcherPicker } from "./dispatcher-picker";
 import { EventOwnerNote } from "./event-owner-note";
-import { getDispatcherContext, getEventOwners } from "@/lib/actions/dispatcher";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
@@ -147,6 +147,9 @@ export function EventForm({
   readOnly: readOnlyProp,
   canDelete,
   canAddNotes,
+  viewerId,
+  viewerIsDispatchScoped,
+  appointmentHolders,
   onCancel,
   onSaved,
   onDeleted,
@@ -168,6 +171,14 @@ export function EventForm({
   /** Wider than editing the appointment: a rep who cannot reschedule a
    *  visit still has to be able to write down what the customer said. */
   canAddNotes?: boolean;
+  /** Who is looking, and whether they are held to their own leads. Both
+   *  come from the server so the read-only state is right at first
+   *  paint rather than a moment later. */
+  viewerId?: string | null;
+  viewerIsDispatchScoped?: boolean;
+  /** leads.dispatcher_id per event id, resolved server-side because the
+   *  client cannot see the lead it is being kept out of. */
+  appointmentHolders?: Record<string, string | null>;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -180,35 +191,17 @@ export function EventForm({
   /**
    * This appointment sits on another dispatcher's lead.
    *
-   * The window has always said so in words, but the fields stayed live:
-   * you could type, be asked whether to discard your "unsaved changes",
-   * and press Save. The database refuses the write (migration 0090), so
-   * nothing was lost -- but offering an edit that cannot land is its own
-   * kind of lie, and the typing has to be prevented rather than undone.
-   *
-   * Starts unlocked and locks once the answer arrives, the same way the
-   * notice itself appears.
+   * Decided from data the page already carries, so the window is locked
+   * on the first frame. Fetching the answer when it opened meant it
+   * appeared editable with a live Save button and greyed itself out a
+   * second or two later -- long enough to start typing into a form that
+   * was never going to accept the work.
    */
-  const [lockedByOtherDispatcher, setLockedByOtherDispatcher] = useState(false);
-
-  useEffect(() => {
-    if (!event) return;
-    let cancelled = false;
-    (async () => {
-      const [ctx, owners] = await Promise.all([
-        getDispatcherContext(),
-        getEventOwners([event.id]),
-      ]);
-      if (cancelled) return;
-      const owner = owners[0];
-      setLockedByOtherDispatcher(
-        !!ctx?.isDispatcher && !ctx.canAssignAnyone && !!owner && !owner.isMine
-      );
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [event]);
+  const lockedByOtherDispatcher = appointmentLockedForViewer({
+    holderId: event ? appointmentHolders?.[event.id] : null,
+    viewerId,
+    viewerIsDispatchScoped,
+  });
 
   // Everything downstream reads this, so the lock reaches all 20-odd
   // controls without each one having to remember the second reason.

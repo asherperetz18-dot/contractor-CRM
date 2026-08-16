@@ -12,7 +12,13 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
-import { canDeleteAppointments, canEditSchedule, canWriteLeadNotes } from "@/lib/data/types";
+import {
+  canDeleteAppointments,
+  canEditSchedule,
+  canWriteLeadNotes,
+  isDispatchScoped,
+} from "@/lib/data/types";
+import { getAppointmentHolders } from "@/lib/actions/dispatcher";
 import { ScheduleList } from "./schedule-list";
 
 export default async function SchedulePage() {
@@ -20,6 +26,9 @@ export default async function SchedulePage() {
   const profile = await getCurrentProfile();
   const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
+  // See the calendar page: resolved server-side so the appointment
+  // window is locked on the first frame rather than a beat later.
+  const appointmentHolders = await getAppointmentHolders();
 
   const [
     { data: events },
@@ -73,6 +82,9 @@ export default async function SchedulePage() {
       canWrite={canWrite}
       canDeleteEvents={canDeleteAppointments(profile)}
       canAddNotes={canWriteLeadNotes(profile)}
+      viewerId={profile?.id ?? null}
+      viewerIsDispatchScoped={isDispatchScoped(profile)}
+      appointmentHolders={appointmentHolders}
     />
   );
 }

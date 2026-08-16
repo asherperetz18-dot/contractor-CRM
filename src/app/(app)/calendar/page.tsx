@@ -12,7 +12,13 @@ import type {
   LeadTask,
   PipelineStageRow,
 } from "@/lib/data/types";
-import { canDeleteAppointments, canEditSchedule, canWriteLeadNotes } from "@/lib/data/types";
+import {
+  canDeleteAppointments,
+  canEditSchedule,
+  canWriteLeadNotes,
+  isDispatchScoped,
+} from "@/lib/data/types";
+import { getAppointmentHolders } from "@/lib/actions/dispatcher";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
@@ -20,6 +26,11 @@ export default async function CalendarPage() {
   const profile = await getCurrentProfile();
   const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
+  // Resolved here, not in the appointment window: the lock has to be
+  // right on the first frame, and only the service role can see who
+  // holds a lead this dispatcher is scoped out of. Returns {} for
+  // everyone the restriction doesn't apply to, so no extra work runs.
+  const appointmentHolders = await getAppointmentHolders();
 
   const [
     { data: events },
@@ -95,6 +106,9 @@ export default async function CalendarPage() {
       filterReps={filterReps}
       canDeleteEvents={canDeleteAppointments(profile)}
       canAddNotes={canWriteLeadNotes(profile)}
+      viewerId={profile?.id ?? null}
+      viewerIsDispatchScoped={isDispatchScoped(profile)}
+      appointmentHolders={appointmentHolders}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}
