@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
   EVENT_STATUS_COLOR,
@@ -42,6 +43,8 @@ export function LeadAppointmentsPanel({
   leadId: string;
   reps: Profile[];
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [rows, setRows] = useState<LeadAppointmentRow[] | null>(null);
   const [error, setError] = useState("");
   // Fixed at mount: "today" moving mid-session would shuffle a row from
@@ -60,6 +63,19 @@ export function LeadAppointmentsPanel({
       cancelled = true;
     };
   }, [leadId]);
+
+  /**
+   * Where to come back to once the appointment closes.
+   *
+   * The contact reopens on Contacts, which reads openLead. Elsewhere the
+   * param is ignored and you land back on the page you started from --
+   * still better than being left on the calendar wondering where the
+   * customer went.
+   */
+  function openAppointment(eventId: string) {
+    const back = `${pathname}?openLead=${leadId}`;
+    router.push(`/calendar?openEvent=${eventId}&from=${encodeURIComponent(back)}`);
+  }
 
   function repName(id: string | null) {
     if (!id) return "Unassigned";
@@ -97,7 +113,11 @@ export function LeadAppointmentsPanel({
         </thead>
         <tbody>
           {list.map((e) => (
-            <tr key={e.id}>
+            // Straight to the appointment, and back here on close. The
+            // outcome is recorded on the appointment itself, so this
+            // links to it rather than growing a second result form that
+            // would have to be kept in step with the first.
+            <tr key={e.id} className="row-link" onClick={() => openAppointment(e.id)}>
               <td>
                 {longDate(e.date)}
                 {e.time && (

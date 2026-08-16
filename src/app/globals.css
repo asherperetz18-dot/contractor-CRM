@@ -1239,6 +1239,16 @@ body {
   border-style: dashed;
 }
 
+/* A table row that opens something. Needs to look pressable, or nobody
+   discovers that it is. */
+tr.row-link {
+  cursor: pointer;
+}
+
+tr.row-link:hover {
+  background: var(--panel);
+}
+
 .ur-scroll-hint {
   margin: 0 0 10px;
   padding: 8px 12px;

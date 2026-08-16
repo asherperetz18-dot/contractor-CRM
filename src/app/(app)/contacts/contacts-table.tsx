@@ -19,21 +19,7 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
-
-/**
- * A return path from the query string, or null.
- *
- * The value arrives in a URL anyone can craft, so it is only ever
- * allowed to be a path inside this app. "//evil.com" and
- * "https://evil.com" are both rejected: a link that quietly forwards a
- * signed-in user off-site is an open redirect, and this one would be
- * handed out by the app's own screens.
- */
-function safeInternalPath(value: string | null): string | null {
-  if (!value) return null;
-  if (!value.startsWith("/") || value.startsWith("//")) return null;
-  return value;
-}
+import { safeInternalPath } from "@/lib/safe-path";
 
 export function ContactsTable({
   leads,

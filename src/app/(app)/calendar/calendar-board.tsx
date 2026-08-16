@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
@@ -21,7 +21,8 @@ import {
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { safeInternalPath } from "@/lib/safe-path";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
 import { FilterSelect } from "@/components/filter-select";
@@ -153,6 +154,50 @@ export function CalendarBoard({
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
   const [dispatcherFilter, setDispatcherFilter] = useState<Set<string>>(new Set());
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [consumedOpenId, setConsumedOpenId] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+
+  /**
+   * Open one appointment by id, for links from elsewhere in the app.
+   *
+   * The contact card's Appointments tab points here: recording what
+   * happened at a visit belongs in the appointment itself, so the link
+   * brings you to it rather than growing a second result form.
+   */
+  const openEventId = searchParams.get("openEvent");
+  if (openEventId && openEventId !== consumedOpenId) {
+    setConsumedOpenId(openEventId);
+    setReturnTo(safeInternalPath(searchParams.get("from")));
+    const found = events.find((e) => e.id === openEventId);
+    if (found) setEditing(found);
+  } else if (!openEventId && consumedOpenId) {
+    // Param stripped below -- clear the guard so the same appointment can
+    // be opened again later without a full reload.
+    setConsumedOpenId(null);
+  }
+
+  useEffect(() => {
+    if (searchParams.get("openEvent")) {
+      router.replace("/calendar", { scroll: false });
+    }
+  }, [searchParams, router]);
+
+  /**
+   * Close the appointment, returning to whatever sent us here.
+   *
+   * Only for the deep-linked case. An appointment opened by clicking the
+   * calendar has nowhere else to go, and navigating away from the
+   * calendar there would be its own bug.
+   */
+  function closeEvent() {
+    setEditing(null);
+    if (returnTo) {
+      const target = returnTo;
+      setReturnTo(null);
+      router.push(target);
+    }
+  }
   const [draggingId, setDraggingId] = useState("");
   const [dragOverDate, setDragOverDate] = useState("");
   const [moveError, setMoveError] = useState("");
@@ -627,9 +672,9 @@ export function CalendarBoard({
           viewerId={viewerId}
           viewerIsDispatchScoped={viewerIsDispatchScoped}
           appointmentHolders={appointmentHolders}
-          onCancel={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
-          onDeleted={() => setEditing(null)}
+          onCancel={closeEvent}
+          onSaved={closeEvent}
+          onDeleted={closeEvent}
         />
       )}
     </div>
