@@ -52,6 +52,7 @@ import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
 import { DispatcherPicker } from "./dispatcher-picker";
 import { EventOwnerNote } from "./event-owner-note";
+import { getDispatcherContext, getEventOwners } from "@/lib/actions/dispatcher";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
 
@@ -143,7 +144,7 @@ export function EventForm({
   estimates,
   calendars,
   stages,
-  readOnly,
+  readOnly: readOnlyProp,
   canDelete,
   canAddNotes,
   onCancel,
@@ -175,6 +176,43 @@ export function EventForm({
   // Used to send the user back here after the contact window closes --
   // this form opens from both the calendar and the schedule.
   const pathname = usePathname();
+
+  /**
+   * This appointment sits on another dispatcher's lead.
+   *
+   * The window has always said so in words, but the fields stayed live:
+   * you could type, be asked whether to discard your "unsaved changes",
+   * and press Save. The database refuses the write (migration 0090), so
+   * nothing was lost -- but offering an edit that cannot land is its own
+   * kind of lie, and the typing has to be prevented rather than undone.
+   *
+   * Starts unlocked and locks once the answer arrives, the same way the
+   * notice itself appears.
+   */
+  const [lockedByOtherDispatcher, setLockedByOtherDispatcher] = useState(false);
+
+  useEffect(() => {
+    if (!event) return;
+    let cancelled = false;
+    (async () => {
+      const [ctx, owners] = await Promise.all([
+        getDispatcherContext(),
+        getEventOwners([event.id]),
+      ]);
+      if (cancelled) return;
+      const owner = owners[0];
+      setLockedByOtherDispatcher(
+        !!ctx?.isDispatcher && !ctx.canAssignAnyone && !!owner && !owner.isMine
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [event]);
+
+  // Everything downstream reads this, so the lock reaches all 20-odd
+  // controls without each one having to remember the second reason.
+  const readOnly = readOnlyProp || lockedByOtherDispatcher;
   const [form, setForm] = useState<EventInput>(toInput(event, initialDate));
   // Snapshot of how the appointment looked when opened, so closing can
   // tell "nothing touched" from "about to lose work".
