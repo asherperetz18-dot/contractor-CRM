@@ -132,6 +132,10 @@ export async function createLead(input: LeadInput) {
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
+  // lead_cost is left null when nobody typed one: a database trigger
+  // fills it from the company default (migration 0089), so every way a
+  // lead can arrive -- this form, a CSV import, the Facebook webhook --
+  // gets priced the same way without each one remembering to.
   const { data, error } = await supabase
     .from("leads")
     .insert({ ...toRow(input), created_by: profile.id, company_id: profile.company_id })

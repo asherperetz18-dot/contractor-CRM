@@ -43,6 +43,23 @@ const RANGE_LABEL: Record<string, string> = {
   all: "All time",
 };
 
+/**
+ * Targets to measure a rep against.
+ *
+ * Commonly quoted figures for in-home home-improvement selling, not a
+ * law of nature: a $600 repair and a $250,000 ADU do not close at the
+ * same rate, and every trade quotes these differently. They are here so
+ * a rep has something to aim at rather than only a team median that
+ * moves when a colleague has a bad month -- if the team is having a poor
+ * quarter, beating the median means nothing.
+ *
+ * Labelled as a target on the page for exactly that reason. Worth
+ * replacing with this company's own figures once there is enough history
+ * to know them.
+ */
+const TARGET_SHOW_RATE = 0.75;
+const TARGET_CLOSE_RATE = 0.3;
+
 /** A rate is only meaningful once there is something to divide by. */
 function rate(top: number, bottom: number): number | null {
   return bottom > 0 ? top / bottom : null;
@@ -595,6 +612,72 @@ export default async function RepReportPage({
                 </div>
               </>
             )}
+
+            {/* Where the rep stands, and the single most useful thing
+                they could do next. A target beside a rate is worth more
+                than the rate alone -- and the closing line is deliberately
+                the nearest concrete action rather than encouragement,
+                because "sell more" is not something anybody can act on. */}
+            <h2 className="estdoc-terms-head">Where this sits</h2>
+            <table className="estdoc-items estdoc-schedule-table">
+              <thead>
+                <tr>
+                  <th>Measure</th>
+                  <th>This rep</th>
+                  <th>Team median</th>
+                  <th>Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Show rate</strong></td>
+                  <td>{pct(funnel.showRate)}</td>
+                  <td className="estdoc-muted">{pct(teamShow)}</td>
+                  <td>{pct(TARGET_SHOW_RATE)}</td>
+                </tr>
+                <tr>
+                  <td><strong>Close rate</strong></td>
+                  <td>{pct(funnel.closeRate)}</td>
+                  <td className="estdoc-muted">{pct(teamClose)}</td>
+                  <td>{pct(TARGET_CLOSE_RATE)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div className="estdoc-terms">
+              <p>
+                {/* One sale, priced from this rep's own average where
+                    there is one, so the number means something to them
+                    rather than being a company-wide figure. */}
+                {funnel.sent > 0 && funnel.closeRate !== null && funnel.closeRate < TARGET_CLOSE_RATE
+                  ? `Closing ${pct(TARGET_CLOSE_RATE)} of the ${funnel.sent} estimate${
+                      funnel.sent === 1 ? "" : "s"
+                    } sent in this period would have been ${Math.round(
+                      funnel.sent * TARGET_CLOSE_RATE
+                    )} contract${
+                      Math.round(funnel.sent * TARGET_CLOSE_RATE) === 1 ? "" : "s"
+                    } instead of ${funnel.signed}.`
+                  : funnel.sent === 0
+                    ? "No estimates went out in this period, so there is nothing to close yet — the first step is getting quotes in front of people."
+                    : "Close rate is at or above target for this period."}
+              </p>
+              {funnel.noOutcome > 0 && (
+                <p>
+                  <strong>The quickest win here is admin, not selling.</strong>{" "}
+                  {funnel.noOutcome} appointment{funnel.noOutcome === 1 ? "" : "s"} above{" "}
+                  {funnel.noOutcome === 1 ? "has" : "have"} no outcome recorded. Until{" "}
+                  {funnel.noOutcome === 1 ? "it is" : "they are"} filled in, this report is
+                  judging {funnel.attended + funnel.noShow} appointment
+                  {funnel.attended + funnel.noShow === 1 ? "" : "s"} out of {funnel.booked}.
+                </p>
+              )}
+              <p className="estdoc-muted">
+                Targets are commonly quoted figures for in-home selling, not a rule: a small
+                repair and a whole-house remodel do not close at the same rate. They are a
+                point to aim at, and worth replacing with this company&apos;s own once there
+                is enough history to know them.
+              </p>
+            </div>
 
             <div className="estdoc-terms">
               <p>
