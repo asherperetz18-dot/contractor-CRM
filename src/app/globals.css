@@ -1232,6 +1232,13 @@ body {
   scrollbar-width: thin;
 }
 
+/* A statement, not a control -- it must not look pressable. */
+.chip.lead-est-none {
+  cursor: default;
+  color: var(--muted);
+  border-style: dashed;
+}
+
 .ur-scroll-hint {
   margin: 0 0 10px;
   padding: 8px 12px;

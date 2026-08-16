@@ -234,7 +234,11 @@ export function AppointmentReportsView({
                               <Link
                                 key={e.id}
                                 className="value-lead-row"
-                                href={lead ? `/contacts?openLead=${lead.id}` : "/schedule"}
+                                href={
+                                  lead
+                                    ? `/contacts?openLead=${lead.id}&from=/appointment-reports`
+                                    : "/schedule"
+                                }
                               >
                                 <span className="value-lead-name">
                                   {lead ? leadDisplayName(lead) : e.title || e.event_type}

@@ -24,6 +24,7 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
   const router = useRouter();
   const [estimates, setEstimates] = useState<LeadEstimateSummary[] | null>(null);
   const [canCreate, setCanCreate] = useState(false);
+  const [canView, setCanView] = useState(false);
   const [paidCents, setPaidCents] = useState(0);
   const [listOpen, setListOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
       if (cancelled) return;
       setEstimates(res.estimates);
       setCanCreate(res.canCreate);
+      setCanView(res.canView);
       setPaidCents(res.paidCents);
     })();
     return () => {
@@ -43,9 +45,31 @@ export function LeadEstimateButton({ leadId }: { leadId: string }) {
     };
   }, [leadId]);
 
-  // Still loading, or this person has no access to estimates at all.
+  // Still loading.
   if (estimates === null) return null;
-  if (estimates.length === 0 && !canCreate) return null;
+  // No estimate access at all: nothing to say, and saying it on every
+  // contact would just be noise for a role that never touches paperwork.
+  if (!canView) return null;
+
+  /**
+   * Access to estimates, but nothing to open on this contact and no
+   * right to start one.
+   *
+   * Rendered rather than skipped. Disappearing is indistinguishable from
+   * the feature not existing -- a dispatcher looking at a lead that is
+   * not theirs saw an empty space and reported the button as missing.
+   * The state is real and worth naming.
+   */
+  if (estimates.length === 0 && !canCreate) {
+    return (
+      <span
+        className="chip lead-est-none"
+        title="Either nothing has been drawn up for this contact, or it belongs to someone else's leads"
+      >
+        No estimate
+      </span>
+    );
+  }
 
   function go() {
     if (estimates && estimates.length > 1) {

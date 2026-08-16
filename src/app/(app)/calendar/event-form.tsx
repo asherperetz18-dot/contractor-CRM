@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
@@ -172,6 +172,9 @@ export function EventForm({
   onDeleted?: () => void;
 }) {
   const router = useRouter();
+  // Used to send the user back here after the contact window closes --
+  // this form opens from both the calendar and the schedule.
+  const pathname = usePathname();
   const [form, setForm] = useState<EventInput>(toInput(event, initialDate));
   // Snapshot of how the appointment looked when opened, so closing can
   // tell "nothing touched" from "about to lose work".
@@ -396,7 +399,7 @@ export function EventForm({
   function openFullLead() {
     if (!lead) return;
     onCancel();
-    router.push(`/contacts?openLead=${lead.id}`);
+    router.push(`/contacts?openLead=${lead.id}&from=${encodeURIComponent(pathname)}`);
   }
 
   /**

@@ -20,6 +20,21 @@ import {
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
 
+/**
+ * A return path from the query string, or null.
+ *
+ * The value arrives in a URL anyone can craft, so it is only ever
+ * allowed to be a path inside this app. "//evil.com" and
+ * "https://evil.com" are both rejected: a link that quietly forwards a
+ * signed-in user off-site is an open redirect, and this one would be
+ * handed out by the app's own screens.
+ */
+function safeInternalPath(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
 export function ContactsTable({
   leads,
   notes,
@@ -50,10 +65,17 @@ export function ContactsTable({
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Lead | null>(null);
   const [consumedOpenId, setConsumedOpenId] = useState<string | null>(null);
+  const [returnTo, setReturnTo] = useState<string | null>(null);
 
   const openLeadId = searchParams.get("openLead");
   if (openLeadId && openLeadId !== consumedOpenId) {
     setConsumedOpenId(openLeadId);
+    // Where to go back to once they close the contact. Captured now,
+    // because the effect below strips the URL down to /contacts and the
+    // page would otherwise have no memory of where the user came from --
+    // closing a lead opened from Marketing Analytics stranded them in
+    // Dispatch › Contacts, which looks like the app navigated on its own.
+    setReturnTo(safeInternalPath(searchParams.get("from")));
     const found = leads.find((l) => l.id === openLeadId);
     if (found) setEditing(found);
   } else if (!openLeadId && consumedOpenId) {
@@ -70,6 +92,23 @@ export function ContactsTable({
       router.replace("/contacts", { scroll: false });
     }
   }, [searchParams, router]);
+
+  /**
+   * Close the contact, returning to the page that opened it.
+   *
+   * Only when it was opened by a deep link carrying `from`. A contact
+   * opened by clicking a row on this page has nowhere else to go, and
+   * navigating away from Contacts there would be the same bug in
+   * reverse.
+   */
+  function closeLead() {
+    setEditing(null);
+    if (returnTo) {
+      const target = returnTo;
+      setReturnTo(null);
+      router.push(target);
+    }
+  }
 
   const totalContacts = leads.length;
   const withOpenLeads = leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length;
@@ -193,9 +232,9 @@ export function ContactsTable({
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
-          onCancel={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
-          onDeleted={() => setEditing(null)}
+          onCancel={closeLead}
+          onSaved={closeLead}
+          onDeleted={closeLead}
         />
       )}
     </div>

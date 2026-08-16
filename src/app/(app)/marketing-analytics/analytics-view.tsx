@@ -316,7 +316,7 @@ export function AnalyticsView({
                                   <a
                                     key={l.id}
                                     className="value-lead-row"
-                                    href={`/contacts?openLead=${l.id}`}
+                                    href={`/contacts?openLead=${l.id}&from=/marketing-analytics`}
                                     title="Open this contact"
                                   >
                                     <span className="value-lead-name">{leadDisplayName(l)}</span>

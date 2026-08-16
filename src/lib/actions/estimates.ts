@@ -1163,6 +1163,15 @@ export type LeadEstimateSummary = {
 export type LeadEstimatesResult = {
   estimates: LeadEstimateSummary[];
   canCreate: boolean;
+  /**
+   * Whether this person has estimate access at all.
+   *
+   * Separate from an empty list, which it used to be conflated with.
+   * "You may not open estimates" and "this contact has none you can see"
+   * are different facts, and collapsing them made the control disappear
+   * without explanation -- read as the feature being missing.
+   */
+  canView: boolean;
   /** Settled money across every estimate on this lead. */
   paidCents: number;
 };
@@ -1172,7 +1181,8 @@ export async function getEstimatesForLead(
   leadId: string
 ): Promise<LeadEstimatesResult> {
   const profile = await getCurrentProfile();
-  if (!profile || !canViewEstimates(profile)) return { estimates: [], canCreate: false, paidCents: 0 };
+  if (!profile || !canViewEstimates(profile))
+    return { estimates: [], canCreate: false, canView: false, paidCents: 0 };
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -1194,7 +1204,12 @@ export async function getEstimatesForLead(
     paidCents = paidTotalCents((paidRows ?? []) as never);
   }
 
-  return { estimates: data ?? [], canCreate: canCreateEstimates(profile), paidCents };
+  return {
+    estimates: data ?? [],
+    canCreate: canCreateEstimates(profile),
+    canView: true,
+    paidCents,
+  };
 }
 
 /**
@@ -1225,4 +1240,43 @@ export async function openOrCreateEstimateForLead(
   const res = await createEstimate(leadId, lead?.project_type || "Estimate");
   if (res.error) return { error: res.error };
   return { id: res.id, created: true };
+}
+
+export type LeadEstimateRow = {
+  id: string;
+  doc_number: string | null;
+  title: string | null;
+  status: string;
+  kind: string | null;
+  total_cents: number | null;
+  signed_at: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+/**
+ * The documents on one contact, for the Estimates tab of the lead window.
+ *
+ * Fetched on demand rather than loaded with every lead on the page: the
+ * contacts list holds 1500 rows and almost none of them are being looked
+ * at. Deliberately runs as the signed-in user, so RLS decides what comes
+ * back -- a dispatcher gets the documents for leads that are theirs and
+ * nothing else, exactly as on the Estimates page.
+ */
+export async function getLeadEstimates(
+  leadId: string
+): Promise<{ error?: string; estimates?: LeadEstimateRow[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canViewEstimates(profile)) return { estimates: [] };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("estimates")
+    .select("id, doc_number, title, status, kind, total_cents, signed_at, sent_at, created_at")
+    .eq("lead_id", leadId)
+    .eq("company_id", profile.company_id)
+    .order("created_at", { ascending: false });
+  if (error) return { error: error.message };
+  return { estimates: (data as LeadEstimateRow[]) ?? [] };
 }
