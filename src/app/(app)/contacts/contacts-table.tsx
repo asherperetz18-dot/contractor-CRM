@@ -19,6 +19,7 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
+import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { safeInternalPath } from "@/lib/safe-path";
 
 export function ContactsTable({
@@ -33,6 +34,7 @@ export function ContactsTable({
   canWrite,
   canDelete,
   isAdmin,
+  estimateIndex,
 }: {
   leads: Lead[];
   notes: LeadNote[];
@@ -45,6 +47,7 @@ export function ContactsTable({
   canWrite: boolean;
   canDelete: boolean;
   isAdmin: boolean;
+  estimateIndex: LeadEstimateIndex;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -218,6 +221,7 @@ export function ContactsTable({
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
+          estimateIndex={estimateIndex}
           onCancel={closeLead}
           onSaved={closeLead}
           onDeleted={closeLead}

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { moneyCents } from "@/lib/data/types";
 import {
-  getEstimatesForLead,
   openOrCreateEstimateForLead,
   type LeadEstimateSummary,
 } from "@/lib/actions/estimates";
@@ -17,36 +16,32 @@ import {
  * fresh revision has two very different documents on it. None starts one,
  * titled from the lead's project type.
  *
- * Fetches its own data like LeadViewTrail does, so the pipeline page does
- * not have to load every estimate to render a modal that is usually shut.
+ * Given its data by the page rather than fetching it. The whole book is
+ * 37 estimates, so loading them once and grouping by lead costs less
+ * than a round trip per card -- and the chip is present on the first
+ * frame instead of appearing a couple of seconds in.
  */
-export function LeadEstimateButton({ leadId }: { leadId: string }) {
+export function LeadEstimateButton({
+  leadId,
+  estimates,
+  paidCents,
+  canView,
+  canCreate,
+}: {
+  leadId: string;
+  /** Handed down from the page, not fetched. The chip used to arrive a
+   *  couple of seconds after the card opened and shove the rest of the
+   *  row sideways as it did. */
+  estimates: LeadEstimateSummary[];
+  paidCents: number;
+  canView: boolean;
+  canCreate: boolean;
+}) {
   const router = useRouter();
-  const [estimates, setEstimates] = useState<LeadEstimateSummary[] | null>(null);
-  const [canCreate, setCanCreate] = useState(false);
-  const [canView, setCanView] = useState(false);
-  const [paidCents, setPaidCents] = useState(0);
   const [listOpen, setListOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const res = await getEstimatesForLead(leadId);
-      if (cancelled) return;
-      setEstimates(res.estimates);
-      setCanCreate(res.canCreate);
-      setCanView(res.canView);
-      setPaidCents(res.paidCents);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [leadId]);
-
-  // Still loading.
-  if (estimates === null) return null;
   // No estimate access at all: nothing to say, and saying it on every
   // contact would just be noise for a role that never touches paperwork.
   if (!canView) return null;

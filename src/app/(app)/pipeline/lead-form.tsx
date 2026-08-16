@@ -9,6 +9,7 @@ import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PicklistSelect } from "@/components/ui/picklist-select";
 import { LeadEstimateButton } from "./lead-estimate-button";
+import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { LeadAppointmentsPanel } from "./lead-appointments-panel";
 import { LeadViewTrail } from "./lead-view-trail";
 import {
@@ -104,6 +105,7 @@ export function LeadForm({
   readOnly,
   canDelete,
   isAdmin,
+  estimateIndex,
   onCancel,
   onSaved,
   onDeleted,
@@ -121,6 +123,9 @@ export function LeadForm({
   canDelete?: boolean;
   /** Admin role only -- gates the who-opened-this trail. */
   isAdmin?: boolean;
+  /** Every estimate in the company, grouped by lead. Loaded with the
+   *  page so the estimate chip is there on the first frame. */
+  estimateIndex?: LeadEstimateIndex;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -716,7 +721,13 @@ export function LeadForm({
             ))}
             {/* Not a tab: it leaves the modal for the estimate itself
                 rather than switching the pane below. */}
-            <LeadEstimateButton leadId={lead.id} />
+            <LeadEstimateButton
+              leadId={lead.id}
+              estimates={estimateIndex?.byLead[lead.id]?.estimates ?? []}
+              paidCents={estimateIndex?.byLead[lead.id]?.paidCents ?? 0}
+              canView={!!estimateIndex?.canView}
+              canCreate={!!estimateIndex?.canCreate}
+            />
             {/* One-click exits from the pipeline. Each is shown only if the
                 stage exists for this company and isn't the current one, so
                 a lead is never offered a move that would do nothing. */}

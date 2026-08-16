@@ -14,6 +14,7 @@ import {
   type PipelineStageRow,
   type ProjectTypeRow,
 } from "@/lib/data/types";
+import { getLeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { ContactsTable } from "./contacts-table";
 
 export default async function ContactsPage() {
@@ -22,6 +23,9 @@ export default async function ContactsPage() {
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
   const isAdmin = isStrictAdmin(profile);
+  // Loaded with the page so the contact card's estimate chip is there
+  // on the first frame rather than a couple of seconds in.
+  const estimateIndex = await getLeadEstimateIndex();
   const companyId = profile?.company_id ?? "";
 
   const [
@@ -75,6 +79,7 @@ export default async function ContactsPage() {
       canWrite={canWrite}
       canDelete={canDelete}
       isAdmin={isAdmin}
+      estimateIndex={estimateIndex}
     />
   );
 }
