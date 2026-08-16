@@ -6007,9 +6007,33 @@ body {
   background: var(--panel);
 }
 
+/* Wraps, and the chips refuse to squash. Without both, a narrow phone
+   shrinks each chip to a circle with the label broken over four lines
+   and pushes the last one past the edge of the screen. */
 .stmt-quick {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+}
+
+.stmt-quick .chip {
+  white-space: nowrap;
+}
+
+.stmt-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stmt-range input {
+  min-width: 0;
+}
+
+.stmt-range-sep {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* Payment schedule (builder) */

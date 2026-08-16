@@ -44,6 +44,32 @@ const RANGE_LABEL: Record<string, string> = {
 };
 
 /**
+ * The period, as two open-ended edges rather than one cutoff.
+ *
+ * The preset ranges only ever needed a start -- "last 30 days" runs to
+ * today by definition. A custom range needs both, and half a window
+ * cannot express "March only".
+ */
+type Window = { from: string | null; to: string | null };
+
+/**
+ * Whether a date falls in the window.
+ *
+ * Compared on the first ten characters so a timestamp and a plain date
+ * behave the same. signed_at is "2026-08-14T22:13:43Z" while an event's
+ * date is "2026-08-14"; comparing them whole would drop everything
+ * signed on the final day of a custom range, because the timestamp sorts
+ * after the bare date.
+ */
+function within(value: string | null | undefined, w: Window): boolean {
+  if (!value) return false;
+  const d = value.slice(0, 10);
+  if (w.from && d < w.from) return false;
+  if (w.to && d > w.to) return false;
+  return true;
+}
+
+/**
  * Targets to measure a rep against.
  *
  * Commonly quoted figures for in-home home-improvement selling, not a
@@ -138,10 +164,10 @@ function buildFunnel(
   events: Event[],
   estimates: Estimate[],
   leadRepById: Map<string, string | null>,
-  cutoff: string | null,
+  win: Window,
   todayISO: string
 ): Funnel {
-  const inRange = (d: string | null) => !!d && (cutoff === null || d >= cutoff);
+  const inRange = (d: string | null) => within(d, win);
 
   const mine = leads.filter((l) => l.assigned_to === repId && inRange(l.created_at));
 
@@ -207,13 +233,12 @@ function apptRows(
   repId: string,
   events: Event[],
   leadById: Map<string, Lead>,
-  cutoff: string | null
+  win: Window
 ): ApptRow[] {
   return events
     .filter(
       (e) =>
-        (e.assigned_to === repId || e.second_assigned_to === repId) &&
-        (cutoff === null || e.date >= cutoff)
+        (e.assigned_to === repId || e.second_assigned_to === repId) && within(e.date, win)
     )
     .map((e) => {
       const lead = e.lead_id ? leadById.get(e.lead_id) : undefined;
@@ -241,7 +266,7 @@ function leadRows(
   repId: string,
   leads: Lead[],
   estimates: Estimate[],
-  cutoff: string | null
+  win: Window
 ): LeadRow[] {
   const signedByLead = new Map<string, number>();
   for (const e of estimates) {
@@ -250,7 +275,7 @@ function leadRows(
   }
 
   return leads
-    .filter((l) => l.assigned_to === repId && (cutoff === null || l.created_at >= cutoff))
+    .filter((l) => l.assigned_to === repId && within(l.created_at, win))
     .map((l) => {
       const signedCents = signedByLead.get(l.id) ?? 0;
       return {
@@ -271,13 +296,16 @@ function leadRows(
 export default async function RepReportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ rep?: string; days?: string }>;
+  searchParams: Promise<{ rep?: string; days?: string; from?: string; to?: string }>;
 }) {
   const profile = await getCurrentProfile();
   if (!profile) return null;
   const companyId = profile.company_id;
   const sp = await searchParams;
-  const rangeKey = sp.days && RANGE_LABEL[sp.days] ? sp.days : "30";
+  // A custom range wins over the preset chips. Either edge alone is
+  // allowed -- "everything since March" is a real question.
+  const custom = !!(sp.from || sp.to);
+  const rangeKey = custom ? "custom" : sp.days && RANGE_LABEL[sp.days] ? sp.days : "30";
 
   const supabase = await createClient();
   const [leads, members, { data: events }, { data: estimates }, { data: company }] =
@@ -297,10 +325,27 @@ export default async function RepReportPage({
 
   const now = new Date();
   const todayISO = now.toISOString().slice(0, 10);
-  const cutoff =
-    rangeKey === "all"
-      ? null
-      : new Date(now.getTime() - Number(rangeKey) * 86400000).toISOString().slice(0, 10);
+  const win: Window = custom
+    ? { from: sp.from || null, to: sp.to || null }
+    : rangeKey === "all"
+      ? { from: null, to: null }
+      : {
+          from: new Date(now.getTime() - Number(rangeKey) * 86400000)
+            .toISOString()
+            .slice(0, 10),
+          to: null,
+        };
+
+  // What the printed sheet calls the period. A custom range has to say
+  // its actual dates: "Custom" on a document somebody files is useless
+  // six months later.
+  const periodLabel = custom
+    ? win.from && win.to
+      ? `${longDate(win.from)} – ${longDate(win.to)}`
+      : win.from
+        ? `From ${longDate(win.from)}`
+        : `Up to ${longDate(win.to)}`
+    : RANGE_LABEL[rangeKey];
 
   const leadRepById = new Map((leads ?? []).map((l) => [l.id, l.assigned_to]));
   const salespeople = members
@@ -314,7 +359,7 @@ export default async function RepReportPage({
       ((events as Event[]) ?? []),
       ((estimates as Estimate[]) ?? []),
       leadRepById,
-      cutoff,
+      win,
       todayISO
     );
 
@@ -323,10 +368,10 @@ export default async function RepReportPage({
 
   const leadById = new Map(((leads as Lead[]) ?? []).map((l) => [l.id, l]));
   const appointments = chosen
-    ? apptRows(chosen.id, ((events as Event[]) ?? []), leadById, cutoff)
+    ? apptRows(chosen.id, ((events as Event[]) ?? []), leadById, win)
     : [];
   const leadLines = chosen
-    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), cutoff)
+    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), win)
     : [];
   const pipelineCents = leadLines
     .filter((l) => !l.sold)
@@ -364,6 +409,8 @@ export default async function RepReportPage({
         reps={salespeople.map((r) => ({ id: r.id, name: r.name || r.email || "Unnamed" }))}
         repId={sp.rep ?? ""}
         days={rangeKey}
+        from={sp.from ?? ""}
+        to={sp.to ?? ""}
       />
 
       {!chosen || !funnel ? (
@@ -392,7 +439,7 @@ export default async function RepReportPage({
               </div>
               <div className="estdoc-meta">
                 <div className="estdoc-doctype">SALES REP REPORT</div>
-                <div className="estdoc-muted">{RANGE_LABEL[rangeKey]}</div>
+                <div className="estdoc-muted">{periodLabel}</div>
                 <div className="estdoc-muted">Prepared {longDate(todayISO)}</div>
               </div>
             </header>
