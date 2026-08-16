@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
@@ -25,6 +25,34 @@ type StatusTab = "Active" | "Archived" | "All";
 
 const NEW_USER_BLANK = { name: "", email: "", phone: "", password: "" };
 
+/**
+ * Whether the table is currently hiding columns off its right edge.
+ *
+ * Only used to say so out loud. A permission switch that is off-screen
+ * is indistinguishable from one that was never built -- an admin looking
+ * for "View Estimates" and not finding it concludes the feature is
+ * missing, so the page has to admit there is more to the right.
+ */
+function useHasHiddenColumns(): [(el: HTMLDivElement | null) => void, boolean] {
+  const [hidden, setHidden] = useState(false);
+  // A callback ref held in state rather than useRef: the measurement
+  // needs to re-run when the node arrives, and a plain ref does not
+  // trigger that.
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const attach = useCallback((el: HTMLDivElement | null) => setNode(el), []);
+
+  useEffect(() => {
+    if (!node) return;
+    const measure = () => setHidden(node.scrollWidth > node.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node]);
+
+  return [attach, hidden];
+}
+
 export function UsersRolesTable({
   users,
   isAdmin,
@@ -34,6 +62,7 @@ export function UsersRolesTable({
   isAdmin: boolean;
 }) {
   const router = useRouter();
+  const [tableScrollRef, hasHiddenColumns] = useHasHiddenColumns();
   const [, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("Active");
@@ -254,6 +283,20 @@ export function UsersRolesTable({
           </p>
         </div>
       ) : (
+        <>
+        {/* Its own scroll box. The permission columns sit past the right
+            edge on anything narrower than a wide desktop, and without
+            this the only way to reach them is the page's own scrollbar
+            pinned to the bottom of a long table -- so the switches read
+            as missing rather than as off-screen. */}
+        {hasHiddenColumns && (
+          <p className="ur-scroll-hint">
+            More columns to the right — <strong>Can Delete Leads</strong>,{" "}
+            <strong>View Estimates</strong> and <strong>Create Estimates</strong>. Scroll the
+            table sideways to reach them.
+          </p>
+        )}
+        <div className="ur-table-scroll" ref={tableScrollRef}>
         <table className="data-table ur-table">
           <thead>
             <tr>
@@ -445,6 +488,8 @@ export function UsersRolesTable({
             ))}
           </tbody>
         </table>
+        </div>
+        </>
       )}
 
       {showCreate && (

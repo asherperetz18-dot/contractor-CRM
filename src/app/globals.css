@@ -1222,6 +1222,39 @@ body {
   font-size: 12.5px;
   background: #fff;
 }
+/* The permissions columns (Can Delete Leads, View Estimates, Create
+   Estimates) fall past the right edge below roughly 1050px of content
+   width. The scrollbar is forced visible rather than left as an overlay
+   that fades: an admin who cannot see a switch concludes it does not
+   exist, which is exactly what happened. */
+.ur-table-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ur-scroll-hint {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+}
+
+.ur-table-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.ur-table-scroll::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.ur-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
 .ur-table th:last-child,
 .ur-table td:last-child {
   text-align: right;
