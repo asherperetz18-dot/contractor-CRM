@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -210,6 +211,19 @@ export function AnalyticsView({
                         <td>
                           <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
                           {rep.name || rep.email}
+                          {/* Carries the period already chosen above, so
+                              the report opens on the same window being
+                              looked at rather than its own default.
+                              stopPropagation because the row itself is
+                              the expand toggle. */}
+                          <Link
+                            href={`/marketing-analytics/rep-report?rep=${rep.id}&days=${range}`}
+                            className="rep-report-link"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Open the printable funnel report for this rep"
+                          >
+                            Report →
+                          </Link>
                         </td>
                         <td className="right mono">{count}</td>
                         <td className="right mono">{wonCount}</td>

@@ -5134,6 +5134,22 @@ body {
   cursor: default;
 }
 
+/* "Report →" beside a rep on Marketing Analytics. Quiet until hovered:
+   the row's own job is expanding to show that rep's leads, and a loud
+   link competing with it would make the row look like two controls. */
+.rep-report-link {
+  margin-left: 8px;
+  font-size: 11.5px;
+  color: var(--blueprint);
+  text-decoration: none;
+  opacity: 0.75;
+}
+
+.rep-report-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 .est-totals {
   margin-left: auto;
   max-width: 320px;
