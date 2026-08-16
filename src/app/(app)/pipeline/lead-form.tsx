@@ -9,6 +9,7 @@ import { TimeField } from "@/components/ui/time-field";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PicklistSelect } from "@/components/ui/picklist-select";
 import { LeadEstimateButton } from "./lead-estimate-button";
+import { LeadAppointmentsPanel } from "./lead-appointments-panel";
 import { LeadViewTrail } from "./lead-view-trail";
 import {
   addHour as addHourTo,
@@ -59,7 +60,7 @@ import { DispatcherPicker } from "../calendar/dispatcher-picker";
 import { LeadFilesPanel } from "./lead-files-panel";
 import { CallsPanel } from "./calls-panel";
 
-type Tab = "Overview" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
+type Tab = "Overview" | "Appointments" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -696,7 +697,9 @@ export function LeadForm({
 
         {lead && (
           <div className="chip-row no-margin ta-tabs">
-            {(["Overview", "Tasks", "Notes", "Texts", "Calls", "Files"] as Tab[]).map((t) => (
+            {(
+              ["Overview", "Appointments", "Tasks", "Notes", "Texts", "Calls", "Files"] as Tab[]
+            ).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -1069,6 +1072,10 @@ export function LeadForm({
           )
         )}
           </>
+        )}
+
+        {lead && tab === "Appointments" && (
+          <LeadAppointmentsPanel leadId={lead.id} reps={reps} />
         )}
 
         {lead && tab === "Tasks" && (

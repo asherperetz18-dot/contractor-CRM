@@ -281,3 +281,41 @@ export async function markRepInfoSent(id: string, which: "primary" | "second") {
   revalidateCalendarRoutes();
   return { sentAt };
 }
+
+export type LeadAppointmentRow = {
+  id: string;
+  date: string;
+  time: string | null;
+  end_time: string | null;
+  event_type: string;
+  status: string;
+  assigned_to: string | null;
+  second_assigned_to: string | null;
+  notes: string | null;
+};
+
+/**
+ * Every appointment on one contact, newest first.
+ *
+ * Fetched on demand rather than loaded with every lead on the page: the
+ * contacts list holds 1500 rows and almost none are being looked at.
+ *
+ * Runs as the signed-in user so RLS decides what comes back -- a rep
+ * sees the visits that are theirs, exactly as on the calendar.
+ */
+export async function getAppointmentsForLead(
+  leadId: string
+): Promise<{ error?: string; appointments?: LeadAppointmentRow[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("events")
+    .select("id, date, time, end_time, event_type, status, assigned_to, second_assigned_to, notes")
+    .eq("lead_id", leadId)
+    .eq("company_id", profile.company_id)
+    .order("date", { ascending: false });
+  if (error) return { error: error.message };
+  return { appointments: (data as LeadAppointmentRow[]) ?? [] };
+}
