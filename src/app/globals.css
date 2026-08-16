@@ -601,12 +601,21 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Wraps, and the chips refuse to squash.
+   A fixed row of filter chips is wider than a phone. Without both rules
+   flex squeezes each chip toward zero, the label breaks over three or
+   four lines into a circle, and the last chips are pushed off the edge
+   with no scroll affordance -- so a filter that exists cannot be reached.
+   The calendar and the tab rows each had their own patch for this before
+   it was fixed here for every chip row at once. */
 .chip-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 18px;
 }
 .chip {
+  white-space: nowrap;
   background: #fff;
   border: 1px solid var(--line);
   padding: 6px 13px;
@@ -6007,17 +6016,10 @@ body {
   background: var(--panel);
 }
 
-/* Wraps, and the chips refuse to squash. Without both, a narrow phone
-   shrinks each chip to a circle with the label broken over four lines
-   and pushes the last one past the edge of the screen. */
 .stmt-quick {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-.stmt-quick .chip {
-  white-space: nowrap;
 }
 
 .stmt-range {
