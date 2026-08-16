@@ -137,7 +137,12 @@ export async function updateEvent(
   if (confirmationTouched && !confirmationTouched.status) {
     delete (row as { status?: unknown }).status;
   }
-  const { error } = await supabase
+  // Ask for the row back. An RLS refusal is not an error -- the update
+  // simply matches nothing -- so without this a dispatcher editing an
+  // appointment on a colleague's lead is told it saved and the change is
+  // thrown away. The window already warns them it is read-only; being
+  // told "Saved" straight afterwards is what makes it untrustworthy.
+  const { data: saved, error } = await supabase
     .from("events")
     .update({
       ...row,
@@ -149,8 +154,15 @@ export async function updateEvent(
         (row as { time?: string | null }).time
       ),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!saved?.length) {
+    return {
+      error:
+        "That appointment couldn't be saved — it belongs to another dispatcher's lead. Only they or the office can change it.",
+    };
+  }
   revalidateCalendarRoutes();
   return {};
 }
