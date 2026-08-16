@@ -6031,6 +6031,24 @@ body {
   min-width: 0;
 }
 
+.stmt-range-hint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* The dates sit under the chips rather than beside them: they only
+   appear once Custom is chosen, and appearing mid-row shoves every
+   other chip sideways under the cursor. */
+.range-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.range-filter .stmt-range .btn-ghost.small {
+  margin: 0;
+}
+
 .stmt-range-sep {
   color: var(--muted);
   font-size: 12px;

@@ -3,24 +3,32 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PAGE_REGISTRY, type ActivityEvent, type Profile } from "@/lib/data/types";
+import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
+import { isoDay, resolveWindow, withinWindow, type DateWindow } from "@/lib/data/date-range";
 import { LeadsTouched } from "./leads-touched";
 import { getLeadViewsInRange, type RangeLeadView } from "@/lib/actions/lead-touches";
 
-type RangeKey = "today" | "7" | "30" | "90";
-const RANGE_LABELS: Record<RangeKey, string> = {
-  today: "Today",
-  "7": "Last 7 Days",
-  "30": "Last 30 Days",
-  "90": "Last 90 Days",
-};
+const PRESETS = [
+  { key: "today", label: "Today" },
+  { key: "7", label: "Last 7 Days" },
+  { key: "30", label: "Last 30 Days" },
+  { key: "90", label: "Last 90 Days" },
+];
 
-function startOfRange(range: RangeKey): number {
-  const now = new Date();
-  if (range === "today") {
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  }
-  const days = Number(range);
-  return now.getTime() - days * 24 * 60 * 60 * 1000;
+// The page only fetches 90 days of activity events. Offering a custom
+// range that reaches further back would return an empty report rather
+// than an error, which reads as "nobody did anything in March" -- the
+// worst possible answer, because it looks like a fact.
+const HISTORY_DAYS = 90;
+
+function historyFloor(now: Date): string {
+  return isoDay(new Date(now.getTime() - HISTORY_DAYS * 86400000));
+}
+
+/** The window's start as a local timestamp, for comparing against created_at. */
+function startOfWindow(win: DateWindow): number {
+  if (!win.from) return 0;
+  return new Date(`${win.from}T00:00:00`).getTime();
 }
 
 function dayKey(iso: string) {
@@ -92,24 +100,31 @@ export function TeamActivityView({
   events: ActivityEvent[];
   users: Profile[];
 }) {
-  const [range, setRange] = useState<RangeKey>("today");
+  const [range, setRange] = useState<RangeState>({ preset: "today", from: "", to: "" });
   const [userFilter, setUserFilter] = useState<string>("all");
   const [openPath, setOpenPath] = useState<string | null>(null);
   const [openUser, setOpenUser] = useState<string | null>(null);
   const [rangeViews, setRangeViews] = useState<RangeLeadView[]>([]);
+
+  const [now] = useState(() => new Date());
+  const win = useMemo(() => resolveWindow(range, now), [range, now]);
+  const sinceISO = new Date(startOfWindow(win)).toISOString();
+  // End of the last day, not its midnight -- an upper bound of
+  // "2026-08-10T00:00" would drop everything that happened on the 10th.
+  const untilISO = win.to ? new Date(`${win.to}T23:59:59.999`).toISOString() : undefined;
 
   // Lead-opens for the selected range, fetched once and reused by every
   // expanded page row.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const result = await getLeadViewsInRange(new Date(startOfRange(range)).toISOString());
+      const result = await getLeadViewsInRange(sinceISO, untilISO);
       if (!cancelled) setRangeViews(result.views ?? []);
     })();
     return () => {
       cancelled = true;
     };
-  }, [range]);
+  }, [sinceISO, untilISO]);
 
   const userName = (id: string) => users.find((u) => u.id === id)?.name || "Unknown";
   const userEmail = (id: string) => users.find((u) => u.id === id)?.email || "";
@@ -120,13 +135,11 @@ export function TeamActivityView({
   );
 
   const filtered = useMemo(() => {
-    const cutoff = startOfRange(range);
     return events.filter(
       (e) =>
-        new Date(e.created_at).getTime() >= cutoff &&
-        (userFilter === "all" || e.user_id === userFilter)
+        withinWindow(e.created_at, win) && (userFilter === "all" || e.user_id === userFilter)
     );
-  }, [events, range, userFilter]);
+  }, [events, win, userFilter]);
 
   const bySession = useMemo(() => {
     const map = new Map<string, ActivityEvent[]>();
@@ -349,17 +362,15 @@ export function TeamActivityView({
               </option>
             ))}
           </select>
-          <select
-            className="ur-company-filter"
+          <DateRangeFilter
+            variant="select"
+            presets={PRESETS}
             value={range}
-            onChange={(e) => setRange(e.target.value as RangeKey)}
-          >
-            {(Object.keys(RANGE_LABELS) as RangeKey[]).map((r) => (
-              <option key={r} value={r}>
-                {RANGE_LABELS[r]}
-              </option>
-            ))}
-          </select>
+            onChange={setRange}
+            min={historyFloor(now)}
+            max={isoDay(now)}
+            hint={`Activity is kept for ${HISTORY_DAYS} days`}
+          />
         </div>
       </div>
 
@@ -467,7 +478,7 @@ export function TeamActivityView({
                             <LeadsTouched
                               userId={row.userId}
                               userName={userName(row.userId)}
-                              sinceISO={new Date(startOfRange(range)).toISOString()}
+                              sinceISO={sinceISO}
                             />
                             <h4 className="ta-drill-title">
                               Sessions — {userName(row.userId)}

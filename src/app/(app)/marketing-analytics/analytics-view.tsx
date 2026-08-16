@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
+import { resolveWindow, withinWindow } from "@/lib/data/date-range";
 import {
-  daysSince,
   leadDisplayName,
   money,
   stageColor,
@@ -13,19 +14,12 @@ import {
   type Profile,
 } from "@/lib/data/types";
 
-type RangeKey = "7" | "30" | "90" | "all";
-const RANGE_LABELS: Record<RangeKey, string> = {
-  "7": "Last 7 Days",
-  "30": "Last 30 Days",
-  "90": "Last 90 Days",
-  all: "All Time",
-};
-
-function withinRange(dateStr: string | null, days: number | null) {
-  if (!dateStr) return false;
-  if (days === null) return true;
-  return daysSince(dateStr) <= days;
-}
+const PRESETS = [
+  { key: "7", label: "Last 7 Days" },
+  { key: "30", label: "Last 30 Days" },
+  { key: "90", label: "Last 90 Days" },
+  { key: "all", label: "All Time" },
+];
 
 export type SignedContract = {
   lead_id: string;
@@ -45,9 +39,20 @@ export function AnalyticsView({
   stages: PipelineStageRow[];
   signedContracts: SignedContract[];
 }) {
-  const [range, setRange] = useState<RangeKey>("30");
+  const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
-  const days = range === "all" ? null : Number(range);
+  // Fixed at mount. A "now" read during render moves the window under the
+  // user between re-renders, so the same list can come back different.
+  const [now] = useState(() => new Date());
+  const win = useMemo(() => resolveWindow(range, now), [range, now]);
+
+  // The per-rep report opens on whatever period is being looked at here.
+  // Without the custom dates it would silently fall back to its own
+  // default, and the two pages would disagree about the same rep.
+  const rangeQuery =
+    range.from || range.to
+      ? `from=${range.from}&to=${range.to}`
+      : `days=${range.preset}`;
 
   function repName(id: string | null) {
     if (!id) return "Unassigned";
@@ -55,12 +60,12 @@ export function AnalyticsView({
   }
 
   const createdInRange = useMemo(
-    () => leads.filter((l) => withinRange(l.created_at, days)),
-    [leads, days]
+    () => leads.filter((l) => withinWindow(l.created_at, win)),
+    [leads, win]
   );
   const wonInRange = useMemo(
-    () => leads.filter((l) => l.stage === "Won" && withinRange(l.won_at, days)),
-    [leads, days]
+    () => leads.filter((l) => l.stage === "Won" && withinWindow(l.won_at, win)),
+    [leads, win]
   );
 
   const wonValue = wonInRange.reduce((s, l) => s + (Number(l.value) || 0), 0);
@@ -173,15 +178,7 @@ export function AnalyticsView({
       </div>
 
       <div className="chip-row">
-        {(Object.keys(RANGE_LABELS) as RangeKey[]).map((k) => (
-          <button
-            key={k}
-            className={"chip" + (range === k ? " chip-active" : "")}
-            onClick={() => setRange(k)}
-          >
-            {RANGE_LABELS[k]}
-          </button>
-        ))}
+        <DateRangeFilter presets={PRESETS} value={range} onChange={setRange} />
       </div>
 
       <div className="stat-grid">
@@ -297,7 +294,7 @@ export function AnalyticsView({
                               stopPropagation because the row itself is
                               the expand toggle. */}
                           <Link
-                            href={`/marketing-analytics/rep-report?rep=${rep.id}&days=${range}`}
+                            href={`/marketing-analytics/rep-report?rep=${rep.id}&${rangeQuery}`}
                             className="rep-report-link"
                             onClick={(e) => e.stopPropagation()}
                             title="Open the printable funnel report for this rep"

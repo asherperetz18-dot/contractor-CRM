@@ -145,6 +145,7 @@ export type RangeLeadView = {
  */
 export async function getLeadViewsInRange(
   sinceISO: string,
+  untilISO?: string,
   limit = 2000
 ): Promise<{ error?: string; views?: RangeLeadView[] }> {
   const profile = await getCurrentProfile();
@@ -152,13 +153,17 @@ export async function getLeadViewsInRange(
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  // The upper bound is only set for a custom range. Without it, a window
+  // ending last month would still pull in every lead-open since, and the
+  // page-visit rows would be captioned with leads opened after the period
+  // being looked at.
+  let query = supabase
     .from("lead_views")
     .select("lead_id, user_id, opened_at")
     .eq("company_id", profile.company_id)
-    .gte("opened_at", sinceISO)
-    .order("opened_at", { ascending: true })
-    .limit(limit);
+    .gte("opened_at", sinceISO);
+  if (untilISO) query = query.lte("opened_at", untilISO);
+  const { data, error } = await query.order("opened_at", { ascending: true }).limit(limit);
   if (error) return { error: error.message };
 
   const rows = (data as { lead_id: string; user_id: string; opened_at: string }[] | null) ?? [];

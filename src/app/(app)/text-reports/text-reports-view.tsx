@@ -2,9 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
+import { resolveWindow, withinWindow } from "@/lib/data/date-range";
 import { leadDisplayName, normalizePhone, type Lead, type SmsMessage } from "@/lib/data/types";
 
 type DirectionFilter = "All" | "outbound" | "inbound";
+
+const PRESETS = [
+  { key: "7", label: "Last 7 days" },
+  { key: "30", label: "Last 30 days" },
+  { key: "90", label: "Last 90 days" },
+  { key: "all", label: "All time" },
+];
 
 // Replies the SMS webhook treats as an appointment confirmation/decline --
 // surfaced here so it's obvious at a glance which inbound texts actually
@@ -27,7 +36,7 @@ function dayKey(iso: string) {
 export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; leads: Lead[] }) {
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<DirectionFilter>("All");
-  const [days, setDays] = useState("30");
+  const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
   // Captured once at mount -- a "now" read during render would make the
   // date-range filter shift unpredictably across re-renders.
   const [now] = useState(() => Date.now());
@@ -53,11 +62,10 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const cutoff =
-      days === "all" ? null : new Date(now - Number(days) * 86400000).toISOString();
+    const win = resolveWindow(range, new Date(now));
     return messages.filter((m) => {
       if (direction !== "All" && m.direction !== direction) return false;
-      if (cutoff && m.created_at < cutoff) return false;
+      if (!withinWindow(m.created_at, win)) return false;
       if (!q) return true;
       const lead = contactFor(m);
       const name = lead ? leadDisplayName(lead).toLowerCase() : "";
@@ -70,7 +78,7 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
     });
     // contactFor is derived from the same inputs the memo already tracks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, direction, days, search, now, leadById, leadByPhone]);
+  }, [messages, direction, range, search, now, leadById, leadByPhone]);
 
   const sent = rows.filter((m) => m.direction === "outbound").length;
   const received = rows.filter((m) => m.direction === "inbound").length;
@@ -146,12 +154,13 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
           <option value="outbound">Sent</option>
           <option value="inbound">Received</option>
         </select>
-        <select value={days} onChange={(e) => setDays(e.target.value)}>
-          <option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option>
-          <option value="90">Last 90 days</option>
-          <option value="all">All time</option>
-        </select>
+        <DateRangeFilter
+          variant="select"
+          presets={PRESETS}
+          value={range}
+          onChange={setRange}
+          max={new Date(now).toISOString().slice(0, 10)}
+        />
       </div>
 
       {busiestDay && (

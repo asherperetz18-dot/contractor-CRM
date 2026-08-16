@@ -15,6 +15,12 @@ import {
   type EventStatus,
   type Lead,
 } from "@/lib/data/types";
+import {
+  describeWindow,
+  resolveWindow,
+  withinWindow,
+  type DateWindow,
+} from "@/lib/data/date-range";
 import { PrintButton } from "@/components/print-button";
 import { RepReportFilters } from "./report-filters";
 
@@ -43,31 +49,11 @@ const RANGE_LABEL: Record<string, string> = {
   all: "All time",
 };
 
-/**
- * The period, as two open-ended edges rather than one cutoff.
- *
- * The preset ranges only ever needed a start -- "last 30 days" runs to
- * today by definition. A custom range needs both, and half a window
- * cannot express "March only".
- */
-type Window = { from: string | null; to: string | null };
-
-/**
- * Whether a date falls in the window.
- *
- * Compared on the first ten characters so a timestamp and a plain date
- * behave the same. signed_at is "2026-08-14T22:13:43Z" while an event's
- * date is "2026-08-14"; comparing them whole would drop everything
- * signed on the final day of a custom range, because the timestamp sorts
- * after the bare date.
- */
-function within(value: string | null | undefined, w: Window): boolean {
-  if (!value) return false;
-  const d = value.slice(0, 10);
-  if (w.from && d < w.from) return false;
-  if (w.to && d > w.to) return false;
-  return true;
-}
+// The window itself lives in lib/data/date-range, shared with every other
+// report filter -- two pages disagreeing about what "last 30 days" means
+// is how a report loses the reader's trust.
+type Window = DateWindow;
+const within = withinWindow;
 
 /**
  * Targets to measure a rep against.
@@ -325,27 +311,13 @@ export default async function RepReportPage({
 
   const now = new Date();
   const todayISO = now.toISOString().slice(0, 10);
-  const win: Window = custom
-    ? { from: sp.from || null, to: sp.to || null }
-    : rangeKey === "all"
-      ? { from: null, to: null }
-      : {
-          from: new Date(now.getTime() - Number(rangeKey) * 86400000)
-            .toISOString()
-            .slice(0, 10),
-          to: null,
-        };
+  const state = { preset: rangeKey, from: sp.from ?? "", to: sp.to ?? "" };
+  const win = resolveWindow(state, now);
 
   // What the printed sheet calls the period. A custom range has to say
   // its actual dates: "Custom" on a document somebody files is useless
   // six months later.
-  const periodLabel = custom
-    ? win.from && win.to
-      ? `${longDate(win.from)} – ${longDate(win.to)}`
-      : win.from
-        ? `From ${longDate(win.from)}`
-        : `Up to ${longDate(win.to)}`
-    : RANGE_LABEL[rangeKey];
+  const periodLabel = describeWindow(state, RANGE_LABEL);
 
   const leadRepById = new Map((leads ?? []).map((l) => [l.id, l.assigned_to]));
   const salespeople = members

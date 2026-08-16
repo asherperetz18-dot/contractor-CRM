@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
+import { resolveWindow, withinWindow } from "@/lib/data/date-range";
 import {
   EVENT_STATUS_COLOR,
   appointmentResultOverdue,
@@ -16,13 +18,12 @@ import {
   type Profile,
 } from "@/lib/data/types";
 
-type RangeKey = "7" | "30" | "90" | "all";
-const RANGE_LABELS: Record<RangeKey, string> = {
-  "7": "Last 7 Days",
-  "30": "Last 30 Days",
-  "90": "Last 90 Days",
-  all: "All Time",
-};
+const PRESETS = [
+  { key: "7", label: "Last 7 Days" },
+  { key: "30", label: "Last 30 Days" },
+  { key: "90", label: "Last 90 Days" },
+  { key: "all", label: "All Time" },
+];
 
 /** Percent, or "—" when there is nothing to divide by. */
 function rate(part: number, whole: number): string {
@@ -44,7 +45,7 @@ export function AppointmentReportsView({
   reps: Profile[];
   canWrite: boolean;
 }) {
-  const [range, setRange] = useState<RangeKey>("30");
+  const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
   const [repFilter, setRepFilter] = useState("All");
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
 
@@ -58,15 +59,15 @@ export function AppointmentReportsView({
   const todayISO = new Date(nowMs).toISOString().slice(0, 10);
 
   const inRange = useMemo(() => {
-    const days = range === "all" ? null : Number(range);
-    const cutoff =
-      days === null ? null : new Date(nowMs - days * 86400000).toISOString().slice(0, 10);
+    const win = resolveWindow(range, new Date(nowMs));
     return events.filter((e) => {
       // Only appointments that have actually happened can have an
       // outcome, so a show rate that counted next week's bookings as
       // "no result" would drift down every time someone books ahead.
+      // This still applies to a custom range: a window running into next
+      // month reports on the part of it that has been and gone.
       if (e.date > todayISO) return false;
-      if (cutoff && e.date < cutoff) return false;
+      if (!withinWindow(e.date, win)) return false;
       if (repFilter !== "All" && e.assigned_to !== repFilter) return false;
       return true;
     });
@@ -139,17 +140,7 @@ export function AppointmentReportsView({
       </div>
 
       <div className="ur-filter-bar">
-        <div className="chip-row no-margin">
-          {(Object.keys(RANGE_LABELS) as RangeKey[]).map((r) => (
-            <button
-              key={r}
-              className={"chip" + (range === r ? " chip-active" : "")}
-              onClick={() => setRange(r)}
-            >
-              {RANGE_LABELS[r]}
-            </button>
-          ))}
-        </div>
+        <DateRangeFilter presets={PRESETS} value={range} onChange={setRange} max={todayISO} />
         <select value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
           <option value="All">All Reps</option>
           {reps.map((r) => (
