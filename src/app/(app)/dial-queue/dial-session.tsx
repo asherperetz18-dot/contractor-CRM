@@ -55,8 +55,33 @@ export function DialSession({
     null
   );
   const [bookingPending, setBookingPending] = useState(false);
+  /**
+   * Dial the next contact by itself once an outcome is recorded.
+   *
+   * With a visible countdown and a pause, never instantly: the rep needs
+   * a breath between conversations, and a train that cannot be stopped
+   * teaches people to close the whole session instead. Only fires after
+   * an outcome -- Skip stays manual, because skipping is how a rep
+   * browses the queue.
+   */
+  const [autoDial, setAutoDial] = useState(true);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const lead = leads[index];
+
+  useEffect(() => {
+    if (countdown === null) return;
+    const t = setTimeout(() => {
+      if (countdown <= 1) {
+        setCountdown(null);
+        if (lead?.phone) placeCall();
+      } else {
+        setCountdown(countdown - 1);
+      }
+    }, 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown]);
 
   useEffect(() => {
     function onLogged(e: Event) {
@@ -101,18 +126,20 @@ export function DialSession({
     );
   }
 
-  function advance() {
+  function advance(autoNext = false) {
     setCalling(false);
     setCallLogId(null);
     setChosen(null);
     chosenRef.current = null;
     setBooking(null);
+    setCountdown(null);
     setError("");
     if (index + 1 >= leads.length) {
       setEnded(true);
-    } else {
-      setIndex((i) => i + 1);
+      return;
     }
+    setIndex((i) => i + 1);
+    if (autoNext && autoDial) setCountdown(3);
   }
 
   async function commit(logId: string, name: string) {
@@ -134,7 +161,7 @@ export function DialSession({
       setBooking({ date: todayISO(), time: "09:00", assignedTo: "" });
       return;
     }
-    advance();
+    advance(true);
   }
 
   function pickDisposition(name: string) {
@@ -168,7 +195,7 @@ export function DialSession({
       setError(result.error);
       return;
     }
-    advance();
+    advance(true);
   }
 
   if (ended) {
@@ -229,7 +256,7 @@ export function DialSession({
         </Field>
         {error && <p className="error-note">{error}</p>}
         <div className="modal-actions">
-          <button className="btn-ghost" onClick={advance}>
+          <button className="btn-ghost" onClick={() => advance(false)}>
             Skip booking
           </button>
           <button className="btn-primary" onClick={handleBook} disabled={bookingPending}>
@@ -259,7 +286,16 @@ export function DialSession({
 
       {callScript && <div className="dial-session-script">{callScript}</div>}
 
-      {!calling && !callLogId ? (
+      {countdown !== null ? (
+        <div className="dial-countdown">
+          <span>
+            📞 Calling <strong>{leadDisplayName(lead)}</strong> in {countdown}…
+          </span>
+          <button className="btn-ghost" onClick={() => setCountdown(null)}>
+            Pause
+          </button>
+        </div>
+      ) : !calling && !callLogId ? (
         <button className="btn-primary" style={{ width: "100%", marginBottom: 16 }} onClick={placeCall}>
           📞 Call Now
         </button>
@@ -309,11 +345,23 @@ export function DialSession({
         </p>
       )}
 
+      <label className="dial-auto-toggle">
+        <input
+          type="checkbox"
+          checked={autoDial}
+          onChange={(e) => {
+            setAutoDial(e.target.checked);
+            if (!e.target.checked) setCountdown(null);
+          }}
+        />
+        Auto-dial the next contact after each outcome
+      </label>
+
       <div className="dial-session-actions">
         <button className="btn-ghost" onClick={handleClose}>
           End Session
         </button>
-        <button className="btn-ghost" onClick={advance}>
+        <button className="btn-ghost" onClick={() => advance(false)}>
           Skip →
         </button>
       </div>
