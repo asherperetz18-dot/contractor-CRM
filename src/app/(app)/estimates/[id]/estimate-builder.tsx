@@ -25,10 +25,9 @@ import {
 } from "@/lib/data/types";
 import {
   markEstimateSent,
-  saveEstimateItems,
+  saveEstimateDraft,
   sendEstimateToCustomer,
   deleteEstimate,
-  updateEstimateDetails,
   voidEstimate,
 } from "@/lib/actions/estimates";
 import { PaymentSchedule } from "./payment-schedule";
@@ -253,18 +252,16 @@ export function EstimateBuilder({
   function save(then?: () => void) {
     setError(null);
     startTransition(async () => {
-      const detail = await updateEstimateDetails(estimate.id, {
-        title,
-        customer_message: message || null,
-        terms: terms || null,
-        expires_at: expiresAt || null,
-        start_date: startDate || null,
-        completion_date: completionDate || null,
-      });
-      if (detail.error) return setError(detail.error);
-
-      const res = await saveEstimateItems(
+      const res = await saveEstimateDraft(
         estimate.id,
+        {
+          title,
+          customer_message: message || null,
+          terms: terms || null,
+          expires_at: expiresAt || null,
+          start_date: startDate || null,
+          completion_date: completionDate || null,
+        },
         rows.map((r) => ({
           id: r.id,
           group_id: r.groupId,
@@ -284,7 +281,11 @@ export function EstimateBuilder({
           ? `Saved · ${moneyCents(res.totalCents ?? 0)} · recalled from the customer, send again when ready`
           : `Saved · ${moneyCents(res.totalCents ?? 0)}`
       );
-      router.refresh();
+      // Outside this transition on purpose. Inside it, "Saving…" stayed
+      // up until the whole page had re-fetched -- long after the write
+      // was safe -- which read as the save itself being slow. The edits
+      // are already on screen; the refresh only reconciles server props.
+      setTimeout(() => router.refresh(), 0);
       then?.();
     });
   }

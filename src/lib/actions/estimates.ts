@@ -515,19 +515,29 @@ export async function saveEstimateItems(
     group_id: item.group_id ?? null,
   });
 
-  for (const [i, item] of clean.entries()) {
-    if (item.id) {
-      const { error } = await supabase
-        .from("estimate_items")
-        .update(toRow(item, i))
-        .eq("id", item.id)
-        .eq("estimate_id", estimateId)
-        .eq("company_id", guard.companyId);
-      if (error) return { error: error.message };
-    } else {
-      const { error } = await supabase.from("estimate_items").insert(toRow(item, i));
-      if (error) return { error: error.message };
-    }
+  // Two statements, not one per line. This looped an awaited write per
+  // item, so a twenty-line remodel paid twenty sequential round trips to
+  // the database and the rep watched "Saving…" for most of it. Kept rows
+  // go up as one upsert keyed on their existing ids -- identity preserved,
+  // same as before -- and new rows as one insert.
+  const keptRows = clean
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => item.id)
+    .map(({ item, i }) => ({ id: item.id as string, ...toRow(item, i) }));
+  const newRows = clean
+    .map((item, i) => ({ item, i }))
+    .filter(({ item }) => !item.id)
+    .map(({ item, i }) => toRow(item, i));
+
+  if (keptRows.length) {
+    const { error } = await supabase
+      .from("estimate_items")
+      .upsert(keptRows, { onConflict: "id" });
+    if (error) return { error: error.message };
+  }
+  if (newRows.length) {
+    const { error } = await supabase.from("estimate_items").insert(newRows);
+    if (error) return { error: error.message };
   }
 
   const totals = computeEstimateTotals(clean, estimate.tax_rate_bp);
@@ -1329,4 +1339,29 @@ export async function getLeadEstimates(
     .order("created_at", { ascending: false });
   if (error) return { error: error.message };
   return { estimates: (data as LeadEstimateRow[]) ?? [] };
+}
+
+/**
+ * The Save button's one round trip.
+ *
+ * Details and items used to go up as two separate server actions, and in
+ * the App Router every action POST also re-renders this page on the
+ * server -- so a single press of Save paid two full page renders plus
+ * two auth checks before the button was released. Same work, one trip.
+ */
+export async function saveEstimateDraft(
+  estimateId: string,
+  details: {
+    title: string;
+    customer_message: string | null;
+    terms: string | null;
+    expires_at: string | null;
+    start_date: string | null;
+    completion_date: string | null;
+  },
+  items: ItemInput[]
+): Promise<{ error?: string; totalCents?: number; recalled?: boolean }> {
+  const detail = await updateEstimateDetails(estimateId, details);
+  if (detail.error) return { error: detail.error };
+  return saveEstimateItems(estimateId, items);
 }
