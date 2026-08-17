@@ -8,6 +8,7 @@ import {
   canEditDispatch,
   type CalendarRow,
   type Lead,
+  type LeadTask,
   type LeadFile,
   type LeadNote,
   type LeadSourceRow,
@@ -30,6 +31,7 @@ export default async function ContactsPage() {
 
   const [
     leads,
+    { data: tasks },
     { data: notes },
     { data: files },
     allReps,
@@ -46,6 +48,14 @@ export default async function ContactsPage() {
         .order("created_at", { ascending: false })
         .range(f, t)
     ),
+    // The Tasks tab reads these from props. This page never loaded them,
+    // so a task created here saved to the database and then vanished from
+    // the screen -- the panel said "No follow-up tasks yet" over a table
+    // that had the task in it, and people reasonably retyped it.
+    supabase
+      .from("lead_tasks")
+      .select("id, lead_id, title, due_date, due_time, completed_at, assigned_to, created_at")
+      .eq("company_id", companyId),
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")
@@ -69,6 +79,7 @@ export default async function ContactsPage() {
   return (
     <ContactsTable
       leads={(leads as Lead[]) ?? []}
+      tasks={(tasks as LeadTask[]) ?? []}
       notes={(notes as LeadNote[]) ?? []}
       files={(files as LeadFile[]) ?? []}
       reps={reps}

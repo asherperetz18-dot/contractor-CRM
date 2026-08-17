@@ -334,6 +334,7 @@ export async function createLeadTask(
   if (error) return { error: error.message };
   if (!data?.length) return { error: "Couldn't create that task — your role may not have permission." };
   revalidatePath("/pipeline");
+  revalidatePath("/contacts");
   return {};
 }
 
@@ -345,6 +346,7 @@ export async function completeLeadTask(taskId: string) {
     .eq("id", taskId);
   if (error) return { error: error.message };
   revalidatePath("/pipeline");
+  revalidatePath("/contacts");
   return {};
 }
 
@@ -353,6 +355,7 @@ export async function deleteLeadTask(taskId: string) {
   const { error } = await supabase.from("lead_tasks").delete().eq("id", taskId);
   if (error) return { error: error.message };
   revalidatePath("/pipeline");
+  revalidatePath("/contacts");
   return {};
 }
 

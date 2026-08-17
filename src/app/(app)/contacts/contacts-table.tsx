@@ -11,6 +11,7 @@ import {
   stageColor,
   type CalendarRow,
   type Lead,
+  type LeadTask,
   type LeadFile,
   type LeadNote,
   type LeadSourceRow,
@@ -24,6 +25,7 @@ import { safeInternalPath } from "@/lib/safe-path";
 
 export function ContactsTable({
   leads,
+  tasks,
   notes,
   files,
   reps,
@@ -37,6 +39,7 @@ export function ContactsTable({
   estimateIndex,
 }: {
   leads: Lead[];
+  tasks: LeadTask[];
   notes: LeadNote[];
   files: LeadFile[];
   reps: Profile[];
@@ -216,6 +219,7 @@ export function ContactsTable({
           calendars={calendars}
           projectTypes={projectTypes}
           sources={sources}
+          tasks={tasks.filter((t) => t.lead_id === editing.id)}
           notes={notes.filter((n) => n.lead_id === editing.id)}
           files={files.filter((f) => f.lead_id === editing.id)}
           readOnly={!canWrite}
