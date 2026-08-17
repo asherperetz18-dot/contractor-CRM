@@ -1241,6 +1241,22 @@ body {
 
 /* A table row that opens something. Needs to look pressable, or nobody
    discovers that it is. */
+/* Four columns, not the seven the shared 640px minimum assumes.
+   Inheriting that minimum pushed the box wider than the contact card and
+   handed the overflow to the modal, so reaching the outcome meant
+   dragging the whole card sideways. Released, these four fit a phone.
+
+   Two classes on the same element, so this wins on specificity rather
+   than on source order -- the shared rule lives further down the file
+   and would otherwise override it. */
+.table-scroll.appt-table-scroll .data-table {
+  min-width: 0;
+}
+
+.appt-table-scroll {
+  max-width: 100%;
+}
+
 tr.row-link {
   cursor: pointer;
 }

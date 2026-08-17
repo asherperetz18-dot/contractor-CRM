@@ -102,6 +102,11 @@ export function LeadAppointmentsPanel({
 
   function table(list: LeadAppointmentRow[], showOutcome: boolean) {
     return (
+      // Its own scroll box. Four columns do not fit a phone, and without
+      // this the overflow falls to the modal, so reaching the outcome
+      // meant dragging the whole contact card sideways -- and the
+      // outcome is the column the panel exists for.
+      <div className="table-scroll appt-table-scroll">
       <table className="data-table">
         <thead>
           <tr>
@@ -149,6 +154,7 @@ export function LeadAppointmentsPanel({
           ))}
         </tbody>
       </table>
+      </div>
     );
   }
 

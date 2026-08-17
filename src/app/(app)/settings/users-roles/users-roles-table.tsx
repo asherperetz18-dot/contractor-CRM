@@ -43,10 +43,24 @@ function useHasHiddenColumns(): [(el: HTMLDivElement | null) => void, boolean] {
 
   useEffect(() => {
     if (!node) return;
-    const measure = () => setHidden(node.scrollWidth > node.clientWidth + 1);
+    // Whichever element is actually doing the scrolling. On a wide
+    // screen it is this box; on a phone the table itself becomes
+    // display:block with its own overflow-x, so the box fits perfectly
+    // while the table hides 960px of columns inside it. Measuring only
+    // the box meant the hint never appeared on mobile -- the very case
+    // where the columns are hardest to find.
+    const measure = () => {
+      const table = node.querySelector("table");
+      setHidden(
+        node.scrollWidth > node.clientWidth + 1 ||
+          (!!table && table.scrollWidth > table.clientWidth + 1)
+      );
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
+    const table = node.querySelector("table");
+    if (table) observer.observe(table);
     return () => observer.disconnect();
   }, [node]);
 
