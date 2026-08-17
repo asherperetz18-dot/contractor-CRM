@@ -912,6 +912,12 @@ export type CallDispositionRow = {
   sort_order: number;
   is_system: boolean;
   created_at: string;
+  /** Pipeline stage a lead moves to when a call gets this outcome, or
+   *  null for no move. Applied forward-only from early stages. */
+  move_to_stage: string | null;
+  /** Whether this outcome books a follow-up task for the caller --
+   *  a callback nobody is reminded of is a lost lead. */
+  creates_followup_task: boolean;
 };
 
 export const NO_DISPOSITION = "No Disposition";
@@ -2608,4 +2614,41 @@ export function appointmentLockedForViewer(input: {
   if (!input.viewerIsDispatchScoped) return false;
   if (!input.holderId) return false;
   return input.holderId !== input.viewerId;
+}
+
+/**
+ * Stages where a lead is still being chased for its first appointment.
+ *
+ * Shared by everything that advances a lead automatically -- booking an
+ * appointment, a dialer disposition -- so they agree on where automation
+ * is allowed to act. Past these, the lead is in a rep's hands and a
+ * missed phone call must not drag it backwards.
+ */
+export const PRE_APPOINTMENT_STAGES: PipelineStage[] = [
+  "Unsorted",
+  "New Lead",
+  "Meta",
+  "No Answer",
+  "Contacted",
+];
+
+/**
+ * Where a dialer outcome moves the lead, or null for nowhere.
+ *
+ * Forward-only, early-stages-only: a customer at "Proposal Sent" who
+ * misses one call must not fall back to "No Answer", so only leads
+ * still in the pre-appointment stages move at all. The target must
+ * exist in this company's pipeline -- a mapping pointing at a deleted
+ * stage skips rather than writes a stage no board can show.
+ */
+export function dispositionStageMove(input: {
+  currentStage: string;
+  moveToStage: string | null | undefined;
+  companyStages: string[];
+}): string | null {
+  if (!input.moveToStage) return null;
+  if (!PRE_APPOINTMENT_STAGES.includes(input.currentStage)) return null;
+  if (!input.companyStages.includes(input.moveToStage)) return null;
+  if (input.moveToStage === input.currentStage) return null;
+  return input.moveToStage;
 }

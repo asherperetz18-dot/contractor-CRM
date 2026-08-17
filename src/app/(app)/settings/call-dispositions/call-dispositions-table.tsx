@@ -12,9 +12,17 @@ import {
   renameDisposition,
   reorderDispositions,
   updateDispositionColor,
+  updateDispositionRules,
 } from "@/lib/actions/call-dispositions";
 
-export function CallDispositionsTable({ dispositions }: { dispositions: CallDispositionRow[] }) {
+export function CallDispositionsTable({
+  dispositions,
+  stageNames,
+}: {
+  dispositions: CallDispositionRow[];
+  /** This company's pipeline stages, for the "moves lead to" picker. */
+  stageNames: string[];
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -96,6 +104,20 @@ export function CallDispositionsTable({ dispositions }: { dispositions: CallDisp
     refresh();
   }
 
+  async function handleRules(
+    d: CallDispositionRow,
+    moveToStage: string | null,
+    createsFollowupTask: boolean
+  ) {
+    setError("");
+    const result = await updateDispositionRules(d.id, { moveToStage, createsFollowupTask });
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+  }
+
   async function handleDelete(d: CallDispositionRow) {
     if (!confirm(`Delete the "${d.name}" disposition?`)) return;
     setError("");
@@ -138,6 +160,8 @@ export function CallDispositionsTable({ dispositions }: { dispositions: CallDisp
             <th>#</th>
             <th>Disposition</th>
             <th>Color</th>
+            <th>Moves Lead To</th>
+            <th>Follow-up Task</th>
             <th className="right">Actions</th>
           </tr>
         </thead>
@@ -195,6 +219,37 @@ export function CallDispositionsTable({ dispositions }: { dispositions: CallDisp
                   onChange={(e) => handleColorChange(d.id, e.target.value)}
                 />
               </td>
+              <td>
+                {d.is_system ? (
+                  "—"
+                ) : (
+                  <select
+                    value={d.move_to_stage ?? ""}
+                    onChange={(e) =>
+                      handleRules(d, e.target.value || null, d.creates_followup_task)
+                    }
+                  >
+                    <option value="">— no move —</option>
+                    {stageNames.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </td>
+              <td>
+                {d.is_system ? (
+                  "—"
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={d.creates_followup_task}
+                    onChange={(e) => handleRules(d, d.move_to_stage, e.target.checked)}
+                    title="Book a same-day follow-up task for the caller when a call gets this outcome"
+                  />
+                )}
+              </td>
               <td className="right">
                 {!d.is_system && renamingId !== d.id && (
                   <>
@@ -227,6 +282,11 @@ export function CallDispositionsTable({ dispositions }: { dispositions: CallDisp
       <p className="hint-note">
         Drag rows to reorder. Custom dispositions can be renamed and deleted; the
         system &quot;No Disposition&quot; default can be recolored but not renamed or removed.
+      </p>
+      <p className="hint-note">
+        &quot;Moves Lead To&quot; only advances leads still in the early stages (Unsorted, New
+        Lead, Meta, No Answer, Contacted). A lead already past its first appointment never moves —
+        a missed call must not drag a proposal back to &quot;No Answer&quot;.
       </p>
 
       {showCreate && (

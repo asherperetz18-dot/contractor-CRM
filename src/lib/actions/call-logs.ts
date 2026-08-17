@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioVoiceForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
+import { dispositionStageMove } from "@/lib/data/types";
 
 export async function logCall(input: {
   leadId: string | null;
@@ -68,14 +70,98 @@ export async function updateCallDisposition(
     .update({ disposition })
     .eq("id", callLogId)
     .eq("company_id", profile.company_id)
-    .select("id");
+    .select("id, lead_id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "That call couldn't be updated." };
+
+  // The outcome drives the lead, not just the log. Before this, a
+  // disposition was written to a table nobody looks at and the lead sat
+  // untouched on the pipeline -- "Not Interested" left it at "New Lead",
+  // which made the buttons read as broken.
+  const leadId = (data[0] as { lead_id: string | null }).lead_id;
+  if (leadId) {
+    await applyDispositionToLead(profile.company_id, profile.id, leadId, disposition);
+  }
 
   revalidatePath("/call-reports");
   revalidatePath("/dial-queue");
   revalidatePath("/pipeline");
   return {};
+}
+
+/**
+ * The pipeline consequences of a call outcome: a stage move, a
+ * follow-up task, or nothing, as configured per disposition in
+ * Settings → Call Dispositions.
+ *
+ * Runs with the service role, deliberately. The dialer is worked by
+ * Call Center users, whose role cannot write leads under RLS -- but the
+ * move isn't their discretion being exercised, it is a rule an Office
+ * or Admin user configured on the disposition. The lead is verified to
+ * belong to the caller's company first, and the rule itself
+ * (dispositionStageMove) only ever advances leads still in the
+ * pre-appointment stages.
+ *
+ * Failures here are logged, not returned: the disposition itself saved,
+ * and telling the rep "that call couldn't be updated" when it was would
+ * be false.
+ */
+async function applyDispositionToLead(
+  companyId: string,
+  callerId: string,
+  leadId: string,
+  dispositionName: string
+) {
+  const admin = createAdminClient();
+  const { data: dispo } = await admin
+    .from("call_dispositions")
+    .select("move_to_stage, creates_followup_task")
+    .eq("company_id", companyId)
+    .eq("name", dispositionName)
+    .maybeSingle<{ move_to_stage: string | null; creates_followup_task: boolean }>();
+  if (!dispo) return;
+
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, stage, company_id")
+    .eq("id", leadId)
+    .eq("company_id", companyId)
+    .maybeSingle<{ id: string; stage: string; company_id: string }>();
+  if (!lead) return;
+
+  if (dispo.creates_followup_task) {
+    const { error: taskError } = await admin.from("lead_tasks").insert({
+      lead_id: leadId,
+      title: "Call back",
+      // Due today, so it lands on Follow-ups Due immediately rather
+      // than surfacing tomorrow when the promise has gone stale.
+      due_date: new Date().toISOString().slice(0, 10),
+      assigned_to: callerId,
+      created_by: callerId,
+      company_id: companyId,
+    });
+    if (taskError) console.error("disposition follow-up task failed:", taskError.message);
+  }
+
+  if (dispo.move_to_stage) {
+    const { data: stages } = await admin
+      .from("pipeline_stages")
+      .select("name")
+      .eq("company_id", companyId);
+    const target = dispositionStageMove({
+      currentStage: lead.stage,
+      moveToStage: dispo.move_to_stage,
+      companyStages: (stages ?? []).map((s) => (s as { name: string }).name),
+    });
+    if (target) {
+      const { error: moveError } = await admin
+        .from("leads")
+        .update({ stage: target })
+        .eq("id", leadId)
+        .eq("company_id", companyId);
+      if (moveError) console.error("disposition stage move failed:", moveError.message);
+    }
+  }
 }
 
 export async function updateCallNotes(

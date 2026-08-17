@@ -1,18 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
-import { leadDisplayName, mapsUrl, type CallDispositionRow, type Lead } from "@/lib/data/types";
+import { Field } from "@/components/ui/field";
+import {
+  leadDisplayName,
+  mapsUrl,
+  type CallDispositionRow,
+  type Lead,
+  type Profile,
+} from "@/lib/data/types";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
+import { bookAppointmentForLead } from "@/lib/actions/leads";
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 export function DialSession({
   leads,
   dispositions,
+  reps,
   callScript,
   onClose,
 }: {
   leads: Lead[];
   dispositions: CallDispositionRow[];
+  /** For the quick-booking step when an outcome sets an appointment. */
+  reps: Profile[];
   callScript: string | null;
   onClose: () => void;
 }) {
@@ -23,6 +38,23 @@ export function DialSession({
   const [ended, setEnded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  /**
+   * An outcome picked while still on the call.
+   *
+   * The buttons used to stay locked until the call ended and logged, so
+   * the rep sat through the goodbye staring at a grey panel -- and if
+   * the log never arrived, at one that never woke up. Picking early
+   * stages the choice here; the moment the log lands it saves itself.
+   * A ref shadows it because the save fires from the call-logged event
+   * listener, which would otherwise close over a stale value.
+   */
+  const [chosen, setChosen] = useState<string | null>(null);
+  const chosenRef = useRef<string | null>(null);
+  /** Quick appointment booking, shown after an appointment-setting outcome. */
+  const [booking, setBooking] = useState<{ date: string; time: string; assignedTo: string } | null>(
+    null
+  );
+  const [bookingPending, setBookingPending] = useState(false);
 
   const lead = leads[index];
 
@@ -44,9 +76,12 @@ export function DialSession({
       }
       setCallLogId(detail.callLogId);
       setCalledCount((c) => c + 1);
+      // The rep already said what happened -- finish the job for them.
+      if (chosenRef.current) void commit(detail.callLogId, chosenRef.current);
     }
     window.addEventListener("crm:call-logged", onLogged);
     return () => window.removeEventListener("crm:call-logged", onLogged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.id]);
 
   function handleClose() {
@@ -58,6 +93,8 @@ export function DialSession({
     if (!lead?.phone) return;
     setCalling(true);
     setCallLogId(null);
+    setChosen(null);
+    chosenRef.current = null;
     setError("");
     window.dispatchEvent(
       new CustomEvent("crm:call", { detail: { phone: lead.phone, leadId: lead.id } })
@@ -67,6 +104,9 @@ export function DialSession({
   function advance() {
     setCalling(false);
     setCallLogId(null);
+    setChosen(null);
+    chosenRef.current = null;
+    setBooking(null);
     setError("");
     if (index + 1 >= leads.length) {
       setEnded(true);
@@ -75,13 +115,55 @@ export function DialSession({
     }
   }
 
-  async function setDisposition(name: string) {
-    if (!callLogId) return;
+  async function commit(logId: string, name: string) {
     setSaving(true);
     // A failed update used to advance anyway, so the rep moved on believing
     // the outcome was saved when nothing had been written.
-    const result = await updateCallDisposition(callLogId, name);
+    const result = await updateCallDisposition(logId, name);
     setSaving(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    // An outcome that schedules an appointment should end with one on
+    // the calendar. The stage has already moved; leaving without the
+    // booking is what puts "Appointment Scheduled" leads on the board
+    // with nothing behind them.
+    const dispo = dispositions.find((d) => d.name === name);
+    if (dispo?.move_to_stage === "Appointment Scheduled") {
+      setBooking({ date: todayISO(), time: "09:00", assignedTo: "" });
+      return;
+    }
+    advance();
+  }
+
+  function pickDisposition(name: string) {
+    if (saving) return;
+    if (callLogId) {
+      void commit(callLogId, name);
+      return;
+    }
+    // Still on the call: stage it, and let the hang-up save it.
+    setChosen(name);
+    chosenRef.current = name;
+  }
+
+  async function handleBook() {
+    if (!lead || !booking) return;
+    if (!booking.assignedTo) {
+      setError("Pick who is running the appointment.");
+      return;
+    }
+    setBookingPending(true);
+    setError("");
+    const result = await bookAppointmentForLead(lead.id, lead.stage, {
+      title: "",
+      date: booking.date,
+      time: booking.time,
+      eventType: "Estimate",
+      assignedTo: booking.assignedTo,
+    });
+    setBookingPending(false);
     if (result?.error) {
       setError(result.error);
       return;
@@ -104,6 +186,55 @@ export function DialSession({
               Close
             </button>
           </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (booking && lead) {
+    return (
+      <Modal title="Book the Appointment" onClose={handleClose}>
+        <div className="dial-session-name">{leadDisplayName(lead)}</div>
+        <p className="hint-note">
+          The outcome is saved and the lead has moved to Appointment Scheduled. Put the visit on
+          the calendar now, so the stage and the schedule agree.
+        </p>
+        <Field label="Date">
+          <input
+            type="date"
+            value={booking.date}
+            min={todayISO()}
+            onChange={(e) => setBooking((b) => b && { ...b, date: e.target.value })}
+          />
+        </Field>
+        <Field label="Time">
+          <input
+            type="time"
+            value={booking.time}
+            onChange={(e) => setBooking((b) => b && { ...b, time: e.target.value })}
+          />
+        </Field>
+        <Field label="Assigned To">
+          <select
+            value={booking.assignedTo}
+            onChange={(e) => setBooking((b) => b && { ...b, assignedTo: e.target.value })}
+          >
+            <option value="">— choose —</option>
+            {reps.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name || r.email}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {error && <p className="error-note">{error}</p>}
+        <div className="modal-actions">
+          <button className="btn-ghost" onClick={advance}>
+            Skip booking
+          </button>
+          <button className="btn-primary" onClick={handleBook} disabled={bookingPending}>
+            {bookingPending ? "Booking…" : "Book & Next →"}
+          </button>
         </div>
       </Modal>
     );
@@ -134,7 +265,9 @@ export function DialSession({
         </button>
       ) : calling && !callLogId ? (
         <p className="hint-note" style={{ textAlign: "center", marginBottom: 16 }}>
-          On the call — set a disposition once you hang up.
+          {chosen
+            ? `"${chosen}" selected — it saves when you hang up.`
+            : "On the call — pick the outcome whenever you know it."}
         </p>
       ) : (
         <p className="hint-note" style={{ textAlign: "center", marginBottom: 16 }}>
@@ -145,23 +278,29 @@ export function DialSession({
       <div className="dial-session-disposition-grid">
         {dispositions
           .filter((d) => d.name !== "No Disposition")
-          .map((d) => (
-            <button
-              key={d.id}
-              className="dial-session-disposition-btn"
-              disabled={!callLogId || saving}
-              title={callLogId ? undefined : "Place the call first"}
-              onClick={() => setDisposition(d.name)}
-              style={{ borderColor: callLogId ? d.color + "88" : undefined }}
-            >
-              {d.name}
-            </button>
-          ))}
+          .map((d) => {
+            const active = calling || !!callLogId;
+            return (
+              <button
+                key={d.id}
+                className={
+                  "dial-session-disposition-btn" + (chosen === d.name ? " dial-chosen" : "")
+                }
+                disabled={!active || saving}
+                title={active ? undefined : "Place the call first"}
+                onClick={() => pickDisposition(d.name)}
+                style={{ borderColor: active ? d.color + "88" : undefined }}
+              >
+                {d.name}
+              </button>
+            );
+          })}
       </div>
 
       {!callLogId && !calling && (
         <p className="hint-note" style={{ textAlign: "center", marginTop: -8 }}>
-          Outcomes unlock once the call is placed — they are saved onto the call itself.
+          Outcomes unlock when you dial. They save onto the call, and can move the lead on the
+          pipeline — set per outcome in Settings → Call Dispositions.
         </p>
       )}
       {error && (

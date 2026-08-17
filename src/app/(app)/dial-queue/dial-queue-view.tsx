@@ -670,6 +670,7 @@ export function DialQueueView({
         <DialSession
           leads={session}
           dispositions={dispositions}
+          reps={reps}
           callScript={callScript}
           onClose={() => setSession(null)}
         />

@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { normalizePhone, type LeadInput, type PipelineStage } from "@/lib/data/types";
+import {
+  PRE_APPOINTMENT_STAGES,
+  normalizePhone,
+  type LeadInput,
+  type PipelineStage,
+} from "@/lib/data/types";
 
 function toRow(input: LeadInput) {
   return {
@@ -282,14 +287,7 @@ export async function bookAppointmentForLead(
   });
   if (eventError) return { error: eventError.message };
 
-  const preAppointmentStages: PipelineStage[] = [
-    "Unsorted",
-    "New Lead",
-    "Meta",
-    "No Answer",
-    "Contacted",
-  ];
-  const nextStage = preAppointmentStages.includes(currentStage)
+  const nextStage = PRE_APPOINTMENT_STAGES.includes(currentStage)
     ? "Appointment Scheduled"
     : currentStage;
 

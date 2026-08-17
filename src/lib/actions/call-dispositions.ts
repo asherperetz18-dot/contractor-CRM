@@ -157,3 +157,36 @@ export async function reorderDispositions(orderedIds: string[]): Promise<{ error
   revalidateDispositionRoutes();
   return {};
 }
+
+/**
+ * What a call outcome does to the lead: the stage it moves it to (null
+ * for none) and whether it books a follow-up task for the caller.
+ *
+ * Enforcement note: the move itself is applied forward-only and only to
+ * leads still in the pre-appointment stages (dispositionStageMove), so
+ * pointing "No Answer" at an early stage can never drag a lead that has
+ * progressed back down the pipeline.
+ */
+export async function updateDispositionRules(
+  id: string,
+  rules: { moveToStage: string | null; createsFollowupTask: boolean }
+): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("call_dispositions")
+    .update({
+      move_to_stage: rules.moveToStage,
+      creates_followup_task: rules.createsFollowupTask,
+    })
+    .eq("id", id)
+    .eq("company_id", guard.companyId)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That disposition couldn't be updated." };
+
+  revalidateDispositionRoutes();
+  return {};
+}

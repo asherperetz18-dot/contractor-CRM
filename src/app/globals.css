@@ -1261,6 +1261,14 @@ tr.row-link {
   cursor: pointer;
 }
 
+/* An outcome picked while the call is still up -- staged, saves on
+   hang-up. Filled rather than outlined so "selected" and "available"
+   cannot be confused mid-call. */
+.dial-session-disposition-btn.dial-chosen {
+  background: var(--ink);
+  color: #fff;
+}
+
 tr.row-link:hover {
   background: var(--panel);
 }
