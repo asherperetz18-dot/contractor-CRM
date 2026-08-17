@@ -16,6 +16,7 @@ import {
   canDeleteEstimateStatus,
   canDeleteLeads,
   canViewEstimates,
+  leadAfterContractVoid,
   isStrictAdmin,
   depositCents,
   editWillRecallEstimate,
@@ -693,10 +694,16 @@ export async function voidEstimate(
   const supabase = await createClient();
   const { data: existing } = await supabase
     .from("estimates")
-    .select("id, status, doc_number")
+    .select("id, status, doc_number, kind, lead_id")
     .eq("id", estimateId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<{ id: string; status: EstimateStatus; doc_number: string }>();
+    .maybeSingle<{
+      id: string;
+      status: EstimateStatus;
+      doc_number: string;
+      kind: string | null;
+      lead_id: string | null;
+    }>();
   if (!existing) return { error: "Document not found." };
   if (existing.status === "Void") return { error: "That document is already void." };
 
@@ -737,6 +744,49 @@ export async function voidEstimate(
   const collectedCents = (paidRows ?? [])
     .filter((p) => p.status === "succeeded")
     .reduce((s, p) => s + p.amount_cents, 0);
+
+  // The mirror of signing. Signing writes the contract total onto the
+  // lead and advances it to Won; without this, voiding left both behind,
+  // and a cancelled $45,000 test contract kept its lead on the board as
+  // Won $45,000 indefinitely. Recomputed from whatever remains signed.
+  if (existing.status === "Signed" && (existing.kind ?? "contract") === "contract" && existing.lead_id) {
+    const { data: remaining } = await supabase
+      .from("estimates")
+      .select("total_cents, signed_at, kind")
+      .eq("lead_id", existing.lead_id)
+      .eq("company_id", profile.company_id)
+      .eq("status", "Signed");
+    const contracts = (remaining ?? []).filter(
+      (r) => ((r as { kind: string | null }).kind ?? "contract") === "contract"
+    ) as { total_cents: number; signed_at: string | null }[];
+    const after = leadAfterContractVoid(contracts);
+    if (after.demote) {
+      // Only ever out of Won, and only into a stage this company's
+      // pipeline actually has -- a lead written into a stage no board
+      // shows would simply disappear.
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("name")
+        .eq("company_id", profile.company_id);
+      if ((stages ?? []).some((s) => (s as { name: string }).name === "Proposal Sent")) {
+        await supabase
+          .from("leads")
+          .update({ stage: "Proposal Sent", won_at: null })
+          .eq("id", existing.lead_id)
+          .eq("company_id", profile.company_id)
+          .eq("stage", "Won");
+      }
+    } else if (after.valueDollars !== null) {
+      await supabase
+        .from("leads")
+        .update({ value: after.valueDollars })
+        .eq("id", existing.lead_id)
+        .eq("company_id", profile.company_id);
+    }
+    revalidatePath("/pipeline");
+    revalidatePath("/contacts");
+    revalidatePath("/marketing-analytics");
+  }
 
   revalidateEstimates(null);
   revalidatePath("/projects");

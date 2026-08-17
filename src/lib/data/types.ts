@@ -2652,3 +2652,26 @@ export function dispositionStageMove(input: {
   if (input.moveToStage === input.currentStage) return null;
   return input.moveToStage;
 }
+
+/**
+ * Where a lead stands after a signed contract is voided.
+ *
+ * The mirror of what signing does. Signing writes the contract total
+ * onto the lead and advances it to Won; voiding used to touch only the
+ * document, so a cancelled $45,000 test contract left a lead sitting on
+ * the board as Won $45,000 indefinitely.
+ *
+ * If other signed contracts remain, the lead is still won -- for their
+ * money, with value taken from the most recently signed. If nothing
+ * signed remains, it is not won by anyone's definition, and it returns
+ * to Proposal Sent: the paperwork exists, nobody has committed to it.
+ */
+export function leadAfterContractVoid(
+  remainingSigned: { total_cents: number; signed_at: string | null }[]
+): { demote: boolean; valueDollars: number | null } {
+  if (remainingSigned.length === 0) return { demote: true, valueDollars: null };
+  const latest = [...remainingSigned].sort((a, b) =>
+    (b.signed_at ?? "").localeCompare(a.signed_at ?? "")
+  )[0];
+  return { demote: false, valueDollars: latest.total_cents / 100 };
+}
