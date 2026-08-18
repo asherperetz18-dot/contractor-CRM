@@ -8,6 +8,7 @@ type CompanyMemberRow = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  is_dispatch_supervisor: boolean;
   profiles: {
     id: string;
     name: string | null;
@@ -26,7 +27,7 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("company_members")
-    .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, profiles(id, name, email, phone, created_at, is_super_admin)")
+    .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, is_dispatch_supervisor, profiles(id, name, email, phone, created_at, is_super_admin)")
     .eq("company_id", companyId);
 
   return ((data ?? []) as unknown as CompanyMemberRow[])
@@ -43,6 +44,7 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
       can_delete_leads: row.can_delete_leads,
       can_view_estimates: row.can_view_estimates,
       can_create_estimates: row.can_create_estimates,
+      is_dispatch_supervisor: row.is_dispatch_supervisor === true,
       is_super_admin: row.profiles.is_super_admin === true,
       created_at: row.profiles.created_at,
     }));

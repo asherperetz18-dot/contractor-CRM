@@ -5,6 +5,7 @@ import { getCompanyMembers } from "@/lib/data/company";
 import {
   canDeleteLeads,
   isStrictAdmin,
+  canCreateLeads,
   canEditDispatch,
   type CalendarRow,
   type Lead,
@@ -91,6 +92,7 @@ export default async function PipelinePage() {
       projectTypes={(projectTypes as ProjectTypeRow[]) ?? []}
       sources={(sources as LeadSourceRow[]) ?? []}
       canWrite={canWrite}
+      canCreateLeads={canCreateLeads(profile)}
       canDelete={canDelete}
       isAdmin={isAdmin}
       estimateIndex={estimateIndex}

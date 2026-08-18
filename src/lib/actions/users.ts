@@ -297,6 +297,20 @@ async function updateMemberFlag(
   return {};
 }
 
+/**
+ * The Dispatch Supervisor flag: a dispatcher who runs the desk.
+ *
+ * Grants the whole book, entering new leads, adding sources and
+ * assigning dispatchers. Meaningless without the Dispatch role -- the
+ * database checks both -- so the UI only offers it on Dispatch users.
+ */
+export async function updateIsDispatchSupervisor(
+  userId: string,
+  isSupervisor: boolean
+): Promise<{ error?: string }> {
+  return updateMemberFlag(userId, { is_dispatch_supervisor: isSupervisor });
+}
+
 export async function updateCanDeleteLeads(
   userId: string,
   canDelete: boolean

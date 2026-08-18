@@ -30,6 +30,10 @@ export type Profile = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // A dispatcher who runs the desk: sees every lead, enters new ones,
+  // adds sources, assigns dispatchers. Only meaningful alongside the
+  // Dispatch role; set per member in Users & Roles like the flags above.
+  is_dispatch_supervisor?: boolean;
   // Break-glass flag set in the database, not through the UI. Grants
   // Admin in every company and makes the account undemotable in-app.
   is_super_admin?: boolean;
@@ -2583,10 +2587,34 @@ export function computeDispatcherCommissions({
  * dispatcher is narrowed to their own book, and holding Office or Admin
  * alongside lifts the narrowing entirely. Other roles are unaffected.
  */
-export function isDispatchScoped(profile: Pick<Profile, "roles"> | null) {
+export function isDispatchScoped(
+  profile: (Pick<Profile, "roles"> & { is_dispatch_supervisor?: boolean }) | null
+) {
   if (!profile) return false;
   if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return false;
+  // A supervisor runs the desk, so the whole book is their business.
+  if (profile.is_dispatch_supervisor) return false;
   return profile.roles.includes("Dispatch");
+}
+
+/**
+ * Who may enter a brand-new lead.
+ *
+ * Narrower than canEditDispatch on purpose: a plain dispatcher works the
+ * leads that arrive but does not add to the book -- the database has
+ * refused their inserts all along while the UI showed them the button.
+ * The supervisor flag is what grants entry to a dispatcher.
+ */
+export function canCreateLeads(
+  profile: (Pick<Profile, "roles"> & { is_dispatch_supervisor?: boolean }) | null
+) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Sales") ||
+    (profile.roles.includes("Dispatch") && profile.is_dispatch_supervisor === true)
+  );
 }
 
 /**

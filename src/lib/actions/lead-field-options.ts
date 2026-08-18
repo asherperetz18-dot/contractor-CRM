@@ -30,7 +30,8 @@ async function requireCanEditLeads(): Promise<{ error: string } | { companyId: s
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   const roles = profile.roles;
-  if (!roles.includes("Office") && !roles.includes("Admin") && !roles.includes("Sales")) {
+  const dispatchSupervisor = roles.includes("Dispatch") && profile.is_dispatch_supervisor === true;
+  if (!roles.includes("Office") && !roles.includes("Admin") && !roles.includes("Sales") && !dispatchSupervisor) {
     return { error: "You don't have permission to add new options." };
   }
   return { companyId: profile.company_id };

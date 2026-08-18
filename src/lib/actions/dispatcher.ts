@@ -374,7 +374,7 @@ export async function getDispatcherContext(): Promise<DispatcherContext | null> 
   if (!profile) return null;
   return {
     selfId: profile.id,
-    canAssignAnyone: isAdminRole(profile),
+    canAssignAnyone: isAdminRole(profile) || profile.is_dispatch_supervisor === true,
     isDispatcher: (profile.roles ?? []).includes("Dispatch"),
   };
 }

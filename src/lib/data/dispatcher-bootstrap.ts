@@ -15,7 +15,7 @@ import type { DispatcherPickerBootstrap } from "@/app/(app)/calendar/dispatcher-
  * holding Dispatch, sorted by name; Office and Admin may assign anyone.
  */
 export function dispatcherPickerBootstrap(
-  profile: Pick<Profile, "id" | "roles"> | null,
+  profile: (Pick<Profile, "id" | "roles"> & { is_dispatch_supervisor?: boolean }) | null,
   members: Pick<Profile, "id" | "name" | "email" | "roles" | "status">[]
 ): DispatcherPickerBootstrap | undefined {
   if (!profile) return undefined;
@@ -26,7 +26,10 @@ export function dispatcherPickerBootstrap(
       .sort((a, b) => a.name.localeCompare(b.name)),
     context: {
       selfId: profile.id,
-      canAssignAnyone: isAdminRole(profile),
+      canAssignAnyone:
+        isAdminRole(profile) ||
+        // A supervisor hands leads to dispatchers; that is the job.
+        profile.is_dispatch_supervisor === true,
       isDispatcher: (profile.roles ?? []).includes("Dispatch"),
     },
   };

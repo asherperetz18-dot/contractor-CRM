@@ -61,6 +61,7 @@ export function PipelineBoard({
   projectTypes,
   sources,
   canWrite,
+  canCreateLeads,
   canDelete,
   isAdmin,
   estimateIndex,
@@ -78,6 +79,9 @@ export function PipelineBoard({
   projectTypes: ProjectTypeRow[];
   sources: LeadSourceRow[];
   canWrite: boolean;
+  /** Adding to the book is narrower than working it -- a plain
+      dispatcher edits their leads but may not enter new ones. */
+  canCreateLeads: boolean;
   canDelete: boolean;
   isAdmin: boolean;
   estimateIndex: LeadEstimateIndex;
@@ -342,7 +346,7 @@ export function PipelineBoard({
             {leads.length} opps · {statusFilter.toLowerCase()}
           </p>
         </div>
-        {canWrite && (
+        {canCreateLeads && (
           <div>
             <button className="btn-ghost" onClick={() => setShowImport(true)}>
               Import CSV
@@ -797,7 +801,7 @@ export function PipelineBoard({
         </>
       )}
 
-      {showNew && canWrite && (
+      {showNew && canCreateLeads && (
         <LeadForm
           reps={reps}
           stages={stages}

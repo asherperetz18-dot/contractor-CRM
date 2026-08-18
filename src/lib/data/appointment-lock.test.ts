@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appointmentLockedForViewer, isDispatchScoped } from "./types.ts";
+import { appointmentLockedForViewer, canCreateLeads, isDispatchScoped } from "./types.ts";
 
 /**
  * The read-only rule for the appointment window.
@@ -91,4 +91,22 @@ test("Office or Admin alongside Dispatch lifts the scoping", () => {
   assert.equal(isDispatchScoped({ roles: ["Dispatch", "Admin"] }), false);
   assert.equal(isDispatchScoped({ roles: ["Sales"] }), false);
   assert.equal(isDispatchScoped(null), false);
+});
+
+test("the supervisor flag lifts the scoping like Office does", () => {
+  assert.equal(isDispatchScoped({ roles: ["Dispatch"], is_dispatch_supervisor: true }), false);
+  assert.equal(isDispatchScoped({ roles: ["Dispatch"], is_dispatch_supervisor: false }), true);
+  // The flag on a non-dispatcher grants nothing to scope out of.
+  assert.equal(isDispatchScoped({ roles: ["Sales"], is_dispatch_supervisor: true }), false);
+});
+
+test("entering new leads: Office/Admin/Sales, and only supervisor dispatchers", () => {
+  assert.equal(canCreateLeads({ roles: ["Office"] }), true);
+  assert.equal(canCreateLeads({ roles: ["Admin"] }), true);
+  assert.equal(canCreateLeads({ roles: ["Sales"] }), true);
+  assert.equal(canCreateLeads({ roles: ["Dispatch"] }), false);
+  assert.equal(canCreateLeads({ roles: ["Dispatch"], is_dispatch_supervisor: true }), true);
+  assert.equal(canCreateLeads({ roles: ["Call Center"], is_dispatch_supervisor: true }), false);
+  assert.equal(canCreateLeads({ roles: ["Field"] }), false);
+  assert.equal(canCreateLeads(null), false);
 });

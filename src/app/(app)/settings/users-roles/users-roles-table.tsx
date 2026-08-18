@@ -13,6 +13,7 @@ import {
   findUserByEmail,
   removeUserFromCompany,
   toggleUserStatus,
+  updateIsDispatchSupervisor,
   updateCanDeleteLeads,
   updateCanCreateEstimates,
   updateCanViewEstimates,
@@ -161,6 +162,11 @@ export function UsersRolesTable({
     refresh();
   }
 
+  async function handleToggleDispatchSupervisor(u: Profile) {
+    await updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor);
+    router.refresh();
+  }
+
   async function handleToggleCanDelete(u: Profile) {
     await updateCanDeleteLeads(u.id, !u.can_delete_leads);
     refresh();
@@ -306,8 +312,8 @@ export function UsersRolesTable({
         {hasHiddenColumns && (
           <p className="ur-scroll-hint">
             More columns to the right — <strong>Can Delete Leads</strong>,{" "}
-            <strong>View Estimates</strong> and <strong>Create Estimates</strong>. Scroll the
-            table sideways to reach them.
+            <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong> and{" "}
+            <strong>Create Estimates</strong>. Scroll the table sideways to reach them.
           </p>
         )}
         <div className="ur-table-scroll" ref={tableScrollRef}>
@@ -319,6 +325,7 @@ export function UsersRolesTable({
               <th>Phone</th>
               <th>Roles</th>
               <th>Can Delete Leads</th>
+              <th>Dispatch Supervisor</th>
               <th>View Estimates</th>
               <th>Create Estimates</th>
               <th className="right">Status</th>
@@ -429,6 +436,39 @@ export function UsersRolesTable({
                         <span className="toggle-thumb" />
                       </span>
                     </button>
+                  ) : (
+                    <span className="ur-add-phone">—</span>
+                  )}
+                </td>
+                {/* Only offered on Dispatch users: the flag means "a
+                    dispatcher who runs the desk" -- whole book, new leads,
+                    new sources, assigning dispatchers -- and the database
+                    checks for the Dispatch role alongside it, so on anyone
+                    else the switch would appear to do nothing. */}
+                <td>
+                  {u.roles.includes("Dispatch") &&
+                  !u.roles.includes("Office") &&
+                  !u.roles.includes("Admin") ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleDispatchSupervisor(u)}
+                      title={
+                        u.is_dispatch_supervisor
+                          ? "Back to own leads only"
+                          : "Supervisor: sees every lead, enters new leads and sources, assigns dispatchers"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.is_dispatch_supervisor ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                    <span className="ur-add-phone">Always</span>
                   ) : (
                     <span className="ur-add-phone">—</span>
                   )}
