@@ -861,7 +861,18 @@ export function EventForm({
               appointment they cannot save explains itself rather than
               looking broken. The lead itself may not be readable here --
               that is the case this is for. */}
-          {event && <EventOwnerNote eventId={event.id} />}
+          {event && (
+            <EventOwnerNote
+              show={!!viewerIsDispatchScoped}
+              holderName={(() => {
+                const holderId = appointmentHolders?.[event.id] ?? null;
+                if (!holderId) return null;
+                const holder = reps.find((r) => r.id === holderId);
+                return holder?.name || holder?.email || "another dispatcher";
+              })()}
+              isMine={(appointmentHolders?.[event.id] ?? null) === viewerId}
+            />
+          )}
 
           {/* Set here because this is where the work happens, but written
               to the lead: the dispatcher holds it until it sells and is

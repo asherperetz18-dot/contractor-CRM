@@ -87,3 +87,22 @@ export async function getLeadViews(
     })),
   };
 }
+
+/**
+ * Record this open and hand back the trail in the same trip.
+ *
+ * The trail component used to await the record, then fetch the list --
+ * two server actions in sequence, each of which also re-renders the
+ * page it was called from. Opening one contact card paid two full page
+ * renders for a one-line bar, which arrived seconds late and pushed the
+ * whole form down when it did.
+ */
+export async function recordAndListLeadViews(
+  leadId: string
+): Promise<{ views?: LeadView[] }> {
+  await recordLeadView(leadId);
+  const profile = await getCurrentProfile();
+  if (!profile || !isStrictAdmin(profile)) return {};
+  const result = await getLeadViews(leadId);
+  return { views: result.views };
+}

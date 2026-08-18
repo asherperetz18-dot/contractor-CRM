@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getLeadViews, recordLeadView, type LeadView } from "@/lib/actions/lead-views";
+import { recordAndListLeadViews, type LeadView } from "@/lib/actions/lead-views";
 
 function whenLabel(iso: string): string {
   const d = new Date(iso);
@@ -25,13 +25,12 @@ export function LeadViewTrail({ leadId, isAdmin }: { leadId: string; isAdmin: bo
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // Recorded for everyone; only read back by admins. The write has to
-      // land before the read, or the current visit is missing from the
-      // list the person is looking at.
-      await recordLeadView(leadId);
+      // One trip: record this open and get the trail back together.
+      // This used to be two sequential server actions, each of which
+      // also re-rendered the page underneath -- a one-line bar costing
+      // two full page renders and arriving seconds late.
+      const result = await recordAndListLeadViews(leadId);
       if (cancelled || !isAdmin) return;
-      const result = await getLeadViews(leadId);
-      if (cancelled) return;
       setViews(result.views ?? []);
     })();
     return () => {
@@ -40,7 +39,13 @@ export function LeadViewTrail({ leadId, isAdmin }: { leadId: string; isAdmin: bo
   }, [leadId, isAdmin]);
 
   if (!isAdmin) return null;
-  if (views === null) return null;
+  // The bar's space is reserved from the first frame. Rendering nothing
+  // until the data landed made the whole form jump down 45px when the
+  // bar finally arrived -- for an admin it always renders something, so
+  // holding its slot open costs nothing and the layout never moves.
+  if (views === null) {
+    return <p className="lead-trail lead-trail-loading">👁 &nbsp;</p>;
+  }
   if (views.length === 0) {
     return <p className="lead-trail">👁 No one has opened this lead yet.</p>;
   }
