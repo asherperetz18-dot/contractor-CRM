@@ -15,6 +15,7 @@ import {
   canCreateEstimates,
   canDeleteEstimateStatus,
   canDeleteLeads,
+  isAdminRole,
   canViewEstimates,
   leadAfterContractVoid,
   isStrictAdmin,
@@ -1364,4 +1365,41 @@ export async function saveEstimateDraft(
   const detail = await updateEstimateDetails(estimateId, details);
   if (detail.error) return { error: detail.error };
   return saveEstimateItems(estimateId, items);
+}
+
+/**
+ * Pause or resume a sold job on the Projects page.
+ *
+ * On Hold is the one project status that no document proves -- a
+ * cancelled job has a voided contract and a finished one has a signed
+ * completion certificate, but "the customer asked us to wait" exists
+ * only in someone's head until it is written down. This is where it
+ * gets written down.
+ */
+export async function setProjectHold(
+  estimateId: string,
+  onHold: boolean
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) {
+    return { error: "Only Office or Admin can put a project on hold." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("estimates")
+    .update({ project_on_hold: onHold })
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "Signed")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) {
+    // RLS refusals match zero rows without an error -- and a project
+    // that is no longer a signed contract has a real status of its own.
+    return { error: "Could not update that project." };
+  }
+  revalidatePath("/projects");
+  return {};
 }

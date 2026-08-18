@@ -398,3 +398,56 @@ export async function setLeadEstimatedValue(
   revalidatePath("/calendar");
   return {};
 }
+
+export type DuplicateLeadMatch = {
+  id: string;
+  name: string;
+  stage: string;
+  matchedOn: "phone" | "email";
+};
+
+/**
+ * Contacts that already carry this phone or email.
+ *
+ * The CSV importer has warned about duplicates since it shipped; the
+ * hand-typed New Contact form never did, which is exactly how the same
+ * customer ends up in the pipeline twice with two reps calling them.
+ * A warning, not a block -- a repeat enquiry from the same person is
+ * sometimes a genuinely new job, so the decision stays with the person
+ * typing. Same philosophy as the importer, same matching rules.
+ */
+export async function findDuplicateLeads(
+  phone: string,
+  email: string
+): Promise<DuplicateLeadMatch[]> {
+  const profile = await getCurrentProfile();
+  if (!profile) return [];
+  const p = phone ? normalizePhone(phone) : "";
+  const e = (email || "").trim().toLowerCase();
+  if (p.length < 10 && !e) return [];
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("leads")
+    .select("id, first_name, last_name, company_name, phone, second_contact_phone, email, stage")
+    .eq("company_id", profile.company_id);
+
+  const out: DuplicateLeadMatch[] = [];
+  for (const l of (data ?? []) as {
+    id: string; first_name: string | null; last_name: string | null;
+    company_name: string | null; phone: string | null;
+    second_contact_phone: string | null; email: string | null; stage: string;
+  }[]) {
+    const name =
+      (l.company_name || `${l.first_name ?? ""} ${l.last_name ?? ""}`).trim() || "Unnamed";
+    const phoneHit =
+      p.length === 10 &&
+      ((l.phone && normalizePhone(l.phone) === p) ||
+        (l.second_contact_phone && normalizePhone(l.second_contact_phone) === p));
+    const emailHit = !!e && (l.email ?? "").trim().toLowerCase() === e;
+    if (phoneHit) out.push({ id: l.id, name, stage: l.stage, matchedOn: "phone" });
+    else if (emailHit) out.push({ id: l.id, name, stage: l.stage, matchedOn: "email" });
+    if (out.length >= 3) break;
+  }
+  return out;
+}

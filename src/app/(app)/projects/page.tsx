@@ -3,6 +3,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canViewEstimates,
+  isAdminRole,
   computeProjectRollup,
   type Estimate,
   type EstimatePayment,
@@ -88,7 +89,14 @@ export default async function ProjectsPage() {
     ),
   ]);
 
-  const contracts = estimates.filter((e) => e.status === "Signed" && (e.kind ?? "contract") === "contract");
+  // Signed contracts are live projects; a voided one that had been
+  // signed is a cancelled project -- still worth listing, because a job
+  // that fell through is a fact about the book, not a secret.
+  const contracts = estimates.filter(
+    (e) =>
+      (e.kind ?? "contract") === "contract" &&
+      (e.status === "Signed" || (e.status === "Void" && e.signed_at))
+  );
 
   // How many signed contracts each customer has. A cost that no phase
   // claims belongs to the customer, not to a document -- so when they
@@ -133,8 +141,23 @@ export default async function ProjectsPage() {
       ownsUnfiledCosts: (contractsPerLead.get(contract.lead_id) ?? 1) === 1,
     });
 
+    // Cancelled and Complete are derived from documents that already
+    // exist, so they can never contradict them. Only On Hold is stored.
+    const completionSigned = changeOrders.some(
+      (e) => (e.kind ?? "") === "completion" && e.status === "Signed"
+    );
+    const status =
+      contract.status === "Void"
+        ? ("cancelled" as const)
+        : (contract as { project_on_hold?: boolean }).project_on_hold
+          ? ("on_hold" as const)
+          : completionSigned || contract.completed_on
+            ? ("complete" as const)
+            : ("in_progress" as const);
+
     const lead = leadById.get(contract.lead_id) ?? null;
     return {
+      status,
       estimateId: contract.id,
       docNumber: contract.doc_number,
       title: contract.title,
@@ -151,5 +174,9 @@ export default async function ProjectsPage() {
     };
   });
 
-  return <ProjectsView projects={cards} />;
+  // The hold toggle writes a column added by migration 0093. Until that
+  // migration has run, the column is absent from these rows and the
+  // button could only fail -- so it does not appear.
+  const holdReady = estimates.length === 0 || "project_on_hold" in estimates[0];
+  return <ProjectsView projects={cards} canManage={isAdminRole(profile) && holdReady} />;
 }

@@ -36,10 +36,12 @@ import {
   convertLeadToJob,
   createLead,
   deleteLead,
+  findDuplicateLeads,
   moveLeadStage,
   requestLeadRefund,
   resolveLeadRefund,
   updateLead,
+  type DuplicateLeadMatch,
 } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import {
@@ -173,6 +175,38 @@ export function LeadForm({
   const [portalCopyNote, setPortalCopyNote] = useState("");
   const [quickExitPending, setQuickExitPending] = useState("");
   const [markLostError, setMarkLostError] = useState("");
+
+  /**
+   * Contacts already carrying the phone or email being typed.
+   *
+   * Only in create mode, and a warning rather than a block: the CSV
+   * importer has warned like this since it shipped, while the hand-typed
+   * form never did -- which is exactly how the same customer ends up in
+   * the pipeline twice with two reps calling them. A repeat enquiry is
+   * sometimes a genuinely new job, so the decision stays with the typist.
+   */
+  const [dupMatches, setDupMatches] = useState<DuplicateLeadMatch[]>([]);
+  useEffect(() => {
+    if (lead) return; // editing an existing contact is not an attempt at a new one
+    const phone = form.phone.trim();
+    const emailAddr = form.email.trim();
+    const enough = phone.replace(/\D/g, "").length >= 10 || !!emailAddr;
+    let cancelled = false;
+    const t = setTimeout(
+      async () => {
+        // Clearing also goes through the timeout: setting state
+        // synchronously inside an effect forces an extra render pass.
+        const matches = enough ? await findDuplicateLeads(phone, emailAddr) : [];
+        if (!cancelled) setDupMatches(matches);
+      },
+      enough ? 600 : 0
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead, form.phone, form.email]);
 
   // "now" is captured once at mount -- reading the clock during render
   // makes the same state render differently on re-renders.
@@ -525,6 +559,31 @@ export function LeadForm({
             />
           </Field>
         </div>
+
+        {!lead && dupMatches.length > 0 && (
+          <div className="dup-banner" style={{ marginBottom: 14 }}>
+            <span>
+              ⚠ Already in your contacts:{" "}
+              {dupMatches.map((m, i) => (
+                <span key={m.id}>
+                  {i > 0 && ", "}
+                  <strong>{m.name}</strong> ({m.stage}, same {m.matchedOn})
+                </span>
+              ))}
+              . Saving anyway creates a duplicate.
+            </span>
+            <button
+              type="button"
+              className="btn-ghost small"
+              onClick={() => {
+                onCancel();
+                router.push(`/contacts?openLead=${dupMatches[0].id}`);
+              }}
+            >
+              Open existing
+            </button>
+          </div>
+        )}
 
         {lead && (form.phone || form.address || form.email) && (
           <div className="contact-card contact-card-actions-row" style={{ marginBottom: 14 }}>

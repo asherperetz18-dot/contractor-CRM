@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { setProjectHold } from "@/lib/actions/estimates";
 import {
   mapsUrl,
   moneyCents,
@@ -9,7 +10,10 @@ import {
   type ProjectRollup,
 } from "@/lib/data/types";
 
+export type ProjectStatus = "in_progress" | "on_hold" | "complete" | "cancelled";
+
 export type ProjectCard = {
+  status: ProjectStatus;
   estimateId: string;
   docNumber: string;
   title: string;
@@ -22,7 +26,14 @@ export type ProjectCard = {
   rollup: ProjectRollup;
 };
 
-type Filter = "All" | "Bleeding" | "Owed";
+type Filter = "All" | "InProgress" | "OnHold" | "Complete" | "Cancelled" | "Bleeding" | "Owed";
+
+const STATUS_TAG: Record<ProjectStatus, string | null> = {
+  in_progress: null, // the normal case earns no badge
+  on_hold: "On hold",
+  complete: "Complete",
+  cancelled: "Cancelled",
+};
 
 /**
  * Sold jobs, worst first.
@@ -32,19 +43,50 @@ type Filter = "All" | "Bleeding" | "Owed";
  * by size. A list ordered any other way is a filing cabinet -- you have
  * to already know which job is in trouble to find out that it is.
  */
-export function ProjectsView({ projects }: { projects: ProjectCard[] }) {
+export function ProjectsView({
+  projects,
+  canManage,
+}: {
+  projects: ProjectCard[];
+  canManage: boolean;
+}) {
   const [filter, setFilter] = useState<Filter>("All");
+  const [pendingHold, setPendingHold] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+
+  // Cancelled jobs are dead weight: they stay reachable under their own
+  // chip, but every figure and every other list on this page speaks only
+  // for jobs that are still real. Folding a voided contract into Sold
+  // would report money the company is never getting.
+  const active = projects.filter((p) => p.status !== "cancelled");
+  const cancelled = projects.filter((p) => p.status === "cancelled");
 
   const sorted = useMemo(
-    () => [...projects].sort((a, b) => projectTriageOrder(a.rollup, b.rollup)),
-    [projects]
+    () => [...active].sort((a, b) => projectTriageOrder(a.rollup, b.rollup)),
+    [active]
   );
 
   const bleeding = sorted.filter((p) => p.rollup.netCashCents < 0);
   const owed = sorted.filter((p) => p.rollup.receivableCents > 0);
-  const shown = filter === "Bleeding" ? bleeding : filter === "Owed" ? owed : sorted;
+  const inProgress = sorted.filter((p) => p.status === "in_progress");
+  const onHold = sorted.filter((p) => p.status === "on_hold");
+  const complete = sorted.filter((p) => p.status === "complete");
+  const shown =
+    filter === "Bleeding"
+      ? bleeding
+      : filter === "Owed"
+        ? owed
+        : filter === "InProgress"
+          ? inProgress
+          : filter === "OnHold"
+            ? onHold
+            : filter === "Complete"
+              ? complete
+              : filter === "Cancelled"
+                ? cancelled
+                : sorted;
 
-  const totals = projects.reduce(
+  const totals = active.reduce(
     (acc, p) => ({
       sold: acc.sold + p.rollup.soldCents,
       collected: acc.collected + p.rollup.collectedCents,
@@ -67,7 +109,7 @@ export function ProjectsView({ projects }: { projects: ProjectCard[] }) {
   // warning that overstates the problem is its own kind of wrong.
   const unattributed = [
     ...new Map(
-      projects
+      active
         .filter((p) => p.rollup.unattributedCostCents)
         .map((p) => [p.leadId, p.rollup.unattributedCostCents])
     ).values(),
@@ -91,7 +133,7 @@ export function ProjectsView({ projects }: { projects: ProjectCard[] }) {
         <div>
           <h1 className="page-title">Projects</h1>
           <p className="page-sub">
-            {projects.length} sold job{projects.length === 1 ? "" : "s"} · contract, collected
+            {active.length} sold job{active.length === 1 ? "" : "s"} · contract, collected
             and what is left after costs
           </p>
         </div>
@@ -144,17 +186,23 @@ export function ProjectsView({ projects }: { projects: ProjectCard[] }) {
       )}
 
       <div className="chip-row">
-        {(["All", "Bleeding", "Owed"] as Filter[]).map((f) => (
+        {(
+          [
+            ["All", `All ${active.length}`],
+            ["InProgress", `In progress ${inProgress.length}`],
+            ["OnHold", `On hold ${onHold.length}`],
+            ["Complete", `Complete ${complete.length}`],
+            ["Cancelled", `Cancelled ${cancelled.length}`],
+            ["Bleeding", `Negative net cash ${bleeding.length}`],
+            ["Owed", `Owed money ${owed.length}`],
+          ] as [Filter, string][]
+        ).map(([f, label]) => (
           <button
             key={f}
             className={"chip" + (filter === f ? " chip-on" : "")}
             onClick={() => setFilter(f)}
           >
-            {f === "All"
-              ? `All ${projects.length}`
-              : f === "Bleeding"
-                ? `Negative net cash ${bleeding.length}`
-                : `Owed money ${owed.length}`}
+            {label}
           </button>
         ))}
       </div>
@@ -188,6 +236,39 @@ export function ProjectsView({ projects }: { projects: ProjectCard[] }) {
                         ` · ${p.changeOrderCount} change order${p.changeOrderCount === 1 ? "" : "s"}`}
                       {p.repName && ` · ${p.repName}`}
                     </div>
+                    {(STATUS_TAG[p.status] ||
+                      (canManage && p.status !== "complete" && p.status !== "cancelled")) && (
+                      <div className="proj-status-line">
+                        {STATUS_TAG[p.status] && (
+                          <span className={`proj-tag proj-tag-${p.status}`}>
+                            {STATUS_TAG[p.status]}
+                          </span>
+                        )}
+                        {canManage && p.status !== "complete" && p.status !== "cancelled" && (
+                          <button
+                            className="btn-ghost small"
+                            disabled={pendingHold === p.estimateId}
+                            onClick={() => {
+                              setPendingHold(p.estimateId);
+                              startTransition(async () => {
+                                const res = await setProjectHold(
+                                  p.estimateId,
+                                  p.status !== "on_hold"
+                                );
+                                if (res.error) alert(res.error);
+                                setPendingHold(null);
+                              });
+                            }}
+                          >
+                            {pendingHold === p.estimateId
+                              ? "Saving…"
+                              : p.status === "on_hold"
+                                ? "Resume"
+                                : "Put on hold"}
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td>
                     {p.customer}

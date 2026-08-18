@@ -7170,3 +7170,35 @@ textarea.est-item-desc:disabled {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* Project status on the Projects list. The normal case (in progress)
+   wears no badge -- a label on every row would make the exceptions
+   invisible. */
+.proj-status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.proj-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.proj-tag-on_hold {
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.35);
+}
+.proj-tag-complete {
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.35);
+}
+.proj-tag-cancelled {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+}
