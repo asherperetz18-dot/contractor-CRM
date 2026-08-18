@@ -12,6 +12,7 @@ import {
   type PipelineStageRow,
 } from "@/lib/data/types";
 import { DialQueueView } from "./dial-queue-view";
+import { listCompanyPhoneNumbers } from "@/lib/actions/phone-numbers";
 
 export default async function DialQueuePage() {
   const supabase = await createClient();
@@ -50,6 +51,7 @@ export default async function DialQueuePage() {
       : Promise.resolve({ data: null }),
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+  const phoneNumbers = await listCompanyPhoneNumbers();
 
   return (
     <DialQueueView
@@ -61,6 +63,7 @@ export default async function DialQueuePage() {
       dialLists={(dialLists as DialList[]) ?? []}
       callScript={(companyProfile as Pick<CompanyProfile, "call_script"> | null)?.call_script ?? null}
       canWrite={canWrite}
+      phoneNumbers={phoneNumbers}
     />
   );
 }

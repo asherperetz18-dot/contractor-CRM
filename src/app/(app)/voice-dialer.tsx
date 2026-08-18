@@ -65,6 +65,17 @@ export function VoiceDialer() {
     window.localStorage.setItem(CALLER_ID_KEY, value);
   }
 
+  // The Power Dialer page has its own "Calling from" control writing the
+  // same key; follow it so the two never show different numbers.
+  useEffect(() => {
+    function onCallerIdChanged(e: Event) {
+      const phone = (e as CustomEvent<{ phone: string }>).detail?.phone;
+      if (phone) setCallerId(phone);
+    }
+    window.addEventListener("crm:caller-id-changed", onCallerIdChanged);
+    return () => window.removeEventListener("crm:caller-id-changed", onCallerIdChanged);
+  }, []);
+
   async function ensureDevice() {
     if (deviceRef.current) return deviceRef.current;
     const result = await getVoiceAccessToken();
@@ -138,7 +149,12 @@ export function VoiceDialer() {
           Record: recordEnabled ? "true" : "false",
           // Validated server-side against the company's registered
           // numbers; anything else falls back to the default there.
-          ...(callerId ? { CallerId: callerId } : {}),
+          // localStorage is the fallback because a dial session's first
+          // call can arrive before this panel has loaded its list --
+          // the pick made on the Power Dialer page must still count.
+          ...(callerId || window.localStorage.getItem(CALLER_ID_KEY)
+            ? { CallerId: callerId || window.localStorage.getItem(CALLER_ID_KEY)! }
+            : {}),
         },
       });
       callRef.current = call;

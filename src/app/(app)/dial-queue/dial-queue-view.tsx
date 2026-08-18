@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import * as XLSX from "xlsx";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/data/types";
 import { deleteDialList, saveDialList } from "@/lib/actions/dial-lists";
 import { DialSession } from "./dial-session";
+import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
 
 type Tab = "contact" | "lead";
 type LeadStatus = "Open" | "Won" | "Lost";
@@ -57,6 +58,7 @@ export function DialQueueView({
   dialLists,
   callScript,
   canWrite,
+  phoneNumbers,
 }: {
   leads: Lead[];
   stages: PipelineStageRow[];
@@ -66,6 +68,7 @@ export function DialQueueView({
   dialLists: DialList[];
   callScript: string | null;
   canWrite: boolean;
+  phoneNumbers: CompanyPhoneNumber[];
 }) {
   const router = useRouter();
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +87,31 @@ export function DialQueueView({
   const [stageFilter, setStageFilter] = useState("All");
   const [repFilter, setRepFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("All Dates");
+
+  // Which company number this desk shows when calling. Shared with the
+  // floating dialer through localStorage plus an event, so picking it
+  // here is picking it everywhere.
+  const [callerPick, setCallerPick] = useState("");
+  useEffect(() => {
+    if (phoneNumbers.length < 2) return;
+    // Through a timeout so hydration finishes on the server-rendered
+    // value before the device's remembered pick is applied.
+    const t = setTimeout(() => {
+      const stored = window.localStorage.getItem("crm:dialer-caller-id");
+      const pick =
+        (stored && phoneNumbers.find((n) => n.phone_number === stored)) ||
+        phoneNumbers.find((n) => n.is_default) ||
+        phoneNumbers[0];
+      setCallerPick(pick.phone_number);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [phoneNumbers]);
+
+  function pickCallerId(value: string) {
+    setCallerPick(value);
+    window.localStorage.setItem("crm:dialer-caller-id", value);
+    window.dispatchEvent(new CustomEvent("crm:caller-id-changed", { detail: { phone: value } }));
+  }
 
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveName, setSaveName] = useState("");
@@ -574,6 +602,22 @@ export function DialQueueView({
             >
               Start Dialing
             </button>
+            {phoneNumbers.length > 1 && (
+              <label className="dial-queue-from">
+                Calling from
+                <select
+                  value={callerPick}
+                  onChange={(e) => pickCallerId(e.target.value)}
+                >
+                  {phoneNumbers.map((n) => (
+                    <option key={n.id} value={n.phone_number}>
+                      {(n.label ? n.label + " — " : "") + n.phone_number}
+                      {n.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <div className="dial-queue-panel">

@@ -7286,3 +7286,16 @@ textarea.est-item-desc:disabled {
   width: 100%;
   margin-top: 3px;
 }
+
+/* "Calling from" in the Power Dialer's queue panel. */
+.dial-queue-from {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-top: 10px;
+}
+.dial-queue-from select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+}
