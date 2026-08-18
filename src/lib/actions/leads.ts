@@ -154,12 +154,18 @@ export async function createLead(input: LeadInput) {
 
 export async function updateLead(id: string, input: LeadInput) {
   const supabase = await createClient();
+  // has_appt is booking's to write, not this form's. The manual control
+  // is gone, but the form still holds whatever value it opened with --
+  // and a card left open while someone books on the calendar would save
+  // that stale false back over the booking's true.
+  const row: Partial<ReturnType<typeof toRow>> = toRow(input);
+  delete row.has_appt;
   // Ask for the row back. When RLS blocks the write there is no error --
   // the statement simply matches zero rows -- so without this the save
   // reports success and the edit is silently thrown away.
   const { data, error } = await supabase
     .from("leads")
-    .update(toRow(input))
+    .update(row)
     .eq("id", id)
     .select("id");
 

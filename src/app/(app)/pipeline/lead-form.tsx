@@ -832,15 +832,12 @@ export function LeadForm({
               ))}
             </select>
           </Field>
-          <Field label="Has Appointment?">
-            <select
-              value={form.has_appt ? "yes" : "no"}
-              onChange={(e) => set("has_appt", e.target.value === "yes")}
-            >
-              <option value="no">Not yet</option>
-              <option value="yes">Scheduled</option>
-            </select>
-          </Field>
+          {/* "Has Appointment?" used to be a hand-set dropdown here. It
+              could read "Scheduled" with nothing booked and "Not yet"
+              with three on the calendar -- and the Appointments tab now
+              shows the truth. Booking an appointment sets the underlying
+              flag itself; the one place it could be set to a lie is
+              gone. */}
           <Field label="Assigned Rep">
             <select
               value={form.assigned_to}
