@@ -59,12 +59,29 @@ export default async function EstimatesPage() {
     ),
   ]);
 
+  // Customer opens per document, newest first so [0] is the latest look.
+  const views = await selectAll<{ estimate_id: string; viewed_at: string }>((from, to) =>
+    supabase
+      .from("estimate_views")
+      .select("estimate_id, viewed_at")
+      .eq("company_id", profile.company_id)
+      .order("viewed_at", { ascending: false })
+      .range(from, to)
+  );
+  const viewsByEstimate: Record<string, { count: number; last: string }> = {};
+  for (const v of views) {
+    const entry = viewsByEstimate[v.estimate_id];
+    if (entry) entry.count += 1;
+    else viewsByEstimate[v.estimate_id] = { count: 1, last: v.viewed_at };
+  }
+
   return (
     <EstimatesView
       estimates={estimates}
       signers={signers}
       leads={leads}
       reps={reps}
+      viewsByEstimate={viewsByEstimate}
       canCreate={canCreateEstimates(profile)}
     />
   );

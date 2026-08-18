@@ -114,12 +114,36 @@ function expired(estimate: EstimateRow): boolean {
  * dynamically on each request, so it picks the new status up on its next
  * load regardless.
  */
+// Two rapid opens are one look, not two -- a customer refreshing, or the
+// page re-rendering after a payment, must not inflate the count.
+const VIEW_COLLAPSE_MINUTES = 5;
+
 export async function markEstimateViewed(estimateId: string): Promise<void> {
   const loaded = await loadForViewer(estimateId);
   if ("error" in loaded) return;
-  if (loaded.estimate.status !== "Sent") return;
 
   const admin = createAdminClient();
+
+  // The full trail, not just the first open. "Viewed 5 times in two
+  // days" is a customer deciding; "never opened since Sent" is a phone
+  // call waiting to happen -- one timestamp cannot say either. Recorded
+  // only from this portal path, so staff previews never count as
+  // customer interest.
+  const since = new Date(Date.now() - VIEW_COLLAPSE_MINUTES * 60000).toISOString();
+  const { data: recent } = await admin
+    .from("estimate_views")
+    .select("id")
+    .eq("estimate_id", estimateId)
+    .gte("viewed_at", since)
+    .limit(1);
+  if (!recent?.length) {
+    await admin.from("estimate_views").insert({
+      estimate_id: estimateId,
+      company_id: loaded.estimate.company_id,
+    });
+  }
+
+  if (loaded.estimate.status !== "Sent") return;
   await admin
     .from("estimates")
     .update({ status: "Viewed" as EstimateStatus, viewed_at: new Date().toISOString() })

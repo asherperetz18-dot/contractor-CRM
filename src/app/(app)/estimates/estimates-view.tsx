@@ -78,18 +78,29 @@ function shortDate(value: string | null) {
   return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US");
 }
 
+/** "Aug 18, 9:12 PM" -- when a look happened, not just which day. */
+function shortDateTime(value: string) {
+  const d = new Date(value);
+  return isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 export function EstimatesView({
   estimates,
   signers,
   leads,
   reps,
   canCreate,
+  viewsByEstimate,
 }: {
   estimates: Estimate[];
   signers: EstimateSigner[];
   leads: EstimateLead[];
   reps: EstimateRep[];
   canCreate: boolean;
+  /** Customer portal opens per document: count and most recent. */
+  viewsByEstimate: Record<string, { count: number; last: string }>;
 }) {
   const router = useRouter();
   const [bucket, setBucket] = useState<Bucket>("drafts");
@@ -289,6 +300,7 @@ export function EstimatesView({
               <th>Salesperson</th>
               <th>Date</th>
               <th>Status</th>
+              <th>Views</th>
               <th className="right">Total</th>
             </tr>
           </thead>
@@ -351,6 +363,21 @@ export function EstimatesView({
                     </span>
                     {!settled && sig.pending.length > 0 && sig.signed > 0 && (
                       <div className="ur-add-phone">Pending: {sig.pending.join(", ")}</div>
+                    )}
+                  </td>
+                  {/* Customer attention, at a glance. Five opens in two
+                      days is a customer deciding; none since Sent is a
+                      phone call waiting to happen. */}
+                  <td>
+                    {viewsByEstimate[e.id] ? (
+                      <>
+                        <div>{viewsByEstimate[e.id].count}×</div>
+                        <div className="ur-add-phone">
+                          {shortDateTime(viewsByEstimate[e.id].last)}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="estdoc-muted">—</span>
                     )}
                   </td>
                   <td className="right mono">

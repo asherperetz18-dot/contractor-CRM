@@ -113,6 +113,7 @@ export function EstimateBuilder({
   canManageCosts,
   canVoid,
   canDelete,
+  customerViews,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -128,6 +129,8 @@ export function EstimateBuilder({
   canVoid: boolean;
   /** Hard delete, drafts only. Same gate as deleting a lead. */
   canDelete: boolean;
+  /** When the customer opened this in the portal, newest first. */
+  customerViews?: string[];
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
@@ -530,6 +533,37 @@ export function EstimateBuilder({
             </>
           )}
         </div>
+      )}
+
+      {/* The customer's attention, dated. Five opens in two days is a
+          customer deciding; none since Sent is a phone call waiting to
+          happen. Portal opens only -- staff previews never count. */}
+      {(customerViews?.length ?? 0) > 0 && (
+        <details className="est-views-trail">
+          <summary>
+            👁 Customer viewed {customerViews!.length}
+            {customerViews!.length === 1 ? " time" : " times"} · last{" "}
+            {new Date(customerViews![0]).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </summary>
+          <ul className="lead-trail-list">
+            {customerViews!.map((v, i) => (
+              <li key={i}>
+                {new Date(v).toLocaleString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
 
       <div className="est-meta-grid">

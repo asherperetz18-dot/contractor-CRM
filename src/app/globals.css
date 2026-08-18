@@ -7097,3 +7097,20 @@ textarea.est-item-desc:disabled {
 .comm-job td:first-child a:hover .comm-job-link {
   text-decoration: underline;
 }
+
+/* The customer-attention line on a document. A quiet disclosure, not a
+   panel -- it answers "are they reading it" in one glance and unfolds
+   the full date-and-time list on demand. */
+.est-views-trail {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.est-views-trail summary {
+  cursor: pointer;
+}

@@ -75,9 +75,21 @@ export default async function EstimateDetailPage({
     );
   }
 
+  // When the customer looked, newest first -- for the trail line under
+  // the document header.
+  const { data: viewRows } = await supabase
+    .from("estimate_views")
+    .select("viewed_at")
+    .eq("estimate_id", id)
+    .eq("company_id", profile.company_id)
+    .order("viewed_at", { ascending: false })
+    .limit(50);
+  const customerViews = ((viewRows ?? []) as { viewed_at: string }[]).map((v) => v.viewed_at);
+
   return (
     <EstimateBuilder
       estimate={estimate}
+      customerViews={customerViews}
       items={(items ?? []) as EstimateItem[]}
       signers={(signers ?? []) as EstimateSigner[]}
       payments={(payments ?? []) as EstimatePayment[]}
