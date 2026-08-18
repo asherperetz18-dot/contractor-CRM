@@ -57,7 +57,10 @@ const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
 import { TasksPanel } from "./tasks-panel";
 import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
-import { DispatcherPicker } from "../calendar/dispatcher-picker";
+import {
+  DispatcherPicker,
+  type DispatcherPickerBootstrap,
+} from "../calendar/dispatcher-picker";
 import { LeadFilesPanel } from "./lead-files-panel";
 import { CallsPanel } from "./calls-panel";
 
@@ -106,6 +109,7 @@ export function LeadForm({
   canDelete,
   isAdmin,
   estimateIndex,
+  dispatcherPicker,
   onCancel,
   onSaved,
   onDeleted,
@@ -126,6 +130,8 @@ export function LeadForm({
   /** Every estimate in the company, grouped by lead. Loaded with the
    *  page so the estimate chip is there on the first frame. */
   estimateIndex?: LeadEstimateIndex;
+  /** Dispatcher picker data, from the page -- same reason. */
+  dispatcherPicker?: DispatcherPickerBootstrap;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -860,6 +866,7 @@ export function LeadForm({
               leadId={lead.id}
               currentDispatcherId={lead.dispatcher_id ?? null}
               readOnly={readOnly}
+              bootstrap={dispatcherPicker}
             />
             <div />
           </div>

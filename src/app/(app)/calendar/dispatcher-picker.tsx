@@ -18,23 +18,37 @@ import {
  * lead with three appointments must not end up with three people each
  * believing they are owed the commission.
  */
+/** Everything the picker needs to render on the first frame. */
+export type DispatcherPickerBootstrap = {
+  options: DispatcherOption[];
+  context: DispatcherContext;
+};
+
 export function DispatcherPicker({
   leadId,
   currentDispatcherId,
   readOnly,
+  bootstrap,
 }: {
   leadId: string;
   currentDispatcherId: string | null;
   readOnly?: boolean;
+  /** Handed down from the page where possible. Without it the picker
+   *  fetches for itself and arrives on screen a couple of seconds after
+   *  the rest of the form -- the fourth control to grow that habit. */
+  bootstrap?: DispatcherPickerBootstrap;
 }) {
   const router = useRouter();
-  const [options, setOptions] = useState<DispatcherOption[] | null>(null);
-  const [ctx, setCtx] = useState<DispatcherContext | null>(null);
+  const [options, setOptions] = useState<DispatcherOption[] | null>(
+    bootstrap?.options ?? null
+  );
+  const [ctx, setCtx] = useState<DispatcherContext | null>(bootstrap?.context ?? null);
   const [value, setValue] = useState(currentDispatcherId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
+    if (bootstrap) return;
     let cancelled = false;
     (async () => {
       const [list, context] = await Promise.all([getDispatchers(), getDispatcherContext()]);
@@ -45,6 +59,7 @@ export function DispatcherPicker({
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (options === null || !ctx) return null;

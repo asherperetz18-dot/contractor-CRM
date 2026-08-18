@@ -16,6 +16,7 @@ import {
   type ProjectTypeRow,
 } from "@/lib/data/types";
 import { getLeadEstimateIndex } from "@/lib/data/lead-estimate-index";
+import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { PipelineBoard } from "./pipeline-board";
 
 export default async function PipelinePage() {
@@ -93,6 +94,7 @@ export default async function PipelinePage() {
       canDelete={canDelete}
       isAdmin={isAdmin}
       estimateIndex={estimateIndex}
+      dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
     />
   );
 }

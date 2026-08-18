@@ -19,6 +19,7 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { EventForm } from "../calendar/event-form";
+import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { AppointmentWizard } from "./appointment-wizard";
 
 function formatEventDate(dateStr: string): string {
@@ -49,6 +50,7 @@ export function ScheduleList({
   viewerId,
   viewerIsDispatchScoped,
   appointmentHolders,
+  dispatcherPicker,
 }: {
   events: Event[];
   jobs: Job[];
@@ -65,6 +67,7 @@ export function ScheduleList({
   viewerId: string | null;
   viewerIsDispatchScoped: boolean;
   appointmentHolders: Record<string, string | null>;
+  dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -164,6 +167,7 @@ export function ScheduleList({
           viewerId={viewerId}
           viewerIsDispatchScoped={viewerIsDispatchScoped}
           appointmentHolders={appointmentHolders}
+          dispatcherPicker={dispatcherPicker}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

@@ -19,6 +19,7 @@ import {
   isDispatchScoped,
 } from "@/lib/data/types";
 import { getAppointmentHolders } from "@/lib/actions/dispatcher";
+import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { CalendarBoard } from "./calendar-board";
 
 export default async function CalendarPage() {
@@ -109,6 +110,7 @@ export default async function CalendarPage() {
       viewerId={profile?.id ?? null}
       viewerIsDispatchScoped={isDispatchScoped(profile)}
       appointmentHolders={appointmentHolders}
+      dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
       leads={(leads as Lead[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={(leadNotes as LeadNote[]) ?? []}

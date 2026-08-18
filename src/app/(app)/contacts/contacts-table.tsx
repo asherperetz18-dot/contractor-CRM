@@ -21,6 +21,7 @@ import {
 } from "@/lib/data/types";
 import { LeadForm } from "../pipeline/lead-form";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
+import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { safeInternalPath } from "@/lib/safe-path";
 
 export function ContactsTable({
@@ -37,6 +38,7 @@ export function ContactsTable({
   canDelete,
   isAdmin,
   estimateIndex,
+  dispatcherPicker,
 }: {
   leads: Lead[];
   tasks: LeadTask[];
@@ -51,6 +53,7 @@ export function ContactsTable({
   canDelete: boolean;
   isAdmin: boolean;
   estimateIndex: LeadEstimateIndex;
+  dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -226,6 +229,7 @@ export function ContactsTable({
           canDelete={canDelete}
           isAdmin={isAdmin}
           estimateIndex={estimateIndex}
+          dispatcherPicker={dispatcherPicker}
           onCancel={closeLead}
           onSaved={closeLead}
           onDeleted={closeLead}

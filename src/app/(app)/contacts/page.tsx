@@ -16,6 +16,7 @@ import {
   type ProjectTypeRow,
 } from "@/lib/data/types";
 import { getLeadEstimateIndex } from "@/lib/data/lead-estimate-index";
+import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { ContactsTable } from "./contacts-table";
 
 export default async function ContactsPage() {
@@ -91,6 +92,7 @@ export default async function ContactsPage() {
       canDelete={canDelete}
       isAdmin={isAdmin}
       estimateIndex={estimateIndex}
+      dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
     />
   );
 }

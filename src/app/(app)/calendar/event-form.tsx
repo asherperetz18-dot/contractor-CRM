@@ -51,7 +51,7 @@ import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
-import { DispatcherPicker } from "./dispatcher-picker";
+import { DispatcherPicker, type DispatcherPickerBootstrap } from "./dispatcher-picker";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
@@ -150,6 +150,7 @@ export function EventForm({
   viewerId,
   viewerIsDispatchScoped,
   appointmentHolders,
+  dispatcherPicker,
   onCancel,
   onSaved,
   onDeleted,
@@ -179,6 +180,9 @@ export function EventForm({
   /** leads.dispatcher_id per event id, resolved server-side because the
    *  client cannot see the lead it is being kept out of. */
   appointmentHolders?: Record<string, string | null>;
+  /** Dispatcher picker data, from the page -- so the control renders
+   *  with the form instead of seconds after it. */
+  dispatcherPicker?: DispatcherPickerBootstrap;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -868,6 +872,7 @@ export function EventForm({
                 leadId={lead.id}
                 currentDispatcherId={lead.dispatcher_id ?? null}
                 readOnly={readOnly}
+                bootstrap={dispatcherPicker}
               />
               <div />
             </div>

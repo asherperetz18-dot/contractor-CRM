@@ -27,6 +27,7 @@ import {
 } from "@/lib/data/types";
 import { moveLeadStage } from "@/lib/actions/leads";
 import { LeadForm } from "./lead-form";
+import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { AttentionDigest } from "./attention-digest";
 import { CsvImportPanel } from "./csv-import-panel";
@@ -63,6 +64,7 @@ export function PipelineBoard({
   canDelete,
   isAdmin,
   estimateIndex,
+  dispatcherPicker,
 }: {
   leads: Lead[];
   tasks: LeadTask[];
@@ -79,6 +81,7 @@ export function PipelineBoard({
   canDelete: boolean;
   isAdmin: boolean;
   estimateIndex: LeadEstimateIndex;
+  dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -823,6 +826,7 @@ export function PipelineBoard({
           canDelete={canDelete}
           isAdmin={isAdmin}
           estimateIndex={estimateIndex}
+          dispatcherPicker={dispatcherPicker}
           onCancel={() => setEditing(null)}
           onSaved={() => setEditing(null)}
           onDeleted={() => setEditing(null)}

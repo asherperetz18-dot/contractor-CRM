@@ -19,6 +19,7 @@ import {
   isDispatchScoped,
 } from "@/lib/data/types";
 import { getAppointmentHolders } from "@/lib/actions/dispatcher";
+import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { ScheduleList } from "./schedule-list";
 
 export default async function SchedulePage() {
@@ -85,6 +86,7 @@ export default async function SchedulePage() {
       viewerId={profile?.id ?? null}
       viewerIsDispatchScoped={isDispatchScoped(profile)}
       appointmentHolders={appointmentHolders}
+      dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
     />
   );
 }
