@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -109,6 +109,36 @@ export function ContactsTable({
   const withOpenLeads = leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length;
   const noSetterAssigned = leads.filter((l) => !l.assigned_to).length;
 
+  /**
+   * Contacts that look like the same person twice.
+   *
+   * Grouped on the primary phone's last ten digits and on the email,
+   * because that is exactly how the CSV importer warns on the way in --
+   * these are the ones that got in before that warning existed. Review
+   * only: each row opens the contact, and deleting the redundant one
+   * happens there, where the full record is visible.
+   */
+  const duplicateGroups = useMemo(() => {
+    const groups: { key: string; kind: "phone" | "email"; members: Lead[] }[] = [];
+    const byPhone = new Map<string, Lead[]>();
+    const byEmail = new Map<string, Lead[]>();
+    for (const l of leads) {
+      const p = l.phone ? normalizePhone(l.phone) : "";
+      if (p.length === 10) byPhone.set(p, [...(byPhone.get(p) ?? []), l]);
+      const e = (l.email ?? "").trim().toLowerCase();
+      if (e) byEmail.set(e, [...(byEmail.get(e) ?? []), l]);
+    }
+    for (const [key, members] of byPhone) if (members.length > 1) groups.push({ key, kind: "phone", members });
+    // An email group that is just a phone group again adds noise, not
+    // information -- only report it when it names somebody new.
+    const inPhoneGroups = new Set(groups.flatMap((g) => g.members.map((m) => m.id)));
+    for (const [key, members] of byEmail)
+      if (members.length > 1 && members.some((m) => !inPhoneGroups.has(m.id)))
+        groups.push({ key, kind: "email", members });
+    return groups.sort((a, b) => b.members.length - a.members.length);
+  }, [leads]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+
   function repName(id: string | null) {
     if (!id) return "Unassigned";
     return reps.find((r) => r.id === id)?.name || "Unassigned";
@@ -149,6 +179,55 @@ export function ContactsTable({
           <div className="stat-label">No Rep Assigned</div>
         </div>
       </div>
+
+      {duplicateGroups.length > 0 && (
+        <div className="dup-banner">
+          <span>
+            ⚠ {duplicateGroups.length} possible duplicate{" "}
+            {duplicateGroups.length === 1 ? "group" : "groups"} — contacts sharing a phone number
+            or email.
+          </span>
+          <button className="btn-ghost small" onClick={() => setShowDuplicates((v) => !v)}>
+            {showDuplicates ? "Hide" : "Review"}
+          </button>
+        </div>
+      )}
+
+      {showDuplicates && (
+        <div className="dup-panel">
+          {duplicateGroups.map((g) => (
+            <div key={g.kind + g.key} className="dup-group">
+              <div className="dup-group-head">
+                {g.kind === "phone" ? "📞 " : "✉ "}
+                <span className="mono">{g.kind === "phone" ? g.key.replace(/(\d{3})(\d{3})(\d{4})/, "($1) $2-$3") : g.key}</span>
+                {" · "}
+                {g.members.length} contacts
+              </div>
+              {g.members.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  className="dup-member"
+                  onClick={() => setEditing(l)}
+                  title="Open this contact — delete the redundant one from its card"
+                >
+                  <span className="ur-name">{leadDisplayName(l)}</span>
+                  <span className="dup-member-meta">
+                    {l.stage}
+                    {Number(l.value) > 0 ? ` · ${money(l.value)}` : ""}
+                    {l.email ? ` · ${l.email}` : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+          <p className="hint-note">
+            Open each contact and keep the one with the real history — notes, appointments,
+            estimates. Deleting the redundant copy happens on its card, where you can see what
+            it holds first.
+          </p>
+        </div>
+      )}
 
       <input
         className="ur-search"
