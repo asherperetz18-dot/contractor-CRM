@@ -114,6 +114,8 @@ type ApptRow = {
   customer: string;
   address: string | null;
   status: string;
+  /** On the visit as the second rep. Listed, never counted. */
+  secondChair: boolean;
 };
 
 /**
@@ -157,10 +159,12 @@ function buildFunnel(
 
   const mine = leads.filter((l) => l.assigned_to === repId && inRange(l.created_at));
 
-  const appts = events.filter(
-    (e) =>
-      (e.assigned_to === repId || e.second_assigned_to === repId) && inRange(e.date)
-  );
+  // Primary assignee only. A ride-along used to count in the rider's
+  // funnel too, which put appointments -- and their outcomes -- on a
+  // report whose leads and contracts belong to somebody else: 18
+  // appointments against 12 leads, a "Won" visit, and zero contracts,
+  // all on the same sheet. One appointment is one rep's number.
+  const appts = events.filter((e) => e.assigned_to === repId && inRange(e.date));
   const attended = appts.filter((e) => appointmentAttended(e.status as EventStatus));
   const noShow = appts.filter((e) => e.status === "No-show");
   // Past its date and still without a result. Counted and shown rather
@@ -235,6 +239,10 @@ function apptRows(
         customer: customerOf(lead),
         address: lead?.address ?? null,
         status: e.status,
+        // Shown but not counted. The visit belongs to the primary rep's
+        // funnel; hiding it entirely would make a rep's own calendar
+        // look wrong, and counting it credited one appointment twice.
+        secondChair: e.assigned_to !== repId,
       };
     })
     .sort((a, b) => (b.date + (b.time ?? "")).localeCompare(a.date + (a.time ?? "")));
@@ -566,6 +574,11 @@ export default async function RepReportPage({
                       </td>
                       <td>
                         <strong>{ap.customer}</strong>
+                        {ap.secondChair && (
+                          <div className="estdoc-muted">
+                            2nd chair — counted on the primary rep&apos;s report
+                          </div>
+                        )}
                       </td>
                       <td className="estdoc-muted">{ap.address || "—"}</td>
                       {/* "New" and "Confirmed" on a past date mean nobody
