@@ -188,18 +188,25 @@ export function ProjectsView({
       <div className="chip-row">
         {(
           [
-            ["All", `All ${active.length}`],
-            ["InProgress", `In progress ${inProgress.length}`],
-            ["OnHold", `On hold ${onHold.length}`],
-            ["Complete", `Complete ${complete.length}`],
-            ["Cancelled", `Cancelled ${cancelled.length}`],
-            ["Bleeding", `Negative net cash ${bleeding.length}`],
-            ["Owed", `Owed money ${owed.length}`],
-          ] as [Filter, string][]
-        ).map(([f, label]) => (
+            ["All", `All ${active.length}`, "", active.length],
+            ["InProgress", `In progress ${inProgress.length}`, "prog", inProgress.length],
+            ["OnHold", `On hold ${onHold.length}`, "hold", onHold.length],
+            ["Complete", `Complete ${complete.length}`, "done", complete.length],
+            ["Cancelled", `Cancelled ${cancelled.length}`, "dead", cancelled.length],
+            ["Bleeding", `Negative net cash ${bleeding.length}`, "bleed", bleeding.length],
+            ["Owed", `Owed money ${owed.length}`, "owed", owed.length],
+          ] as [Filter, string, string, number][]
+        ).map(([f, label, tone, count]) => (
           <button
             key={f}
-            className={"chip" + (filter === f ? " chip-on" : "")}
+            // An empty chip stays uncoloured -- colour is a signal that
+            // there is something behind the button, so "Cancelled 10"
+            // reads louder than "On hold 0" instead of equally loud.
+            className={
+              "chip" +
+              (tone && count > 0 ? ` chip-c-${tone}` : "") +
+              (filter === f ? " chip-sel" : "")
+            }
             onClick={() => setFilter(f)}
           >
             {label}

@@ -7202,3 +7202,73 @@ textarea.est-item-desc:disabled {
   background: rgba(220, 38, 38, 0.1);
   border-color: rgba(220, 38, 38, 0.3);
 }
+
+/* Coloured filter chips on Projects. Each status chip wears its row
+   tag's colour as a tint; the selected chip fills solid. .chip-sel is
+   the visible selected state this page's chips never had -- .chip-on
+   is only styled inside the messages panel. */
+.chip-sel {
+  background: var(--ink);
+  color: #fff;
+  border-color: var(--ink);
+}
+.chip-c-prog {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.09);
+  border-color: rgba(37, 99, 235, 0.32);
+}
+.chip-c-prog.chip-sel {
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+.chip-c-hold {
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.1);
+  border-color: rgba(217, 119, 6, 0.35);
+}
+.chip-c-hold.chip-sel {
+  background: #b45309;
+  color: #fff;
+  border-color: #b45309;
+}
+.chip-c-done {
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.1);
+  border-color: rgba(22, 163, 74, 0.35);
+}
+.chip-c-done.chip-sel {
+  background: #15803d;
+  color: #fff;
+  border-color: #15803d;
+}
+.chip-c-dead {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+  border-color: rgba(220, 38, 38, 0.32);
+}
+.chip-c-dead.chip-sel {
+  background: #b91c1c;
+  color: #fff;
+  border-color: #b91c1c;
+}
+.chip-c-bleed {
+  color: #9f1239;
+  background: rgba(159, 18, 57, 0.09);
+  border-color: rgba(159, 18, 57, 0.32);
+}
+.chip-c-bleed.chip-sel {
+  background: #9f1239;
+  color: #fff;
+  border-color: #9f1239;
+}
+.chip-c-owed {
+  color: #0f766e;
+  background: rgba(13, 148, 136, 0.09);
+  border-color: rgba(13, 148, 136, 0.32);
+}
+.chip-c-owed.chip-sel {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
