@@ -7272,3 +7272,17 @@ textarea.est-item-desc:disabled {
   color: #fff;
   border-color: #0f766e;
 }
+
+/* "Calling from" selector in the dialer: quiet label, full-width
+   select, matching the record-toggle block below it. */
+.voice-dialer-from {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin: 8px 0 2px;
+}
+.voice-dialer-from select {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+}

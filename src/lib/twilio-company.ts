@@ -124,7 +124,19 @@ export async function companyForInboundNumber(toNumber: string): Promise<string 
   const match = (data ?? []).find(
     (c) => c.twilio_phone_number.replace(/\D/g, "").slice(-10) === digits
   );
-  return match?.company_id ?? null;
+  if (match) return match.company_id;
+
+  // Not the main number -- maybe one of the extra numbers a company
+  // registered for the dialer (0095). A customer calling back the
+  // number they saw must reach that company, not the platform fallback.
+  const { data: extra } = await admin
+    .from("company_phone_numbers")
+    .select("company_id, phone_number")
+    .returns<{ company_id: string; phone_number: string }[]>();
+  const extraMatch = (extra ?? []).find(
+    (c) => c.phone_number.replace(/D/g, "").slice(-10) === digits
+  );
+  return extraMatch?.company_id ?? null;
 }
 
 /**

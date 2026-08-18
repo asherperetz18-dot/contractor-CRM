@@ -3,10 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { getVoiceAccessToken } from "@/lib/actions/voice";
 import { logCall } from "@/lib/actions/call-logs";
+import {
+  listCompanyPhoneNumbers,
+  type CompanyPhoneNumber,
+} from "@/lib/actions/phone-numbers";
 
 type CallStatus = "idle" | "connecting" | "ringing" | "in-call" | "ended" | "error";
 
 const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+
+// Which of the company's numbers this rep shows when calling. Kept on
+// the device: caller ID is a per-desk working preference, not profile
+// data worth a round trip.
+const CALLER_ID_KEY = "crm:dialer-caller-id";
 
 export function VoiceDialer() {
   const [expanded, setExpanded] = useState(false);
@@ -18,6 +27,8 @@ export function VoiceDialer() {
   // On by default. Recording used to start off, which is why 1 call in 63
   // has audio -- an unticked box is a decision nobody makes.
   const [recordEnabled, setRecordEnabled] = useState(true);
+  const [numbers, setNumbers] = useState<CompanyPhoneNumber[]>([]);
+  const [callerId, setCallerId] = useState("");
 
   const deviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
   const callRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
@@ -32,6 +43,27 @@ export function VoiceDialer() {
       deviceRef.current?.destroy();
     };
   }, []);
+
+  // The company's numbers, fetched once the dialer is first opened. A
+  // remembered pick is honoured only while the company still owns that
+  // number; otherwise the default (first in the list) stands.
+  const numbersLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!expanded || numbersLoadedRef.current) return;
+    numbersLoadedRef.current = true;
+    listCompanyPhoneNumbers().then((list) => {
+      setNumbers(list);
+      const remembered = window.localStorage.getItem(CALLER_ID_KEY);
+      const pick =
+        (remembered && list.find((n) => n.phone_number === remembered)) || list[0];
+      if (pick) setCallerId(pick.phone_number);
+    });
+  }, [expanded]);
+
+  function pickCallerId(value: string) {
+    setCallerId(value);
+    window.localStorage.setItem(CALLER_ID_KEY, value);
+  }
 
   async function ensureDevice() {
     if (deviceRef.current) return deviceRef.current;
@@ -101,7 +133,13 @@ export function VoiceDialer() {
     try {
       const device = await ensureDevice();
       const call = await device.connect({
-        params: { To: digits, Record: recordEnabled ? "true" : "false" },
+        params: {
+          To: digits,
+          Record: recordEnabled ? "true" : "false",
+          // Validated server-side against the company's registered
+          // numbers; anything else falls back to the default there.
+          ...(callerId ? { CallerId: callerId } : {}),
+        },
       });
       callRef.current = call;
 
@@ -204,6 +242,27 @@ export function VoiceDialer() {
               </button>
             ))}
           </div>
+
+          {/* Only when there is a choice to make -- one number needs no
+              switch, and an empty list means the company has not set up
+              Twilio numbers at all. */}
+          {numbers.length > 1 && (
+            <label className="voice-dialer-from">
+              Calling from
+              <select
+                value={callerId}
+                onChange={(e) => pickCallerId(e.target.value)}
+                disabled={busy}
+              >
+                {numbers.map((n) => (
+                  <option key={n.id} value={n.phone_number}>
+                    {(n.label ? n.label + " — " : "") + n.phone_number}
+                    {n.is_default ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
 
           {/* Ticked by default. Unticking stops the recording and the
               notice together -- they are one decision, so a rep can never

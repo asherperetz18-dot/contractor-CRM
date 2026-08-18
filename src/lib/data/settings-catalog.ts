@@ -173,6 +173,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/twilio",
       },
       {
+        title: "Phone Numbers",
+        desc: "Every number the company can call from — buy in Twilio, register here, reps pick one in the dialer",
+        icon: "☎️",
+        href: "/settings/phone-numbers",
+      },
+      {
         title: "In-App Dialer (Twilio Voice)",
         desc: "Native click-to-call dialer: connection status, caller ID, and call recording toggle",
         icon: "📞",

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
@@ -56,6 +57,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // The rep may pick which of the company's numbers to show. The pick
+  // is only honoured when it is a number the company has registered --
+  // the dialer sends whatever the browser held, and a caller ID must
+  // never be an arbitrary string a client chose (Truth in Caller ID
+  // Act; Twilio would reject it anyway). Anything unrecognised falls
+  // back to the company default, so a stale pick degrades rather than
+  // fails.
+  let callerId = twilioEnv.phoneNumber;
+  const requested = params.CallerId ? toE164(params.CallerId) : "";
+  if (requested && requested !== toE164(callerId)) {
+    const admin = createAdminClient();
+    let q = admin
+      .from("company_phone_numbers")
+      .select("phone_number")
+      .eq("phone_number", requested);
+    // The platform account serves companies without their own Twilio;
+    // when the account doesn't name one company, the number itself must
+    // still be registered to somebody on this account's books.
+    if (companyId) q = q.eq("company_id", companyId);
+    const { data: owned } = await q.maybeSingle();
+    if (owned) callerId = requested;
+  }
+
   const origin = new URL(req.url).origin;
 
   // Recording defaults on: absent means record. A dropped parameter
@@ -86,7 +110,7 @@ export async function POST(req: NextRequest) {
 
   const twiml =
     `<?xml version="1.0" encoding="UTF-8"?>` +
-    `<Response><Dial callerId="${xmlEscape(twilioEnv.phoneNumber)}"${recordAttrs}>` +
+    `<Response><Dial callerId="${xmlEscape(callerId)}"${recordAttrs}>` +
     `<Number${numberAttrs}>${xmlEscape(to)}</Number>` +
     `</Dial></Response>`;
 
