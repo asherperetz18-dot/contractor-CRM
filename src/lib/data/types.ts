@@ -40,6 +40,67 @@ export type Profile = {
   created_at: string;
 };
 
+// ── Sidebar entry shapes and ordering ────────────────────────────────
+// The pure half of the nav lives here so node:test can reach it the
+// same way it reaches every other tested helper; nav.ts re-exports.
+
+export type NavLinkItem = {
+  type: "link";
+  href: string;
+  label: string;
+  icon: string;
+};
+
+export type NavGroupItem = {
+  type: "group";
+  label: string;
+  icon: string;
+  items: {
+    label: string;
+    href?: string;
+    comingSoon?: boolean;
+  }[];
+};
+
+export type NavEntry = NavLinkItem | NavGroupItem;
+
+/**
+ * The stable identity of a top-level sidebar entry, for saved ordering.
+ * Links are their href; groups are their label -- both survive rebuilds
+ * of the derived NAV array.
+ */
+export function navEntryKey(entry: NavEntry): string {
+  return entry.type === "link" ? entry.href : "group:" + entry.label;
+}
+
+/**
+ * Apply a company's saved menu order to the top-level entries.
+ *
+ * Entries the saved order names come first, in that order. Entries it
+ * does not know -- pages shipped after the order was saved -- keep
+ * their built-in relative order after them, so a new feature appears at
+ * the bottom instead of vanishing. Admin Settings stays pinned last no
+ * matter what: the screen that undoes configuration mistakes must not
+ * be movable by one.
+ */
+export function sortNavEntries(
+  entries: NavEntry[],
+  order: string[] | null | undefined
+): NavEntry[] {
+  if (!order?.length) return entries;
+  const pos = new Map(order.map((k, i) => [k, i]));
+  const settings: NavEntry[] = [];
+  const known: NavEntry[] = [];
+  const unknown: NavEntry[] = [];
+  for (const entry of entries) {
+    if (entry.type === "link" && entry.href === "/settings") settings.push(entry);
+    else if (pos.has(navEntryKey(entry))) known.push(entry);
+    else unknown.push(entry);
+  }
+  known.sort((a, b) => pos.get(navEntryKey(a))! - pos.get(navEntryKey(b))!);
+  return [...known, ...unknown, ...settings];
+}
+
 // Admin Settings (company profile, users & roles): Office or Admin.
 export function isAdminRole(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;

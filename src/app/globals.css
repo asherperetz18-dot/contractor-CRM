@@ -7305,3 +7305,39 @@ textarea.est-item-desc:disabled {
 .est-client-view {
   white-space: nowrap;
 }
+
+/* Menu Order settings: one row per sidebar entry, arrows on the right. */
+.menu-order-wrap {
+  max-width: 480px;
+}
+.menu-order-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.menu-order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.menu-order-row:last-child {
+  border-bottom: none;
+}
+.menu-order-icon {
+  display: inline-block;
+  width: 22px;
+}
+.menu-order-btns {
+  display: flex;
+  gap: 6px;
+}
+.menu-order-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}

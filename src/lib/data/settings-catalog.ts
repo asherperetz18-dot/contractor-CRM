@@ -84,6 +84,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         adminOnly: true,
       },
       {
+        title: "Menu Order",
+        desc: "Arrange the sidebar — move sections up or down; everyone in the company sees the same order",
+        icon: "↕️",
+        href: "/settings/menu-order",
+      },
+      {
         title: "Role Visibility",
         desc: "Choose which pages each role can open. Hidden pages are removed from the sidebar and blocked at the URL.",
         icon: "👁",

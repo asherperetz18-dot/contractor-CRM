@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
 import { canEditDispatch, canSeePage, isAdminRole, isStrictAdmin, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
-import { NAV, filterNavForProfile, type NavEntry } from "@/lib/nav";
+import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
 import { QuickCreateMenu } from "./quick-create-menu";
@@ -60,7 +60,7 @@ export default async function AppLayout({
   if (!profile) redirect("/login");
 
   const supabase = await createClient();
-  const [{ data: companyProfile }, { data: visibilityRows }, companies] = await Promise.all([
+  const [{ data: companyProfile }, { data: visibilityRows }, companies, { data: navOrderRow }] = await Promise.all([
     supabase
       .from("company_profile")
       .select("name, logo_url, time_format")
@@ -71,6 +71,14 @@ export default async function AppLayout({
       .select("id, role, page_key, visible")
       .eq("company_id", profile.company_id),
     getCurrentUserCompanies(),
+    // Its own query on purpose: before migration 0096 adds the column,
+    // this one fails alone and the sidebar falls back to the built-in
+    // order, instead of taking the company name and logo down with it.
+    supabase
+      .from("company_profile")
+      .select("nav_order")
+      .eq("company_id", profile.company_id)
+      .single(),
   ]);
   const company = companyProfile as {
     name: string | null;
@@ -81,7 +89,8 @@ export default async function AppLayout({
   const companyName = company?.name?.trim();
   const timeFormat: TimeFormat = company?.time_format ?? "12h";
   const overrides = (visibilityRows as RolePageVisibilityRow[]) ?? [];
-  const filteredNav = filterNavForProfile(NAV, profile, overrides);
+  const navOrder = (navOrderRow as { nav_order: string[] | null } | null)?.nav_order ?? null;
+  const filteredNav = sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder);
 
   const pathname = (await headers()).get("x-pathname") ?? "/";
   const pageKey = pathToPageKey(pathname);

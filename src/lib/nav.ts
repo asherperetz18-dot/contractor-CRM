@@ -1,24 +1,10 @@
-export type NavLinkItem = {
-  type: "link";
-  href: string;
-  label: string;
-  icon: string;
-};
-
-export type NavGroupItem = {
-  type: "group";
-  label: string;
-  icon: string;
-  items: {
-    label: string;
-    href?: string;
-    comingSoon?: boolean;
-  }[];
-};
-
-export type NavEntry = NavLinkItem | NavGroupItem;
-
 import {
+  navEntryKey,
+  sortNavEntries,
+  type NavEntry,
+  type NavGroupItem,
+  type NavLinkItem,
+
   canSeePage,
   canViewEstimates,
   isAdminRole,
@@ -140,3 +126,5 @@ function buildNav(): NavEntry[] {
 }
 
 export const NAV: NavEntry[] = buildNav();
+
+export { navEntryKey, sortNavEntries, type NavEntry, type NavGroupItem, type NavLinkItem };
