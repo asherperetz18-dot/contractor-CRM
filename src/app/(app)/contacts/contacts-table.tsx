@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,6 +23,54 @@ import { LeadForm } from "../pipeline/lead-form";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { safeInternalPath } from "@/lib/safe-path";
+
+/**
+ * One contact row, memoized. Clicking a row re-renders the table (the
+ * click opens the contact window via state), and re-reconciling ~1,500
+ * rows before the window paints is where the open used to spend its
+ * time. Stable props mean that render now skips every row.
+ */
+const ContactRow = memo(function ContactRow({
+  lead,
+  repLabel,
+  color,
+  onOpen,
+}: {
+  lead: Lead;
+  repLabel: string;
+  color: string;
+  onOpen: (lead: Lead) => void;
+}) {
+  return (
+    <tr onClick={() => onOpen(lead)}>
+      <td>
+        <div className="ur-name">{leadDisplayName(lead)}</div>
+        {lead.email && <div className="ur-add-phone">{lead.email}</div>}
+      </td>
+      <td>
+        {lead.address ? (
+          <a
+            href={mapsUrl(lead.address)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {lead.address}
+          </a>
+        ) : (
+          "—"
+        )}
+      </td>
+      <td>{lead.phone || "—"}</td>
+      <td>{lead.source || "—"}</td>
+      <td>{repLabel}</td>
+      <td>
+        <Badge color={color}>{lead.stage}</Badge>
+      </td>
+      <td className="right mono">{money(lead.value)}</td>
+    </tr>
+  );
+});
 
 export function ContactsTable({
   leads,
@@ -106,8 +154,48 @@ export function ContactsTable({
   }
 
   const totalContacts = leads.length;
-  const withOpenLeads = leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length;
-  const noSetterAssigned = leads.filter((l) => !l.assigned_to).length;
+  // Memoized alongside the per-lead indexes below: this component
+  // re-renders when a row is clicked to open the contact, and with the
+  // whole book on screen every unmemoized pass over it happens between
+  // the click and the window painting.
+  const { withOpenLeads, noSetterAssigned } = useMemo(
+    () => ({
+      withOpenLeads: leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length,
+      noSetterAssigned: leads.filter((l) => !l.assigned_to).length,
+    }),
+    [leads]
+  );
+
+  // O(1) lookups when opening a contact, instead of filtering the
+  // company-wide arrays inline in the LeadForm props -- which re-ran on
+  // every render and handed the form fresh array identities each time.
+  const tasksByLead = useMemo(() => {
+    const map = new Map<string, LeadTask[]>();
+    for (const t of tasks) {
+      const list = map.get(t.lead_id) ?? [];
+      list.push(t);
+      map.set(t.lead_id, list);
+    }
+    return map;
+  }, [tasks]);
+  const notesByLead = useMemo(() => {
+    const map = new Map<string, LeadNote[]>();
+    for (const n of notes) {
+      const list = map.get(n.lead_id) ?? [];
+      list.push(n);
+      map.set(n.lead_id, list);
+    }
+    return map;
+  }, [notes]);
+  const filesByLead = useMemo(() => {
+    const map = new Map<string, LeadFile[]>();
+    for (const f of files) {
+      const list = map.get(f.lead_id) ?? [];
+      list.push(f);
+      map.set(f.lead_id, list);
+    }
+    return map;
+  }, [files]);
 
   /**
    * Contacts that look like the same person twice.
@@ -139,22 +227,31 @@ export function ContactsTable({
   }, [leads]);
   const [showDuplicates, setShowDuplicates] = useState(false);
 
+  const repById = useMemo(
+    () => new Map(reps.map((r) => [r.id, r.name || "Unassigned"])),
+    [reps]
+  );
   function repName(id: string | null) {
     if (!id) return "Unassigned";
-    return reps.find((r) => r.id === id)?.name || "Unassigned";
+    return repById.get(id) || "Unassigned";
   }
 
   const q = search.trim().toLowerCase();
   const qDigits = q.replace(/\D/g, "");
-  const filtered = q
-    ? leads.filter((l) => {
-        const textMatch = `${leadDisplayName(l)} ${l.email ?? ""} ${l.phone ?? ""} ${l.address ?? ""}`
-          .toLowerCase()
-          .includes(q);
-        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
-        return textMatch || phoneMatch;
-      })
-    : leads;
+  const filtered = useMemo(
+    () =>
+      q
+        ? leads.filter((l) => {
+            const textMatch = `${leadDisplayName(l)} ${l.email ?? ""} ${l.phone ?? ""} ${l.address ?? ""}`
+              .toLowerCase()
+              .includes(q);
+            const phoneMatch =
+              qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+            return textMatch || phoneMatch;
+          })
+        : leads,
+    [leads, q, qDigits]
+  );
 
   return (
     <div>
@@ -258,35 +355,13 @@ export function ContactsTable({
           </thead>
           <tbody>
             {filtered.map((l) => (
-              <tr key={l.id} onClick={() => setEditing(l)}>
-                <td>
-                  <div className="ur-name">{leadDisplayName(l)}</div>
-                  {l.email && <div className="ur-add-phone">{l.email}</div>}
-                </td>
-                <td>
-                  {l.address ? (
-                    <a
-                      href={mapsUrl(l.address)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {l.address}
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td>{l.phone || "—"}</td>
-                <td>{l.source || "—"}</td>
-                <td>{repName(l.assigned_to)}</td>
-                <td>
-                  <Badge color={stageColor(stages, l.stage)}>
-                    {l.stage}
-                  </Badge>
-                </td>
-                <td className="right mono">{money(l.value)}</td>
-              </tr>
+              <ContactRow
+                key={l.id}
+                lead={l}
+                repLabel={repName(l.assigned_to)}
+                color={stageColor(stages, l.stage)}
+                onOpen={setEditing}
+              />
             ))}
           </tbody>
         </table>
@@ -301,9 +376,9 @@ export function ContactsTable({
           calendars={calendars}
           projectTypes={projectTypes}
           sources={sources}
-          tasks={tasks.filter((t) => t.lead_id === editing.id)}
-          notes={notes.filter((n) => n.lead_id === editing.id)}
-          files={files.filter((f) => f.lead_id === editing.id)}
+          tasks={tasksByLead.get(editing.id) ?? []}
+          notes={notesByLead.get(editing.id) ?? []}
+          files={filesByLead.get(editing.id) ?? []}
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}

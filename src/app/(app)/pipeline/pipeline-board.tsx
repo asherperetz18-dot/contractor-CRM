@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   computeLeadWarnings,
@@ -48,6 +48,130 @@ function loadHiddenStages(): Set<string> {
     return new Set();
   }
 }
+
+/**
+ * One stage column, memoized. Opening the lead window is a state change
+ * on the board, and before this it re-rendered every card of every
+ * stage -- thousands of DOM nodes reconciled per click, which is what
+ * made a lead card take seconds to open on a full book. With stable
+ * items arrays and handlers, that render now skips the columns
+ * entirely; only an actual drag touches them.
+ */
+const PipelineColumn = memo(function PipelineColumn({
+  stage,
+  items,
+  stages,
+  canWrite,
+  isDragOver,
+  draggedId,
+  repById,
+  onOpenLead,
+  onDragStartCard,
+  onDragEndCard,
+  onDragOverCol,
+  onDragLeaveCol,
+  onDropCol,
+}: {
+  stage: string;
+  items: Lead[];
+  stages: PipelineStageRow[];
+  canWrite: boolean;
+  isDragOver: boolean;
+  draggedId: string | null;
+  repById: Map<string, string>;
+  onOpenLead: (lead: Lead) => void;
+  onDragStartCard: (id: string) => void;
+  onDragEndCard: () => void;
+  onDragOverCol: (stage: string) => void;
+  onDragLeaveCol: (stage: string) => void;
+  onDropCol: (stage: string) => void;
+}) {
+  return (
+    <div
+      className={
+        "pipeline-col" + (isDragOver && stage !== "Other" ? " pipeline-col-dragover" : "")
+      }
+      onDragOver={(e) => {
+        if (stage !== "Other") {
+          e.preventDefault();
+          onDragOverCol(stage);
+        }
+      }}
+      onDragLeave={() => onDragLeaveCol(stage)}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDropCol(stage);
+      }}
+    >
+      <div className="pipeline-col-head">
+        <span className="tick" style={{ background: stageColor(stages, stage) }} />
+        <span>{stage}</span>
+        <span className="count-pill">{items.length}</span>
+      </div>
+      <div className="pipeline-col-body">
+        {items.map((l) => {
+          const stale = daysSince(l.date_received);
+          return (
+            <div
+              className={"lead-card" + (draggedId === l.id ? " lead-card-dragging" : "")}
+              key={l.id}
+              draggable={canWrite}
+              onDragStart={(e) => {
+                onDragStartCard(l.id);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragEnd={onDragEndCard}
+              onClick={() => onOpenLead(l)}
+            >
+              <div className="lead-card-name-row">
+                <span className="lead-card-name">{leadDisplayName(l)}</span>
+                {l.source && <span className="source-tag">{l.source}</span>}
+              </div>
+              {l.phone && <div className="lead-card-line">☎ {l.phone}</div>}
+              {l.email && <div className="lead-card-line">✉ {l.email}</div>}
+              {l.address && (
+                <div className="lead-card-line">
+                  📍{" "}
+                  <a
+                    href={mapsUrl(l.address)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {l.address}
+                  </a>
+                </div>
+              )}
+              {l.project_type && <div className="lead-card-project">{l.project_type}</div>}
+              <div className="lead-card-foot">
+                <span className="mono">{money(l.value)}</span>
+                <span>
+                  {(l.assigned_to && repById.get(l.assigned_to)) || "Unassigned"}
+                </span>
+              </div>
+              <div className="lead-card-foot">
+                <span
+                  className={"lead-card-date" + (stale > 14 ? " lead-card-date-old" : "")}
+                  title={`Received ${l.date_received} — ${stale} day${stale === 1 ? "" : "s"} ago`}
+                >
+                  {shortReceivedDate(l.date_received)}
+                </span>
+                {/* Clamped: a lead dated in the future is a typo,
+                    and "-3d old" reads as a bug. */}
+                <span className="lead-card-age">{stale <= 0 ? "today" : `${stale}d`}</span>
+              </div>
+              {stale > 14 && !isSettledStage(l.stage) && (
+                <div className="lead-card-foot">
+                  <span className="stale-tag">● {stale} days — stale</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 export function PipelineBoard({
   leads,
@@ -215,9 +339,15 @@ export function PipelineBoard({
     return map;
   }, [leads, tasksByLead]);
 
+  // A Map instead of reps.find per lead: the rep filter and every card
+  // footer used to do a linear scan of the roster per lead per render.
+  const repById = useMemo(
+    () => new Map(reps.map((r) => [r.id, r.name || "Unassigned"])),
+    [reps]
+  );
   function repName(id: string | null) {
     if (!id) return "Unassigned";
-    return reps.find((r) => r.id === id)?.name || "Unassigned";
+    return repById.get(id) || "Unassigned";
   }
 
   /**
@@ -236,50 +366,97 @@ export function PipelineBoard({
     return (m.name || m.email || "—") + (m.status === "Active" ? "" : " (inactive)");
   }
 
-  function handleDrop(stage: string) {
-    if (draggedId && canWrite) {
-      startTransition(async () => {
-        await moveLeadStage(draggedId, stage as PipelineStage);
-        router.refresh();
-      });
-    }
+  // Stable handlers for the memoized columns. Identity only changes
+  // while a drag is actually in flight, so opening the lead window (a
+  // setEditing render) leaves every column's props untouched and
+  // React.memo skips re-rendering the whole board.
+  const onDropCol = useCallback(
+    (stage: string) => {
+      if (draggedId && canWrite) {
+        startTransition(async () => {
+          await moveLeadStage(draggedId, stage as PipelineStage);
+          router.refresh();
+        });
+      }
+      setDraggedId(null);
+      setDragOverStage(null);
+    },
+    [draggedId, canWrite, router, startTransition]
+  );
+  const onDragEndCard = useCallback(() => {
     setDraggedId(null);
     setDragOverStage(null);
-  }
+  }, []);
+  const onDragLeaveCol = useCallback((stage: string) => {
+    setDragOverStage((s) => (s === stage ? null : s));
+  }, []);
 
-  const repFiltered =
-    repFilter === "All Reps" ? leads : leads.filter((l) => repName(l.assigned_to) === repFilter);
+  // The whole filter/sort/group chain is memoized so its arrays keep
+  // their identity across unrelated renders. Before this, clicking a
+  // card re-ran a dozen full passes over every lead -- and rebuilt
+  // every column's items array, which would also have made memoizing
+  // the columns pointless -- before the lead window could paint.
+  const repFiltered = useMemo(
+    () =>
+      repFilter === "All Reps"
+        ? leads
+        : leads.filter(
+            (l) => ((l.assigned_to && repById.get(l.assigned_to)) || "Unassigned") === repFilter
+          ),
+    [leads, repFilter, repById]
+  );
 
-  const statusFiltered = repFiltered.filter((l) => {
-    if (statusFilter === "Open") return !isSettledStage(l.stage);
-    if (statusFilter === "Won") return l.stage === "Won";
-    return l.stage === "Lost";
-  });
+  const statusFiltered = useMemo(
+    () =>
+      repFiltered.filter((l) => {
+        if (statusFilter === "Open") return !isSettledStage(l.stage);
+        if (statusFilter === "Won") return l.stage === "Won";
+        return l.stage === "Lost";
+      }),
+    [repFiltered, statusFilter]
+  );
 
-  const ageFiltered = statusFiltered.filter((l) => {
-    if (ageFilter === "All") return true;
-    const age = daysSince(l.date_received);
-    if (ageFilter === "7") return age <= 7;
-    if (ageFilter === "30") return age <= 30;
-    return age > 14;
-  });
+  const ageFiltered = useMemo(
+    () =>
+      statusFiltered.filter((l) => {
+        if (ageFilter === "All") return true;
+        const age = daysSince(l.date_received);
+        if (ageFilter === "7") return age <= 7;
+        if (ageFilter === "30") return age <= 30;
+        return age > 14;
+      }),
+    [statusFiltered, ageFilter]
+  );
 
-  const apptFiltered = noApptOnly ? ageFiltered.filter((l) => !l.has_appt) : ageFiltered;
+  const apptFiltered = useMemo(
+    () => (noApptOnly ? ageFiltered.filter((l) => !l.has_appt) : ageFiltered),
+    [ageFiltered, noApptOnly]
+  );
 
-  const openLeads = repFiltered.filter((l) => !isSettledStage(l.stage));
+  const openLeads = useMemo(() => repFiltered.filter((l) => !isSettledStage(l.stage)), [repFiltered]);
   const pipelineValue = openLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
   const avgDealSize = openLeads.length ? pipelineValue / openLeads.length : 0;
-  const wonLeads = repFiltered
-    .filter((l) => l.stage === "Won")
-    .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0));
+  const wonLeads = useMemo(
+    () =>
+      repFiltered
+        .filter((l) => l.stage === "Won")
+        .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)),
+    [repFiltered]
+  );
   const wonValue = wonLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
-  const staleCount = openLeads.filter((l) => daysSince(l.date_received) > 14).length;
+  const staleCount = useMemo(
+    () => openLeads.filter((l) => daysSince(l.date_received) > 14).length,
+    [openLeads]
+  );
   // What the two money figures are actually made of. A value of 0 is
   // counted as a lead but contributes nothing, which is why the note
   // below the table says how many of those there are -- otherwise the
   // averages look inexplicably low.
-  const leadsWithNoValue = openLeads.filter((l) => !Number(l.value)).length;
-  const valueByStage = (() => {
+  const leadsWithNoValue = useMemo(
+    () => openLeads.filter((l) => !Number(l.value)).length,
+    [openLeads]
+  );
+  const valueByStage = useMemo(() => {
     const map = new Map<string, { count: number; value: number }>();
     for (const l of openLeads) {
       const row = map.get(l.stage) ?? { count: 0, value: 0 };
@@ -290,41 +467,55 @@ export function PipelineBoard({
     return [...map.entries()]
       .map(([stage, row]) => ({ stage, ...row }))
       .sort((a, b) => b.value - a.value || b.count - a.count);
-  })();
-  const noApptCount = openLeads.filter((l) => !l.has_appt).length;
+  }, [openLeads]);
+  const noApptCount = useMemo(() => openLeads.filter((l) => !l.has_appt).length, [openLeads]);
 
-  const followUpsDue = openLeads.filter((l) => hasFollowUpDue(tasksByLead.get(l.id) ?? []));
-  const coldLeads = openLeads.filter((l) => {
-    const w = warningsByLead.get(l.id);
-    return w && isColdLead(w);
-  });
+  const followUpsDue = useMemo(
+    () => openLeads.filter((l) => hasFollowUpDue(tasksByLead.get(l.id) ?? [])),
+    [openLeads, tasksByLead]
+  );
+  const coldLeads = useMemo(
+    () =>
+      openLeads.filter((l) => {
+        const w = warningsByLead.get(l.id);
+        return w && isColdLead(w);
+      }),
+    [openLeads, warningsByLead]
+  );
 
-  const sortedFiltered = [...apptFiltered].sort((a, b) => {
-    let cmp: number;
-    if (sortBy === "Name") cmp = leadDisplayName(a).localeCompare(leadDisplayName(b));
-    else if (sortBy === "Amount") cmp = (Number(a.value) || 0) - (Number(b.value) || 0);
-    else cmp = daysSince(a.date_received) - daysSince(b.date_received);
-    return sortDir === "asc" ? cmp : -cmp;
-  });
+  const sortedFiltered = useMemo(
+    () =>
+      [...apptFiltered].sort((a, b) => {
+        let cmp: number;
+        if (sortBy === "Name") cmp = leadDisplayName(a).localeCompare(leadDisplayName(b));
+        else if (sortBy === "Amount") cmp = (Number(a.value) || 0) - (Number(b.value) || 0);
+        else cmp = daysSince(a.date_received) - daysSince(b.date_received);
+        return sortDir === "asc" ? cmp : -cmp;
+      }),
+    [apptFiltered, sortBy, sortDir]
+  );
 
-  const openStageNames = stages.map((s) => s.name).filter((s) => !isSettledStage(s));
-  const visibleStageNames = openStageNames.filter((s) => !hiddenStages.has(s));
+  const openStageNames = useMemo(
+    () => stages.map((s) => s.name).filter((s) => !isSettledStage(s)),
+    [stages]
+  );
+  const visibleStageNames = useMemo(
+    () => openStageNames.filter((s) => !hiddenStages.has(s)),
+    [openStageNames, hiddenStages]
+  );
   // Counted from the rendered list, not by subtracting the hidden set --
   // that set can contain settled stages which were never columns, which
   // made a focused board report "-1 of 15".
   const visibleColumnCount = visibleStageNames.length;
 
-  const grouped = visibleStageNames.map((stage) => ({
-    stage,
-    items: sortedFiltered.filter((l) => l.stage === stage),
-  }));
-
-  const displayGroups: { stage: string; items: Lead[] }[] =
-    statusFilter === "Won"
-      ? [{ stage: "Won", items: sortedFiltered }]
-      : statusFilter === "Lost"
-        ? [{ stage: "Lost", items: sortedFiltered }]
-        : grouped;
+  const displayGroups: { stage: string; items: Lead[] }[] = useMemo(() => {
+    if (statusFilter === "Won") return [{ stage: "Won", items: sortedFiltered }];
+    if (statusFilter === "Lost") return [{ stage: "Lost", items: sortedFiltered }];
+    return visibleStageNames.map((stage) => ({
+      stage,
+      items: sortedFiltered.filter((l) => l.stage === stage),
+    }));
+  }, [statusFilter, sortedFiltered, visibleStageNames]);
 
   const repOptions = ["All Reps", "Unassigned", ...reps.map((r) => r.name || r.email || "")];
 
@@ -692,110 +883,22 @@ export function PipelineBoard({
           )}
         <div className="pipeline-board" ref={setScrollContainer}>
           {displayGroups.map(({ stage, items }) => (
-            <div
-              className={
-                "pipeline-col" +
-                (dragOverStage === stage && stage !== "Other"
-                  ? " pipeline-col-dragover"
-                  : "")
-              }
+            <PipelineColumn
               key={stage}
-              onDragOver={(e) => {
-                if (stage !== "Other") {
-                  e.preventDefault();
-                  setDragOverStage(stage);
-                }
-              }}
-              onDragLeave={() =>
-                setDragOverStage((s) => (s === stage ? null : s))
-              }
-              onDrop={(e) => {
-                e.preventDefault();
-                handleDrop(stage);
-              }}
-            >
-              <div className="pipeline-col-head">
-                <span
-                  className="tick"
-                  style={{ background: stageColor(stages, stage) }}
-                />
-                <span>{stage}</span>
-                <span className="count-pill">{items.length}</span>
-              </div>
-              <div className="pipeline-col-body">
-                {items.map((l) => {
-                  const stale = daysSince(l.date_received);
-                  return (
-                    <div
-                      className={
-                        "lead-card" +
-                        (draggedId === l.id ? " lead-card-dragging" : "")
-                      }
-                      key={l.id}
-                      draggable={canWrite}
-                      onDragStart={(e) => {
-                        setDraggedId(l.id);
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragEnd={() => {
-                        setDraggedId(null);
-                        setDragOverStage(null);
-                      }}
-                      onClick={() => setEditing(l)}
-                    >
-                      <div className="lead-card-name-row">
-                        <span className="lead-card-name">
-                          {leadDisplayName(l)}
-                        </span>
-                        {l.source && (
-                          <span className="source-tag">{l.source}</span>
-                        )}
-                      </div>
-                      {l.phone && <div className="lead-card-line">☎ {l.phone}</div>}
-                      {l.email && <div className="lead-card-line">✉ {l.email}</div>}
-                      {l.address && (
-                        <div className="lead-card-line">
-                          📍{" "}
-                          <a
-                            href={mapsUrl(l.address)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {l.address}
-                          </a>
-                        </div>
-                      )}
-                      {l.project_type && (
-                        <div className="lead-card-project">{l.project_type}</div>
-                      )}
-                      <div className="lead-card-foot">
-                        <span className="mono">{money(l.value)}</span>
-                        <span>{repName(l.assigned_to)}</span>
-                      </div>
-                      <div className="lead-card-foot">
-                        <span
-                          className={"lead-card-date" + (stale > 14 ? " lead-card-date-old" : "")}
-                          title={`Received ${l.date_received} — ${stale} day${stale === 1 ? "" : "s"} ago`}
-                        >
-                          {shortReceivedDate(l.date_received)}
-                        </span>
-                        {/* Clamped: a lead dated in the future is a typo,
-                            and "-3d old" reads as a bug. */}
-                        <span className="lead-card-age">
-                          {stale <= 0 ? "today" : `${stale}d`}
-                        </span>
-                      </div>
-                      {stale > 14 && !isSettledStage(l.stage) && (
-                        <div className="lead-card-foot">
-                          <span className="stale-tag">● {stale} days — stale</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+              stage={stage}
+              items={items}
+              stages={stages}
+              canWrite={canWrite}
+              isDragOver={dragOverStage === stage}
+              draggedId={draggedId}
+              repById={repById}
+              onOpenLead={setEditing}
+              onDragStartCard={setDraggedId}
+              onDragEndCard={onDragEndCard}
+              onDragOverCol={setDragOverStage}
+              onDragLeaveCol={onDragLeaveCol}
+              onDropCol={onDropCol}
+            />
           ))}
         </div>
         </>
