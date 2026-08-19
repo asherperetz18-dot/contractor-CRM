@@ -297,6 +297,7 @@ export function EstimatesView({
               <th>Doc #</th>
               <th>Customer</th>
               <th>Title</th>
+              <th></th>
               <th>Salesperson</th>
               <th>Date</th>
               <th>Status</th>
@@ -340,6 +341,23 @@ export function EstimatesView({
                   <td>
                     <div className="ur-name">{e.title || "Untitled"}</div>
                     <div className="ur-add-phone">{lead?.address || "—"}</div>
+                  </td>
+                  {/* Straight to the document the customer sees -- the
+                      same component the portal renders -- without going
+                      through the builder. A staff preview, so it never
+                      counts as a customer view. stopPropagation because
+                      the whole row is already a link to the builder. */}
+                  <td>
+                    <button
+                      className="btn-ghost small est-client-view"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        router.push(`/estimates/${e.id}/preview`);
+                      }}
+                      title="Open this document exactly as the customer sees it"
+                    >
+                      👁 Client view
+                    </button>
                   </td>
                   <td>{rep?.name || rep?.email || "—"}</td>
                   <td>

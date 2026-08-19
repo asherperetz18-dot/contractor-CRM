@@ -7299,3 +7299,9 @@ textarea.est-item-desc:disabled {
   width: 100%;
   margin-top: 3px;
 }
+
+/* The per-row shortcut to the customer-facing document. Quiet until
+   hovered -- it sits inside a row that is itself a link. */
+.est-client-view {
+  white-space: nowrap;
+}
