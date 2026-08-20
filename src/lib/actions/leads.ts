@@ -152,7 +152,21 @@ export async function createLead(input: LeadInput) {
   return { id: (data as { id: string }).id };
 }
 
-export async function updateLead(id: string, input: LeadInput) {
+export async function updateLead(
+  id: string,
+  input: LeadInput,
+  opts?: {
+    /**
+     * Skip revalidatePath. The form's autosave passes this: every pause
+     * in typing was re-rendering the whole pipeline behind the open
+     * card -- the payload apply froze scrolling for seconds -- and the
+     * board only needs the new values once, when the card closes. The
+     * pages here are dynamic (cookie-scoped), so nothing cached is left
+     * stale for anyone else.
+     */
+    deferRevalidate?: boolean;
+  }
+) {
   const supabase = await createClient();
   // has_appt is booking's to write, not this form's. The manual control
   // is gone, but the form still holds whatever value it opened with --
@@ -173,7 +187,7 @@ export async function updateLead(id: string, input: LeadInput) {
   if (!data || data.length === 0) {
     return { error: "That change couldn't be saved — your role may not have permission to edit this contact." };
   }
-  revalidatePath("/pipeline");
+  if (!opts?.deferRevalidate) revalidatePath("/pipeline");
   return {};
 }
 

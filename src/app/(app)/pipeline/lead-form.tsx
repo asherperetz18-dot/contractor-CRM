@@ -362,6 +362,20 @@ export function LeadForm({
     startTransition(() => router.refresh());
   }
 
+  // Autosaves write the database but no longer re-render the page --
+  // every pause in typing was re-rendering the whole board behind the
+  // open card, which froze scrolling for seconds. This remembers that
+  // the page is behind, and closing the card settles the debt with one
+  // refresh.
+  const needsRefreshOnClose = useRef(false);
+  function handleClose() {
+    if (needsRefreshOnClose.current) {
+      needsRefreshOnClose.current = false;
+      refresh();
+    }
+    onCancel();
+  }
+
   const autosaveDirty = form !== lastSaved;
   const formValid =
     form.contact_type === "Company"
@@ -386,13 +400,13 @@ export function LeadForm({
             second_contact_last_name: "",
             second_contact_phone: "",
           };
-      const result = await updateLead(lead.id, payload);
+      const result = await updateLead(lead.id, payload, { deferRevalidate: true });
       if (result?.error) {
         setError(result.error);
         return;
       }
       setLastSaved(form);
-      refresh();
+      needsRefreshOnClose.current = true;
     }, 1000);
 
     return () => {
@@ -426,6 +440,7 @@ export function LeadForm({
     }
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     setLastSaved(form);
+    needsRefreshOnClose.current = false;
     refresh();
     onSaved();
   }
@@ -483,7 +498,7 @@ export function LeadForm({
   }
 
   return (
-    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={onCancel} xwide>
+    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={handleClose} xwide>
       <fieldset disabled={readOnly || pending} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="form-grid">
           <Field label="Contact Type">
@@ -1217,7 +1232,7 @@ export function LeadForm({
             )}
           </div>
           <div>
-            <button type="button" className="btn-ghost" onClick={onCancel}>
+            <button type="button" className="btn-ghost" onClick={handleClose}>
               {readOnly || lead ? "Close" : "Cancel"}
             </button>
             {!readOnly && !lead && (
