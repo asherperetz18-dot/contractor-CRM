@@ -17,6 +17,15 @@ const DIAL_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 // data worth a round trip.
 const CALLER_ID_KEY = "crm:dialer-caller-id";
 
+// Module-scope so the purity lint can see these never run during
+// render -- they are only reached from call-time event handlers.
+function clockNow() {
+  return Date.now();
+}
+function tokenStillFresh(mintedAt: number) {
+  return clockNow() - mintedAt < 50 * 60 * 1000;
+}
+
 export function VoiceDialer() {
   const [expanded, setExpanded] = useState(false);
   const [phone, setPhone] = useState("");
@@ -36,6 +45,8 @@ export function VoiceDialer() {
   const leadIdRef = useRef<string | null>(null);
   const callSidRef = useRef<string | null>(null);
   const durationRef = useRef(0);
+  const tokenMintedAtRef = useRef(0);
+  const retriedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -76,14 +87,40 @@ export function VoiceDialer() {
     return () => window.removeEventListener("crm:caller-id-changed", onCallerIdChanged);
   }, []);
 
+  /**
+   * The Twilio connection, kept alive across the tab's whole life.
+   *
+   * Access tokens expire after an hour, and this device used to be
+   * built once with the first token and never refreshed -- so a CRM
+   * tab open past lunch dialled with an expired pass and the gateway
+   * hung up on it (ConnectionError 31005, with nothing ever reaching
+   * the call log). Three layers now: the SDK asks for a fresh token
+   * before expiry, a call placed after the laptop slept through that
+   * event refreshes by age, and if the gateway still rejects, the call
+   * is retried once on a brand-new device.
+   */
   async function ensureDevice() {
-    if (deviceRef.current) return deviceRef.current;
+    const existing = deviceRef.current;
+    if (existing && tokenStillFresh(tokenMintedAtRef.current)) return existing;
     const result = await getVoiceAccessToken();
     if (result.error || !result.token) {
       throw new Error(result.error || "Could not get a call token.");
     }
+    if (existing) {
+      existing.updateToken(result.token);
+      tokenMintedAtRef.current = clockNow();
+      return existing;
+    }
     const { Device } = await import("@twilio/voice-sdk");
-    const device = new Device(result.token, { logLevel: "error" });
+    const device = new Device(result.token, { logLevel: "error", tokenRefreshMs: 180000 });
+    device.on("tokenWillExpire", async () => {
+      const fresh = await getVoiceAccessToken();
+      if (fresh.token) {
+        device.updateToken(fresh.token);
+        tokenMintedAtRef.current = clockNow();
+      }
+    });
+    tokenMintedAtRef.current = clockNow();
     deviceRef.current = device;
     return device;
   }
@@ -127,7 +164,8 @@ export function VoiceDialer() {
     });
   }
 
-  async function handleCall(overridePhone?: string, leadId?: string | null) {
+  async function handleCall(overridePhone?: string, leadId?: string | null, isRetry?: boolean) {
+    if (!isRetry) retriedRef.current = false;
     const digits = (overridePhone ?? phone).trim();
     if (!digits) {
       setErrorMsg("Enter a phone number to call.");
@@ -174,6 +212,18 @@ export function VoiceDialer() {
         finishCall(digits, "cancelled");
       });
       call.on("error", (err: Error) => {
+        // A stale gateway connection rejects the very first call after
+        // it dies. One silent rebuild-and-redial, then honest failure.
+        const code = (err as { code?: number }).code;
+        if ((code === 31005 || code === 20104) && !retriedRef.current) {
+          retriedRef.current = true;
+          deviceRef.current?.destroy();
+          deviceRef.current = null;
+          tokenMintedAtRef.current = 0;
+          setErrorMsg("Reconnecting to the phone network…");
+          handleCall(digits, leadIdRef.current, true);
+          return;
+        }
         setErrorMsg(err.message || "Call error.");
         setStatus("error");
         finishCall(digits, "error");
