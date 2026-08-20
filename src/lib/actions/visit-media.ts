@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 
 export type VisitFile = {
@@ -18,9 +18,11 @@ export type VisitFile = {
 /**
  * Files captured on one specific visit.
  *
- * Read through the user's own session rather than the admin client, so
- * row-level security decides what they can see -- a rep must not be able
- * to pull photos from another company's job by guessing an event id.
+ * The boundary is the company, checked against the events table: a rep
+ * must not pull photos from another company's job by guessing an event
+ * id, but a sales-scoped rep looking at their own visit -- on a
+ * customer their lead-list RLS hides -- must see what was taken there.
+ * Photos of a visit belong to whoever can open the visit.
  */
 export async function getVisitMedia(
   eventId: string
@@ -28,8 +30,16 @@ export async function getVisitMedia(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  const supabase = await createClient();
-  const { data, error } = await supabase
+  const admin = createAdminClient();
+  const { data: event } = await admin
+    .from("events")
+    .select("id")
+    .eq("id", eventId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string }>();
+  if (!event) return { error: "That appointment isn't available." };
+
+  const { data, error } = await admin
     .from("lead_files")
     .select(
       "id, file_name, file_url, file_path, file_size, content_type, storage_provider, uploaded_by, created_at"

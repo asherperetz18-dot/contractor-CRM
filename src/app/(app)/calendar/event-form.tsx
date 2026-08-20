@@ -1163,7 +1163,15 @@ export function EventForm({
 
       {/* Only on a saved appointment: a photo needs an event to belong to. */}
       {lead && event && tab === "Photos" && (
-        <VisitMedia leadId={lead.id} eventId={event.id} readOnly={readOnly} />
+        <VisitMedia
+          leadId={lead.id}
+          eventId={event.id}
+          // Logging photos of a visit is not editing the booking: a
+          // Sales rep who cannot move the appointment still took the
+          // pictures. Only the holder rule keeps its lock; the table's
+          // own policies decide who may write or delete underneath.
+          readOnly={lockedByOtherDispatcher}
+        />
       )}
 
       {lead && tab === "Texts" && (

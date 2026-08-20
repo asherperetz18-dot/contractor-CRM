@@ -150,10 +150,15 @@ export async function createLeadFileUploadUrl(
     };
   }
 
-  // The lead is read as the signed-in user, so a rep cannot get an
-  // upload URL for a colleague's customer just by knowing the id.
-  const supabase = await createClient();
-  const { data: lead } = await supabase
+  // The boundary here is the company, checked with the admin client on
+  // purpose: a sales-scoped rep photographing their own visit is often
+  // standing at a customer that belongs to a colleague's book, which
+  // their RLS view hides -- reading as the signed-in user refused
+  // exactly the person the Photos tab exists for. Cross-company probing
+  // still dies here, and the lead_files insert policy has the final
+  // word on whether their role may record the file at all.
+  const adminCheck = createAdminClient();
+  const { data: lead } = await adminCheck
     .from("leads")
     .select("id")
     .eq("id", leadId)
@@ -202,25 +207,26 @@ export async function recordLeadFile(
   } = admin.storage.from(BUCKET).getPublicUrl(path);
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lead_files")
-    .insert({
-      lead_id: leadId,
-      uploaded_by: profile.id,
-      file_name: fileName,
-      file_path: path,
-      file_url: publicUrl,
-      file_size: fileSize,
-      content_type: contentType,
-      storage_provider: "supabase",
-      event_id: eventId ?? null,
-      company_id: profile.company_id,
-    })
-    .select("id");
-  if (error) return { error: error.message };
-  // A blocked insert matches zero rows without erroring, which would
-  // leave the object in storage and nothing pointing at it.
-  if (!data?.length) {
+  // No RETURNING on purpose. An insert the policy refuses fails loudly
+  // (unlike updates, which match zero rows) -- while RETURNING would
+  // additionally demand SELECT visibility of the new row, which a
+  // sales-scoped rep photographing a colleague's customer doesn't have.
+  // Their upload was being refused for the crime of not being allowed
+  // to read it back.
+  const { error } = await supabase.from("lead_files").insert({
+    lead_id: leadId,
+    uploaded_by: profile.id,
+    file_name: fileName,
+    file_path: path,
+    file_url: publicUrl,
+    file_size: fileSize,
+    content_type: contentType,
+    storage_provider: "supabase",
+    event_id: eventId ?? null,
+    company_id: profile.company_id,
+  });
+  if (error) {
+    // Nothing points at the object now -- don't leave it orphaned.
     await admin.storage.from(BUCKET).remove([path]);
     return { error: "That file couldn't be attached to this contact." };
   }
@@ -239,8 +245,18 @@ export async function deleteLeadFile(
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("lead_files").delete().eq("id", id);
+  // Ask for the row back: an RLS refusal matches zero rows with no
+  // error, and the storage object must never be removed on the say-so
+  // of a delete the table just refused.
+  const { data: deleted, error } = await supabase
+    .from("lead_files")
+    .delete()
+    .eq("id", id)
+    .select("id");
   if (error) return { error: error.message };
+  if (!deleted?.length) {
+    return { error: "Only Office or Admin can delete files." };
+  }
 
   if (storageProvider === "google_drive") {
     const drive = await getValidAccessToken(profile.company_id);

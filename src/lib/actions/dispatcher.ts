@@ -11,6 +11,8 @@ import {
   isAdminRole,
   isDispatchScoped,
   type CommissionHold,
+  type Lead,
+  type LeadNote,
 } from "@/lib/data/types";
 
 export type DispatcherOption = { id: string; name: string };
@@ -495,6 +497,79 @@ export async function setDispatcherCommissionRate(
  * Returns nothing for people the restriction does not apply to, so no
  * admin-side lookup runs for the users who can edit everything anyway.
  */
+/**
+ * The leads standing behind this company's appointments that RLS hides
+ * from the current viewer.
+ *
+ * A sales-scoped rep's lead list holds only their own book, but the
+ * calendar shows them every appointment -- and the appointment window's
+ * Photos, Notes, Result and Tasks tabs all hang off the lead. Without
+ * this, the very rep assigned to a visit opened a bare form with no way
+ * to log notes or pictures, because the lead behind their appointment
+ * belonged to a colleague's book. If you can open the appointment, you
+ * can log the visit on it.
+ *
+ * Same shape as getAppointmentHolders below: empty for viewers whose
+ * lead list is already complete, so no admin-side lookup runs for them.
+ */
+export async function getLeadsBehindAppointments(): Promise<{
+  leads: Lead[];
+  notes: LeadNote[];
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { leads: [], notes: [] };
+
+  const admin = createAdminClient();
+  const { data: events } = await admin
+    .from("events")
+    .select("lead_id")
+    .eq("company_id", profile.company_id)
+    .not("lead_id", "is", null)
+    .returns<{ lead_id: string }[]>();
+  const ids = [...new Set((events ?? []).map((e) => e.lead_id))];
+  if (!ids.length) return { leads: [], notes: [] };
+
+  // What the viewer already sees, through their own RLS view -- chunked
+  // because a company can have more event leads than a URL comfortably
+  // carries in one in() filter.
+  const supabase = await createClient();
+  const visible = new Set<string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await supabase
+      .from("leads")
+      .select("id")
+      .in("id", ids.slice(i, i + 200))
+      .returns<{ id: string }[]>();
+    for (const row of data ?? []) visible.add(row.id);
+  }
+  const missing = ids.filter((id) => !visible.has(id));
+  if (!missing.length) return { leads: [], notes: [] };
+
+  const extra: Lead[] = [];
+  const extraNotes: LeadNote[] = [];
+  for (let i = 0; i < missing.length; i += 200) {
+    const slice = missing.slice(i, i + 200);
+    const { data } = await admin
+      .from("leads")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .in("id", slice)
+      .returns<Lead[]>();
+    extra.push(...(data ?? []));
+    // Their notes ride along, or a rep's just-saved visit note would
+    // vanish from the timeline the moment the page refreshed -- a save
+    // that looks like it didn't happen is worse than no notes at all.
+    const { data: notes } = await admin
+      .from("lead_notes")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .in("lead_id", slice)
+      .returns<LeadNote[]>();
+    extraNotes.push(...(notes ?? []));
+  }
+  return { leads: extra, notes: extraNotes };
+}
+
 export async function getAppointmentHolders(): Promise<Record<string, string | null>> {
   const profile = await getCurrentProfile();
   if (!profile || !isDispatchScoped(profile)) return {};

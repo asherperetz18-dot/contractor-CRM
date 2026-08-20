@@ -18,7 +18,7 @@ import {
   canWriteLeadNotes,
   isDispatchScoped,
 } from "@/lib/data/types";
-import { getAppointmentHolders } from "@/lib/actions/dispatcher";
+import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions/dispatcher";
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { CalendarBoard } from "./calendar-board";
 
@@ -32,6 +32,10 @@ export default async function CalendarPage() {
   // holds a lead this dispatcher is scoped out of. Returns {} for
   // everyone the restriction doesn't apply to, so no extra work runs.
   const appointmentHolders = await getAppointmentHolders();
+  // Leads standing behind appointments that RLS hides from this viewer,
+  // so the appointment window's Photos/Notes/Result tabs exist for the
+  // rep actually assigned to the visit. Empty for unscoped viewers.
+  const behindAppointments = await getLeadsBehindAppointments();
 
   const [
     { data: events },
@@ -111,9 +115,9 @@ export default async function CalendarPage() {
       viewerIsDispatchScoped={isDispatchScoped(profile)}
       appointmentHolders={appointmentHolders}
       dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
-      leads={(leads as Lead[]) ?? []}
+      leads={[...((leads as Lead[]) ?? []), ...behindAppointments.leads]}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
-      leadNotes={(leadNotes as LeadNote[]) ?? []}
+      leadNotes={[...((leadNotes as LeadNote[]) ?? []), ...behindAppointments.notes]}
       estimates={(estimates as LinkedEstimate[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}

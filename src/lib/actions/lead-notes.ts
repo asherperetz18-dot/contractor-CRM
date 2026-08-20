@@ -21,20 +21,19 @@ export async function addLeadNote(
   // it, so the check belongs in one place again rather than being
   // half in the database and half here.
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lead_notes")
-    .insert({
-      lead_id: leadId,
-      author_id: profile.id,
-      body: trimmed,
-      event_id: eventId || null,
-      company_id: profile.company_id,
-    })
-    .select("id");
-  if (error) return { error: error.message };
-  // Row count as well as the error: an insert refused by policy raises,
-  // but nothing else here would notice a write that quietly did nothing.
-  if (!data?.length) return { error: "Couldn't save that note — your role may not have permission." };
+  // No RETURNING on purpose. An insert the policy refuses raises loudly
+  // on its own -- while asking for the row back additionally demands
+  // SELECT visibility of it, which a sales-scoped rep noting a visit on
+  // a colleague's customer doesn't have. Their note was being refused
+  // for the crime of not being allowed to read it back.
+  const { error } = await supabase.from("lead_notes").insert({
+    lead_id: leadId,
+    author_id: profile.id,
+    body: trimmed,
+    event_id: eventId || null,
+    company_id: profile.company_id,
+  });
+  if (error) return { error: "Couldn't save that note — your role may not have permission." };
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
