@@ -47,6 +47,9 @@ export function LoginForm() {
             >
               {loginPending ? "Signing in…" : "Sign in"}
             </button>
+            <p className="auth-switch" style={{ marginTop: 8 }}>
+              <a href="/forgot-password">Forgot password?</a>
+            </p>
           </form>
         ) : (
           <form action={signupAction} className="auth-form">

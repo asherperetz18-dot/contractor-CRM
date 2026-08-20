@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // /portal is the customer-facing Client Portal. It runs on its own
 // magic-link session (see lib/portal/session.ts), not Supabase Auth, so it
 // must not be bounced to the staff login page.
-const PUBLIC_PATHS = ["/login", "/auth", "/portal"];
+const PUBLIC_PATHS = ["/login", "/auth", "/portal", "/forgot-password", "/reset-password"];
 
 export async function updateSession(request: NextRequest) {
   // Rebuilt fresh each time (not snapshotted once) so it always reflects
