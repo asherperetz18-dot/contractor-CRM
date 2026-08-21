@@ -32,6 +32,7 @@ export function AppointmentWizard({
   reps,
   stages,
   calendars,
+  initialDate,
   onCancel,
   onFinished,
 }: {
@@ -39,6 +40,9 @@ export function AppointmentWizard({
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
+  /** Pre-fills the appointment date -- the calendar passes the day that
+   *  was clicked, so "new appointment on the 21st" starts on the 21st. */
+  initialDate?: string;
   onCancel: () => void;
   onFinished: () => void;
 }) {
@@ -62,7 +66,7 @@ export function AppointmentWizard({
 
   const [apptTitle, setApptTitle] = useState("");
   const [apptType, setApptType] = useState<EventType>("Estimate");
-  const [apptDate, setApptDate] = useState(todayISO());
+  const [apptDate, setApptDate] = useState(initialDate || todayISO());
   const [apptTime, setApptTime] = useState("09:00");
   const [apptEndTime, setApptEndTime] = useState("");
   const [assignedTo, setAssignedTo] = useState("");

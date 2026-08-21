@@ -25,6 +25,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/safe-path";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
+import { AppointmentWizard } from "../schedule/appointment-wizard";
 import type { DispatcherPickerBootstrap } from "./dispatcher-picker";
 import { FilterSelect } from "@/components/filter-select";
 
@@ -640,19 +641,20 @@ export function CalendarBoard({
         </div>
       </div>
 
+      {/* The same two-step wizard the Schedule page and Quick Create
+          use -- pick or create the contact, then set the time. The bare
+          event form used to open here, with no way to choose a client;
+          it remains for EDITING below, where the contact already
+          exists. */}
       {showNew && canWrite && (
-        <EventForm
-          initialDate={newDate}
-          jobs={jobs}
-          reps={reps}
+        <AppointmentWizard
           leads={leads}
-          leadTasks={leadTasks}
-          leadNotes={leadNotes}
-          estimates={estimates}
+          reps={reps}
+          stages={stages ?? []}
           calendars={calendars}
-          stages={stages}
+          initialDate={newDate}
           onCancel={() => setShowNew(false)}
-          onSaved={() => {
+          onFinished={() => {
             setShowNew(false);
             setSelectedDate(newDate);
           }}
