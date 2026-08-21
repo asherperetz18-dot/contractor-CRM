@@ -48,7 +48,39 @@ async function driveCategoryStats(): Promise<DriveCategoryStat[]> {
       stats[cat].syncedBytes += r.file_size ?? 0;
     }
   }
-  return [stats.Photos, stats.Documents];
+  const out = [stats.Photos, stats.Documents];
+
+  // Documents-as-PDFs: signed paperwork and live proposals. Isolated
+  // query so this page keeps working before migration 0098 adds the
+  // sync columns -- the two cards just don't appear yet.
+  const { data: docs, error: docsError } = await admin
+    .from("estimates")
+    .select("kind, status, updated_at, drive_pdf_id, drive_pdf_synced_at")
+    .eq("company_id", profile.company_id)
+    .returns<
+      { kind: string | null; status: string; updated_at: string; drive_pdf_id: string | null; drive_pdf_synced_at: string | null }[]
+    >();
+  if (!docsError && docs) {
+    const contracts: DriveCategoryStat = { name: "Contracts", synced: 0, total: 0, syncedBytes: 0 };
+    const proposals: DriveCategoryStat = { name: "Proposals", synced: 0, total: 0, syncedBytes: 0 };
+    for (const d of docs) {
+      const bucket =
+        d.status === "Signed"
+          ? contracts
+          : (d.kind ?? "contract") === "contract" && (d.status === "Sent" || d.status === "Viewed")
+            ? proposals
+            : null;
+      if (!bucket) continue;
+      bucket.total += 1;
+      const fresh =
+        !!d.drive_pdf_id &&
+        !!d.drive_pdf_synced_at &&
+        new Date(d.drive_pdf_synced_at).getTime() >= new Date(d.updated_at).getTime();
+      if (fresh) bucket.synced += 1;
+    }
+    out.push(contracts, proposals);
+  }
+  return out;
 }
 
 export default async function CloudStoragePage({

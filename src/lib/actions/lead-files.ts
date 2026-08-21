@@ -375,6 +375,7 @@ export async function backupFilesToDrive(): Promise<{
   error?: string;
   moved?: number;
   shortcutted?: number;
+  docsSynced?: number;
   remaining?: number;
 }> {
   const profile = await getCurrentProfile();
@@ -467,6 +468,10 @@ export async function backupFilesToDrive(): Promise<{
     shortcutted += 1;
   }
 
+  // Pass 3: the documents themselves -- contracts and proposals
+  // rendered to PDF and filed in their category folders.
+  const docs = await backupDocumentsBatch(profile.company_id, drive.accessToken, drive.folderId);
+
   const { count: remainingSupabase } = await admin
     .from("lead_files")
     .select("id", { count: "exact", head: true })
@@ -481,5 +486,182 @@ export async function backupFilesToDrive(): Promise<{
     .is("drive_shortcut_id", null);
 
   revalidatePath("/settings/cloud-storage");
-  return { moved, shortcutted, remaining: (remainingSupabase ?? 0) + (remainingShortcuts ?? 0) };
+  return {
+    moved,
+    shortcutted,
+    docsSynced: docs.synced,
+    remaining: (remainingSupabase ?? 0) + (remainingShortcuts ?? 0) + docs.remaining,
+  };
+}
+
+/**
+ * Which Drive category a document belongs to, and whether it needs a
+ * (re)render. Signed anything -- contracts, change orders, completion
+ * certificates -- is contract paperwork; a sellable document that has
+ * been put in front of the customer but not signed is a proposal.
+ * Drafts, declined and void documents stay out of the backup: they are
+ * not paperwork anybody reaches for.
+ */
+export type BackupDocRow = {
+  id: string;
+  doc_number: string;
+  kind: string | null;
+  status: string;
+  updated_at: string;
+  drive_pdf_id: string | null;
+  drive_pdf_synced_at: string | null;
+};
+
+function docCategory(row: Pick<BackupDocRow, "kind" | "status">): string | null {
+  if (row.status === "Signed") return "Contracts";
+  if ((row.kind ?? "contract") === "contract" && (row.status === "Sent" || row.status === "Viewed")) {
+    return "Proposals";
+  }
+  return null;
+}
+
+function docNeedsSync(row: BackupDocRow): boolean {
+  if (!docCategory(row)) return false;
+  if (!row.drive_pdf_id || !row.drive_pdf_synced_at) return true;
+  return new Date(row.updated_at).getTime() > new Date(row.drive_pdf_synced_at).getTime();
+}
+
+/**
+ * Render one batch of documents to PDF and file them in Drive.
+ *
+ * Runs inside backupFilesToDrive's loop. Small batch: rendering plus a
+ * Drive upload per document is the heaviest work the backup does. A
+ * document edited after its last render is re-rendered and the stale
+ * PDF replaced, so the Drive copy never quietly diverges from what the
+ * customer signed or was sent.
+ */
+async function backupDocumentsBatch(
+  companyId: string,
+  accessToken: string,
+  rootFolderId: string
+): Promise<{ synced: number; remaining: number }> {
+  const admin = createAdminClient();
+  const { data: all, error } = await admin
+    .from("estimates")
+    .select("id, doc_number, kind, status, updated_at, drive_pdf_id, drive_pdf_synced_at")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: true })
+    .returns<BackupDocRow[]>();
+  // Before migration 0098 the columns don't exist; the file backup
+  // still works, documents just wait.
+  if (error || !all) return { synced: 0, remaining: 0 };
+
+  const pending = all.filter(docNeedsSync);
+  const batch = pending.slice(0, 5);
+  let synced = 0;
+
+  const { renderDocumentPdf } = await import("@/lib/pdf/document-pdf");
+
+  for (const row of batch) {
+    type EstimateRow = import("@/lib/data/types").Estimate & {
+      parent_estimate_id?: string | null;
+    };
+    const [est, items, signers, payments, groups, companyRes] = await Promise.all([
+      admin.from("estimates").select("*").eq("id", row.id).single<EstimateRow>(),
+      admin
+        .from("estimate_items")
+        .select("*")
+        .eq("estimate_id", row.id)
+        .order("sort_order")
+        .returns<import("@/lib/data/types").EstimateItem[]>(),
+      admin
+        .from("estimate_signers")
+        .select("*")
+        .eq("estimate_id", row.id)
+        .order("sort_order")
+        .returns<import("@/lib/data/types").EstimateSigner[]>(),
+      admin
+        .from("estimate_payments")
+        .select("*")
+        .eq("estimate_id", row.id)
+        .order("sort_order")
+        .returns<(import("@/lib/data/types").EstimatePayment & { cancelled_at?: string | null })[]>(),
+      admin
+        .from("estimate_groups")
+        .select("*")
+        .eq("estimate_id", row.id)
+        .order("sort_order")
+        .returns<import("@/lib/data/types").EstimateGroup[]>(),
+      admin
+        .from("company_profile")
+        .select("name, address, phone, email, website, logo_url, license_number, license_state, license_type")
+        .eq("company_id", companyId)
+        .maybeSingle<{
+          name: string | null; address: string | null; phone: string | null; email: string | null;
+          website: string | null; logo_url: string | null; license_number: string | null;
+          license_state: string | null; license_type: string | null;
+        }>(),
+    ]);
+    const estimate = est.data;
+    if (!estimate) continue;
+
+    const { data: lead } = await admin
+      .from("leads")
+      .select("first_name, last_name, company_name, address, phone, email")
+      .eq("id", estimate.lead_id)
+      .maybeSingle<{
+        first_name: string | null; last_name: string | null; company_name: string | null;
+        address: string | null; phone: string | null; email: string | null;
+      }>();
+    const parent = estimate.parent_estimate_id
+      ? (
+          await admin
+            .from("estimates")
+            .select("doc_number, total_cents, signed_at")
+            .eq("id", estimate.parent_estimate_id)
+            .maybeSingle<{ doc_number: string; total_cents: number; signed_at: string | null }>()
+        ).data
+      : null;
+
+    let bytes: Uint8Array;
+    try {
+      bytes = await renderDocumentPdf({
+        estimate,
+        items: items.data ?? [],
+        signers: signers.data ?? [],
+        payments: (payments.data ?? []).filter((p) => !p.cancelled_at),
+        sections: groups.data ?? [],
+        company: companyRes.data ?? null,
+        customer: lead ?? null,
+        parent: parent ?? null,
+      });
+    } catch {
+      continue;
+    }
+
+    const category = docCategory(row);
+    if (!category) continue;
+    const folder = await getOrCreateCategoryFolder(category, accessToken, rootFolderId);
+    if (!folder) continue;
+
+    const customerName =
+      lead?.company_name || [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "";
+    const pdfName = `${row.doc_number}${customerName ? " - " + customerName : ""}.pdf`.replace(
+      /[\/:*?"<>|]/g,
+      "-"
+    );
+
+    if (row.drive_pdf_id) await deleteFileFromDrive(row.drive_pdf_id, accessToken);
+    const uploaded = await uploadBlobToDrive(
+      pdfName,
+      new Blob([Buffer.from(bytes)], { type: "application/pdf" }),
+      "application/pdf",
+      accessToken,
+      folder
+    );
+    if ("error" in uploaded) continue;
+
+    await admin
+      .from("estimates")
+      .update({ drive_pdf_id: uploaded.id, drive_pdf_synced_at: new Date().toISOString() })
+      .eq("id", row.id);
+    synced += 1;
+  }
+
+  return { synced, remaining: Math.max(0, pending.length - synced) };
 }

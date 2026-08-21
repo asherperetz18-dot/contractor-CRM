@@ -39,6 +39,7 @@ export function CloudStorageView({
     setBackupNote("Backing up…");
     let movedTotal = 0;
     let shortcutTotal = 0;
+    let docsTotal = 0;
     for (let round = 0; round < 200; round++) {
       const res = await backupFilesToDrive();
       if (res.error) {
@@ -48,14 +49,19 @@ export function CloudStorageView({
       }
       movedTotal += res.moved ?? 0;
       shortcutTotal += res.shortcutted ?? 0;
+      docsTotal += res.docsSynced ?? 0;
       const remaining = res.remaining ?? 0;
       setBackupNote(
-        `Backing up… ${movedTotal} moved to Drive, ${shortcutTotal} filed into Photos/Documents, ${remaining} to go`
+        `Backing up… ${movedTotal} files moved, ${shortcutTotal} shortcuts filed, ${docsTotal} documents rendered to PDF, ${remaining} to go`
       );
-      if (remaining === 0 || ((res.moved ?? 0) === 0 && (res.shortcutted ?? 0) === 0 && round > 0)) break;
+      if (
+        remaining === 0 ||
+        ((res.moved ?? 0) === 0 && (res.shortcutted ?? 0) === 0 && (res.docsSynced ?? 0) === 0 && round > 0)
+      )
+        break;
     }
     setBackupNote(
-      `Done — ${movedTotal} file${movedTotal === 1 ? "" : "s"} moved to Drive, ${shortcutTotal} filed into Photos/Documents.`
+      `Done — ${movedTotal} file${movedTotal === 1 ? "" : "s"} moved to Drive, ${shortcutTotal} shortcuts filed, ${docsTotal} document${docsTotal === 1 ? "" : "s"} rendered as PDFs into Contracts/Proposals.`
     );
     setBackupBusy(false);
   }
@@ -156,9 +162,11 @@ export function CloudStorageView({
                       <div className="drive-cat-count">
                         <strong>{c.synced}</strong> / {c.total}
                       </div>
-                      <div className="drive-cat-bytes">
-                        {(c.syncedBytes / 1024 / 1024).toFixed(1)} MB synced
-                      </div>
+                      {c.syncedBytes > 0 && (
+                        <div className="drive-cat-bytes">
+                          {(c.syncedBytes / 1024 / 1024).toFixed(1)} MB synced
+                        </div>
+                      )}
                       <div className="drive-cat-bar">
                         <div className="drive-cat-bar-fill" style={{ width: pct + "%" }} />
                       </div>
