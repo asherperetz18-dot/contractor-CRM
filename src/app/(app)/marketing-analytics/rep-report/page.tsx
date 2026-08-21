@@ -132,6 +132,7 @@ type LeadRow = {
   customer: string;
   phone: string | null;
   stage: string;
+  source: string | null;
   sold: boolean;
   amountCents: number;
   leadCost: number;
@@ -277,6 +278,7 @@ function leadRows(
         customer: customerOf(l),
         phone: l.phone,
         stage: l.stage,
+        source: l.source,
         sold: signedCents > 0,
         // Cents throughout, so the two columns add up the same way. The
         // lead's own value is stored in whole dollars.
@@ -609,6 +611,7 @@ export default async function RepReportPage({
                     <tr>
                       <th>Customer</th>
                       <th>Phone</th>
+                      <th>Source</th>
                       <th>Stage</th>
                       <th className="estdoc-num">Pipeline</th>
                       <th className="estdoc-num">Signed</th>
@@ -621,6 +624,7 @@ export default async function RepReportPage({
                           <strong>{l.customer}</strong>
                         </td>
                         <td className="estdoc-muted">{l.phone || "—"}</td>
+                        <td className="estdoc-muted">{l.source || "—"}</td>
                         <td>{l.stage}</td>
                         <td className="estdoc-num estdoc-muted">
                           {l.sold ? "—" : l.amountCents ? moneyCents(l.amountCents) : "—"}

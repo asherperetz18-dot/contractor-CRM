@@ -322,6 +322,7 @@ export function AnalyticsView({
                                     <span className="value-lead-name">{leadDisplayName(l)}</span>
                                     <span className="value-lead-meta">
                                       {l.phone || "no phone"} · {l.stage}
+                                      {l.source ? ` · ${l.source}` : ""}
                                     </span>
                                     <span className="mono value-lead-value">{money(l.value)}</span>
                                   </a>
