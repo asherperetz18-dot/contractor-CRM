@@ -1035,35 +1035,6 @@ export function EventForm({
             Nothing here is saved until you press Save Result. No-show and Cancelled suggest{" "}
             {FOLLOW_UP_STAGE}; change the stage if it belongs elsewhere.
           </p>
-          {!readOnly && (
-            <div className="modal-actions">
-              <div>
-                {/* A greyed-out button with no reason beside it is how
-                    people conclude the app is broken -- and an enabled one
-                    with nothing beside it is how a change gets left
-                    uncommitted, because nothing said it was waiting. */}
-                {!resultValueOk ? (
-                  <span className="est-tax-note">Enter the job value to save this result.</span>
-                ) : resultDirty ? (
-                  <span className="est-tax-note">Not saved yet — press Save Result.</span>
-                ) : resultSaved ? (
-                  <span className="cp-saved">✓ Result saved</span>
-                ) : (
-                  <span className="est-tax-note">Nothing changed to save.</span>
-                )}
-              </div>
-              <div>
-                <button
-                  type="button"
-                  className="btn-primary small"
-                  onClick={saveResult}
-                  disabled={resultPending || !resultDirty || !resultValueOk}
-                >
-                  {resultPending ? "Saving…" : "Save Result"}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1225,6 +1196,26 @@ export function EventForm({
                   Delete
                 </button>
               )}
+              {/* The result's save status rides in the always-visible
+                  footer. It used to sit with a Save Result button at the
+                  bottom of the tab body, below the fold behind this very
+                  footer -- the exact trap the comment above this footer
+                  describes, rebuilt one tab deeper. A greyed-out button
+                  with no reason beside it is how people conclude the app
+                  is broken. */}
+              {lead && event && tab === "Result" && !readOnly && !formDirty && (
+                <span className="est-tax-note">
+                  {!resultValueOk ? (
+                    "Enter the job value to save this result."
+                  ) : resultDirty ? (
+                    "Not saved yet — press Save Result."
+                  ) : resultSaved ? (
+                    <span className="cp-saved">✓ Result saved</span>
+                  ) : (
+                    "Nothing changed to save."
+                  )}
+                </span>
+              )}
             </div>
             <div>
               <button type="button" className="btn-ghost" onClick={requestClose}>
@@ -1233,6 +1224,16 @@ export function EventForm({
               {!readOnly && !footerSaveHidden && (
                 <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
                   {pending ? "Saving…" : "Save"}
+                </button>
+              )}
+              {lead && event && tab === "Result" && !readOnly && !formDirty && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={saveResult}
+                  disabled={resultPending || !resultDirty || !resultValueOk}
+                >
+                  {resultPending ? "Saving…" : "Save Result"}
                 </button>
               )}
             </div>
