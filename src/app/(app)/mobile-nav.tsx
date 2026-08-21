@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { NavEntry } from "@/lib/nav";
-import type { AppRole } from "@/lib/data/types";
+
 import { NavLink } from "./nav-link";
 import { NavGroup } from "./nav-group";
 import { logout } from "@/lib/actions/auth";
@@ -13,13 +13,14 @@ export function MobileNav({
   companyName,
   version,
   filteredNav,
-  roles,
+  userName,
 }: {
   logoUrl: string | null;
   companyName?: string;
   version: string;
   filteredNav: NavEntry[];
-  roles: AppRole[];
+  /** Shown quietly next to Sign out -- which account, nothing more. */
+  userName: string;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -70,19 +71,12 @@ export function MobileNav({
             )
           )}
         </nav>
+        {/* Just the name and the way out. The stack of role badges
+            that lived here told an owner they hold seven roles, every
+            day, forever -- roles are configuration, and Users & Roles
+            is where configuration lives. */}
         <div className="sidebar-foot">
-          <div className="role-label">Signed in as</div>
-          <div className="role-value">
-            {roles.length === 0 && <span className="role-badge">No role assigned</span>}
-            {roles.map((role) => (
-              <span
-                key={role}
-                className={"role-badge " + (role === "Office" ? "role-office" : "role-field")}
-              >
-                {role}
-              </span>
-            ))}
-          </div>
+          <div className="sidebar-foot-user">{userName}</div>
           <form action={logout}>
             <button type="submit" className="sign-out-btn">
               Sign out

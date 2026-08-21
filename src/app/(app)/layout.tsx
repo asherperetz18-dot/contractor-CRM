@@ -142,7 +142,7 @@ export default async function AppLayout({
             companyName={companyName}
             version={version}
             filteredNav={filteredNav}
-            roles={profile.roles}
+            userName={profile.name || profile.email || ""}
           />
 
           <main className="main">
