@@ -5,22 +5,60 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { disconnectGoogleDrive } from "@/lib/actions/google-drive";
+import { backupFilesToDrive } from "@/lib/actions/lead-files";
+import type { DriveCategoryStat } from "./page";
 
 export function CloudStorageView({
   connected,
   email,
   expired,
   connectError,
+  categories,
 }: {
   connected: boolean;
   email?: string;
   expired?: boolean;
   connectError?: string;
+  categories?: DriveCategoryStat[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(connectError ?? "");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupNote, setBackupNote] = useState("");
+
+  /**
+   * Walks the whole history in batches: the action moves twenty files
+   * per call, and this keeps calling until it reports nothing left --
+   * a company's entire archive will not fit one server invocation.
+   */
+  async function handleBackup() {
+    setBackupBusy(true);
+    setError("");
+    setBackupNote("Backing up…");
+    let movedTotal = 0;
+    let shortcutTotal = 0;
+    for (let round = 0; round < 200; round++) {
+      const res = await backupFilesToDrive();
+      if (res.error) {
+        setError(res.error);
+        setBackupBusy(false);
+        return;
+      }
+      movedTotal += res.moved ?? 0;
+      shortcutTotal += res.shortcutted ?? 0;
+      const remaining = res.remaining ?? 0;
+      setBackupNote(
+        `Backing up… ${movedTotal} moved to Drive, ${shortcutTotal} filed into Photos/Documents, ${remaining} to go`
+      );
+      if (remaining === 0 || ((res.moved ?? 0) === 0 && (res.shortcutted ?? 0) === 0 && round > 0)) break;
+    }
+    setBackupNote(
+      `Done — ${movedTotal} file${movedTotal === 1 ? "" : "s"} moved to Drive, ${shortcutTotal} filed into Photos/Documents.`
+    );
+    setBackupBusy(false);
+  }
 
   async function handleDisconnect() {
     if (!confirm("Disconnect Google Drive? New file uploads will go back to this app's storage.")) {
@@ -85,14 +123,51 @@ export function CloudStorageView({
               Connected as <strong>{email}</strong>. New lead file uploads go into a &quot;Contractor
               CRM Files&quot; folder in this Google Drive account.
             </p>
-            <button
-              type="button"
-              className="btn-danger-ghost"
-              onClick={handleDisconnect}
-              disabled={pending}
-            >
-              {pending ? "Disconnecting…" : "Disconnect"}
-            </button>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleBackup}
+                disabled={backupBusy || pending}
+              >
+                {backupBusy ? "Backing up…" : "Back up existing files to Drive"}
+              </button>
+              <button
+                type="button"
+                className="btn-danger-ghost"
+                onClick={handleDisconnect}
+                disabled={pending || backupBusy}
+              >
+                {pending ? "Disconnecting…" : "Disconnect"}
+              </button>
+            </div>
+            {backupNote && <p className="hint-note">{backupNote}</p>}
+            <p className="hint-note">
+              Files land in each contact&apos;s folder, with shortcuts collected under
+              &quot;Photos&quot; and &quot;Documents&quot; so you can also browse by type.
+            </p>
+            {!!categories?.length && (
+              <div className="drive-cat-grid">
+                {categories.map((c) => {
+                  const pct = c.total ? Math.round((c.synced / c.total) * 100) : 100;
+                  return (
+                    <div key={c.name} className="drive-cat-card">
+                      <div className="drive-cat-name">{c.name}</div>
+                      <div className="drive-cat-count">
+                        <strong>{c.synced}</strong> / {c.total}
+                      </div>
+                      <div className="drive-cat-bytes">
+                        {(c.syncedBytes / 1024 / 1024).toFixed(1)} MB synced
+                      </div>
+                      <div className="drive-cat-bar">
+                        <div className="drive-cat-bar-fill" style={{ width: pct + "%" }} />
+                      </div>
+                      <div className="drive-cat-pct">{pct}% synced</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         ) : (
           <>

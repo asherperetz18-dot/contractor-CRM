@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
+  createDriveShortcut,
   deleteFileFromDrive,
+  getOrCreateCategoryFolder,
   getOrCreateLeadDriveFolder,
   getValidAccessToken,
   uploadBlobToDrive,
@@ -184,6 +186,29 @@ export async function createLeadFileUploadUrl(
  * have arrived. The object is checked to exist here rather than trusted,
  * so a failed or abandoned upload cannot leave a phantom attachment.
  */
+/** Photos for anything the camera made; Documents for the rest. */
+function categoryFor(contentType: string | null): string {
+  return contentType?.startsWith("image/") || contentType?.startsWith("video/")
+    ? "Photos"
+    : "Documents";
+}
+
+async function fileCategoryShortcut(
+  driveFileId: string,
+  fileName: string,
+  contentType: string | null,
+  accessToken: string,
+  rootFolderId: string
+): Promise<string | null> {
+  const folder = await getOrCreateCategoryFolder(
+    categoryFor(contentType),
+    accessToken,
+    rootFolderId
+  );
+  if (!folder) return null;
+  return createDriveShortcut(driveFileId, folder, fileName, accessToken);
+}
+
 export async function recordLeadFile(
   leadId: string,
   path: string,
@@ -218,10 +243,15 @@ export async function recordLeadFile(
   // Any Drive failure falls back to keeping the Supabase copy -- an
   // upload must never be lost because Drive hiccupped. Capped at 30MB
   // so the transfer fits comfortably inside a serverless invocation.
-  let stored = {
-    provider: "supabase" as string,
+  let stored: {
+    provider: string;
+    filePath: string;
+    fileUrl: string | null;
+    shortcutId?: string | null;
+  } = {
+    provider: "supabase",
     filePath: path,
-    fileUrl: publicUrl as string | null,
+    fileUrl: publicUrl,
   };
   if (fileSize <= 30 * 1024 * 1024) {
     const drive = await getValidAccessToken(profile.company_id);
@@ -241,6 +271,18 @@ export async function recordLeadFile(
         if (!("error" in uploaded)) {
           stored = { provider: "google_drive", filePath: uploaded.id, fileUrl: uploaded.url };
           await admin.storage.from(BUCKET).remove([path]);
+          // The category view: Photos for images and video, Documents
+          // for the rest. A shortcut, so the file lives once in the
+          // lead's folder and appears again where a person browsing by
+          // type would look. Best-effort -- the upload has already
+          // succeeded, and a missing shortcut is a cosmetic gap.
+          stored.shortcutId = await fileCategoryShortcut(
+            uploaded.id,
+            fileName,
+            contentType,
+            drive.accessToken,
+            drive.folderId
+          );
         }
       }
     }
@@ -262,6 +304,7 @@ export async function recordLeadFile(
     file_size: fileSize,
     content_type: contentType,
     storage_provider: stored.provider,
+    drive_shortcut_id: stored.shortcutId ?? null,
     event_id: eventId ?? null,
     company_id: profile.company_id,
   });
@@ -315,4 +358,128 @@ export async function deleteLeadFile(
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
   return {};
+}
+
+/**
+ * Move one batch of pre-Drive files into Google Drive.
+ *
+ * Everything uploaded before the Drive hand-off existed sits in app
+ * storage; this walks it into Drive exactly the way a fresh upload
+ * goes -- into the lead's folder, with a category shortcut -- and
+ * files already in Drive but missing their category shortcut get one.
+ * Batched at twenty per call because a company's whole history will
+ * not fit inside one serverless invocation; the Cloud Storage page
+ * keeps calling until nothing is left.
+ */
+export async function backupFilesToDrive(): Promise<{
+  error?: string;
+  moved?: number;
+  shortcutted?: number;
+  remaining?: number;
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  const { isAdminRole } = await import("@/lib/data/types");
+  if (!isAdminRole(profile)) return { error: "Office or Admin only." };
+
+  const drive = await getValidAccessToken(profile.company_id);
+  if (!drive) return { error: "Google Drive isn't connected (or the connection expired)." };
+
+  const admin = createAdminClient();
+  const BATCH = 20;
+  let moved = 0;
+  let shortcutted = 0;
+
+  // Pass 1: app-storage files that belong in Drive.
+  const { data: pending } = await admin
+    .from("lead_files")
+    .select("id, lead_id, file_name, file_path, file_size, content_type")
+    .eq("company_id", profile.company_id)
+    .eq("storage_provider", "supabase")
+    .lte("file_size", 30 * 1024 * 1024)
+    .order("created_at", { ascending: true })
+    .limit(BATCH)
+    .returns<
+      { id: string; lead_id: string; file_name: string; file_path: string; file_size: number; content_type: string | null }[]
+    >();
+
+  for (const f of pending ?? []) {
+    const folderId = await getOrCreateLeadDriveFolder(f.lead_id, profile.company_id);
+    if (!folderId) continue;
+    const { data: blob } = await admin.storage.from(BUCKET).download(f.file_path);
+    if (!blob) continue;
+    const uploaded = await uploadBlobToDrive(
+      f.file_name,
+      blob,
+      f.content_type || "application/octet-stream",
+      drive.accessToken,
+      folderId
+    );
+    if ("error" in uploaded) continue;
+    const shortcutId = await fileCategoryShortcut(
+      uploaded.id,
+      f.file_name,
+      f.content_type,
+      drive.accessToken,
+      drive.folderId
+    );
+    const { data: updated } = await admin
+      .from("lead_files")
+      .update({
+        storage_provider: "google_drive",
+        file_path: uploaded.id,
+        file_url: uploaded.url,
+        drive_shortcut_id: shortcutId,
+      })
+      .eq("id", f.id)
+      .select("id");
+    if (updated?.length) {
+      await admin.storage.from(BUCKET).remove([f.file_path]);
+      moved += 1;
+    } else {
+      // The row refused the update -- do not strand a Drive copy
+      // nothing points at.
+      await deleteFileFromDrive(uploaded.id, drive.accessToken);
+    }
+  }
+
+  // Pass 2: Drive files from before the category view existed.
+  const { data: unshortcutted } = await admin
+    .from("lead_files")
+    .select("id, file_name, file_path, content_type")
+    .eq("company_id", profile.company_id)
+    .eq("storage_provider", "google_drive")
+    .is("drive_shortcut_id", null)
+    .order("created_at", { ascending: true })
+    .limit(BATCH)
+    .returns<{ id: string; file_name: string; file_path: string; content_type: string | null }[]>();
+
+  for (const f of unshortcutted ?? []) {
+    const shortcutId = await fileCategoryShortcut(
+      f.file_path,
+      f.file_name,
+      f.content_type,
+      drive.accessToken,
+      drive.folderId
+    );
+    if (!shortcutId) continue;
+    await admin.from("lead_files").update({ drive_shortcut_id: shortcutId }).eq("id", f.id);
+    shortcutted += 1;
+  }
+
+  const { count: remainingSupabase } = await admin
+    .from("lead_files")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", profile.company_id)
+    .eq("storage_provider", "supabase")
+    .lte("file_size", 30 * 1024 * 1024);
+  const { count: remainingShortcuts } = await admin
+    .from("lead_files")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", profile.company_id)
+    .eq("storage_provider", "google_drive")
+    .is("drive_shortcut_id", null);
+
+  revalidatePath("/settings/cloud-storage");
+  return { moved, shortcutted, remaining: (remainingSupabase ?? 0) + (remainingShortcuts ?? 0) };
 }

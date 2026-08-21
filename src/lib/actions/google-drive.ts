@@ -250,6 +250,61 @@ export async function uploadBlobToDrive(
   return { id: uploaded.id, url: `https://drive.google.com/file/d/${uploaded.id}/view` };
 }
 
+/**
+ * The category folder (Photos, Documents, ...) under the connected
+ * root, created on first use. Looked up by name+parent each time
+ * rather than cached in a table: one extra request per file is cheap,
+ * and it survives the user renaming or reconnecting.
+ */
+export async function getOrCreateCategoryFolder(
+  name: string,
+  accessToken: string,
+  rootFolderId: string
+): Promise<string | null> {
+  const q = encodeURIComponent(
+    `name='${name.replace(/'/g, "\'")}' and '${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const found = await fetch(`${DRIVE_API}/files?q=${q}&fields=files(id)`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (found.ok) {
+    const json = (await found.json()) as { files?: { id: string }[] };
+    if (json.files?.length) return json.files[0].id;
+  }
+  const created = await fetch(`${DRIVE_API}/files?fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [rootFolderId] }),
+  });
+  if (!created.ok) return null;
+  return ((await created.json()) as { id: string }).id;
+}
+
+/**
+ * A Drive shortcut: the file lives once in the lead's folder, and the
+ * category folder (Photos / Documents) holds a pointer to it -- the
+ * iBuildPro-style browsing view without storing anything twice.
+ */
+export async function createDriveShortcut(
+  targetFileId: string,
+  parentFolderId: string,
+  name: string,
+  accessToken: string
+): Promise<string | null> {
+  const res = await fetch(`${DRIVE_API}/files?fields=id`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.shortcut",
+      parents: [parentFolderId],
+      shortcutDetails: { targetId: targetFileId },
+    }),
+  });
+  if (!res.ok) return null;
+  return ((await res.json()) as { id: string }).id;
+}
+
 export async function deleteFileFromDrive(fileId: string, accessToken: string): Promise<void> {
   await fetch(`${DRIVE_API}/files/${fileId}`, {
     method: "DELETE",
