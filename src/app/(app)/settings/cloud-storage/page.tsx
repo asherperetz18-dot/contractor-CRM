@@ -15,6 +15,7 @@ export default async function CloudStoragePage({
       <CloudStorageView
         connected={status.connected}
         email={status.email}
+        expired={status.expired}
         connectError={error}
       />
     </AdminGate>

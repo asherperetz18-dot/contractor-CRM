@@ -8,6 +8,7 @@ import {
   deleteFileFromDrive,
   getOrCreateLeadDriveFolder,
   getValidAccessToken,
+  uploadBlobToDrive,
   uploadFileToDrive,
 } from "./google-drive";
 
@@ -206,6 +207,45 @@ export async function recordLeadFile(
     data: { publicUrl },
   } = admin.storage.from(BUCKET).getPublicUrl(path);
 
+  // When the company connected Google Drive, the file's real home is
+  // there. It still ARRIVES via Supabase Storage -- the browser cannot
+  // post more than ~4.5MB through a server action, which is exactly why
+  // this signed-URL path exists -- so the server now walks it the rest
+  // of the way: download from the bucket, resumable-upload into the
+  // lead's Drive folder, drop the bucket copy. When this shipped, the
+  // Cloud Storage page had been promising Drive for weeks while every
+  // upload quietly stayed in app storage: the direct path never asked.
+  // Any Drive failure falls back to keeping the Supabase copy -- an
+  // upload must never be lost because Drive hiccupped. Capped at 30MB
+  // so the transfer fits comfortably inside a serverless invocation.
+  let stored = {
+    provider: "supabase" as string,
+    filePath: path,
+    fileUrl: publicUrl as string | null,
+  };
+  if (fileSize <= 30 * 1024 * 1024) {
+    const drive = await getValidAccessToken(profile.company_id);
+    if (drive) {
+      const folderId = await getOrCreateLeadDriveFolder(leadId, profile.company_id);
+      const { data: blob } = folderId
+        ? await admin.storage.from(BUCKET).download(path)
+        : { data: null };
+      if (folderId && blob) {
+        const uploaded = await uploadBlobToDrive(
+          fileName,
+          blob,
+          contentType || "application/octet-stream",
+          drive.accessToken,
+          folderId
+        );
+        if (!("error" in uploaded)) {
+          stored = { provider: "google_drive", filePath: uploaded.id, fileUrl: uploaded.url };
+          await admin.storage.from(BUCKET).remove([path]);
+        }
+      }
+    }
+  }
+
   const supabase = await createClient();
   // No RETURNING on purpose. An insert the policy refuses fails loudly
   // (unlike updates, which match zero rows) -- while RETURNING would
@@ -217,17 +257,23 @@ export async function recordLeadFile(
     lead_id: leadId,
     uploaded_by: profile.id,
     file_name: fileName,
-    file_path: path,
-    file_url: publicUrl,
+    file_path: stored.filePath,
+    file_url: stored.fileUrl,
     file_size: fileSize,
     content_type: contentType,
-    storage_provider: "supabase",
+    storage_provider: stored.provider,
     event_id: eventId ?? null,
     company_id: profile.company_id,
   });
   if (error) {
-    // Nothing points at the object now -- don't leave it orphaned.
-    await admin.storage.from(BUCKET).remove([path]);
+    // Nothing points at the object now -- don't leave it orphaned,
+    // wherever it ended up.
+    if (stored.provider === "google_drive") {
+      const drive = await getValidAccessToken(profile.company_id);
+      if (drive) await deleteFileFromDrive(stored.filePath, drive.accessToken);
+    } else {
+      await admin.storage.from(BUCKET).remove([path]);
+    }
     return { error: "That file couldn't be attached to this contact." };
   }
 

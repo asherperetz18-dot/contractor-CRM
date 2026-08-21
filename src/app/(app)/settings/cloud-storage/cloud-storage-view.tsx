@@ -9,10 +9,12 @@ import { disconnectGoogleDrive } from "@/lib/actions/google-drive";
 export function CloudStorageView({
   connected,
   email,
+  expired,
   connectError,
 }: {
   connected: boolean;
   email?: string;
+  expired?: boolean;
   connectError?: string;
 }) {
   const router = useRouter();
@@ -60,10 +62,24 @@ export function CloudStorageView({
       <div className="second-contact-block" style={{ maxWidth: 480 }}>
         <div className="second-contact-head">
           <span>Google Drive</span>
-          {connected && <Badge color="#2F855A">Connected</Badge>}
+          {connected && !expired && <Badge color="#2F855A">Connected</Badge>}
+          {connected && expired && <Badge color="#B7791F">Connection expired</Badge>}
         </div>
 
-        {connected ? (
+        {connected && expired ? (
+          <>
+            <p className="hint-note" style={{ marginTop: 0 }}>
+              Google no longer accepts this connection for <strong>{email}</strong> — uploads
+              are going to this app&apos;s storage instead. Reconnect below. If this keeps
+              happening every week, the Google Cloud OAuth app is in &quot;Testing&quot; mode:
+              publish it to Production (Google Cloud Console → APIs &amp; Services → OAuth
+              consent screen → Publish app) and reconnect once more.
+            </p>
+            <a href="/api/oauth/google-drive/authorize" className="btn-primary">
+              Reconnect Google Drive
+            </a>
+          </>
+        ) : connected ? (
           <>
             <p className="hint-note" style={{ marginTop: 0 }}>
               Connected as <strong>{email}</strong>. New lead file uploads go into a &quot;Contractor

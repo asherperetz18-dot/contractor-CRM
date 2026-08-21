@@ -27,6 +27,8 @@ async function requireOfficeOrAdmin(): Promise<{ error?: string }> {
 export async function getGoogleDriveStatus(): Promise<{
   connected: boolean;
   email?: string;
+  /** The row exists but Google refuses the token -- reconnect needed. */
+  expired?: boolean;
 }> {
   const companyId = await getCurrentCompanyId();
   if (!companyId) return { connected: false };
@@ -39,6 +41,14 @@ export async function getGoogleDriveStatus(): Promise<{
     .maybeSingle();
   const row = data as { connected_email: string | null } | null;
   if (!row?.connected_email) return { connected: false };
+
+  // "Connected" is a claim about NOW, not about a row that was written
+  // once. Google expires refresh tokens (seven days flat while the
+  // OAuth app sits in Testing mode), and this page kept showing a green
+  // badge for weeks after every upload had quietly stopped reaching
+  // Drive. Prove the token still refreshes before saying so.
+  const live = await getValidAccessToken(companyId);
+  if (!live) return { connected: true, email: row.connected_email, expired: true };
   return { connected: true, email: row.connected_email };
 }
 
@@ -177,6 +187,57 @@ export async function uploadFileToDrive(
   // Anyone at the company can already see any Supabase-stored file via a
   // plain URL today, so match that -- make the Drive file viewable by
   // anyone with the link rather than restricted to the connected account.
+  await fetch(`${DRIVE_API}/files/${uploaded.id}/permissions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role: "reader", type: "anyone" }),
+  });
+
+  return { id: uploaded.id, url: `https://drive.google.com/file/d/${uploaded.id}/view` };
+}
+
+/**
+ * Upload bytes the server already holds, via Drive's resumable
+ * protocol: one metadata POST for a session URL, one PUT with the
+ * whole body. Multipart caps at ~5MB; this has no such ceiling, which
+ * is what lets the direct-to-storage upload path hand its files to
+ * Drive afterwards regardless of size.
+ */
+export async function uploadBlobToDrive(
+  name: string,
+  blob: Blob,
+  contentType: string,
+  accessToken: string,
+  folderId: string
+): Promise<{ id: string; url: string } | { error: string }> {
+  const start = await fetch(`${DRIVE_UPLOAD_API}?uploadType=resumable&fields=id`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "X-Upload-Content-Type": contentType || "application/octet-stream",
+    },
+    body: JSON.stringify({ name, parents: [folderId] }),
+  });
+  const sessionUrl = start.headers.get("location");
+  if (!start.ok || !sessionUrl) {
+    return { error: `Google Drive upload failed: ${await start.text()}` };
+  }
+
+  const put = await fetch(sessionUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType || "application/octet-stream" },
+    body: blob,
+  });
+  if (!put.ok) {
+    return { error: `Google Drive upload failed: ${await put.text()}` };
+  }
+  const uploaded = (await put.json()) as { id: string };
+
+  // Same visibility as a Supabase-stored file: anyone with the link.
   await fetch(`${DRIVE_API}/files/${uploaded.id}/permissions`, {
     method: "POST",
     headers: {
