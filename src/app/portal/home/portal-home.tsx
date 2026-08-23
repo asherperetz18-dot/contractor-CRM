@@ -315,7 +315,16 @@ export function PortalHome({
                     </div>
                     <div className="portal-est-side">
                       <span className="portal-est-total">{formatMoney(e.total_cents)}</span>
-                      <span className="portal-est-go">View →</span>
+                      {/* A document waiting on the customer's signature
+                          gets a button that says so, in a colour that
+                          says so -- "View" in quiet grey asks nothing of
+                          anybody, which is exactly how estimates sit
+                          unsigned for a week. */}
+                      {e.status !== "Signed" && e.status !== "Declined" ? (
+                        <span className="portal-est-sign-btn">Review &amp; Sign →</span>
+                      ) : (
+                        <span className="portal-est-go">View →</span>
+                      )}
                     </div>
                   </a>
                 ))}

@@ -7402,3 +7402,20 @@ textarea.est-item-desc:disabled {
   color: var(--ink-soft);
   margin-top: 4px;
 }
+
+/* The portal estimate card's call to action while a signature is
+   owed. A real button in an urgent colour; back to the quiet grey
+   "View" once the document is settled. */
+.portal-est-sign-btn {
+  display: inline-block;
+  background: #c02626;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.portal-est:hover .portal-est-sign-btn {
+  background: #a51f1f;
+}
