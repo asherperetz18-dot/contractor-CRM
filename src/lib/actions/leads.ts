@@ -339,20 +339,21 @@ export async function createLeadTask(
   // dispatcher's follow-up no longer needs the service role -- and
   // deleting one is refused by the database rather than by omission here.
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("lead_tasks")
-    .insert({
-      lead_id: leadId,
-      title: input.title.trim(),
-      due_date: input.due_date,
-      due_time: input.due_time || null,
-      assigned_to: input.assigned_to || null,
-      created_by: profile.id,
-      company_id: profile.company_id,
-    })
-    .select("id");
-  if (error) return { error: error.message };
-  if (!data?.length) return { error: "Couldn't create that task — your role may not have permission." };
+  // No RETURNING. An insert the policy refuses raises loudly on its
+  // own, while asking for the row back additionally demands SELECT
+  // visibility of it -- which blocked exactly the inserts the policy
+  // deliberately allows (a rep's task assigned to themselves on a
+  // colleague's lead). Same trap as lead_notes and lead_files.
+  const { error } = await supabase.from("lead_tasks").insert({
+    lead_id: leadId,
+    title: input.title.trim(),
+    due_date: input.due_date,
+    due_time: input.due_time || null,
+    assigned_to: input.assigned_to || null,
+    created_by: profile.id,
+    company_id: profile.company_id,
+  });
+  if (error) return { error: "Couldn't create that task — your role may not have permission." };
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
   return {};
