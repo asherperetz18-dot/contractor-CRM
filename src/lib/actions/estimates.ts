@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getEmailForCompany } from "@/lib/email-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
@@ -959,8 +960,10 @@ export async function sendEstimateToCustomer(
       totalCents: estimate.total_cents,
       link,
     });
+    const emailEnv = await getEmailForCompany(guard.companyId);
     const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
       replyTo: sender?.email ?? undefined,
+      env: emailEnv ?? undefined,
     });
     if (sent.error) {
       problems.push(`Email failed (${sent.error})`);

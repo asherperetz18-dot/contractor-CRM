@@ -8,6 +8,7 @@ import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { notifyRepOfSignature } from "@/lib/portal/rep-signed-notification";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
 import { sendEmail } from "@/lib/email-env";
+import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {
@@ -38,6 +39,7 @@ async function reportSignatureToRep(
   admin: ReturnType<typeof createAdminClient>,
   estimate: EstimateRow
 ): Promise<void> {
+  const emailEnv = await getEmailForCompany(estimate.company_id);
   const result = await notifyRepOfSignature({
     assignedTo: estimate.assigned_to,
     lookupRep: async (profileId) => {
@@ -48,7 +50,8 @@ async function reportSignatureToRep(
         .maybeSingle<{ email: string | null; name: string | null }>();
       return data ?? null;
     },
-    sendEmail,
+    sendEmail: (to, subject, html, text) =>
+      sendEmail(to, subject, html, text, { env: emailEnv ?? undefined }),
     docNumber: estimate.doc_number,
     kind: estimate.kind,
     link: `${portalBaseUrl()}/estimates/${estimate.id}`,

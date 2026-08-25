@@ -51,7 +51,13 @@ export function escapeHtml(value: string): string {
 }
 
 export type SendEmailResult = { id?: string; error?: string };
-export type SendEmailOptions = { replyTo?: string };
+export type SendEmailOptions = {
+  replyTo?: string;
+  // A company's own sender, from getEmailForCompany -- falls back to the
+  // platform env below when the caller has no company context (e.g. the
+  // pre-login password-reset email, which isn't scoped to one company).
+  env?: { apiKey: string; from: string };
+};
 
 export async function sendEmail(
   to: string,
@@ -60,7 +66,7 @@ export async function sendEmail(
   text: string,
   options: SendEmailOptions = {}
 ): Promise<SendEmailResult> {
-  const env = getEmailEnv();
+  const env = options.env ?? getEmailEnv();
   if (!env) {
     return {
       error:

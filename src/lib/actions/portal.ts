@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getEmailForCompany } from "@/lib/email-company";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import {
   completeChallenge,
@@ -68,7 +69,10 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
   const mail = buildPortalEmail(lead.first_name, companyName, link);
 
-  const result = await sendEmail(trimmed, mail.subject, mail.html, mail.text);
+  const emailEnv = await getEmailForCompany(lead.company_id);
+  const result = await sendEmail(trimmed, mail.subject, mail.html, mail.text, {
+    env: emailEnv ?? undefined,
+  });
   if (result.error) return { sent: false, error: result.error };
   return { sent: true };
 }
@@ -148,7 +152,10 @@ export async function sendPortalLink(
     } else {
       const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
       const mail = buildPortalEmail(lead.first_name, companyName, link);
-      const sent = await sendEmail(lead.email, mail.subject, mail.html, mail.text);
+      const emailEnv = await getEmailForCompany(lead.company_id);
+      const sent = await sendEmail(lead.email, mail.subject, mail.html, mail.text, {
+        env: emailEnv ?? undefined,
+      });
       if (sent.error) {
         problems.push(`email failed (${sent.error})`);
       } else {

@@ -288,8 +288,18 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     hint: "Email domain, sender & templates, chat, SMS/WhatsApp, short links",
     cards: [
       { title: "Email Domain", desc: "Verify your sending domain with SPF, DKIM, and DMARC records", icon: "📧" },
-      { title: "Email Sender Settings", desc: "From email, from name, and notification emails for proposals", icon: "📨" },
-      { title: "Resend API Key", desc: "Optional: use your own Resend API key instead of the platform key", icon: "🔑" },
+      {
+        title: "Email Sender Settings",
+        desc: "From email and from name for estimates and portal links — so customers see this company, not the platform default",
+        icon: "📨",
+        href: "/settings/email",
+      },
+      {
+        title: "Resend API Key",
+        desc: "Optional: use your own Resend API key instead of the platform key",
+        icon: "🔑",
+        href: "/settings/email",
+      },
       { title: "Email Templates", desc: "Manage email templates for proposals, notifications, bulk outreach", icon: "📄" },
       { title: "Chat & Messaging", desc: "Chat provider configuration, webhooks, SMS, WhatsApp", icon: "💬" },
       { title: "Short Links", desc: "Create and manage short URLs with domain routing and analytics", icon: "🔗" },
