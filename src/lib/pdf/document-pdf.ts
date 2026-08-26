@@ -315,6 +315,10 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   w.y -= 6;
   w.text("PROJECT", { size: 8, color: MUTED });
   w.text(estimate.title || "Estimate", { font: w.bold, size: 11, gapAfter: 6 });
+  if (estimate.job_address) {
+    w.text("JOB LOCATION", { size: 8, color: MUTED });
+    w.text(estimate.job_address, { font: w.bold, size: 10, gapAfter: 6 });
+  }
 
   // 4. Customer message
   if (estimate.customer_message) {

@@ -31,6 +31,7 @@ import {
   deleteEstimate,
   voidEstimate,
 } from "@/lib/actions/estimates";
+import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
@@ -141,6 +142,7 @@ export function EstimateBuilder({
   const [expiresAt, setExpiresAt] = useState(estimate.expires_at ?? "");
   const [startDate, setStartDate] = useState(estimate.start_date ?? "");
   const [completionDate, setCompletionDate] = useState(estimate.completion_date ?? "");
+  const [jobAddress, setJobAddress] = useState(estimate.job_address ?? "");
   // The discount as the rep is editing it. Percent is typed as "5",
   // amount as dollars -- both become the wire format only at save time.
   const [discountOn, setDiscountOn] = useState(!!estimate.discount_type);
@@ -289,6 +291,7 @@ export function EstimateBuilder({
           expires_at: expiresAt || null,
           start_date: startDate || null,
           completion_date: completionDate || null,
+          job_address: jobAddress.trim() || null,
         },
         rows.map((r) => ({
           id: r.id,
@@ -603,6 +606,22 @@ export function EstimateBuilder({
             disabled={locked}
             onChange={(e) => {
               setTitle(e.target.value);
+              setSaved(null);
+            }}
+          />
+        </label>
+        {/* Blank means the client's own address, which is the common
+            case; filled means an investor's rental, a second property.
+            The document then names both, because a contract is supposed
+            to say where the work will be done. */}
+        <label className="field">
+          <span className="field-label">Job location</span>
+          <AddressAutocompleteInput
+            value={jobAddress}
+            disabled={locked}
+            placeholder={lead?.address ? `Same as client — ${lead.address}` : "Same as client address"}
+            onChange={(address) => {
+              setJobAddress(address);
               setSaved(null);
             }}
           />

@@ -1520,6 +1520,9 @@ export type Estimate = {
   // reads as a commitment.
   start_date: string | null;
   completion_date: string | null;
+  /** Where the work happens when that isn't the client's own address.
+   *  Null means the client's address. */
+  job_address: string | null;
   // What sort of document this is. A change order adds to a signed
   // contract that stays exactly as signed -- unlike supersedes_id, which
   // replaces one. A completion certificate carries no money at all.

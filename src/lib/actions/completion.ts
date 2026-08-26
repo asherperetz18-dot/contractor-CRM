@@ -16,6 +16,7 @@ type ContractRow = {
   total_cents: number;
   assigned_to: string | null;
   kind: string;
+  job_address: string | null;
 };
 
 /**
@@ -38,7 +39,7 @@ export async function createCompletionCertificate(
   const supabase = await createClient();
   const { data: contract } = await supabase
     .from("estimates")
-    .select("id, company_id, lead_id, doc_number, status, total_cents, assigned_to, kind")
+    .select("id, company_id, lead_id, doc_number, status, total_cents, assigned_to, kind, job_address")
     .eq("id", contractId)
     .eq("company_id", profile.company_id)
     .maybeSingle<ContractRow>();
@@ -145,6 +146,7 @@ export async function createCompletionCertificate(
       lead_id: contract.lead_id,
       parent_estimate_id: contract.id,
       kind: "completion",
+      job_address: contract.job_address ?? null,
       doc_number: `${contract.doc_number}-COMP`,
       title: "Certificate of Completion",
       status: "Draft" as EstimateStatus,

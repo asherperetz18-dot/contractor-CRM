@@ -294,6 +294,16 @@ export function EstimateDocument({
           <div className="estdoc-label">Project</div>
           <div className="estdoc-strong">{estimate.title || "Estimate"}</div>
         </div>
+        {/* Only when it differs from the client's address above --
+            repeating the same address twice reads as filler, but a
+            contract for an investor's rental must say which property
+            the work is for. */}
+        {estimate.job_address && (
+          <div>
+            <div className="estdoc-label">Job location</div>
+            <div className="estdoc-strong">{estimate.job_address}</div>
+          </div>
+        )}
         {/* Who to ask for. A homeowner reading this weeks later should not
             have to work out who they spoke to. Omitted entirely when
             neither is known, rather than printing an empty heading. */}

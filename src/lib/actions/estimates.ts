@@ -452,6 +452,7 @@ export async function updateEstimateDetails(
     expires_at?: string | null;
     start_date?: string | null;
     completion_date?: string | null;
+    job_address?: string | null;
     customer_message?: string | null;
     terms?: string | null;
     notes?: string | null;
@@ -1407,6 +1408,7 @@ export async function saveEstimateDraft(
     expires_at: string | null;
     start_date: string | null;
     completion_date: string | null;
+    job_address?: string | null;
   },
   items: ItemInput[],
   discount?: DiscountInput

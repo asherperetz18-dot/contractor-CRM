@@ -166,7 +166,9 @@ export default async function ProjectsPage() {
         lead?.company_name ||
         [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
         "Unnamed customer",
-      address: lead?.address ?? null,
+      // The job site outranks the billing address: an investor with
+      // three properties needs three rows that say which house is which.
+      address: (contract as { job_address?: string | null }).job_address ?? lead?.address ?? null,
       repName: lead?.assigned_to ? (repById.get(lead.assigned_to) ?? null) : null,
       signedAt: contract.signed_at ?? null,
       changeOrderCount: signedChangeOrders.length,

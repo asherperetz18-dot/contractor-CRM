@@ -14,6 +14,7 @@ type ParentRow = {
   tax_rate_bp: number;
   assigned_to: string | null;
   kind: string;
+  job_address: string | null;
 };
 
 /**
@@ -41,7 +42,7 @@ export async function createChangeOrder(
   const supabase = await createClient();
   const { data: parent } = await supabase
     .from("estimates")
-    .select("id, company_id, lead_id, doc_number, status, tax_rate_bp, assigned_to, kind")
+    .select("id, company_id, lead_id, doc_number, status, tax_rate_bp, assigned_to, kind, job_address")
     .eq("id", parentId)
     .eq("company_id", profile.company_id)
     .maybeSingle<ParentRow>();
@@ -68,6 +69,8 @@ export async function createChangeOrder(
       status: "Draft" as EstimateStatus,
       assigned_to: parent.assigned_to ?? profile.id,
       tax_rate_bp: parent.tax_rate_bp,
+      // The extra work happens at the same site the contract names.
+      job_address: parent.job_address ?? null,
       // No deposit. The CSLB cap applies to the contract, and asking for
       // one again on every extra is how a job quietly exceeds it.
       deposit_percent_bp: 0,
