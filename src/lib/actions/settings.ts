@@ -103,6 +103,41 @@ export async function saveSocialLinks(input: SocialLinksInput) {
   return {};
 }
 
+/**
+ * The conversation analyzer's settings. Same shape as the AI Estimator's:
+ * an enable switch, a whitelisted model, and free-text prompt material.
+ */
+export async function saveAiAnalysisSettings(input: {
+  enabled: boolean;
+  model: string;
+  positiveSignals: string;
+  negativeSignals: string;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const ALLOWED = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"];
+  const model = ALLOWED.includes(input.model) ? input.model : "claude-opus-5";
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({
+      ai_analysis_enabled: input.enabled,
+      ai_analysis_model: model,
+      ai_analysis_positive_signals: input.positiveSignals.trim() || null,
+      ai_analysis_negative_signals: input.negativeSignals.trim() || null,
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/ai-analysis");
+  return {};
+}
+
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 

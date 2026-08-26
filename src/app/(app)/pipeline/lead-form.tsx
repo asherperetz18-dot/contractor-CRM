@@ -11,6 +11,7 @@ import { PicklistSelect } from "@/components/ui/picklist-select";
 import { LeadEstimateButton } from "./lead-estimate-button";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { LeadAppointmentsPanel } from "./lead-appointments-panel";
+import { LeadAnalysisPanel } from "./lead-analysis-panel";
 import { LeadViewTrail } from "./lead-view-trail";
 import {
   addHour as addHourTo,
@@ -1027,6 +1028,8 @@ export function LeadForm({
             )}
           </div>
         )}
+
+        {lead && <LeadAnalysisPanel leadId={lead.id} />}
 
         <Field label="Notes">
           <textarea

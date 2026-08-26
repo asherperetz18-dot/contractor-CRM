@@ -55,6 +55,8 @@ export const BACKUP_TABLES = [
   "vendors",
   "job_expenses",
   "lead_duplicate_dismissals",
+  "lead_trash",
+  "lead_ai_analysis",
 ] as const;
 
 const PAGE_SIZE = 1000;

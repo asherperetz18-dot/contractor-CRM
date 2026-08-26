@@ -342,7 +342,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "🤖",
         href: "/settings/ai-estimator",
       },
-      { title: "AI Analysis", desc: "Positive and negative signal prompts used by the AI analyzer", icon: "🧠" },
+      {
+      title: "AI Analysis",
+      desc: "Positive and negative signal prompts used by the AI analyzer",
+      icon: "🧠",
+      href: "/settings/ai-analysis",
+    },
       {
         title: "AI Activity Log",
         desc: "Every change the AI assistant suggested, who approved or dismissed it, and what it changed",
