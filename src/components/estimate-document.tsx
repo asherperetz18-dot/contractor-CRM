@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import {
+  discountPercentLabel,
   moneyCents,
   paymentPercentOfTotal,
   quantityIsMeaningful,
@@ -442,6 +443,16 @@ export function EstimateDocument({
           <span>Subtotal</span>
           <span>{moneyCents(estimate.subtotal_cents)}</span>
         </div>
+        {(estimate.discount_cents ?? 0) > 0 && (
+          <div className="estdoc-total-row estdoc-discount">
+            <span>
+              {estimate.discount_label || "Discount"}
+              {estimate.discount_type === "percent" &&
+                ` (${discountPercentLabel(estimate.discount_value)})`}
+            </span>
+            <span>−{moneyCents(estimate.discount_cents)}</span>
+          </div>
+        )}
         {estimate.tax_cents > 0 && (
           <div className="estdoc-total-row">
             <span>Sales tax</span>

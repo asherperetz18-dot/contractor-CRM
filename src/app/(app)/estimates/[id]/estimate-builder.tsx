@@ -6,6 +6,7 @@ import {
   centsFromInput,
   centsToInput,
   computeEstimateTotals,
+  discountPercentLabel,
   estimateMargin,
   formatMarginPct,
   editWillRecallEstimate,
@@ -140,6 +141,20 @@ export function EstimateBuilder({
   const [expiresAt, setExpiresAt] = useState(estimate.expires_at ?? "");
   const [startDate, setStartDate] = useState(estimate.start_date ?? "");
   const [completionDate, setCompletionDate] = useState(estimate.completion_date ?? "");
+  // The discount as the rep is editing it. Percent is typed as "5",
+  // amount as dollars -- both become the wire format only at save time.
+  const [discountOn, setDiscountOn] = useState(!!estimate.discount_type);
+  const [discountType, setDiscountType] = useState<"percent" | "amount">(
+    estimate.discount_type === "amount" ? "amount" : "percent"
+  );
+  const [discountInput, setDiscountInput] = useState(
+    estimate.discount_type === "percent"
+      ? String(estimate.discount_value / 100)
+      : estimate.discount_type === "amount"
+        ? (estimate.discount_value / 100).toFixed(2)
+        : ""
+  );
+  const [discountLabel, setDiscountLabel] = useState(estimate.discount_label ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   // Which line item has its scope editor open, by row key.
@@ -178,7 +193,17 @@ export function EstimateBuilder({
     // Blank means unknown, which is not the same as zero.
     cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
   }));
-  const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp);
+  // The discount exactly as it will be saved, so the live total below
+  // matches the stored one to the cent.
+  const discountValue = discountOn
+    ? discountType === "percent"
+      ? Math.max(0, Math.min(10000, Math.round((Number(discountInput) || 0) * 100)))
+      : centsFromInput(discountInput)
+    : 0;
+  const discountForTotals =
+    discountOn && discountValue > 0 ? { type: discountType, value: discountValue } : null;
+
+  const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp, discountForTotals);
 
   // Section totals from the rows on screen, not from what is saved. A
   // subtotal that lags behind the price typed a moment ago reads as a bug
@@ -275,7 +300,10 @@ export function EstimateBuilder({
           unit_price_cents: centsFromInput(r.unitPrice),
           taxable: r.taxable,
           cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
-        }))
+        })),
+        discountForTotals
+          ? { ...discountForTotals, label: discountLabel.trim() || null }
+          : null
       );
       if (res.error) return setError(res.error);
 
@@ -882,6 +910,66 @@ export function EstimateBuilder({
           <span>Subtotal</span>
           <span className="mono">{moneyCents(totals.subtotalCents)}</span>
         </div>
+        {!locked && !discountOn && (
+          <div className="est-total-row">
+            <button
+              type="button"
+              className="btn-ghost small"
+              onClick={() => setDiscountOn(true)}
+            >
+              + Add discount
+            </button>
+            <span />
+          </div>
+        )}
+        {discountOn && (
+          <>
+            <div className="est-total-row est-discount-row">
+              <span>
+                {discountLabel.trim() || "Discount"}
+                {discountType === "percent" && discountValue > 0 && (
+                  <span className="est-tax-rate"> ({discountPercentLabel(discountValue)})</span>
+                )}
+              </span>
+              <span className="mono">−{moneyCents(totals.discountCents)}</span>
+            </div>
+            {!locked && (
+              <div className="est-discount-editor">
+                <select
+                  value={discountType}
+                  onChange={(e) => setDiscountType(e.target.value as "percent" | "amount")}
+                >
+                  <option value="percent">%</option>
+                  <option value="amount">$</option>
+                </select>
+                <input
+                  value={discountInput}
+                  onChange={(e) => setDiscountInput(e.target.value)}
+                  placeholder={discountType === "percent" ? "5" : "2500"}
+                  inputMode="decimal"
+                />
+                <input
+                  className="est-discount-label"
+                  value={discountLabel}
+                  onChange={(e) => setDiscountLabel(e.target.value)}
+                  placeholder="Name it — e.g. Signing-today discount"
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => {
+                    setDiscountOn(false);
+                    setDiscountInput("");
+                    setDiscountLabel("");
+                  }}
+                  aria-label="Remove discount"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </>
+        )}
         <div className="est-total-row">
           <span>
             Tax

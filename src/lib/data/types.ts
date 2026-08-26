@@ -1538,6 +1538,14 @@ export type Estimate = {
   completion_customer_items?: string | null;
   tax_rate_bp: number;
   subtotal_cents: number;
+  /** 'percent' | 'amount'; null means no discount on this document. */
+  discount_type: string | null;
+  /** Basis points when percent, cents when amount. */
+  discount_value: number;
+  /** What the customer sees the discount called; null falls back to "Discount". */
+  discount_label: string | null;
+  /** Snapshot of the computed discount, written on every totals recalc. */
+  discount_cents: number;
   tax_cents: number;
   total_cents: number;
   // Snapshotted policy, so changing the company's deposit rule next year
@@ -1625,13 +1633,26 @@ export function lineTotalCents(quantity: number, unitPriceCents: number): number
   return Math.round((Number(quantity) || 0) * (Number(unitPriceCents) || 0));
 }
 
+/** A document-level discount: percent (value in basis points) or a
+ *  fixed amount (value in cents). Null/undefined means none. */
+export type EstimateDiscount = {
+  type: "percent" | "amount";
+  value: number;
+} | null;
+
 // The single totals calculation, shared by the builder's live preview and
 // the server action that saves. Two implementations would eventually
 // disagree, and the number the rep saw is the number the customer signs.
+//
+// The discount comes off the subtotal before tax, and the taxable base
+// shrinks proportionally: in California materials are taxed while labor
+// generally is not, so a discount has to shave both fairly rather than
+// quietly taxing the customer on money they are not paying.
 export function computeEstimateTotals(
   items: Pick<EstimateItem, "quantity" | "unit_price_cents" | "taxable">[],
-  taxRateBp: number
-): { subtotalCents: number; taxCents: number; totalCents: number } {
+  taxRateBp: number,
+  discount?: EstimateDiscount
+): { subtotalCents: number; discountCents: number; taxCents: number; totalCents: number } {
   let subtotalCents = 0;
   let taxableCents = 0;
   for (const item of items) {
@@ -1639,8 +1660,34 @@ export function computeEstimateTotals(
     subtotalCents += line;
     if (item.taxable) taxableCents += line;
   }
-  const taxCents = Math.round((taxableCents * (Number(taxRateBp) || 0)) / 10000);
-  return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
+
+  let discountCents = 0;
+  if (discount && subtotalCents > 0) {
+    discountCents =
+      discount.type === "percent"
+        ? Math.round((subtotalCents * (Number(discount.value) || 0)) / 10000)
+        : Math.round(Number(discount.value) || 0);
+    // Never below zero, never more than the work itself.
+    discountCents = Math.min(Math.max(0, discountCents), subtotalCents);
+  }
+
+  const taxableAfter =
+    subtotalCents > 0
+      ? Math.round((taxableCents * (subtotalCents - discountCents)) / subtotalCents)
+      : 0;
+  const taxCents = Math.round((taxableAfter * (Number(taxRateBp) || 0)) / 10000);
+  return {
+    subtotalCents,
+    discountCents,
+    taxCents,
+    totalCents: subtotalCents - discountCents + taxCents,
+  };
+}
+
+/** "5%" from basis points, without trailing zeros ("7.25%" stays exact). */
+export function discountPercentLabel(valueBp: number): string {
+  const pct = (Number(valueBp) || 0) / 100;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}%`;
 }
 
 // Margin, for the rep's eyes only. Every one of these is used exclusively

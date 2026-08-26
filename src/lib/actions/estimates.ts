@@ -58,7 +58,27 @@ type ItemsEstimateRow = {
   tax_rate_bp: number;
   deposit_percent_bp: number;
   deposit_cap_cents: number;
+  discount_type: string | null;
+  discount_value: number;
+  discount_label: string | null;
 };
+
+/** What the builder sends for the document-level discount. Null clears
+ *  it; undefined leaves whatever is stored untouched. */
+export type DiscountInput = {
+  type: "percent" | "amount";
+  value: number;
+  label: string | null;
+} | null;
+
+function cleanDiscount(input: DiscountInput): DiscountInput {
+  if (!input) return null;
+  if (input.type !== "percent" && input.type !== "amount") return null;
+  const value = Math.max(0, Math.round(Number(input.value) || 0));
+  // A percent discount past 100% is a typo, not a strategy.
+  if (input.type === "percent" && value > 10000) return { ...input, value: 10000, label: input.label };
+  return { type: input.type, value, label: input.label?.trim().slice(0, 120) || null };
+}
 
 type SendToCustomerRow = {
   id: string;
@@ -463,7 +483,9 @@ export async function updateEstimateDetails(
 // what the rep typed, not what the document is worth.
 export async function saveEstimateItems(
   estimateId: string,
-  items: ItemInput[]
+  items: ItemInput[],
+  // undefined = keep the stored discount; null = remove it; object = set it.
+  discount?: DiscountInput
 ): Promise<{ error?: string; totalCents?: number; recalled?: boolean }> {
   const guard = await requireEstimateEditor();
   if ("error" in guard) return guard;
@@ -471,7 +493,9 @@ export async function saveEstimateItems(
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, lead_id, status, version, tax_rate_bp, deposit_percent_bp, deposit_cap_cents")
+    .select(
+      "id, lead_id, status, version, tax_rate_bp, deposit_percent_bp, deposit_cap_cents, discount_type, discount_value, discount_label"
+    )
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<ItemsEstimateRow>();
@@ -542,11 +566,32 @@ export async function saveEstimateItems(
     if (error) return { error: error.message };
   }
 
-  const totals = computeEstimateTotals(clean, estimate.tax_rate_bp);
+  // undefined keeps what's stored, so callers that never heard of
+  // discounts leave them exactly as they are.
+  const effectiveDiscount =
+    discount === undefined
+      ? estimate.discount_type
+        ? cleanDiscount({
+            type: estimate.discount_type as "percent" | "amount",
+            value: estimate.discount_value,
+            label: estimate.discount_label,
+          })
+        : null
+      : cleanDiscount(discount);
+
+  const totals = computeEstimateTotals(
+    clean,
+    estimate.tax_rate_bp,
+    effectiveDiscount ? { type: effectiveDiscount.type, value: effectiveDiscount.value } : null
+  );
   const { error: totalsError } = await supabase
     .from("estimates")
     .update({
       subtotal_cents: totals.subtotalCents,
+      discount_type: effectiveDiscount?.type ?? null,
+      discount_value: effectiveDiscount?.value ?? 0,
+      discount_label: effectiveDiscount?.label ?? null,
+      discount_cents: totals.discountCents,
       tax_cents: totals.taxCents,
       total_cents: totals.totalCents,
       // Re-derived here as well as on the schedule save: changing a line
@@ -1363,11 +1408,12 @@ export async function saveEstimateDraft(
     start_date: string | null;
     completion_date: string | null;
   },
-  items: ItemInput[]
+  items: ItemInput[],
+  discount?: DiscountInput
 ): Promise<{ error?: string; totalCents?: number; recalled?: boolean }> {
   const detail = await updateEstimateDetails(estimateId, details);
   if (detail.error) return { error: detail.error };
-  return saveEstimateItems(estimateId, items);
+  return saveEstimateItems(estimateId, items, discount);
 }
 
 /**

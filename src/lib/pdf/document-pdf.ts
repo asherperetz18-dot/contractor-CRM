@@ -3,6 +3,7 @@ import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { groupIncludedItems } from "@/components/estimate-document";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 import {
+  discountPercentLabel,
   isPricelessKind,
   moneyCents,
   paymentPercentOfTotal,
@@ -65,6 +66,8 @@ const INK = rgb(0.1, 0.12, 0.16);
 const MUTED = rgb(0.42, 0.44, 0.48);
 const LINE = rgb(0.85, 0.85, 0.85);
 const DANGER = rgb(0.72, 0.15, 0.15);
+// The house green (#2f855a): a discount is savings, and savings read green.
+const SAVINGS = rgb(0x2f / 255, 0x85 / 255, 0x5a / 255);
 
 function longDate(value: string | null | undefined): string {
   if (!value) return "—";
@@ -365,6 +368,17 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
 
     // 7. Totals
     w.row("Subtotal", moneyCents(estimate.subtotal_cents), { size: 10 });
+    if ((estimate.discount_cents ?? 0) > 0) {
+      // Plain hyphen, not a minus sign: U+2212 is outside WinAnsi.
+      w.row(
+        (estimate.discount_label || "Discount") +
+          (estimate.discount_type === "percent"
+            ? ` (${discountPercentLabel(estimate.discount_value)})`
+            : ""),
+        `-${moneyCents(estimate.discount_cents)}`,
+        { size: 10, color: SAVINGS }
+      );
+    }
     if (estimate.tax_cents > 0) w.row("Sales tax", moneyCents(estimate.tax_cents), { size: 10 });
     w.row(isChangeOrder ? "This change order" : "Total", moneyCents(estimate.total_cents), {
       font: w.bold,
