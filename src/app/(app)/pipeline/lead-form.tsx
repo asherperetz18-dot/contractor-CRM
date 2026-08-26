@@ -148,6 +148,7 @@ export function LeadForm({
   );
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
+  const tabsRowRef = useRef<HTMLDivElement>(null);
   const [lastSaved, setLastSaved] = useState(form);
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
@@ -221,9 +222,16 @@ export function LeadForm({
   }
 
   function textPhone() {
+    // The thread already lives in this card's Texts tab. Jumping out to
+    // the Reply Inbox meant closing the modal and loading every
+    // conversation just to show this one. Scrolling to the tab row
+    // matters on small screens, where the panel opening below the fold
+    // makes the button look dead.
     if (!lead) return;
-    onCancel();
-    router.push(`/reply-inbox?leadId=${lead.id}`);
+    setTab("Texts");
+    setTimeout(() => {
+      tabsRowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }
 
   /**
@@ -781,7 +789,7 @@ export function LeadForm({
         {lead && <LeadViewTrail leadId={lead.id} isAdmin={!!isAdmin} />}
 
         {lead && (
-          <div className="chip-row no-margin ta-tabs">
+          <div className="chip-row no-margin ta-tabs" ref={tabsRowRef}>
             {(
               ["Overview", "Appointments", "Tasks", "Notes", "Texts", "Calls", "Files"] as Tab[]
             ).map((t) => (
