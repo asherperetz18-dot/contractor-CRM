@@ -156,6 +156,10 @@ export function PortalHome({
   // once rather than retrying on every render.
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set());
 
+  // The stars appear twice (header and footer) and must agree on where
+  // they go, so the target is resolved once here.
+  const reviewHref = socialLinks.find((l) => l.label === "Google Reviews")?.href;
+
   const step = journeyStep(lead.stage, estimates);
   const todayISO = new Date().toISOString().slice(0, 10);
   const upcoming = events.filter((e) => e.date >= todayISO && e.status !== "Cancelled");
@@ -234,6 +238,27 @@ export function PortalHome({
           )}
           <span className="portal-company">{companyName}</span>
         </div>
+        {/* The compact echo of the footer stars. Deliberately not the
+            whole social row: the header is fought over by the brand and
+            Sign out, and the customer came for their project, not our
+            Facebook page. Hidden on narrow screens where even stars
+            would crowd the company name. */}
+        {socialLinks.length > 0 &&
+          (reviewHref ? (
+            <a
+              href={reviewHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="portal-header-stars"
+              aria-label="Leave us a five-star review"
+            >
+              ★★★★★
+            </a>
+          ) : (
+            <span className="portal-header-stars" aria-hidden="true">
+              ★★★★★
+            </span>
+          ))}
         <form action={portalSignOut}>
           <button type="submit" className="btn-ghost small">
             Sign out
@@ -594,28 +619,24 @@ export function PortalHome({
               </a>
             ))}
           </div>
-          {/* Five gold stars as the sign-off. When a Google Reviews link
-              is on file they take the customer straight there -- the
-              person most likely to tap five stars is one who means it. */}
-          {(() => {
-            const reviewHref = socialLinks.find((l) => l.label === "Google Reviews")?.href;
-            const stars = "★★★★★";
-            return reviewHref ? (
-              <a
-                href={reviewHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="portal-footer-stars"
-                aria-label="Leave us a five-star review"
-              >
-                {stars}
-              </a>
-            ) : (
-              <div className="portal-footer-stars" aria-hidden="true">
-                {stars}
-              </div>
-            );
-          })()}
+          {/* Five stars as the sign-off. When a Google Reviews link is
+              on file they take the customer straight there -- the person
+              most likely to tap five stars is one who means it. */}
+          {reviewHref ? (
+            <a
+              href={reviewHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="portal-footer-stars"
+              aria-label="Leave us a five-star review"
+            >
+              ★★★★★
+            </a>
+          ) : (
+            <div className="portal-footer-stars" aria-hidden="true">
+              ★★★★★
+            </div>
+          )}
         </footer>
       )}
     </div>

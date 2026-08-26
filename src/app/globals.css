@@ -3802,6 +3802,23 @@ tr.row-link:hover {
 a.portal-footer-stars:hover {
   color: #9a1e1e;
 }
+/* The header echo: smaller, centered between brand and Sign out, and
+   dropped entirely where a phone-width header can't spare the room. */
+.portal-header-stars {
+  font-size: 15px;
+  letter-spacing: 5px;
+  color: #c02626;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.portal-header-stars:hover {
+  color: #9a1e1e;
+}
+@media (max-width: 560px) {
+  .portal-header-stars {
+    display: none;
+  }
+}
 .portal-greeting {
   font-family: var(--font-oswald), sans-serif;
   font-size: 26px;
