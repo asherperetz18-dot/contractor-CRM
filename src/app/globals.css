@@ -3750,6 +3750,42 @@ tr.row-link:hover {
   margin: 0 auto;
   padding: 24px 16px 64px;
 }
+/* The company's signature line under everything: quiet until a link is
+   hovered, and pill-shaped targets big enough for thumbs. */
+.portal-footer {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px 40px;
+  text-align: center;
+}
+.portal-footer-title {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 10px;
+}
+.portal-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+.portal-social-link {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid rgba(45, 95, 138, 0.35);
+  border-radius: 999px;
+  font-size: 13px;
+  color: #2d5f8a;
+  text-decoration: none;
+  background: #fff;
+}
+.portal-social-link:hover {
+  background: #2d5f8a;
+  color: #fff;
+}
 .portal-greeting {
   font-family: var(--font-oswald), sans-serif;
   font-size: 26px;

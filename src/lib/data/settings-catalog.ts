@@ -49,7 +49,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         key: "logo",
       },
       { title: "Appearance & Theme", desc: "Theme colors, dark/light mode, and visual style", icon: "🎨" },
-      { title: "Social Media Links", desc: "LinkedIn, Facebook, Instagram, and other social profiles", icon: "🔗" },
+      {
+        title: "Social Media Links",
+        desc: "LinkedIn, Facebook, Instagram, and other social profiles — shown on the customer portal",
+        icon: "🔗",
+        href: "/settings/social-media",
+      },
       {
         title: "Licence & Insurance",
         desc: "Upload your contractor licence, bond and insurance certificates. Shown on the customer portal, and hidden automatically once one expires.",

@@ -127,6 +127,7 @@ export function PortalHome({
   companyName,
   companyPhone,
   companyLogo,
+  socialLinks,
   documents,
 }: {
   lead: Lead;
@@ -138,6 +139,8 @@ export function PortalHome({
   companyName: string;
   companyPhone: string | null;
   companyLogo: string | null;
+  /** Ready-made hrefs, already filtered to the profiles that exist. */
+  socialLinks: { label: string; href: string }[];
   documents: PortalDoc[];
 }) {
   const router = useRouter();
@@ -571,6 +574,28 @@ export function PortalHome({
           </section>
         )}
       </main>
+
+      {/* Below the content on every tab, not inside a card: it's the
+          company's signature line, not project information. Renders only
+          when at least one profile is filled in on the admin side. */}
+      {socialLinks.length > 0 && (
+        <footer className="portal-footer">
+          <span className="portal-footer-title">Follow {companyName}</span>
+          <div className="portal-footer-links">
+            {socialLinks.map((l) => (
+              <a
+                key={l.label}
+                href={l.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portal-social-link"
+              >
+                {l.label}
+              </a>
+            ))}
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

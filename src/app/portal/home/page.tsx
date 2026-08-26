@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
-import type { Event, Profile, SmsMessage } from "@/lib/data/types";
+import { socialHref, type Event, type Profile, type SmsMessage } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
 import { PortalHome, type PortalDoc, type PortalEstimate } from "./portal-home";
 
@@ -60,7 +60,9 @@ export default async function PortalHomePage() {
       .order("created_at", { ascending: true }),
     admin
       .from("company_profile")
-      .select("name, phone, logo_url")
+      .select(
+        "name, phone, logo_url, facebook_url, instagram_url, linkedin_url, youtube_url, tiktok_url, yelp_url, google_reviews_url"
+      )
       .eq("company_id", viewer.companyId)
       .maybeSingle(),
     admin.from("profiles").select("id, name, email, phone"),
@@ -91,7 +93,31 @@ export default async function PortalHomePage() {
       .returns<PortalDoc[]>(),
   ]);
 
-  const companyRow = company as { name: string | null; phone: string | null; logo_url: string | null } | null;
+  const companyRow = company as {
+    name: string | null;
+    phone: string | null;
+    logo_url: string | null;
+    facebook_url: string | null;
+    instagram_url: string | null;
+    linkedin_url: string | null;
+    youtube_url: string | null;
+    tiktok_url: string | null;
+    yelp_url: string | null;
+    google_reviews_url: string | null;
+  } | null;
+
+  // Resolved to real hrefs server-side (handles like "@lahome" expand to
+  // their network's domain), so the client component only ever renders
+  // ready-made links. Blank profiles never make it into the list.
+  const socialLinks = [
+    { label: "Facebook", href: socialHref(companyRow?.facebook_url ?? null, "facebook.com/") },
+    { label: "Instagram", href: socialHref(companyRow?.instagram_url ?? null, "instagram.com/") },
+    { label: "LinkedIn", href: socialHref(companyRow?.linkedin_url ?? null, "linkedin.com/company/") },
+    { label: "YouTube", href: socialHref(companyRow?.youtube_url ?? null, "youtube.com/@") },
+    { label: "TikTok", href: socialHref(companyRow?.tiktok_url ?? null, "tiktok.com/@") },
+    { label: "Yelp", href: socialHref(companyRow?.yelp_url ?? null) },
+    { label: "Google Reviews", href: socialHref(companyRow?.google_reviews_url ?? null) },
+  ].filter((l) => l.href);
 
   // A deposit is only owed on a signed contract, and only until it lands.
   const estimates: PortalEstimate[] = (estimateRows ?? []).map((e) => {
@@ -113,6 +139,7 @@ export default async function PortalHomePage() {
       companyName={companyRow?.name || "Your Contractor"}
       companyPhone={companyRow?.phone || null}
       companyLogo={companyRow?.logo_url || null}
+      socialLinks={socialLinks}
       // Filtered here rather than in the query: a lapsed certificate shown
       // to a customer is worse than none, and "hide it once it expires"
       // has to hold without anyone remembering to untick a box.

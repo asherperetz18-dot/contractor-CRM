@@ -63,6 +63,46 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
   return {};
 }
 
+export type SocialLinksInput = {
+  facebook_url: string;
+  instagram_url: string;
+  linkedin_url: string;
+  youtube_url: string;
+  tiktok_url: string;
+  yelp_url: string;
+  google_reviews_url: string;
+};
+
+/**
+ * Saves the social profiles on their own, so the Social Media Links
+ * page doesn't have to round-trip the entire company profile to change
+ * one URL. Facebook and Instagram are the same columns the Company
+ * Profile page edits -- one source of truth, two doors to it.
+ */
+export async function saveSocialLinks(input: SocialLinksInput) {
+  const companyId = await getCurrentCompanyId();
+  if (!companyId) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("company_profile")
+    .update({
+      facebook_url: input.facebook_url.trim() || null,
+      instagram_url: input.instagram_url.trim() || null,
+      linkedin_url: input.linkedin_url.trim() || null,
+      youtube_url: input.youtube_url.trim() || null,
+      tiktok_url: input.tiktok_url.trim() || null,
+      yelp_url: input.yelp_url.trim() || null,
+      google_reviews_url: input.google_reviews_url.trim() || null,
+    })
+    .eq("company_id", companyId);
+
+  if (error) return { error: error.message };
+  revalidatePath("/settings/social-media");
+  revalidatePath("/settings/company-profile");
+  return {};
+}
+
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 

@@ -492,6 +492,11 @@ export type CompanyProfile = {
   website: string | null;
   facebook_url: string | null;
   instagram_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+  tiktok_url: string | null;
+  yelp_url: string | null;
+  google_reviews_url: string | null;
   call_forward_number: string | null;
   call_forward_timeout: number;
   new_lead_alert_phones: string | null;
@@ -650,6 +655,24 @@ export function smsLink(raw: string | null, handleDomain?: string): string {
     .replace(/^https?:\/\//i, "")
     .replace(/^www\./i, "")
     .replace(/\/+$/, "");
+}
+
+/**
+ * A social profile as a clickable href: smsLink's cleanup plus the
+ * https:// a browser needs. Handles get their own expansion rather than
+ * smsLink's, because some networks keep the @ in the URL (tiktok.com/@x,
+ * youtube.com/@x) and some drop it (instagram.com/x) -- handleBase is
+ * the full prefix up to the handle, "tiktok.com/@" included. Empty in
+ * means empty out, so callers filter rather than render a dead anchor.
+ */
+export function socialHref(raw: string | null, handleBase?: string): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed) return "";
+  if (handleBase && trimmed.startsWith("@")) {
+    return `https://${handleBase}${trimmed.slice(1)}`;
+  }
+  const link = smsLink(trimmed);
+  return link ? `https://${link}` : "";
 }
 
 export function fillQuickTextVariables(
