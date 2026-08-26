@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates } from "@/lib/data/types";
 
-const MAX_INPUT_CHARS = 6000;
+// Roomy on purpose: a commercial remodel's scope ran past the old
+// 6,000 and the feature refused exactly the documents that needed
+// tidying most. ~24k chars is a few thousand tokens -- still cheap.
+const MAX_INPUT_CHARS = 24000;
 
 type EstimatorSettings = {
   ai_estimator_enabled: boolean;
@@ -146,7 +149,10 @@ export async function formatScopeWithAI(
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
       model: "claude-opus-5",
-      max_tokens: 2000,
+      // Must fit a formatted copy of the whole input, or the response
+      // truncates -- and a silently cut-off scope replacing the rep's
+      // full text destroys priced commitments. Guarded below as well.
+      max_tokens: 8000,
       system,
       output_config: { effort: "low" },
       messages: [{ role: "user", content: input }],
@@ -154,6 +160,10 @@ export async function formatScopeWithAI(
 
     if (response.stop_reason === "refusal") {
       return { error: "The model declined to format that text." };
+    }
+    if (response.stop_reason === "max_tokens") {
+      // Never hand back a truncated scope as if it were the whole thing.
+      return { error: "That scope is too long to format in one pass. Split it and try again." };
     }
 
     const formatted = response.content
