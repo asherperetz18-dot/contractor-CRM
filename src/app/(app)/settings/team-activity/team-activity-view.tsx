@@ -683,7 +683,7 @@ export function TeamActivityView({
                                             {shown.map((o) => (
                                               <Link
                                                 key={`${o.leadId}:${o.openedAt}`}
-                                                href={`/pipeline?leadId=${o.leadId}`}
+                                                href={`/contacts?openLead=${o.leadId}`}
                                                 className="touch-lead-chip"
                                               >
                                                 {o.leadName}

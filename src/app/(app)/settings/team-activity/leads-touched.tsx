@@ -77,7 +77,11 @@ export function LeadsTouched({
                   </span>
                 </td>
                 <td>
-                  <Link href={`/pipeline?leadId=${t.leadId}`} className="ur-crumb-link">
+                  {/* /contacts?openLead is the deep link that actually
+                      opens the card; the pipeline page ignores a leadId
+                      param, so linking there landed on the board with
+                      nothing open. */}
+                  <Link href={`/contacts?openLead=${t.leadId}`} className="ur-crumb-link">
                     {t.leadName}
                   </Link>
                 </td>
