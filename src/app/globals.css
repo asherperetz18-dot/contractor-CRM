@@ -4233,6 +4233,26 @@ tr.row-link:hover {
   opacity: 0.65;
   margin-top: 3px;
 }
+/* Carrier delivery report under an outbound bubble. Failure is loud on
+   purpose -- an office that believes a landline got their text stops
+   chasing the customer. Outbound bubbles are dark blue with light
+   text, so the marks use light tints there; the plain colors only
+   apply anywhere a mark lands on a light background. */
+.msg-delivery-ok {
+  color: #2f855a;
+}
+.msg-delivery-bad {
+  color: #c02626;
+  font-weight: 600;
+}
+.lead-msg-out .msg-delivery-ok,
+.ri-bubble-out .msg-delivery-ok {
+  color: #8fe3b0;
+}
+.lead-msg-out .msg-delivery-bad,
+.ri-bubble-out .msg-delivery-bad {
+  color: #ffb3a6;
+}
 .lead-thread-system {
   align-self: center;
   font-size: 11px;

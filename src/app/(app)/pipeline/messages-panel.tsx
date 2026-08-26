@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { repMessagePreview } from "@/lib/data/types";
+import { DeliveryTag } from "@/components/ui/delivery-tag";
 import {
   getLeadMessages,
   getRepMessages,
@@ -259,6 +260,11 @@ export function MessagesPanel({
                     minute: "2-digit",
                   })}
                   {channelTag(m.channel) && <> · {channelTag(m.channel)}</>}
+                  <DeliveryTag
+                    direction={m.direction}
+                    status={m.delivery_status}
+                    errorCode={m.delivery_error}
+                  />
                 </div>
               </div>
             )

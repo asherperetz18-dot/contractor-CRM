@@ -1023,6 +1023,10 @@ export type SmsMessage = {
   body: string;
   twilio_sid: string | null;
   created_at: string;
+  /** Twilio's delivery report for an outbound text; null until (and
+   *  unless) the carrier says something definite. */
+  delivery_status: string | null;
+  delivery_error: string | null;
 };
 
 // Normalizes to the last 10 digits so numbers stored/typed with

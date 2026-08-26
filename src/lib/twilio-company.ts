@@ -134,7 +134,7 @@ export async function companyForInboundNumber(toNumber: string): Promise<string 
     .select("company_id, phone_number")
     .returns<{ company_id: string; phone_number: string }[]>();
   const extraMatch = (extra ?? []).find(
-    (c) => c.phone_number.replace(/D/g, "").slice(-10) === digits
+    (c) => c.phone_number.replace(/\D/g, "").slice(-10) === digits
   );
   return extraMatch?.company_id ?? null;
 }

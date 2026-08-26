@@ -11,6 +11,7 @@ import {
   repMessagePreview,
 } from "@/lib/data/types";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import { smsStatusCallbackUrl } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
@@ -54,6 +55,9 @@ export async function sendSms(
   const { accountSid, authToken, phoneNumber: fromNumber } = twilioEnv;
 
   const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+  const sendParams = new URLSearchParams({ To: toNumber, From: fromNumber, Body: trimmedBody });
+  const statusCallback = smsStatusCallbackUrl();
+  if (statusCallback) sendParams.set("StatusCallback", statusCallback);
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
     {
@@ -62,7 +66,7 @@ export async function sendSms(
         Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ To: toNumber, From: fromNumber, Body: trimmedBody }),
+      body: sendParams,
     }
   );
 
@@ -97,6 +101,10 @@ export type LeadMessage = {
   body: string;
   channel: string;
   created_at: string;
+  /** Twilio's word on an outbound text: delivered, undelivered, failed,
+   *  or an in-flight state. Null before the carrier has said anything. */
+  delivery_status: string | null;
+  delivery_error: string | null;
 };
 
 /**
@@ -129,7 +137,7 @@ export async function getLeadMessages(
 
   const { data: linked } = await supabase
     .from("sms_messages")
-    .select("id, direction, body, channel, created_at, from_number, to_number")
+    .select("id, direction, body, channel, created_at, from_number, to_number, delivery_status, delivery_error")
     .eq("company_id", profile.company_id)
     .eq("lead_id", leadId)
     .order("created_at", { ascending: true });
@@ -175,6 +183,8 @@ export async function getLeadMessages(
       body: row.body,
       channel: row.channel,
       created_at: row.created_at,
+      delivery_status: row.delivery_status,
+      delivery_error: row.delivery_error,
     }));
 
   if (clientNumbers.length > 0) {
@@ -189,7 +199,7 @@ export async function getLeadMessages(
     if (safeNumbers.length > 0) {
       const { data: orphans } = await supabase
         .from("sms_messages")
-        .select("id, direction, body, channel, created_at, from_number, to_number")
+        .select("id, direction, body, channel, created_at, from_number, to_number, delivery_status, delivery_error")
         .eq("company_id", profile.company_id)
         .is("lead_id", null)
         .order("created_at", { ascending: true });
@@ -207,6 +217,8 @@ export async function getLeadMessages(
             body: row.body,
             channel: row.channel,
             created_at: row.created_at,
+            delivery_status: row.delivery_status,
+            delivery_error: row.delivery_error,
           });
         }
       }
@@ -374,7 +386,7 @@ export async function getRepMessages(
   const [{ data: rows }, { data: staff }] = await Promise.all([
     supabase
       .from("sms_messages")
-      .select("id, direction, body, channel, created_at, from_number, to_number")
+      .select("id, direction, body, channel, created_at, from_number, to_number, delivery_status, delivery_error")
       .eq("company_id", profile.company_id)
       .eq("lead_id", leadId)
       .order("created_at", { ascending: true }),
@@ -411,6 +423,8 @@ export async function getRepMessages(
       body: row.body,
       channel: row.channel,
       created_at: row.created_at,
+      delivery_status: row.delivery_status,
+      delivery_error: row.delivery_error,
       repName: staffByNumber.get(counterparty) ?? null,
       toNumber: row.to_number ?? row.from_number ?? "",
     });

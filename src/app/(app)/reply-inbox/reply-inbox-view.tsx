@@ -10,6 +10,7 @@ import {
   type SmsMessage,
 } from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
+import { DeliveryTag } from "@/components/ui/delivery-tag";
 
 type Conversation = {
   key: string;
@@ -240,6 +241,11 @@ export function ReplyInboxView({
                             hour: "numeric",
                             minute: "2-digit",
                           })}
+                          <DeliveryTag
+                            direction={m.direction}
+                            status={m.delivery_status}
+                            errorCode={m.delivery_error}
+                          />
                         </div>
                       </div>
                     ))

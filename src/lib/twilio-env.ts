@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "crypto";
+import { portalBaseUrl } from "@/lib/portal/session";
 
 // Vercel CLI (via `vercel env add`) has proven to intermittently prepend
 // a UTF-8 BOM to piped-in values on this machine/Windows setup -- every
@@ -41,12 +42,28 @@ export function validateTwilioSignature(
   return crypto.timingSafeEqual(expectedBuf, signatureBuf);
 }
 
+/**
+ * Where Twilio should report delivery progress for an outbound text.
+ *
+ * Same rule as the inbound-webhook auto-config: a dev machine must
+ * never hand Twilio a localhost URL, so callbacks are only requested
+ * when the app knows a public https origin. Without one the message
+ * still sends -- it just carries no delivery record.
+ */
+export function smsStatusCallbackUrl(): string | null {
+  const base = portalBaseUrl();
+  return base.startsWith("https://") ? `${base}/api/sms/status` : null;
+}
+
 export async function sendTwilioSms(
   to: string,
   body: string,
   env: NonNullable<ReturnType<typeof getTwilioEnv>>
 ): Promise<{ sid?: string; error?: string }> {
   const basicAuth = Buffer.from(`${env.accountSid}:${env.authToken}`).toString("base64");
+  const params = new URLSearchParams({ To: to, From: env.phoneNumber, Body: body });
+  const statusCallback = smsStatusCallbackUrl();
+  if (statusCallback) params.set("StatusCallback", statusCallback);
   const res = await fetch(
     `https://api.twilio.com/2010-04-01/Accounts/${env.accountSid}/Messages.json`,
     {
@@ -55,7 +72,7 @@ export async function sendTwilioSms(
         Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ To: to, From: env.phoneNumber, Body: body }),
+      body: params,
     }
   );
   const json = (await res.json().catch(() => null)) as { sid?: string; message?: string } | null;
