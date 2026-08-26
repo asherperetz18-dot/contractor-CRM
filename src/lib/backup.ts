@@ -35,6 +35,26 @@ export const BACKUP_TABLES = [
   "call_logs",
   "dial_lists",
   "ai_action_proposals",
+  // The estimate tables were missing entirely -- the list predates the
+  // estimates feature and was never extended, which was discovered the
+  // day a deleted contact took a $121k estimate down with it and no
+  // backup had ever held a single estimate row. Priced, signed dollar
+  // commitments are the last thing a backup should be missing.
+  "estimates",
+  "estimate_groups",
+  "estimate_items",
+  "estimate_signers",
+  "estimate_files",
+  "estimate_payments",
+  "estimate_views",
+  "portal_payments",
+  "contract_templates",
+  "scope_templates",
+  "company_documents",
+  "company_phone_numbers",
+  "vendors",
+  "job_expenses",
+  "lead_duplicate_dismissals",
 ] as const;
 
 const PAGE_SIZE = 1000;
