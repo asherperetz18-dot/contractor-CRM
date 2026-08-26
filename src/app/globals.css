@@ -4302,6 +4302,71 @@ a.portal-header-stars:hover {
   opacity: 0.65;
   margin-top: 3px;
 }
+/* Project checklists: a quiet chip on the job row that opens the list
+   beneath it. Done items keep their who-and-when, because "who signed
+   off the final walkthrough" is the whole point of a checklist. */
+.proj-check-chip {
+  border: 1px solid #d8d4cc;
+  background: #fff;
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.proj-check-chip-done {
+  border-color: #2f855a;
+  color: #2f855a;
+}
+.proj-checklist-row td {
+  background: #faf8f4;
+}
+.proj-checklist {
+  padding: 4px 2px 8px;
+  max-width: 640px;
+}
+.proj-checklist-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.proj-checklist-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.proj-check-box {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+.proj-check-done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.proj-check-meta {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+.proj-check-remove {
+  margin-left: auto;
+  opacity: 0.5;
+}
+.proj-checklist-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.proj-checklist-tools input {
+  flex: 1;
+  min-width: 160px;
+}
+
 /* The analyzer's readout on the contact card. Temperature reads at a
    glance; signals are quiet lists, green for buying, red for dying. */
 .ai-temp {

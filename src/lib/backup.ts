@@ -57,6 +57,8 @@ export const BACKUP_TABLES = [
   "lead_duplicate_dismissals",
   "lead_trash",
   "lead_ai_analysis",
+  "checklist_templates",
+  "project_checklist_items",
 ] as const;
 
 const PAGE_SIZE = 1000;

@@ -225,7 +225,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/project-types",
       },
       { title: "Project Statuses", desc: "Manage the production statuses a project can move through", icon: "📶" },
-      { title: "Checklist Templates", desc: "Template CRUD for project checklists", icon: "☑" },
+      {
+        title: "Checklist Templates",
+        desc: "Reusable step lists — apply to any sold job on the Projects page and check off as work happens",
+        icon: "☑",
+        href: "/settings/checklist-templates",
+      },
       { title: "Schedule Templates", desc: "Templates for project schedules and Gantt charts", icon: "📋" },
       { title: "Schedule Categories", desc: "Category list for schedule items (Phase, Crew, Material, Inspection)", icon: "🗂" },
       {

@@ -178,5 +178,46 @@ export default async function ProjectsPage() {
   // migration has run, the column is absent from these rows and the
   // button could only fail -- so it does not appear.
   const holdReady = estimates.length === 0 || "project_on_hold" in estimates[0];
-  return <ProjectsView projects={cards} canManage={isAdminRole(profile) && holdReady} />;
+
+  // Checklists arrived in 0104. Queried separately and tolerantly, so
+  // the money view never depends on the newest migration having run.
+  const [{ data: checklistRows, error: clErr }, { data: templateRows }] = await Promise.all([
+    supabase
+      .from("project_checklist_items")
+      .select("id, estimate_id, label, sort_order, completed_at, completed_by")
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true }),
+    supabase
+      .from("checklist_templates")
+      .select("id, name, items, updated_at")
+      .eq("company_id", companyId)
+      .order("name", { ascending: true }),
+  ]);
+
+  return (
+    <ProjectsView
+      projects={cards}
+      canManage={isAdminRole(profile) && holdReady}
+      checklistReady={!clErr}
+      checklistItems={(checklistRows as ChecklistRow[]) ?? []}
+      templates={
+        ((templateRows as { id: string; name: string; items: string[] }[]) ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          count: t.items?.length ?? 0,
+        }))
+      }
+      canEditChecklist={isAdminRole(profile)}
+      memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
+    />
+  );
 }
+
+type ChecklistRow = {
+  id: string;
+  estimate_id: string;
+  label: string;
+  sort_order: number;
+  completed_at: string | null;
+  completed_by: string | null;
+};

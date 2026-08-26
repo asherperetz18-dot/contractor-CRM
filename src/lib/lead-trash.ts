@@ -39,6 +39,7 @@ const ESTIMATE_CHILDREN = [
   "estimate_payments",
   "estimate_views",
   "estimate_files",
+  "project_checklist_items",
 ] as const;
 
 // Tables that survive the delete but lose their pointer (on delete set

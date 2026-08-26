@@ -1,14 +1,30 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import React, { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { setProjectHold } from "@/lib/actions/estimates";
+import {
+  addProjectChecklistItem,
+  applyChecklistTemplate,
+  deleteProjectChecklistItem,
+  setProjectChecklistItemDone,
+} from "@/lib/actions/checklists";
 import {
   mapsUrl,
   moneyCents,
   projectTriageOrder,
   type ProjectRollup,
 } from "@/lib/data/types";
+
+export type ChecklistItemRow = {
+  id: string;
+  estimate_id: string;
+  label: string;
+  sort_order: number;
+  completed_at: string | null;
+  completed_by: string | null;
+};
 
 export type ProjectStatus = "in_progress" | "on_hold" | "complete" | "cancelled";
 
@@ -46,13 +62,34 @@ const STATUS_TAG: Record<ProjectStatus, string | null> = {
 export function ProjectsView({
   projects,
   canManage,
+  checklistReady,
+  checklistItems,
+  templates,
+  canEditChecklist,
+  memberNames,
 }: {
   projects: ProjectCard[];
   canManage: boolean;
+  checklistReady: boolean;
+  checklistItems: ChecklistItemRow[];
+  templates: { id: string; name: string; count: number }[];
+  canEditChecklist: boolean;
+  memberNames: Record<string, string>;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
+  const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  const itemsByEstimate = useMemo(() => {
+    const map = new Map<string, ChecklistItemRow[]>();
+    for (const item of checklistItems) {
+      const list = map.get(item.estimate_id) ?? [];
+      list.push(item);
+      map.set(item.estimate_id, list);
+    }
+    return map;
+  }, [checklistItems]);
 
   // Cancelled jobs are dead weight: they stay reachable under their own
   // chip, but every figure and every other list on this page speaks only
@@ -231,8 +268,12 @@ export function ProjectsView({
               </tr>
             </thead>
             <tbody>
-              {shown.map((p) => (
-                <tr key={p.estimateId}>
+              {shown.map((p) => {
+                const items = itemsByEstimate.get(p.estimateId) ?? [];
+                const doneCount = items.filter((i) => i.completed_at).length;
+                return (
+                <React.Fragment key={p.estimateId}>
+                <tr>
                   <td>
                     <Link href={`/estimates/${p.estimateId}`} className="ur-name">
                       {p.title || "Untitled job"}
@@ -242,6 +283,27 @@ export function ProjectsView({
                       {p.changeOrderCount > 0 &&
                         ` · ${p.changeOrderCount} change order${p.changeOrderCount === 1 ? "" : "s"}`}
                       {p.repName && ` · ${p.repName}`}
+                      {checklistReady && (items.length > 0 || canEditChecklist) && (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            className={
+                              "proj-check-chip" +
+                              (items.length > 0 && doneCount === items.length
+                                ? " proj-check-chip-done"
+                                : "")
+                            }
+                            onClick={() =>
+                              setOpenChecklist(
+                                openChecklist === p.estimateId ? null : p.estimateId
+                              )
+                            }
+                          >
+                            ☑ {items.length > 0 ? `${doneCount}/${items.length}` : "Checklist"}
+                          </button>
+                        </>
+                      )}
                     </div>
                     {(STATUS_TAG[p.status] ||
                       (canManage && p.status !== "complete" && p.status !== "cancelled")) && (
@@ -315,11 +377,202 @@ export function ProjectsView({
                     )}
                   </td>
                 </tr>
-              ))}
+                {openChecklist === p.estimateId && (
+                  <tr className="proj-checklist-row">
+                    <td colSpan={7}>
+                      <ProjectChecklist
+                        estimateId={p.estimateId}
+                        items={items}
+                        templates={templates}
+                        canEdit={canEditChecklist}
+                        memberNames={memberNames}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The checklist under one project row. Check-off is for anyone who can
+ * see this page; changing the list (add, delete, apply a template) is
+ * Office/Admin -- the same split the database policies enforce.
+ */
+function ProjectChecklist({
+  estimateId,
+  items,
+  templates,
+  canEdit,
+  memberNames,
+}: {
+  estimateId: string;
+  items: ChecklistItemRow[];
+  templates: { id: string; name: string; count: number }[];
+  canEdit: boolean;
+  memberNames: Record<string, string>;
+}) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [busy, setBusy] = useState("");
+  const [newItem, setNewItem] = useState("");
+  const [templateId, setTemplateId] = useState("");
+  const [error, setError] = useState("");
+
+  const refresh = () => startTransition(() => router.refresh());
+
+  async function toggle(item: ChecklistItemRow) {
+    setBusy(item.id);
+    setError("");
+    const result = await setProjectChecklistItemDone(item.id, !item.completed_at);
+    setBusy("");
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+  }
+
+  async function add() {
+    if (!newItem.trim()) return;
+    setBusy("add");
+    setError("");
+    const result = await addProjectChecklistItem(estimateId, newItem);
+    setBusy("");
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setNewItem("");
+    refresh();
+  }
+
+  async function applyTemplate() {
+    if (!templateId) return;
+    setBusy("template");
+    setError("");
+    const result = await applyChecklistTemplate(estimateId, templateId);
+    setBusy("");
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    setTemplateId("");
+    refresh();
+  }
+
+  async function remove(item: ChecklistItemRow) {
+    setBusy(item.id);
+    setError("");
+    const result = await deleteProjectChecklistItem(item.id);
+    setBusy("");
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+  }
+
+  return (
+    <div className="proj-checklist">
+      {items.length === 0 ? (
+        <p className="empty-hint" style={{ margin: "2px 0 8px" }}>
+          No checklist on this job yet
+          {templates.length > 0 ? " — apply a template below or add steps by hand." : "."}
+        </p>
+      ) : (
+        <ul className="proj-checklist-list">
+          {items.map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                className="proj-check-box"
+                onClick={() => toggle(item)}
+                disabled={busy === item.id}
+                aria-label={item.completed_at ? "Mark not done" : "Mark done"}
+              >
+                {item.completed_at ? "✓" : "☐"}
+              </button>
+              <span className={item.completed_at ? "proj-check-done" : undefined}>
+                {item.label}
+              </span>
+              {item.completed_at && (
+                <span className="proj-check-meta">
+                  {memberNames[item.completed_by ?? ""] || "someone"} ·{" "}
+                  {new Date(item.completed_at).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </span>
+              )}
+              {canEdit && (
+                <button
+                  type="button"
+                  className="icon-btn proj-check-remove"
+                  onClick={() => remove(item)}
+                  disabled={busy === item.id}
+                  aria-label="Remove item"
+                >
+                  ✕
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {error && <p className="error-note">{error}</p>}
+
+      {canEdit && (
+        <div className="proj-checklist-tools">
+          <input
+            value={newItem}
+            onChange={(e) => setNewItem(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder="Add a step…"
+          />
+          <button
+            type="button"
+            className="btn-ghost small"
+            onClick={add}
+            disabled={busy === "add" || !newItem.trim()}
+          >
+            Add
+          </button>
+          {templates.length > 0 && (
+            <>
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">Apply a template…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.count})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn-ghost small"
+                onClick={applyTemplate}
+                disabled={busy === "template" || !templateId}
+              >
+                Apply
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
