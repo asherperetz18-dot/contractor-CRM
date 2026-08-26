@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { snapshotLead, TRASH_RETENTION_DAYS } from "@/lib/lead-trash";
 import {
   PRE_APPOINTMENT_STAGES,
+  canDeleteLeads,
+  leadDisplayName,
   normalizePhone,
   type LeadInput,
   type PipelineStage,
@@ -191,12 +195,71 @@ export async function updateLead(
   return {};
 }
 
+/**
+ * Deletes a contact -- into the trash, not into nothing.
+ *
+ * The delete stays a hard delete with its cascades, but the moment
+ * before it runs, the contact and everything the cascade is about to
+ * destroy (estimates included) is snapshotted into lead_trash, where it
+ * can be restored whole for 30 days from Settings → Trash. The $121k
+ * estimate that vanished with one accidental click on its contact is
+ * why.
+ *
+ * Also the permission check the old version never had: it relied on
+ * RLS alone, with no company scope and no role gate of its own.
+ */
 export async function deleteLead(id: string) {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canDeleteLeads(profile)) {
+    return { error: "You don't have permission to delete contacts." };
+  }
+
+  const admin = createAdminClient();
+  const { data: leadRow } = await admin
+    .from("leads")
+    .select("*")
+    .eq("id", id)
+    .eq("company_id", profile.company_id)
+    .maybeSingle();
+  if (!leadRow) return { error: "Contact not found." };
+
+  const payload = await snapshotLead(admin, leadRow);
+  const { data: trashRow, error: trashErr } = await admin
+    .from("lead_trash")
+    .insert({
+      lead_id: id,
+      company_id: profile.company_id,
+      display_name: leadDisplayName(leadRow as unknown as Parameters<typeof leadDisplayName>[0]),
+      deleted_by: profile.id,
+      payload,
+    })
+    .select("id")
+    .single<{ id: string }>();
+  // No snapshot, no delete. A trash that sometimes has the contact is
+  // worse than none -- it teaches people the delete is safe when it
+  // occasionally isn't.
+  if (trashErr || !trashRow) {
+    return { error: "Couldn't move that contact to the trash — nothing was deleted." };
+  }
+
+  // The delete itself still runs as the signed-in user, so RLS gets the
+  // final word even though the role check above already passed.
   const supabase = await createClient();
   const { error } = await supabase.from("leads").delete().eq("id", id);
+  if (error) {
+    await admin.from("lead_trash").delete().eq("id", trashRow.id);
+    return { error: error.message };
+  }
 
-  if (error) return { error: error.message };
+  // Opportunistic purge: the trash promises 30 days, not forever.
+  await admin
+    .from("lead_trash")
+    .delete()
+    .lt("deleted_at", new Date(Date.now() - TRASH_RETENTION_DAYS * 86400000).toISOString());
+
   revalidatePath("/pipeline");
+  revalidatePath("/contacts");
   return {};
 }
 
