@@ -3789,6 +3789,19 @@ tr.row-link:hover {
   color: #fff;
   border-color: #b8860b;
 }
+/* Red by request, same red as the portal's Review & Sign button so the
+   page keeps to one accent. */
+.portal-footer-stars {
+  display: block;
+  margin-top: 14px;
+  font-size: 20px;
+  letter-spacing: 8px;
+  color: #c02626;
+  text-decoration: none;
+}
+a.portal-footer-stars:hover {
+  color: #9a1e1e;
+}
 .portal-greeting {
   font-family: var(--font-oswald), sans-serif;
   font-size: 26px;

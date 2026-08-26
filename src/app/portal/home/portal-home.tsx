@@ -594,6 +594,28 @@ export function PortalHome({
               </a>
             ))}
           </div>
+          {/* Five gold stars as the sign-off. When a Google Reviews link
+              is on file they take the customer straight there -- the
+              person most likely to tap five stars is one who means it. */}
+          {(() => {
+            const reviewHref = socialLinks.find((l) => l.label === "Google Reviews")?.href;
+            const stars = "★★★★★";
+            return reviewHref ? (
+              <a
+                href={reviewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portal-footer-stars"
+                aria-label="Leave us a five-star review"
+              >
+                {stars}
+              </a>
+            ) : (
+              <div className="portal-footer-stars" aria-hidden="true">
+                {stars}
+              </div>
+            );
+          })()}
         </footer>
       )}
     </div>
