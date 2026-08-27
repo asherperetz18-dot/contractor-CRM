@@ -2556,6 +2556,10 @@ tr.row-link:hover {
   max-width: 460px;
   max-height: 88vh;
   overflow-y: auto;
+  /* Hitting the card's top or bottom must not hand the wheel to the
+     page underneath -- chained scrolling moves the background while the
+     card sits still, which reads as scrolling being broken. */
+  overscroll-behavior: contain;
 }
 .modal-wide {
   max-width: 640px;
