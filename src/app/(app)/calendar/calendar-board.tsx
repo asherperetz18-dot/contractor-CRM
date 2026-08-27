@@ -284,19 +284,25 @@ export function CalendarBoard({
     list.sort((a, b) => (a.time ?? "").localeCompare(b.time ?? ""));
   }
 
+  // Edge cells carry their real dates. They used to be dateStr: null,
+  // which rendered "Sep 1" in August's last row as a dead cell that
+  // silently showed no events -- a dispatcher booked an appointment
+  // there, saw the printed date empty, concluded the booking failed,
+  // and booked it twice. A visible date that hides its appointments is
+  // worse than not drawing the date at all.
   const monthCells: Cell[] = [];
   for (let i = 0; i < firstDow; i++) {
-    monthCells.push({ inMonth: false, day: daysInPrevMonth - firstDow + 1 + i, dateStr: null });
+    const day = daysInPrevMonth - firstDow + 1 + i;
+    // Through the Date constructor so December/January edges roll the
+    // year rather than producing month 0 or 13.
+    monthCells.push({ inMonth: false, day, dateStr: ymdFromDate(new Date(year, month - 1, day)) });
   }
   for (let d = 1; d <= daysInMonth; d++) {
     monthCells.push({ inMonth: true, day: d, dateStr: ymd(year, month, d) });
   }
   while (monthCells.length % 7 !== 0) {
-    monthCells.push({
-      inMonth: false,
-      day: monthCells.length - (firstDow + daysInMonth) + 1,
-      dateStr: null,
-    });
+    const day = monthCells.length - (firstDow + daysInMonth) + 1;
+    monthCells.push({ inMonth: false, day, dateStr: ymdFromDate(new Date(year, month + 1, day)) });
   }
 
   const weekStart = startOfWeek(cursorDate);
