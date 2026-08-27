@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   NO_DISPOSITION,
@@ -142,7 +143,21 @@ export function CallReportsView({
               return (
                 <tr key={c.id}>
                   <td>{new Date(c.created_at).toLocaleString()}</td>
-                  <td>{lead ? leadDisplayName(lead) : "—"}</td>
+                  <td>
+                    {lead ? (
+                      // Straight to the full contact card; closing it
+                      // lands back here (the `from` param) so a review
+                      // session can keep moving down the list.
+                      <Link
+                        href={`/contacts?openLead=${lead.id}&from=/call-reports`}
+                        className="ur-crumb-link"
+                      >
+                        {leadDisplayName(lead)}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="mono">{c.to_number}</td>
                   <td>{rep?.name || rep?.email || "—"}</td>
                   <td className="mono">{formatDuration(c.duration_seconds)}</td>
