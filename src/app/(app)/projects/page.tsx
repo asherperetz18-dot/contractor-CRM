@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
+  canManageCosts,
   canViewEstimates,
   isAdminRole,
   computeProjectRollup,
@@ -200,6 +201,7 @@ export default async function ProjectsPage() {
     <ProjectsView
       projects={cards}
       canManage={isAdminRole(profile) && holdReady}
+      canAddCosts={canManageCosts(profile)}
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={

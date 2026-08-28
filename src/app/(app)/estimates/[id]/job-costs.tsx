@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import {
   centsFromInput,
   expensesByPhase,
@@ -14,11 +14,14 @@ import {
 import {
   assignExpensePhase,
   createJobExpense,
+  createReceiptUploadUrl,
   deleteJobExpense,
   getJobExpenses,
 } from "@/lib/actions/job-expenses";
 import { createVendor, getVendors } from "@/lib/actions/vendors";
 import { vendorLabel, type Vendor } from "@/lib/data/types";
+import { downscaleImage } from "@/lib/images/downscale";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
 const BLANK = {
   vendorId: "",
@@ -63,6 +66,8 @@ export function JobCosts({
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(BLANK);
   const [newVendor, setNewVendor] = useState<typeof BLANK_VENDOR | null>(null);
+  const [receipt, setReceipt] = useState<File | null>(null);
+  const receiptInput = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -74,7 +79,10 @@ export function JobCosts({
       if (res.error) return setError(res.error);
       setExpenses(res.expenses ?? []);
       setVendors(vres.vendors ?? []);
-      setError("");
+      // Not fatal, but not silent either: with an empty vendor list the
+      // rows show "—" where names belong and the picker reads "No
+      // vendors yet", which looks like the vendors were never recorded.
+      setError(vres.error ? "The vendor list didn't load — reload the page to see vendor names." : "");
     })();
     return () => {
       cancelled = true;
@@ -94,20 +102,48 @@ export function JobCosts({
   const jobProfit = phaseProfit(totalCents, expenses);
 
   function add() {
+    // Checked before the upload, not after: rejecting the amount once
+    // the receipt has already gone to storage would orphan the object.
+    if (!centsFromInput(draft.amount)) return setError("Enter an amount.");
+    if (!draft.spentOn) return setError("Enter the date it was spent.");
     setError("");
     startTransition(async () => {
-      const res = await createJobExpense({
-        leadId,
-        estimatePaymentId: null,
-        vendorId: draft.vendorId || null,
-        vendor: draft.vendor,
-        category: draft.category,
-        description: draft.description,
-        amountCents: centsFromInput(draft.amount),
-        spentOn: draft.spentOn,
-      });
+      // The receipt file goes straight to storage first, like lead
+      // files: a phone photo routinely beats the ~4.5MB body limit a
+      // server action would hit. Camera shots shrink in the browser;
+      // PDFs pass through downscaleImage untouched.
+      let uploaded: { path: string; fileName: string; contentType: string | null } | null = null;
+      if (receipt) {
+        const file = await downscaleImage(receipt);
+        const signed = await createReceiptUploadUrl(leadId, file.name, file.size);
+        if (signed.error || !signed.path || !signed.token) {
+          return setError(signed.error ?? "Could not start the receipt upload.");
+        }
+        const { error: uploadError } = await createBrowserClient()
+          .storage.from("lead-files")
+          .uploadToSignedUrl(signed.path, signed.token, file, {
+            contentType: file.type || undefined,
+          });
+        if (uploadError) return setError(uploadError.message);
+        uploaded = { path: signed.path, fileName: file.name, contentType: file.type || null };
+      }
+
+      const res = await createJobExpense(
+        {
+          leadId,
+          estimatePaymentId: null,
+          vendorId: draft.vendorId || null,
+          vendor: draft.vendor,
+          category: draft.category,
+          description: draft.description,
+          amountCents: centsFromInput(draft.amount),
+          spentOn: draft.spentOn,
+        },
+        uploaded
+      );
       if (res.error) return setError(res.error);
       setDraft(BLANK);
+      setReceipt(null);
       setAdding(false);
       setReloadKey((k) => k + 1);
     });
@@ -177,7 +213,21 @@ export function JobCosts({
         </div>
         {canEdit && (
           <div className="est-pay-actions">
-            <button className="btn-ghost" onClick={() => setAdding((a) => !a)} disabled={pending}>
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                // Cancel means forget it: a receipt left attached would
+                // silently ride along on the next, unrelated cost.
+                if (adding) {
+                  setDraft(BLANK);
+                  setReceipt(null);
+                  if (receiptInput.current) receiptInput.current.value = "";
+                  setError("");
+                }
+                setAdding((a) => !a);
+              }}
+              disabled={pending}
+            >
               {adding ? "Cancel" : "+ Add cost"}
             </button>
           </div>
@@ -292,6 +342,47 @@ export function JobCosts({
             <button className="btn-primary small" onClick={add} disabled={pending}>
               {pending ? "Saving…" : "Save cost"}
             </button>
+          </div>
+          {/* Also shown here, beside the button that failed. The copy at
+              the bottom of the section is below a dozen expense rows on a
+              phone -- an error only there is a silent dead end. */}
+          {error && <p className="error-note">{error}</p>}
+          <div className="form-row" style={{ alignItems: "center" }}>
+            {/* capture hints the phone straight into the camera; on a
+                laptop it's an ordinary file picker. */}
+            {/* No capture attribute: phones that honor it jump straight
+                into the camera with no way back to the file picker, and
+                the supplier's emailed PDF is half the point. Without it
+                the phone offers camera AND files. */}
+            <input
+              ref={receiptInput}
+              type="file"
+              accept="image/*,application/pdf"
+              style={{ display: "none" }}
+              onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+            />
+            <button
+              className="btn-ghost small"
+              onClick={() => receiptInput.current?.click()}
+              disabled={pending}
+            >
+              📷 {receipt ? "Change receipt" : "Attach receipt (photo or PDF)"}
+            </button>
+            {receipt && (
+              <span className="est-tax-note">
+                {receipt.name}{" "}
+                <button
+                  className="btn-ghost est-row-remove"
+                  aria-label="Remove receipt"
+                  onClick={() => {
+                    setReceipt(null);
+                    if (receiptInput.current) receiptInput.current.value = "";
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -457,6 +548,13 @@ export function JobCosts({
                     {e.description || e.category || "—"}
                     {e.description && e.category && (
                       <div className="est-tax-note">{e.category}</div>
+                    )}
+                    {e.receipt_url && (
+                      <div>
+                        <a href={e.receipt_url} target="_blank" rel="noreferrer">
+                          📎 Receipt
+                        </a>
+                      </div>
                     )}
                   </td>
                   <td className="right mono" data-label="Amount">

@@ -7,7 +7,8 @@ export type AppRole =
   | "Sales"
   | "Call Center"
   | "Dispatch"
-  | "Bookkeeping";
+  | "Bookkeeping"
+  | "Production";
 export const APP_ROLES: AppRole[] = [
   "Office",
   "Field",
@@ -16,6 +17,7 @@ export const APP_ROLES: AppRole[] = [
   "Call Center",
   "Dispatch",
   "Bookkeeping",
+  "Production",
 ];
 
 export type UserStatus = "Active" | "Archived";
@@ -175,6 +177,8 @@ export function canViewEstimates(
   // phase. Reading one is the job; editing one is not -- canCreateEstimates
   // deliberately does not follow.
   if (profile.roles.includes("Bookkeeping")) return true;
+  // Production runs sold work; seeing every job is the role.
+  if (profile.roles.includes("Production")) return true;
   return profile.can_view_estimates;
 }
 
@@ -191,7 +195,8 @@ export function canManageCosts(profile: Pick<Profile, "roles"> | null) {
   return (
     profile.roles.includes("Bookkeeping") ||
     profile.roles.includes("Office") ||
-    profile.roles.includes("Admin")
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Production")
   );
 }
 
@@ -200,6 +205,8 @@ export function canCreateEstimates(
 ) {
   if (!profile) return false;
   if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  // Change orders are estimate rows; writing them is running the job.
+  if (profile.roles.includes("Production")) return true;
   // Writing an estimate you are not allowed to open is incoherent, so
   // create is meaningless without view and does not stand on its own.
   return profile.can_create_estimates && profile.can_view_estimates;
@@ -236,7 +243,9 @@ export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
     // Booking, moving and confirming appointments is what a dispatcher
     // does all day; without this the role can see the calendar but not
     // change it, which is not a dispatcher.
-    profile.roles.includes("Dispatch")
+    profile.roles.includes("Dispatch") ||
+    // Controlling the schedule of sold work is the Production role.
+    profile.roles.includes("Production")
   );
 }
 
@@ -361,6 +370,7 @@ export const VISIBILITY_MANAGED_ROLES: AppRole[] = [
   "Sales",
   "Call Center",
   "Bookkeeping",
+  "Production",
 ];
 
 // A dispatcher receives leads, assigns them to reps, books and confirms
@@ -379,6 +389,19 @@ const DISPATCH_DEFAULT_PAGES: PageKey[] = [
   "schedule",
   "call-reports",
   "text-reports",
+];
+
+// Production runs sold work: the jobs, their schedule, their costs and
+// their documents -- and none of the lead-generation machinery. Payments
+// stays off by default; company-wide money is a Role Visibility decision.
+const PRODUCTION_DEFAULT_PAGES: PageKey[] = [
+  "dashboard",
+  "projects",
+  "production",
+  "documents",
+  "contacts",
+  "calendar",
+  "schedule",
 ];
 
 // Projects is the point of the role: sold jobs, what they cost, what is
@@ -405,6 +428,7 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // taken on purpose in Role Visibility, not a side effect of hiring a
   // bookkeeper.
   if (role === "Bookkeeping") return BOOKKEEPING_DEFAULT_PAGES.includes(pageKey);
+  if (role === "Production") return PRODUCTION_DEFAULT_PAGES.includes(pageKey);
   if (role === "Call Center") {
     return (
       pageKey === "dashboard" ||
@@ -1939,6 +1963,10 @@ export type JobExpense = {
   qb_txn_id: string | null;
   qb_txn_type: string | null;
   qb_project_id: string | null;
+  /** The receipt file behind the cost: a camera photo or the
+   *  supplier's PDF. Null on rows recorded without one. */
+  receipt_url: string | null;
+  receipt_path: string | null;
   created_at: string;
 };
 

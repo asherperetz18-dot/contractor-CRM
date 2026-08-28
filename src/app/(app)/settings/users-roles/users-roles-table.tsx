@@ -467,7 +467,7 @@ export function UsersRolesTable({
                         <span className="toggle-thumb" />
                       </span>
                     </button>
-                  ) : u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                  ) : u.roles.includes("Office") || u.roles.includes("Admin") || u.roles.includes("Production") ? (
                     <span className="ur-add-phone">Always</span>
                   ) : (
                     <span className="ur-add-phone">—</span>
@@ -477,7 +477,7 @@ export function UsersRolesTable({
                     they show as fixed rather than as a switch that would
                     appear to do nothing when flipped. */}
                 <td>
-                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                  {u.roles.includes("Office") || u.roles.includes("Admin") || u.roles.includes("Production") ? (
                     <span className="ur-add-phone">Always</span>
                   ) : (
                     <button
@@ -501,7 +501,7 @@ export function UsersRolesTable({
                   )}
                 </td>
                 <td>
-                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                  {u.roles.includes("Office") || u.roles.includes("Admin") || u.roles.includes("Production") ? (
                     <span className="ur-add-phone">Always</span>
                   ) : (
                     <button
