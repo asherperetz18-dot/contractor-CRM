@@ -251,6 +251,17 @@ export function VoiceDialer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The trigger lives in the toolbar now (the floating button covered
+  // calendar rows and table cells on every page). The toolbar button
+  // toggles through this event, and hears busy-state back through the
+  // one below so an active call stays visible while the panel is shut.
+  useEffect(() => {
+    const onToggle = () => setExpanded((v) => !v);
+    window.addEventListener("crm:dialer-toggle", onToggle);
+    return () => window.removeEventListener("crm:dialer-toggle", onToggle);
+  }, []);
+
+
   function handleHangup() {
     callRef.current?.disconnect();
     setStatus("ended");
@@ -281,6 +292,12 @@ export function VoiceDialer() {
   };
 
   const busy = status === "connecting" || status === "ringing" || status === "in-call";
+
+  // Tells the toolbar button, which turns green -- a live call must stay
+  // visible even with the panel closed.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("crm:dialer-busy", { detail: { busy } }));
+  }, [busy]);
 
   return (
     <div className="voice-dialer-wrap">
@@ -372,14 +389,6 @@ export function VoiceDialer() {
         </div>
       )}
 
-      <button
-        className={"voice-dialer-fab" + (busy ? " voice-dialer-fab-active" : "")}
-        onClick={() => setExpanded((v) => !v)}
-        aria-label="Open dialer"
-        title="In-App Dialer"
-      >
-        📞
-      </button>
     </div>
   );
 }

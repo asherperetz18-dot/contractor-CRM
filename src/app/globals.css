@@ -3445,13 +3445,20 @@ tr.row-link:hover {
 
 .voice-dialer-wrap {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  right: 16px;
+  /* Under the toolbar, where its trigger now lives. As a bottom-right
+     float it hid behind its own launcher's old spot and covered table
+     rows on every page. */
+  top: 64px;
   z-index: 60;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 10px;
+}
+.topbar-dialer-active {
+  background: #2f855a;
+  color: #fff;
 }
 .voice-dialer-fab {
   width: 52px;

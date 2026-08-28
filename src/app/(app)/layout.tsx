@@ -15,6 +15,7 @@ import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { UpdateNotice } from "./update-notice";
 import { CompanySwitcher } from "./company-switcher";
+import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
@@ -120,6 +121,7 @@ export default async function AppLayout({
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
+            <DialerButton />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
             {isStrictAdmin(profile) && <LiveUsersButton />}
             <DailyBriefButton isAdmin={isAdminRole(profile)} />
