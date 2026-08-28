@@ -12,6 +12,7 @@ import { LeadEstimateButton } from "./lead-estimate-button";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { LeadAppointmentsPanel } from "./lead-appointments-panel";
 import { LeadAnalysisPanel } from "./lead-analysis-panel";
+import { PropertyPeek } from "@/components/ui/property-peek";
 import { LeadViewTrail } from "./lead-view-trail";
 import {
   addHour as addHourTo,
@@ -1030,6 +1031,16 @@ export function LeadForm({
         )}
 
         {lead && <LeadAnalysisPanel leadId={lead.id} />}
+
+        {/* Same property block the appointment drawer carries: photo,
+            Zillow, and the PropertyRadar owner/liens report. */}
+        {lead && form.address && (
+          <PropertyPeek
+            address={form.address}
+            leadId={lead.id}
+            contactName={leadDisplayName(lead)}
+          />
+        )}
 
         <Field label="Notes">
           <textarea
