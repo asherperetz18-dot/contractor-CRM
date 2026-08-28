@@ -146,7 +146,10 @@ export function CalendarBoard({
    * the screen and the user's choice, not state to synchronise, and
    * setting it from an effect cascades an extra render on every load.
    */
-  const viewMode: ViewMode = chosenView ?? (narrow ? "day" : "month");
+  // Desktop opens on Week: seven roomy columns where an appointment
+  // card can carry its rep and both confirmations, which a month cell
+  // cannot. Month stays one click away for planning ahead.
+  const viewMode: ViewMode = chosenView ?? (narrow ? "day" : "week");
   const setViewMode = setChosenView;
   const [cursorDate, setCursorDate] = useState(todayISO());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -389,7 +392,29 @@ export function CalendarBoard({
           })()
         : `${MONTH_NAMES[month]} ${year}`;
 
-  function renderGrid(cells: Cell[], gridClassName: string, maxPerCell: number) {
+  // Stable per-rep colour, hashed from the id so it never shifts as the
+  // roster changes; the palette keeps every pair distinguishable.
+  const REP_PALETTE = [
+    "#2d5f8a", "#c7691b", "#2f855a", "#6b46c1", "#b83280",
+    "#0f766e", "#b7791f", "#c53030", "#3182ce", "#805ad5",
+  ];
+  function repColor(id: string): string {
+    let h = 0;
+    for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return REP_PALETTE[h % REP_PALETTE.length];
+  }
+  function repInitials(name: string): string {
+    return (
+      name
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0].toUpperCase())
+        .join("") || "?"
+    );
+  }
+
+  function renderGrid(cells: Cell[], gridClassName: string, maxPerCell: number, roomy = false) {
     return (
       <>
       {moveError && <p className="error-note">{moveError}</p>}
@@ -473,7 +498,33 @@ export function CalendarBoard({
                         confirmed. */}
                     <span className="cal-ev-dot" />
                     <span className="mono cal-event-time">{formatClock(ev.time, timeFormat)}</span>{" "}
+                    {ev.assigned_to && repName(ev.assigned_to) && (
+                      <span
+                        className="cal-rep-avatar"
+                        style={{ background: repColor(ev.assigned_to) }}
+                        title={repName(ev.assigned_to) ?? undefined}
+                      >
+                        {repInitials(repName(ev.assigned_to)!)}
+                      </span>
+                    )}
                     {ev.title}
+                    {/* Week cells have the room to say who has agreed to
+                        this visit; a month cell does not, and two badges
+                        in a 30px chip would bury the title. */}
+                    {roomy && (
+                      <span className="cal-confirm-row">
+                        <span className={"cal-confirm-badge" + (ev.rep_confirmed ? " cal-confirm-on" : "")}>
+                          REP {ev.rep_confirmed ? "✓" : "·"}
+                        </span>
+                        <span
+                          className={
+                            "cal-confirm-badge" + (ev.customer_confirmed ? " cal-confirm-on" : "")
+                          }
+                        >
+                          CUST {ev.customer_confirmed ? "✓" : "·"}
+                        </span>
+                      </span>
+                    )}
                   </div>
                 ))}
                 {dayEvents.length > maxPerCell && (
@@ -512,6 +563,14 @@ export function CalendarBoard({
               <div className="schedule-meta">
                 <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
                 <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
+                <span className={"cal-confirm-badge" + (ev.rep_confirmed ? " cal-confirm-on" : "")}>
+                  REP {ev.rep_confirmed ? "✓" : "·"}
+                </span>
+                <span
+                  className={"cal-confirm-badge" + (ev.customer_confirmed ? " cal-confirm-on" : "")}
+                >
+                  CUST {ev.customer_confirmed ? "✓" : "·"}
+                </span>
                 {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
                 {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                 {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
@@ -618,7 +677,7 @@ export function CalendarBoard({
           </div>
 
           {viewMode === "month" && renderGrid(monthCells, "", 3)}
-          {viewMode === "week" && renderGrid(weekCells, "cal-grid-week", 8)}
+          {viewMode === "week" && renderGrid(weekCells, "cal-grid-week", 8, true)}
 
           {viewMode === "day" && (
             <div className="cal-day-view">
