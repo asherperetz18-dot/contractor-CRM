@@ -8,12 +8,16 @@ export function Modal({
   children,
   wide,
   xwide,
+  drawer,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   wide?: boolean;
   xwide?: boolean;
+  /** Full-height panel docked to the right edge, so what's behind stays
+   *  readable — review flows peek at a record and move on. */
+  drawer?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -31,7 +35,7 @@ export function Modal({
 
   return (
     <div
-      className="modal-backdrop"
+      className={"modal-backdrop" + (drawer ? " modal-backdrop-drawer" : "")}
       onClick={onClose}
       // Wheel over the dark ring scrolls the card anyway: when a modal
       // is open, the card is the only thing scrolling means.
@@ -43,7 +47,11 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={"modal" + (xwide ? " modal-xwide" : wide ? " modal-wide" : "")}
+        className={
+          "modal" +
+          (xwide ? " modal-xwide" : wide ? " modal-wide" : "") +
+          (drawer ? " modal-drawer" : "")
+        }
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">

@@ -2605,6 +2605,37 @@ tr.row-link:hover {
 .modal-wide {
   max-width: 640px;
 }
+/* Drawer variant: docked to the right, full height, sliding in. The
+   lighter backdrop is deliberate -- the point of a drawer is that the
+   page behind stays readable while you peek at one record. */
+.modal-backdrop-drawer {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  background: rgba(20, 32, 46, 0.28);
+}
+.modal-drawer {
+  max-height: 100vh;
+  height: 100vh;
+  border-radius: 0;
+  box-shadow: -8px 0 32px rgba(20, 32, 46, 0.25);
+  animation: drawer-in 0.18s ease-out;
+}
+@keyframes drawer-in {
+  from {
+    transform: translateX(40px);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@media (max-width: 700px) {
+  .modal-drawer {
+    max-width: 100%;
+  }
+}
 .modal-xwide {
   max-width: 900px;
 }

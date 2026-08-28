@@ -587,7 +587,7 @@ export function EventForm({
   }
 
   return (
-    <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={requestClose} wide>
+    <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={requestClose} wide drawer>
       {lead && (
         <div className="contact-card">
           <div className="contact-card-name">{leadDisplayName(lead)}</div>
