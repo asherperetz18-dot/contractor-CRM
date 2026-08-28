@@ -2365,6 +2365,20 @@ tr.row-link:hover {
 }
 /* Who is going, at a glance: the rep's initials in their own stable
    colour, and whether each side has agreed to the visit. */
+.property-peek-img {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 8px;
+  display: block;
+  border: 1px solid #e3e0da;
+}
+.property-peek-zillow {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: #2d5f8a;
+}
+
 .cal-rep-avatar {
   display: inline-flex;
   width: 16px;

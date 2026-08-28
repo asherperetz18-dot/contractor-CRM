@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
+import { PropertyPeek } from "@/components/ui/property-peek";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { TimeField } from "@/components/ui/time-field";
@@ -855,6 +856,7 @@ export function EventForm({
               )}
               {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
             </Field>
+            {lead?.address && <PropertyPeek address={lead.address} />}
           </div>
 
           {/* Says who holds the lead when that is not this user, so an
