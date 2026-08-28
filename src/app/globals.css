@@ -2368,9 +2368,15 @@ tr.row-link:hover {
 .property-peek-img {
   width: 100%;
   max-width: 400px;
+  aspect-ratio: 400 / 180;
+  object-fit: cover;
+  background: #f1eee8;
   border-radius: 8px;
   display: block;
   border: 1px solid #e3e0da;
+}
+.property-intel-loading {
+  min-height: 36px;
 }
 .property-intel {
   margin-top: 8px;

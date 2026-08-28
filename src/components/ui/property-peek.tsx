@@ -126,6 +126,10 @@ export function PropertyPeek({
         View on Zillow — property &amp; value →
       </a>
 
+      {/* The slot is held open while the cached-report check runs --
+          rendering it only after the answer arrived shoved the fields
+          below it down a beat after the drawer painted. */}
+      {leadId && !loaded && <div className="property-intel property-intel-loading" />}
       {leadId && loaded && configured && (
         <div className="property-intel">
           {report ? (
