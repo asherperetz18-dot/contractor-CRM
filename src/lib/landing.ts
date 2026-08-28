@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canSeePage, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
-import { NAV, filterNavForProfile, type NavEntry } from "@/lib/nav";
+import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
 
 function firstVisibleHref(nav: NavEntry[]): string | null {
   for (const entry of nav) {
@@ -29,13 +29,27 @@ export async function postLoginPath(): Promise<string> {
   if (!profile) return "/";
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("role_page_visibility")
-    .select("id, role, page_key, visible")
-    .eq("company_id", profile.company_id);
+  const [{ data }, { data: navOrderRow }] = await Promise.all([
+    supabase
+      .from("role_page_visibility")
+      .select("id, role, page_key, visible")
+      .eq("company_id", profile.company_id),
+    supabase
+      .from("company_profile")
+      .select("nav_order")
+      .eq("company_id", profile.company_id)
+      .single(),
+  ]);
   const overrides = (data as RolePageVisibilityRow[]) ?? [];
+  const navOrder = (navOrderRow as { nav_order: string[] | null } | null)?.nav_order ?? null;
 
   const dashboardKey = pathToPageKey("/");
   if (!dashboardKey || canSeePage(profile, dashboardKey, overrides)) return "/";
-  return firstVisibleHref(filterNavForProfile(NAV, profile, overrides)) ?? "/";
+  // The same sorted nav the sidebar shows, so the landing page is the
+  // top of the menu the person actually sees -- not the built-in
+  // order's first entry, which can be a page gated by further grants.
+  return (
+    firstVisibleHref(sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder)) ??
+    "/"
+  );
 }
