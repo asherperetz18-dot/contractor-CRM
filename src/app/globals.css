@@ -2384,6 +2384,20 @@ tr.row-link:hover {
   gap: 4px;
   margin-top: 3px;
 }
+/* The customer's name leads the chip; the freeform title drops to a
+   quieter second line when it adds scope the name doesn't carry. */
+.cal-ev-client {
+  font-weight: 600;
+}
+.cal-ev-sub {
+  display: block;
+  font-size: 10px;
+  opacity: 0.75;
+}
+.cal-ev-sub-inline {
+  font-weight: 400;
+  opacity: 0.75;
+}
 .cal-confirm-badge {
   display: inline-block;
   padding: 0 5px;

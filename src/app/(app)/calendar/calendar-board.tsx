@@ -9,6 +9,7 @@ import {
   eventVisualState,
   formatClock,
   formatTimeRange,
+  leadDisplayName,
   stageColor,
   type CalendarRow,
   type LinkedEstimate,
@@ -242,6 +243,26 @@ export function CalendarBoard({
   // The dispatcher is held on the lead, not the appointment -- one person
   // owns the customer from arrival until the job sells, across however
   // many visits it takes. So an appointment's dispatcher is its lead's.
+  // Who the visit is FOR, chip by chip. Titles are freeform -- some
+  // carry the customer's name, some say just "estimate" -- and the one
+  // fact a calendar box must state is whose house it is.
+  const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
+  const clientNameFor = (ev: Event): string | null => {
+    const lead = ev.lead_id ? leadById.get(ev.lead_id) : null;
+    return lead ? leadDisplayName(lead) : null;
+  };
+  // The title still earns a second line when it says something the name
+  // doesn't -- "estimate" under a name is scope, "Estimate — Eddie"
+  // under Eddie's name is an echo.
+  const titleAddsInfo = (ev: Event, clientName: string | null): boolean => {
+    if (!clientName || !ev.title?.trim()) return false;
+    const title = ev.title.toLowerCase();
+    return !clientName
+      .toLowerCase()
+      .split(/\s+/)
+      .some((part) => part.length > 2 && title.includes(part));
+  };
+
   const dispatcherByLead = new Map<string, string>();
   for (const l of leads ?? []) {
     if (l.dispatcher_id) dispatcherByLead.set(l.id, l.dispatcher_id);
@@ -458,7 +479,9 @@ export function CalendarBoard({
             >
               <span className="cal-cell-day">{c.day}</span>
               <div className="cal-cell-events">
-                {dayEvents.slice(0, maxPerCell).map((ev) => (
+                {dayEvents.slice(0, maxPerCell).map((ev) => {
+                  const clientName = clientNameFor(ev);
+                  return (
                   <div
                     key={ev.id}
                     className={
@@ -507,7 +530,10 @@ export function CalendarBoard({
                         {repInitials(repName(ev.assigned_to)!)}
                       </span>
                     )}
-                    {ev.title}
+                    <span className="cal-ev-client">{clientName ?? ev.title}</span>
+                    {roomy && titleAddsInfo(ev, clientName) && (
+                      <span className="cal-ev-sub">{ev.title}</span>
+                    )}
                     {/* Week cells have the room to say who has agreed to
                         this visit; a month cell does not, and two badges
                         in a 30px chip would bury the title. */}
@@ -526,7 +552,8 @@ export function CalendarBoard({
                       </span>
                     )}
                   </div>
-                ))}
+                  );
+                })}
                 {dayEvents.length > maxPerCell && (
                   <div className="cal-event-more">+{dayEvents.length - maxPerCell} more</div>
                 )}
@@ -549,7 +576,9 @@ export function CalendarBoard({
     }
     return (
       <div className="schedule-list">
-        {list.map((ev) => (
+        {list.map((ev) => {
+          const clientName = clientNameFor(ev);
+          return (
           <div
             className={"schedule-row cal-ev-" + eventVisualState(ev)}
             key={ev.id}
@@ -559,7 +588,12 @@ export function CalendarBoard({
               <span className="mono schedule-time">{formatTimeRange(ev.time, ev.end_time, timeFormat)}</span>
             </div>
             <div className="schedule-body">
-              <div className="schedule-title">{ev.title}</div>
+              <div className="schedule-title">
+                {clientName ?? ev.title}
+                {titleAddsInfo(ev, clientName) && (
+                  <span className="cal-ev-sub-inline"> · {ev.title}</span>
+                )}
+              </div>
               <div className="schedule-meta">
                 <Badge color={stageColor(calendars, ev.event_type)}>{ev.event_type}</Badge>
                 <Badge color={EVENT_STATUS_COLOR[ev.status]}>{ev.status}</Badge>
@@ -577,7 +611,8 @@ export function CalendarBoard({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
