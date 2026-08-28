@@ -18,6 +18,7 @@ import { UpdateNotice } from "./update-notice";
 import { CompanySwitcher } from "./company-switcher";
 import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
+import { InboxAlerts } from "./inbox-alerts";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
 import { TimeFormatProvider } from "@/components/time-format-context";
@@ -140,6 +141,18 @@ export default async function AppLayout({
         </div>
         <ActivityTracker />
         <VoiceDialer />
+        {/* The incoming-text watcher: badge, toast + ding, tab-title
+            flash. For the people who staff the phones -- Office,
+            Dispatch, Admin -- not every role that can merely open the
+            inbox: a Sales rep on the road did not ask to be dinged for
+            every customer text. The page-visibility check rides along so
+            hiding Reply Inbox from a role silences its alerts too. */}
+        {(isAdminRole(profile) ||
+          profile.roles.includes("Office") ||
+          profile.roles.includes("Dispatch")) &&
+          canSeePage(profile, "reply-inbox", overrides) && (
+            <InboxAlerts companyId={profile.company_id} />
+          )}
         {/* `version` here is baked into this render, so it is whatever the
             browser actually loaded -- which is exactly what the banner
             needs to compare against. */}

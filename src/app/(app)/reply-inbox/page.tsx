@@ -11,11 +11,16 @@ export default async function ReplyInboxPage() {
   const canWrite = canEditDispatch(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [{ data: messages }, leads, allReps] = await Promise.all([
-    supabase
-      .from("sms_messages")
-      .select("*")
-      .eq("company_id", companyId)
+  const [messages, leads, allReps] = await Promise.all([
+    // selectAll, not a bare select: past 1000 lifetime messages the
+    // ascending order + PostgREST's silent max-rows cap returned the
+    // OLDEST thousand -- newest conversations missing entirely, which
+    // the incoming-text badge would then contradict on every screen.
+    selectAll<SmsMessage>((f, t) =>
+      supabase
+        .from("sms_messages")
+        .select("*")
+        .eq("company_id", companyId)
       // Rep-facing texts are excluded. They were landing here as
       // conversations keyed by the rep's phone, so a teammate appeared
       // in the list looking like a client -- and replying in that thread
@@ -27,8 +32,10 @@ export default async function ReplyInboxPage() {
       // key by the rep's own phone rather than a lead, so they cannot
       // reappear inside a customer's thread -- which is what the
       // exclusion was protecting against.
-      .or("channel.neq.rep,and(channel.eq.rep,lead_id.is.null,direction.eq.inbound)")
-      .order("created_at", { ascending: true }),
+        .or("channel.neq.rep,and(channel.eq.rep,lead_id.is.null,direction.eq.inbound)")
+        .order("created_at", { ascending: true })
+        .range(f, t)
+    ),
     selectAll<Lead>((f, t) =>
       supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
     ),
