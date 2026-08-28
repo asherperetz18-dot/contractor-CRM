@@ -28,15 +28,41 @@ export type CompanyMembership = {
   company_name: string | null;
 };
 
-// Every active company the signed-in user belongs to, for the switcher
-// and for resolving which one is "current." Wrapped in cache() so it's
-// only fetched once per request even though multiple call sites need it.
-export const getCurrentUserCompanies = cache(async (): Promise<CompanyMembership[]> => {
+/**
+ * The signed-in user, fetched at most once per request.
+ *
+ * supabase.auth.getUser() is a network call: it re-validates the JWT
+ * against the Auth API rather than trusting what is in the cookie. That
+ * is the behaviour we want, but it was happening twice per render --
+ * once here and once in getCurrentProfile() -- because each had its own
+ * client. Two identical validations of the same token, each a round
+ * trip from the function region to the database region.
+ *
+ * cache() makes the second caller reuse the first result for the life of
+ * the request. It cannot dedupe against the proxy's own getUser(), which
+ * runs in a separate edge invocation.
+ *
+ * getClaims() would remove the round trip entirely by verifying the JWT
+ * locally, but only for projects on asymmetric signing keys; on a
+ * symmetric (HS*) secret it falls back to getUser() internally, so it
+ * would buy nothing here until the project migrates its JWT keys.
+ */
+const getAuthUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  return user;
+});
+
+// Every active company the signed-in user belongs to, for the switcher
+// and for resolving which one is "current." Wrapped in cache() so it's
+// only fetched once per request even though multiple call sites need it.
+export const getCurrentUserCompanies = cache(async (): Promise<CompanyMembership[]> => {
+  const user = await getAuthUser();
   if (!user) return [];
+
+  const supabase = await createClient();
 
   const { data } = await supabase
     .from("company_members")
@@ -69,11 +95,10 @@ export const getCurrentCompanyId = cache(async (): Promise<string | null> => {
 // as of the multi-company migration -- a person can hold different roles
 // in different companies. profiles stays identity-only (name/email/phone).
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser();
   if (!user) return null;
+
+  const supabase = await createClient();
 
   const companyId = await getCurrentCompanyId();
   if (!companyId) return null;

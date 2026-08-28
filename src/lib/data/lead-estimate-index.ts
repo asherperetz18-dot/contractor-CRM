@@ -50,19 +50,24 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
   if (!profile || !canViewEstimates(profile)) return EMPTY_ESTIMATE_INDEX;
 
   const supabase = await createClient();
-  const { data: estimates } = await supabase
-    .from("estimates")
-    .select("id, lead_id, doc_number, title, status, total_cents")
-    .eq("company_id", profile.company_id)
-    .order("created_at", { ascending: false })
-    .returns<(LeadEstimateSummaryRow & { lead_id: string | null })[]>();
+  // Both are scoped by company_id alone -- the payments query never
+  // needed an estimate id from the first result, so awaiting one before
+  // asking for the other only ever cost a round trip.
+  const [{ data: estimates }, { data: payments }] = await Promise.all([
+    supabase
+      .from("estimates")
+      .select("id, lead_id, doc_number, title, status, total_cents")
+      .eq("company_id", profile.company_id)
+      .order("created_at", { ascending: false })
+      .returns<(LeadEstimateSummaryRow & { lead_id: string | null })[]>(),
+    supabase
+      .from("portal_payments")
+      .select("estimate_id, amount_cents, status")
+      .eq("company_id", profile.company_id)
+      .returns<{ estimate_id: string; amount_cents: number; status: string }[]>(),
+  ]);
 
   const rows = estimates ?? [];
-  const { data: payments } = await supabase
-    .from("portal_payments")
-    .select("estimate_id, amount_cents, status")
-    .eq("company_id", profile.company_id)
-    .returns<{ estimate_id: string; amount_cents: number; status: string }[]>();
 
   const paidByEstimate = new Map<string, { amount_cents: number; status: string }[]>();
   for (const p of payments ?? []) {
