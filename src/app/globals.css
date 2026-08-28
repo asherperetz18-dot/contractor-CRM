@@ -212,6 +212,20 @@ body {
   color: #8ea0b5;
   margin-top: 3px;
 }
+.sidebar-switcher {
+  margin-top: 10px;
+}
+/* The menu inherited right-alignment from its toolbar days; anchored at
+   the left edge of the screen that hangs it off-canvas. */
+.sidebar-switcher .quick-create-menu {
+  left: 0;
+  right: auto;
+}
+.sidebar-switcher button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
 .sidebar-nav {
   flex: 1;
   padding: 10px 0;

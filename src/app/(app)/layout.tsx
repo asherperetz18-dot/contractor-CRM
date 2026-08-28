@@ -120,7 +120,6 @@ export default async function AppLayout({
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
-            <CompanySwitcher companies={companies} currentCompanyId={profile.company_id} canCreate={isAdminRole(profile)} />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
             {isStrictAdmin(profile) && <LiveUsersButton />}
             <DailyBriefButton isAdmin={isAdminRole(profile)} />
@@ -143,6 +142,15 @@ export default async function AppLayout({
             version={version}
             filteredNav={filteredNav}
             userName={profile.name || profile.email || ""}
+            // Rendered here (a server component) and passed down, so the
+            // sidebar doesn't need the company list re-plumbed through it.
+            companySwitcher={
+              <CompanySwitcher
+                companies={companies}
+                currentCompanyId={profile.company_id}
+                canCreate={isAdminRole(profile)}
+              />
+            }
           />
 
           <main className="main">

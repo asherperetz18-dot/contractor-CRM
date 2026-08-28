@@ -14,6 +14,7 @@ export function MobileNav({
   version,
   filteredNav,
   userName,
+  companySwitcher,
 }: {
   logoUrl: string | null;
   companyName?: string;
@@ -21,6 +22,10 @@ export function MobileNav({
   filteredNav: NavEntry[];
   /** Shown quietly next to Sign out -- which account, nothing more. */
   userName: string;
+  /** The company switcher, rendered by the server layout and slotted in
+   *  under the version -- switching companies is an identity act, and it
+   *  belongs with the identity block, not in the toolbar. */
+  companySwitcher?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
@@ -58,6 +63,7 @@ export function MobileNav({
           )}
           <div className="sidebar-title">{companyName || "Contractor CRM"}</div>
           <div className="sidebar-sub">v{version}</div>
+          {companySwitcher && <div className="sidebar-switcher">{companySwitcher}</div>}
         </div>
         <nav className="sidebar-nav">
           {filteredNav.map((item) =>
