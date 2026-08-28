@@ -856,7 +856,13 @@ export function EventForm({
               )}
               {secondRepTextStatus === "error" && <p className="error-note">{secondRepTextError}</p>}
             </Field>
-            {lead?.address && <PropertyPeek address={lead.address} />}
+            {lead?.address && (
+              <PropertyPeek
+                address={lead.address}
+                leadId={lead.id}
+                contactName={leadDisplayName(lead)}
+              />
+            )}
           </div>
 
           {/* Says who holds the lead when that is not this user, so an

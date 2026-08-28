@@ -29,6 +29,7 @@ const LEAD_CHILDREN = [
   "job_expenses",
   "portal_payments",
   "lead_ai_analysis",
+  "property_reports",
 ] as const;
 
 // Tables whose rows die with an estimate (cascade, keyed by estimate_id).

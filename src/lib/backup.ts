@@ -57,6 +57,7 @@ export const BACKUP_TABLES = [
   "lead_duplicate_dismissals",
   "lead_trash",
   "lead_ai_analysis",
+  "property_reports",
   "checklist_templates",
   "project_checklist_items",
 ] as const;
