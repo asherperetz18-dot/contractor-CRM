@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
+import { postLoginPath } from "@/lib/landing";
 
 export type AuthFormState = { error: string; info?: never } | { info: string; error?: never } | undefined;
 
@@ -25,7 +26,10 @@ export async function login(
     return { error: error.message };
   }
 
-  redirect("/");
+  // Straight to a page this role can actually see. Landing on "/" and
+  // letting the layout re-redirect looped the router for anyone whose
+  // Dashboard is hidden -- a frozen white tab right after signing in.
+  redirect(await postLoginPath());
 }
 
 export async function signup(
@@ -124,7 +128,7 @@ export async function resetPassword(
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: error.message };
 
-  redirect("/");
+  redirect(await postLoginPath());
 }
 
 export async function logout() {
