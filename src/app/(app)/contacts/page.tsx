@@ -25,12 +25,10 @@ export default async function ContactsPage() {
   const canWrite = canEditDispatch(profile);
   const canDelete = canDeleteLeads(profile);
   const isAdmin = isStrictAdmin(profile);
-  // Loaded with the page so the contact card's estimate chip is there
-  // on the first frame rather than a couple of seconds in.
-  const estimateIndex = await getLeadEstimateIndex();
   const companyId = profile?.company_id ?? "";
 
   const [
+    estimateIndex,
     leads,
     { data: tasks },
     { data: notes },
@@ -41,6 +39,11 @@ export default async function ContactsPage() {
     { data: projectTypes },
     { data: sources },
   ] = await Promise.all([
+    // Loaded with the page so the contact card's estimate chip is there
+    // on the first frame rather than a couple of seconds in. It needs
+    // nothing from the queries beside it, so it belongs inside this
+    // parallel block rather than in a round trip ahead of it.
+    getLeadEstimateIndex(),
     selectAll<Lead>((f, t) =>
       supabase
         .from("leads")
