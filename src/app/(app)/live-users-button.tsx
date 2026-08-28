@@ -15,18 +15,29 @@ function summary(users: PresenceUser[]): string {
   return `${parts.join(", ")} (${users.length} online)`;
 }
 
-export function LiveUsersButton() {
-  const [users, setUsers] = useState<PresenceUser[]>([]);
+/**
+ * The badge count arrives with the page, and the list refreshes only
+ * while the panel is open.
+ *
+ * This used to call getLiveUsers() on mount and then every minute for
+ * as long as the tab was open, whether or not anyone had opened the
+ * panel. A server action is not a cheap fetch: it goes through the
+ * proxy, re-runs the whole layout, and only then does its own work --
+ * about a second and a half each, for a list nobody was looking at. The
+ * layout already renders this button and can hand over the first
+ * snapshot for free, alongside the queries it makes anyway.
+ */
+export function LiveUsersButton({ initialUsers }: { initialUsers: PresenceUser[] }) {
+  const [users, setUsers] = useState<PresenceUser[]>(initialUsers);
   const [open, setOpen] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     async function load() {
       const result = await getLiveUsers();
       if (cancelled) return;
       setUsers(result.users ?? []);
-      setLoaded(true);
     }
     load();
     // Polled rather than pushed: a 15-minute slice of activity_events is
@@ -36,7 +47,7 @@ export function LiveUsersButton() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [open]);
 
   const label = summary(users);
 
@@ -49,7 +60,7 @@ export function LiveUsersButton() {
         title={label}
       >
         👥
-        {loaded && users.length > 0 && <span className="presence-badge">{users.length}</span>}
+        {users.length > 0 && <span className="presence-badge">{users.length}</span>}
       </button>
       {open && (
         <>
@@ -57,8 +68,7 @@ export function LiveUsersButton() {
           <div className="quick-create-menu presence-menu">
             <div className="qc-group">
               <div className="qc-group-label">{label.toUpperCase()}</div>
-              {!loaded && <div className="presence-row presence-empty">Checking…</div>}
-              {loaded && users.length === 0 && (
+              {users.length === 0 && (
                 <div className="presence-row presence-empty">
                   No one has been active in the last 15 minutes.
                 </div>

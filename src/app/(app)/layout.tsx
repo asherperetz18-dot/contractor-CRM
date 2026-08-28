@@ -11,6 +11,7 @@ import { QuickCreateMenu } from "./quick-create-menu";
 import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { LiveUsersButton } from "./live-users-button";
+import { getLiveUsers } from "@/lib/actions/presence";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { UpdateNotice } from "./update-notice";
@@ -61,7 +62,7 @@ export default async function AppLayout({
   if (!profile) redirect("/login");
 
   const supabase = await createClient();
-  const [{ data: companyProfile }, { data: visibilityRows }, companies, { data: navOrderRow }] = await Promise.all([
+  const [{ data: companyProfile }, { data: visibilityRows }, companies, { data: navOrderRow }, liveUsers] = await Promise.all([
     supabase
       .from("company_profile")
       .select("name, logo_url, time_format")
@@ -80,6 +81,11 @@ export default async function AppLayout({
       .select("nav_order")
       .eq("company_id", profile.company_id)
       .single(),
+    // Seeds the presence badge so the button does not have to ask for
+    // itself on mount. Rides along with the queries above rather than
+    // costing a round trip of its own, and is skipped entirely for the
+    // roles that never see the button.
+    isStrictAdmin(profile) ? getLiveUsers() : Promise.resolve(null),
   ]);
   const company = companyProfile as {
     name: string | null;
@@ -123,7 +129,9 @@ export default async function AppLayout({
           <div className="global-topbar-right">
             <DialerButton />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
-            {isStrictAdmin(profile) && <LiveUsersButton />}
+            {isStrictAdmin(profile) && (
+              <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
+            )}
             <DailyBriefButton isAdmin={isAdminRole(profile)} />
             <AiAssistantButton />
             <QuickCreateMenu />
