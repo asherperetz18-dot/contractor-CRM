@@ -22,6 +22,7 @@ import { createVendor, getVendors } from "@/lib/actions/vendors";
 import { vendorLabel, type Vendor } from "@/lib/data/types";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { ReceiptPeek } from "@/components/ui/receipt-peek";
 
 const BLANK = {
   vendorId: "",
@@ -551,9 +552,7 @@ export function JobCosts({
                     )}
                     {e.receipt_url && (
                       <div>
-                        <a href={e.receipt_url} target="_blank" rel="noreferrer">
-                          📎 Receipt
-                        </a>
+                        <ReceiptPeek url={e.receipt_url} path={e.receipt_path} />
                       </div>
                     )}
                   </td>
