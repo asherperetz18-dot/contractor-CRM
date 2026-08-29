@@ -27,10 +27,14 @@ export function filterNavForProfile(
     // by isAdminRole directly instead, since AdminGate blocks the page
     // itself for everyone else anyway.
     if (href === "/settings") return isAdminRole(profile);
-    // Estimates carry a per-person permission on top of role visibility;
-    // showing a link that lands on "you don't have access" is worse than
-    // showing nothing.
-    if (href === "/estimates") return canViewEstimates(profile);
+    // Estimates carry a per-person permission ON TOP of role visibility,
+    // not instead of it. Bypassing the matrix here kept the link (and
+    // postLoginPath's idea of "first visible page") alive for roles the
+    // matrix hides it from -- which landed a Production user on a
+    // blocked page the moment they signed in.
+    if (href === "/estimates") {
+      return canViewEstimates(profile) && canSeePage(profile, "documents", overrides);
+    }
     const pageKey = pathToPageKey(href);
     if (!pageKey) return true;
     return canSeePage(profile, pageKey, overrides);

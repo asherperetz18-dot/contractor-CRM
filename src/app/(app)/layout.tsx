@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
-import { canEditDispatch, canSeePage, isAdminRole, isStrictAdmin, pathToPageKey, type RolePageVisibilityRow } from "@/lib/data/types";
+import { canEditDispatch, canSeePage, isAdminRole, isStrictAdmin, type RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
@@ -19,6 +19,7 @@ import { CompanySwitcher } from "./company-switcher";
 import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { InboxAlerts } from "./inbox-alerts";
+import { PageGate } from "./page-gate";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
 import { TimeFormatProvider } from "@/components/time-format-context";
@@ -100,15 +101,15 @@ export default async function AppLayout({
   const navOrder = (navOrderRow as { nav_order: string[] | null } | null)?.nav_order ?? null;
   const filteredNav = sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder);
 
-  const pathname = (await headers()).get("x-pathname") ?? "/";
-  const pageKey = pathToPageKey(pathname);
-  const pageBlocked = !!pageKey && !canSeePage(profile, pageKey, overrides);
-
   // Dashboard ("/") is where login lands everyone -- if a role has it
   // hidden, send them straight to whatever their nav actually starts
   // with instead of showing a blocked-page message as their first
-  // impression after signing in.
-  if (pageBlocked && pathname === "/") {
+  // impression after signing in. Only this redirect reads the pathname
+  // here; the per-page block itself lives in PageGate, which re-decides
+  // on every in-app navigation -- a layout renders once, and a decision
+  // frozen in it followed people from page to page.
+  const pathname = (await headers()).get("x-pathname") ?? "/";
+  if (pathname === "/" && !canSeePage(profile, "dashboard", overrides)) {
     const fallback = firstVisibleHref(filteredNav);
     if (fallback) redirect(fallback);
   }
@@ -177,17 +178,9 @@ export default async function AppLayout({
           />
 
           <main className="main">
-            {pageBlocked ? (
-              <div className="empty-state">
-                <p className="empty-label">Page not available</p>
-                <p className="empty-hint">
-                  Your role doesn&apos;t have access to this page. Contact an admin if you
-                  think this is a mistake.
-                </p>
-              </div>
-            ) : (
-              children
-            )}
+            <PageGate roles={profile.roles} overrides={overrides}>
+              {children}
+            </PageGate>
           </main>
         </div>
       </div>
