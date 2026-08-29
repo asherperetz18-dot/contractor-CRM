@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import {
+  CALLRAIL_API_BASE,
+  callrailAuthHeader,
+  getCallRailForCompany,
+} from "@/lib/callrail-company";
 
 export async function GET(
   req: NextRequest,
@@ -18,11 +23,46 @@ export async function GET(
   const { id } = await params;
   const { data } = await supabase
     .from("call_logs")
-    .select("recording_url, company_id")
+    .select("recording_url, company_id, callrail_call_id")
     .eq("id", id)
-    .maybeSingle<{ recording_url: string | null; company_id: string }>();
+    .maybeSingle<{
+      recording_url: string | null;
+      company_id: string;
+      callrail_call_id: string | null;
+    }>();
   const recordingUrl = data?.recording_url;
   if (!recordingUrl) return NextResponse.json({ error: "No recording." }, { status: 404 });
+
+  // CallRail calls: the stored URL is their dashboard player, which
+  // demands a CallRail login nobody's reps have. Their API hands out a
+  // short-lived direct media URL instead -- fetched with the company's
+  // key, streamed here, so the same inline player serves both providers.
+  if (data.callrail_call_id) {
+    const creds = await getCallRailForCompany(data.company_id);
+    if (!creds) return NextResponse.json({ error: "CallRail not configured." }, { status: 500 });
+
+    const metaRes = await fetch(
+      `${CALLRAIL_API_BASE}/a/${encodeURIComponent(creds.accountId)}/calls/${encodeURIComponent(data.callrail_call_id)}/recording.json`,
+      { headers: callrailAuthHeader(creds.apiKey) }
+    );
+    if (!metaRes.ok) {
+      return NextResponse.json({ error: "Could not fetch recording." }, { status: 502 });
+    }
+    const meta = (await metaRes.json()) as { url?: string };
+    if (!meta.url) return NextResponse.json({ error: "No recording." }, { status: 404 });
+
+    const audio = await fetch(meta.url);
+    if (!audio.ok || !audio.body) {
+      return NextResponse.json({ error: "Could not fetch recording." }, { status: 502 });
+    }
+    return new NextResponse(audio.body, {
+      status: 200,
+      headers: {
+        "Content-Type": audio.headers.get("content-type") || "audio/mpeg",
+        "Cache-Control": "private, max-age=3600",
+      },
+    });
+  }
 
   // Fetched with the credentials of the company that recorded it. Twilio
   // only serves a recording to the account that owns it, so playing back

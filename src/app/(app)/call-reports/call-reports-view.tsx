@@ -189,13 +189,10 @@ export function CallReportsView({
                     </select>
                   </td>
                   <td>
-                    {c.recording_url && c.callrail_call_id ? (
-                      // CallRail hosts its own recordings behind its own
-                      // player; the Twilio proxy can't fetch those.
-                      <a href={c.recording_url} target="_blank" rel="noreferrer">
-                        ▶ Listen
-                      </a>
-                    ) : c.recording_url ? (
+                    {/* One player for both providers -- the proxy fetches
+                        Twilio recordings with Twilio credentials and
+                        CallRail recordings through CallRail's API. */}
+                    {c.recording_url ? (
                       <audio
                         controls
                         preload="none"

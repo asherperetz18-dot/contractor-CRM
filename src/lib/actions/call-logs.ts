@@ -217,7 +217,7 @@ export async function getLeadCalls(
   const [{ data: rows, error }, members] = await Promise.all([
     supabase
       .from("call_logs")
-      .select("id, direction, status, duration_seconds, disposition, notes, created_at, rep_id, recording_url")
+      .select("id, direction, status, duration_seconds, disposition, notes, created_at, rep_id, recording_url, callrail_call_id")
       .eq("lead_id", leadId)
       .eq("company_id", profile.company_id)
       .order("created_at", { ascending: false })
@@ -232,6 +232,7 @@ export async function getLeadCalls(
           created_at: string;
           rep_id: string | null;
           recording_url: string | null;
+          callrail_call_id: string | null;
         }[]
       >(),
     getCompanyMembers(profile.company_id),
