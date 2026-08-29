@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
+import { parseStoredList } from "@/lib/callrail-company";
 import {
   processCallRailCall,
   processCallRailForm,
@@ -32,17 +33,22 @@ export async function POST(req: NextRequest) {
     .select("callrail_signing_key_enc")
     .eq("company_id", companyId)
     .maybeSingle<{ callrail_signing_key_enc: string | null }>();
-  const signingKey = decryptSecret(data?.callrail_signing_key_enc ?? null);
-  if (!signingKey) {
+  // One key per tracked CallRail company; the delivery is genuine if
+  // any of them verifies it -- CallRail does not say which company a
+  // webhook is for except through its signature.
+  const signingKeys = parseStoredList(decryptSecret(data?.callrail_signing_key_enc ?? null));
+  if (!signingKeys.length) {
     return NextResponse.json({ error: "CallRail is not connected." }, { status: 401 });
   }
 
   const rawBody = await req.text();
   const signature = req.headers.get("signature") ?? "";
-  const expected = crypto.createHmac("sha1", signingKey).update(rawBody).digest("base64");
   const a = Buffer.from(signature);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+  const verified = signingKeys.some((key) => {
+    const b = Buffer.from(crypto.createHmac("sha1", key).update(rawBody).digest("base64"));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
+  if (!verified) {
     return NextResponse.json({ error: "Bad signature" }, { status: 401 });
   }
 

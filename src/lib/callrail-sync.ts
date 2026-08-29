@@ -333,21 +333,23 @@ export async function backfillCallRail(
   let processed = 0;
   let created = 0;
 
-  for (let page = 1; page <= 20; page++) {
-    const url =
-      `${CALLRAIL_API_BASE}/a/${encodeURIComponent(creds.accountId)}/calls.json` +
-      `?company_id=${encodeURIComponent(creds.callrailCompanyId)}` +
-      `&start_date=${start}&per_page=250&page=${page}` +
-      `&fields=${encodeURIComponent("source,campaign,keywords,medium,recording_player")}`;
-    const res = await fetch(url, { headers: callrailAuthHeader(creds.apiKey) });
-    if (!res.ok) return { error: `CallRail API ${res.status}`, processed, created };
-    const body = (await res.json()) as { calls?: CallRailCall[]; total_pages?: number };
-    for (const call of body.calls ?? []) {
-      const r = await processCallRailCall(admin, companyId, call);
-      processed++;
-      if (r.created) created++;
+  for (const crCompanyId of creds.callrailCompanyIds) {
+    for (let page = 1; page <= 20; page++) {
+      const url =
+        `${CALLRAIL_API_BASE}/a/${encodeURIComponent(creds.accountId)}/calls.json` +
+        `?company_id=${encodeURIComponent(crCompanyId)}` +
+        `&start_date=${start}&per_page=250&page=${page}` +
+        `&fields=${encodeURIComponent("source,campaign,keywords,medium,recording_player")}`;
+      const res = await fetch(url, { headers: callrailAuthHeader(creds.apiKey) });
+      if (!res.ok) return { error: `CallRail API ${res.status}`, processed, created };
+      const body = (await res.json()) as { calls?: CallRailCall[]; total_pages?: number };
+      for (const call of body.calls ?? []) {
+        const r = await processCallRailCall(admin, companyId, call);
+        processed++;
+        if (r.created) created++;
+      }
+      if (!body.total_pages || page >= body.total_pages) break;
     }
-    if (!body.total_pages || page >= body.total_pages) break;
   }
   return { processed, created };
 }
