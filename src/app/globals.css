@@ -7959,3 +7959,103 @@ textarea.est-item-desc:disabled {
   color: var(--ink-soft);
   white-space: nowrap;
 }
+
+/* Video tutorials: the library grid and the narrated player. */
+.tut-cat { margin-bottom: 26px; }
+.tut-cat-title {
+  font-family: var(--font-head, inherit);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+  margin: 0 0 10px;
+}
+.tut-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.tut-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  cursor: pointer;
+  font: inherit;
+}
+.tut-card:hover { border-color: var(--blueprint); box-shadow: 0 4px 14px rgba(20,32,46,.08); }
+.tut-play {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--ink, #14202E);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+}
+.tut-card-body { display: grid; gap: 3px; }
+.tut-kicker {
+  font-size: 10.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--blueprint);
+  font-weight: 700;
+}
+.tut-title { font-weight: 700; font-size: 15px; }
+.tut-desc { font-size: 12.5px; color: var(--ink-soft); }
+
+.tut-player {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: #10161f;
+  color: #eee;
+  display: flex;
+  flex-direction: column;
+  padding: 14px clamp(14px, 4vw, 40px);
+  overflow-y: auto;
+}
+.tut-player-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.tut-player-head strong { font-size: 17px; }
+.tut-step-count { font-family: var(--font-mono, monospace); font-size: 12.5px; color: #9aa5b1; }
+.tut-player-tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.tut-player .icon-btn { color: #eee; }
+.tut-frame {
+  width: min(100%, 1100px);
+  margin: 0 auto;
+  border-radius: 10px;
+  border: 1px solid #2c3949;
+  box-shadow: 0 18px 50px rgba(0,0,0,.5);
+}
+.tut-caption {
+  max-width: 70ch;
+  margin: 14px auto 10px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.tut-player-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding-bottom: 8px;
+}
+.tut-player-nav .btn-ghost { color: #cdd6df; }
+.tut-dots { display: flex; gap: 7px; }
+.tut-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: #3a4a5e;
+  cursor: pointer;
+}
+.tut-dot-on { background: #d9862f; }

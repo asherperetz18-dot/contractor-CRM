@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -129,6 +130,16 @@ export default async function AppLayout({
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
+            {/* Help lives outside the visibility matrix on purpose --
+                the person who can't find a page needs this the most. */}
+            <Link
+              href="/tutorials"
+              className="icon-btn topbar-icon-btn"
+              title="Video tutorials — narrated walkthroughs"
+              aria-label="Video tutorials"
+            >
+              ❓
+            </Link>
             <DialerButton />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
             {isStrictAdmin(profile) && (
