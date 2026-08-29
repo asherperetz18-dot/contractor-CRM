@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
+import { normalizePhone } from "@/lib/data/types";
+import { selectAll } from "@/lib/data/select-all";
 import { notifyNewLead } from "@/lib/notify-new-lead";
 import {
   CALLRAIL_API_BASE,
@@ -81,6 +83,10 @@ async function createLeadFromCallRail(
     email?: string | null;
     source: string;
     notes: string | null;
+    /** True for historical imports: the lead is created, but nobody's
+     *  phone buzzes about a call from weeks ago. The first backfill
+     *  sent 45 alerts about old callers before this flag existed. */
+    quiet?: boolean;
   }
 ): Promise<string | null> {
   const { first, last } = splitName(input.name ?? "");
@@ -102,17 +108,19 @@ async function createLeadFromCallRail(
   if (error) return null;
 
   // Never allowed to fail the ingest -- the lead is already saved.
-  await notifyNewLead(admin, {
-    companyId,
-    firstName: first,
-    lastName: last,
-    phone: input.phone ?? "",
-    email: input.email ?? "",
-    address: null,
-    projectType: null,
-    source: input.source,
-    notes: input.notes,
-  }).catch(() => ({ sent: 0 }));
+  if (!input.quiet) {
+    await notifyNewLead(admin, {
+      companyId,
+      firstName: first,
+      lastName: last,
+      phone: input.phone ?? "",
+      email: input.email ?? "",
+      address: null,
+      projectType: null,
+      source: input.source,
+      notes: input.notes,
+    }).catch(() => ({ sent: 0 }));
+  }
 
   return (data as { id: string }).id;
 }
@@ -125,10 +133,20 @@ async function createLeadFromCallRail(
  * id so the same call arriving twice lands as one row. Only inbound
  * calls: outbound dialing already lives on Twilio.
  */
+export type CallProcessOpts = {
+  /** Historical import: create leads without buzzing anyone's phone. */
+  quiet?: boolean;
+  /** Pre-built phone lookup for bulk sweeps -- per-call scans of the
+   *  whole lead book would time a 90-day backfill out. */
+  matchLead?: (phone: string) => string | null;
+  registerLead?: (phone: string, id: string) => void;
+};
+
 export async function processCallRailCall(
   admin: Admin,
   companyId: string,
-  call: CallRailCall
+  call: CallRailCall,
+  opts?: CallProcessOpts
 ): Promise<{ created?: boolean; skipped?: string }> {
   const callId = String(call.resource_id ?? call.id ?? "");
   if (!callId) return { skipped: "no call id" };
@@ -137,7 +155,9 @@ export async function processCallRailCall(
   const from = call.customer_phone_number ?? "";
   if (!from) return { skipped: "no caller number" };
 
-  let leadId = await leadForPhoneNumber(admin, companyId, from);
+  let leadId = opts?.matchLead
+    ? opts.matchLead(from)
+    : await leadForPhoneNumber(admin, companyId, from);
   const source = leadSource(call.source);
   const marketing = marketingSourceLine(call);
 
@@ -147,7 +167,9 @@ export async function processCallRailCall(
       phone: from,
       source,
       notes: marketing ? `Called in via ${marketing}` : "Called in (CallRail)",
+      quiet: opts?.quiet,
     });
+    if (leadId) opts?.registerLead?.(from, leadId);
   }
 
   // Only the facts CallRail owns. Disposition and the lead link are
@@ -333,6 +355,37 @@ export async function backfillCallRail(
   let processed = 0;
   let created = 0;
 
+  // The whole phone book once, then in-memory matching -- the same
+  // rules as leadForPhoneNumber (last 10 digits, both phone fields,
+  // and an ambiguous number matches nobody rather than someone).
+  const phoneToLead = new Map<string, string | null>();
+  const allLeads = await selectAll<{ id: string; phone: string | null; second_contact_phone: string | null }>(
+    (f, t) =>
+      admin
+        .from("leads")
+        .select("id, phone, second_contact_phone")
+        .eq("company_id", companyId)
+        .range(f, t)
+  );
+  for (const l of allLeads) {
+    for (const raw of [l.phone, l.second_contact_phone]) {
+      const digits = normalizePhone(raw ?? "");
+      if (digits.length < 10) continue;
+      phoneToLead.set(digits, phoneToLead.has(digits) ? null : l.id);
+    }
+  }
+  const opts: CallProcessOpts = {
+    quiet: true,
+    matchLead: (phone) => {
+      const digits = normalizePhone(phone);
+      return digits.length >= 10 ? (phoneToLead.get(digits) ?? null) : null;
+    },
+    registerLead: (phone, id) => {
+      const digits = normalizePhone(phone);
+      if (digits.length >= 10) phoneToLead.set(digits, id);
+    },
+  };
+
   for (const crCompanyId of creds.callrailCompanyIds) {
     for (let page = 1; page <= 20; page++) {
       const url =
@@ -344,7 +397,7 @@ export async function backfillCallRail(
       if (!res.ok) return { error: `CallRail API ${res.status}`, processed, created };
       const body = (await res.json()) as { calls?: CallRailCall[]; total_pages?: number };
       for (const call of body.calls ?? []) {
-        const r = await processCallRailCall(admin, companyId, call);
+        const r = await processCallRailCall(admin, companyId, call, opts);
         processed++;
         if (r.created) created++;
       }

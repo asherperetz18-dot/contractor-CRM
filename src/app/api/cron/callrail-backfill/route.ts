@@ -9,6 +9,10 @@ import { backfillCallRail } from "@/lib/callrail-sync";
  * sweep is what guarantees no tracked call is lost to a deploy moment
  * or a network blip. Same cron secret as the other scheduled jobs.
  */
+// A deep historical sweep (?days=90) walks thousands of calls; the
+// default serverless budget cuts it off mid-import.
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
@@ -18,6 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // The scheduled sweep uses the 2-day default; a manual dispatch can
+  // ask for deeper history.
+  const days = Math.min(120, Math.max(1, Number(req.nextUrl.searchParams.get("days")) || 2));
+
   const admin = createAdminClient();
   const { data } = await admin
     .from("company_profile")
@@ -26,8 +34,8 @@ export async function POST(req: NextRequest) {
 
   const results: Record<string, { processed: number; created: number; error?: string }> = {};
   for (const row of (data as { company_id: string }[]) ?? []) {
-    const r = await backfillCallRail(row.company_id, 2);
+    const r = await backfillCallRail(row.company_id, days);
     results[row.company_id] = { processed: r.processed, created: r.created, ...(r.error ? { error: r.error } : {}) };
   }
-  return NextResponse.json({ companies: Object.keys(results).length, results });
+  return NextResponse.json({ days, companies: Object.keys(results).length, results });
 }
