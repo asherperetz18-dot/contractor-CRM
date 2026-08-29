@@ -1049,6 +1049,10 @@ export type CallLog = {
   disposition: string;
   recording_url: string | null;
   twilio_call_sid: string | null;
+  /** Set when the call arrived via CallRail rather than Twilio. */
+  callrail_call_id: string | null;
+  /** Which marketing made the phone ring, e.g. "Google Ads · spring-roofing". */
+  marketing_source: string | null;
   notes: string | null;
   created_at: string;
 };

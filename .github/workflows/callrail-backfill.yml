@@ -1,0 +1,18 @@
+name: CallRail Backfill
+
+on:
+  schedule:
+    # Every 6 hours -- webhooks carry the live traffic; this sweep only
+    # re-pulls the last 2 days to fill any delivery CallRail dropped.
+    - cron: "40 */6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-pull recent CallRail calls
+        run: |
+          set -euo pipefail
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/callrail-backfill" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

@@ -48,7 +48,11 @@ export function CallReportsView({
       if (!q) return true;
       const lead = c.lead_id ? leadById.get(c.lead_id) : null;
       const name = lead ? leadDisplayName(lead).toLowerCase() : "";
-      return name.includes(q) || c.to_number.toLowerCase().includes(q);
+      // The same number the Phone column shows: the customer's end.
+      // Searching the tracking/company number would match everything
+      // and the number on screen would match nothing.
+      const phone = c.direction === "inbound" ? c.from_number : c.to_number;
+      return name.includes(q) || phone.toLowerCase().includes(q);
     });
   }, [callLogs, repFilter, dispositionFilter, search, leadById]);
 
@@ -157,8 +161,15 @@ export function CallReportsView({
                     ) : (
                       "—"
                     )}
+                    {c.marketing_source && (
+                      <div className="est-tax-note">via {c.marketing_source}</div>
+                    )}
                   </td>
-                  <td className="mono">{c.to_number}</td>
+                  {/* The customer's number, whichever end of the call
+                      they were on. */}
+                  <td className="mono">
+                    {c.direction === "inbound" ? c.from_number : c.to_number}
+                  </td>
                   <td>{rep?.name || rep?.email || "—"}</td>
                   <td className="mono">{formatDuration(c.duration_seconds)}</td>
                   <td>
@@ -178,7 +189,13 @@ export function CallReportsView({
                     </select>
                   </td>
                   <td>
-                    {c.recording_url ? (
+                    {c.recording_url && c.callrail_call_id ? (
+                      // CallRail hosts its own recordings behind its own
+                      // player; the Twilio proxy can't fetch those.
+                      <a href={c.recording_url} target="_blank" rel="noreferrer">
+                        ▶ Listen
+                      </a>
+                    ) : c.recording_url ? (
                       <audio
                         controls
                         preload="none"
