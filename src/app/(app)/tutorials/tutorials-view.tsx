@@ -76,6 +76,31 @@ const LIBRARY: Category[] = [
     ],
   },
   {
+    name: "Calls & Texts",
+    tutorials: [
+      {
+        id: "work-the-phones",
+        title: "Work the phones",
+        kicker: "Quick how-to · 2 steps · 1 min",
+        desc: "Recordings, outcomes, and the ad that made it ring.",
+        steps: [
+          { img: T("call-reports"), caption: "Call Reports keeps every call — duration, recording, outcome, and the marketing source that produced it. Set the disposition right from the row." },
+          { img: T("t-lead-calls"), caption: "The same history lives on each lead's Calls tab, so before you dial you can hear how the last conversation went." },
+        ],
+      },
+      {
+        id: "reply-inbox",
+        title: "Texting & the Reply Inbox",
+        kicker: "Quick how-to · 2 steps · 1 min",
+        desc: "Every incoming text, answered from one screen.",
+        steps: [
+          { img: T("t-reply-inbox"), caption: "Every text a customer sends lands in the Reply Inbox as a conversation. Office screens also get a pop-up and a ding the moment one arrives." },
+          { img: T("lead-card"), caption: "The same thread lives on the lead's Texts tab — so wherever you are, the whole conversation is one tap away." },
+        ],
+      },
+    ],
+  },
+  {
     name: "Estimates & Money",
     tutorials: [
       {
@@ -97,6 +122,56 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("projects"), caption: "Open Projects and tap + Receipt. It's built for a phone in one hand and a receipt in the other." },
           { img: T("t-receipt-modal"), caption: "Pick the job, snap or attach the receipt, enter the amount, save. It files against the job's costs — and the form stays open for the next one in the stack." },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Projects & Production",
+    tutorials: [
+      {
+        id: "job-profitability",
+        title: "Read a job's profitability",
+        kicker: "Deep dive · 2 steps · 1.5 min",
+        desc: "Contract, spent, and what's actually left — phase by phase.",
+        steps: [
+          { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
+          { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
+        ],
+      },
+      {
+        id: "project-checklists",
+        title: "Run the job with checklists",
+        kicker: "Quick how-to · 2 steps · 1 min",
+        desc: "The steps every job goes through, ticked off as it moves.",
+        steps: [
+          { img: T("projects"), caption: "Every job row carries a checklist chip. Build templates once — permits, demo, inspections — and apply them to each new job." },
+          { img: T("t-checklist"), caption: "Tick steps as the job moves. Who completed each step, and when, is recorded — so 'did the permit get filed' has an answer." },
+        ],
+      },
+    ],
+  },
+  {
+    name: "Admin & Setup",
+    tutorials: [
+      {
+        id: "team-roles",
+        title: "Add your team and control what they see",
+        kicker: "Admin · 2 steps · 1.5 min",
+        desc: "Sales, dispatch, production, bookkeeping — each sees its job.",
+        steps: [
+          { img: T("t-users-roles"), caption: "Users & Roles is where people join: create the account, hand out roles, and grant per-person permissions like viewing estimates." },
+          { img: T("t-role-visibility"), caption: "Role Visibility decides which pages each role sees. Hide a page from a role and it vanishes from their menu — and stays locked even by direct link." },
+        ],
+      },
+      {
+        id: "portal-link",
+        title: "Send the customer portal link",
+        kicker: "Customer-facing · 2 steps · 1 min",
+        desc: "Their estimate, signature, and deposit — from a link you text.",
+        steps: [
+          { img: T("lead-card"), caption: "Every lead card carries a Customer Portal row — tap Portal Link to text or copy their private link. You'll see when it's been opened." },
+          { img: T("t-estimate-payments"), caption: "In the portal the customer reads the estimate, signs from their phone, and pays the deposit online — and every payment lands against the job automatically." },
         ],
       },
     ],
