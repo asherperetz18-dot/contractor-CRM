@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSigningKeys } from "@/lib/supabase/jwks";
 
 // /portal is the customer-facing Client Portal. It runs on its own
 // magic-link session (see lib/portal/session.ts), not Supabase Auth, so it
@@ -47,7 +48,12 @@ export async function updateSession(request: NextRequest) {
   // session first, which is what renews an expired one and writes the
   // new cookies through the setAll callback above -- the reason this
   // proxy exists at all.
-  const { data: claims } = await supabase.auth.getClaims();
+  // The key set is handed in rather than fetched: supabase-js caches it
+  // on the client, and a fresh client is built for every request, so it
+  // was fetching the same document from Supabase on every one.
+  const { data: claims } = await supabase.auth.getClaims(undefined, {
+    jwks: await getSigningKeys(),
+  });
 
   const isPublicPath = PUBLIC_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path)
