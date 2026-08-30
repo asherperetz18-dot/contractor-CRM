@@ -22,6 +22,17 @@ import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { ScheduleList } from "./schedule-list";
 
+type LeadWithEvents = Lead & { events?: unknown };
+
+/** Drops the join key so the client receives a plain Lead. */
+function withoutJoin(rows: LeadWithEvents[] | null): Lead[] {
+  return (rows ?? []).map((row) => {
+    const lead = { ...row };
+    delete lead.events;
+    return lead as Lead;
+  });
+}
+
 export default async function SchedulePage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
@@ -49,8 +60,22 @@ export default async function SchedulePage() {
     supabase.from("events").select("*").eq("company_id", companyId),
     supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
-    selectAll<Lead>((f, t) =>
-      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+    // Only the contacts an appointment actually points at, matching the
+    // calendar. This page was loading every lead in the company and
+    // sending them all to the browser to render a list of appointments;
+    // the only thing that reads them is the appointment window, looking
+    // up the one contact its own visit belongs to.
+    //
+    // An inner join on events rather than a list of ids, so it stays one
+    // query and cannot outgrow the request URL as the appointment
+    // history builds up. The embedded events are the filter, not data
+    // anyone reads, and are dropped below.
+    selectAll<LeadWithEvents>((f, t) =>
+      supabase
+        .from("leads")
+        .select("*, events!inner(id)")
+        .eq("company_id", companyId)
+        .range(f, t)
     ),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase
@@ -78,7 +103,7 @@ export default async function SchedulePage() {
       events={(events as Event[]) ?? []}
       jobs={(jobs as Job[]) ?? []}
       reps={reps}
-      leads={[...((leads as Lead[]) ?? []), ...behindAppointments.leads]}
+      leads={[...withoutJoin(leads), ...behindAppointments.leads]}
       stages={(stages as PipelineStageRow[]) ?? []}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={[...((leadNotes as LeadNote[]) ?? []), ...behindAppointments.notes]}
