@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
 import {
   canEditDispatch,
@@ -11,7 +10,6 @@ import {
   isAdminRole,
   isFieldRole,
   isStrictAdmin,
-  type RolePageVisibilityRow,
 } from "@/lib/data/types";
 import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
@@ -21,6 +19,7 @@ import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { LiveUsersButton } from "./live-users-button";
 import { getLiveUsers } from "@/lib/actions/presence";
+import { getCompanyChrome, getRoleVisibility } from "@/lib/data/company-chrome";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { UpdateNotice } from "./update-notice";
@@ -46,13 +45,9 @@ export async function generateMetadata(): Promise<Metadata> {
   const profile = await getCurrentProfile();
   if (!profile) return {};
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("company_profile")
-    .select("logo_url")
-    .eq("company_id", profile.company_id)
-    .single();
-  const logoUrl = (data as { logo_url: string | null } | null)?.logo_url;
+  // Same cached read the layout does, so the favicon costs no query of
+  // its own -- this used to be a third trip for company_profile.
+  const { logo_url: logoUrl } = await getCompanyChrome(profile.company_id);
 
   return logoUrl ? { icons: { icon: logoUrl } } : {};
 }
@@ -74,42 +69,24 @@ export default async function AppLayout({
   const profile = await getCurrentProfile();
   if (!profile) redirect("/login");
 
-  const supabase = await createClient();
-  const [{ data: companyProfile }, { data: visibilityRows }, companies, { data: navOrderRow }, liveUsers] = await Promise.all([
-    supabase
-      .from("company_profile")
-      .select("name, logo_url, time_format")
-      .eq("company_id", profile.company_id)
-      .single(),
-    supabase
-      .from("role_page_visibility")
-      .select("id, role, page_key, visible")
-      .eq("company_id", profile.company_id),
+  // Cached per company and invalidated when the matching settings are
+  // saved. Both used to be fresh database reads on every navigation --
+  // four queries between them -- for values that change when somebody
+  // edits a settings page and not otherwise.
+  const [company, overrides, companies, liveUsers] = await Promise.all([
+    getCompanyChrome(profile.company_id),
+    getRoleVisibility(profile.company_id),
     getCurrentUserCompanies(),
-    // Its own query on purpose: before migration 0096 adds the column,
-    // this one fails alone and the sidebar falls back to the built-in
-    // order, instead of taking the company name and logo down with it.
-    supabase
-      .from("company_profile")
-      .select("nav_order")
-      .eq("company_id", profile.company_id)
-      .single(),
     // Seeds the presence badge so the button does not have to ask for
-    // itself on mount. Rides along with the queries above rather than
+    // itself on mount. Rides along with the reads above rather than
     // costing a round trip of its own, and is skipped entirely for the
     // roles that never see the button.
     isStrictAdmin(profile) ? getLiveUsers() : Promise.resolve(null),
   ]);
-  const company = companyProfile as {
-    name: string | null;
-    logo_url: string | null;
-    time_format: TimeFormat | null;
-  } | null;
-  const logoUrl = company?.logo_url ?? null;
-  const companyName = company?.name?.trim();
-  const timeFormat: TimeFormat = company?.time_format ?? "12h";
-  const overrides = (visibilityRows as RolePageVisibilityRow[]) ?? [];
-  const navOrder = (navOrderRow as { nav_order: string[] | null } | null)?.nav_order ?? null;
+  const logoUrl = company.logo_url;
+  const companyName = company.name?.trim();
+  const timeFormat: TimeFormat = company.time_format ?? "12h";
+  const navOrder = company.nav_order;
   const filteredNav = sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder);
 
   // Dashboard ("/") is where login lands everyone -- if a role has it

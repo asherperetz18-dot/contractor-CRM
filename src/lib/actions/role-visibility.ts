@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { defaultPageVisible, isAdminRole, type AppRole, type PageKey } from "@/lib/data/types";
+import { revalidateRoleVisibility } from "@/lib/data/company-chrome";
 
 async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: string }> {
   const profile = await getCurrentProfile();
@@ -67,6 +68,7 @@ export async function setPageVisibilityBulk(
     if (error) return { error: error.message };
   }
 
+  revalidateRoleVisibility(guard.companyId);
   revalidatePath("/settings/role-visibility");
   revalidatePath("/", "layout");
   return { saved: changes.length };
@@ -90,6 +92,7 @@ export async function resetPageVisibility(
   const { error } = await query;
   if (error) return { error: error.message };
 
+  revalidateRoleVisibility(guard.companyId);
   revalidatePath("/settings/role-visibility");
   revalidatePath("/", "layout");
   return {};
