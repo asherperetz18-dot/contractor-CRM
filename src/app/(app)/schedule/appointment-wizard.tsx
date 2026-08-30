@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
@@ -10,25 +10,19 @@ import {
   endsNextDay,
   type CalendarRow,
   type EventType,
-  type Lead,
   type PipelineStage,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import { bookAppointmentForLead, createLead } from "@/lib/actions/leads";
+import { searchBookableLeads, type LeadMatch } from "@/lib/actions/lead-search";
 import { createEvent } from "@/lib/actions/events";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function leadMatchLabel(l: Lead) {
-  if (l.contact_type === "Company") return l.company_name || "Unnamed Company";
-  return `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim();
-}
-
 export function AppointmentWizard({
-  leads,
   reps,
   stages,
   calendars,
@@ -36,7 +30,6 @@ export function AppointmentWizard({
   onCancel,
   onFinished,
 }: {
-  leads: Lead[];
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
@@ -72,19 +65,47 @@ export function AppointmentWizard({
   const [assignedTo, setAssignedTo] = useState("");
 
   const isNewContact = !!contactQuery.trim() && !matchedLeadId;
-  const matchedLead = leads.find((l) => l.id === matchedLeadId);
+  const [matchedLead, setMatchedLead] = useState<LeadMatch | null>(null);
+  const [matches, setMatches] = useState<LeadMatch[]>([]);
 
-  const matches = contactQuery.trim()
-    ? leads.filter((l) => leadMatchLabel(l).toLowerCase().includes(contactQuery.toLowerCase()))
-    : [];
+  /**
+   * Contacts are searched on the server now.
+   *
+   * This used to filter an array of every contact in the company, which
+   * is why whichever page rendered the wizard had to load and ship the
+   * whole book. Debounced so a name is one query rather than one per
+   * keystroke, and results that arrive after the box has moved on are
+   * dropped.
+   */
+  const searching = !matchedLeadId && contactQuery.trim().length >= 2;
+  // Derived rather than cleared in the effect: a stale result that is no
+  // longer being searched for simply is not shown, which avoids a second
+  // render just to empty the list.
+  const visibleMatches = searching ? matches : [];
 
-  function pickLead(l: Lead) {
+  useEffect(() => {
+    if (!searching) return;
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const found = await searchBookableLeads(contactQuery);
+      if (!cancelled) setMatches(found);
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [contactQuery, searching]);
+
+  function pickLead(l: LeadMatch) {
     setMatchedLeadId(l.id);
-    setContactQuery(leadMatchLabel(l));
+    setMatchedLead(l);
+    setContactQuery(l.label);
+    setMatches([]);
   }
 
   function startAsNewContact() {
     setMatchedLeadId("");
+    setMatchedLead(null);
     const parts = contactQuery.split(" ");
     setNewContact((c) => ({ ...c, firstName: parts[0] || "", lastName: parts.slice(1).join(" ") || "" }));
     setStep(2);
@@ -96,7 +117,7 @@ export function AppointmentWizard({
 
     let leadId = matchedLeadId;
     const contactName = matchedLead
-      ? leadMatchLabel(matchedLead)
+      ? matchedLead.label
       : `${newContact.firstName} ${newContact.lastName}`.trim();
 
     if (!leadId) {
@@ -201,11 +222,11 @@ export function AppointmentWizard({
                 placeholder="Type a name — we'll create a new contact automatically if it's new"
               />
             </Field>
-            {matches.length > 0 && !matchedLeadId && (
+            {visibleMatches.length > 0 && (
               <div className="contact-match-list">
-                {matches.slice(0, 5).map((l) => (
+                {visibleMatches.slice(0, 5).map((l) => (
                   <div key={l.id} className="contact-match-row" onClick={() => pickLead(l)}>
-                    {leadMatchLabel(l)}
+                    {l.label}
                     {l.phone && <span className="mono"> · {l.phone}</span>}
                   </div>
                 ))}
