@@ -1,45 +1,28 @@
-import { createClient } from "@/lib/supabase/server";
-import { isStrictAdmin, type ActivityEvent } from "@/lib/data/types";
+import { isStrictAdmin } from "@/lib/data/types";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
+import { getActivityEventsInRange } from "@/lib/actions/activity-range";
 import { getCompanyMembers } from "@/lib/data/company";
 import { AdminGate } from "@/components/admin-gate";
 import { TeamActivityView } from "./team-activity-view";
 
-function ninetyDaysAgoISO(): string {
-  return new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-}
-
-// Supabase/PostgREST caps every query at this project's configured max rows
-// (1000), regardless of .range(). A single 90-day fetch of heartbeat pings
-// blows past that quickly, and since it was sorted ascending, the cap was
-// silently dropping every recent event -- the newest activity never made it
-// to the page. Page through in descending order (most recent first) so if
-// the safety cap below is ever hit, it's old data that gets dropped, not
-// today's.
-const PAGE_SIZE = 1000;
-const MAX_ROWS = 20000;
-
-async function fetchAllActivityEvents(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  since: string,
-  companyId: string
-): Promise<ActivityEvent[]> {
-  const rows: ActivityEvent[] = [];
-  let offset = 0;
-  while (offset < MAX_ROWS) {
-    const { data, error } = await supabase
-      .from("activity_events")
-      .select("id, user_id, session_id, path, kind, created_at")
-      .eq("company_id", companyId)
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (error || !data || data.length === 0) break;
-    rows.push(...(data as ActivityEvent[]));
-    if (data.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
-  }
-  return rows;
+/**
+ * The report opens on today, so today is what is fetched.
+ *
+ * This page used to pull ninety days of raw events on every visit --
+ * 26,705 rows and 3.4MB of them -- in twenty sequential round trips,
+ * and hand the lot to the browser to narrow down. The default window is
+ * about 1,800 events, so roughly fourteen fifteenths of that was
+ * discarded before anything was drawn. Measured before the change: the
+ * server began answering in 67ms and then spent 2,849ms streaming
+ * 5.2MB.
+ *
+ * Widening the range now fetches that range, the same way the lead-view
+ * figures beside it already worked.
+ */
+function startOfTodayISO(): string {
+  // Sliced from the ISO string to match the report, which buckets days by
+  // the UTC date rather than anyone's local one.
+  return new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z").toISOString();
 }
 
 export default async function TeamActivityPage() {
@@ -51,18 +34,21 @@ export default async function TeamActivityPage() {
     return <AdminGate adminOnly>{null}</AdminGate>;
   }
 
-  const supabase = await createClient();
-  const since = ninetyDaysAgoISO();
+  const since = startOfTodayISO();
 
   const companyId = await getCurrentCompanyId();
-  const [events, users] = await Promise.all([
-    companyId ? fetchAllActivityEvents(supabase, since, companyId) : Promise.resolve([]),
+  const [initial, users] = await Promise.all([
+    companyId ? getActivityEventsInRange(since) : Promise.resolve({ events: [] }),
     companyId ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
 
   return (
     <AdminGate adminOnly>
-      <TeamActivityView events={events} users={users} />
+      <TeamActivityView
+        initialEvents={initial.events ?? []}
+        initialSince={since}
+        users={users}
+      />
     </AdminGate>
   );
 }

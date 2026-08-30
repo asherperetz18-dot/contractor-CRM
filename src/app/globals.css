@@ -8456,3 +8456,14 @@ textarea.est-item-desc:disabled {
   text-align: center;
   padding: 10px 0;
 }
+/* Team Activity: range-fetch state -- see team-activity-view.tsx */
+.ta-loading {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.ta-truncated {
+  color: var(--ink-soft);
+  font-size: 12px;
+  margin: 6px 0 0;
+  max-width: 60ch;
+}
