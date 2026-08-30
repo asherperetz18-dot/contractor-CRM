@@ -21,6 +21,7 @@ import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { InboxAlerts } from "./inbox-alerts";
 import { PageGate } from "./page-gate";
+import { ScreenShareButton, ScreenShareEngine } from "./screen-share";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
 import { TimeFormatProvider } from "@/components/time-format-context";
@@ -140,6 +141,7 @@ export default async function AppLayout({
             >
               ❓
             </Link>
+            <ScreenShareButton />
             <DialerButton />
             {canEditDispatch(profile) && <DuplicateContactsButton />}
             {isStrictAdmin(profile) && (
@@ -153,6 +155,7 @@ export default async function AppLayout({
         </div>
         <ActivityTracker />
         <VoiceDialer />
+        <ScreenShareEngine selfId={profile.id} />
         {/* The incoming-text watcher: badge, toast + ding, tab-title
             flash. For the people who staff the phones -- Office,
             Dispatch, Admin -- not every role that can merely open the

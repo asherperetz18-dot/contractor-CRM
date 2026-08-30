@@ -8059,3 +8059,68 @@ textarea.est-item-desc:disabled {
   cursor: pointer;
 }
 .tut-dot-on { background: #d9862f; }
+
+/* Live screen share: the sharer pill, the viewer banner, and the
+   watching overlay. */
+.ss-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #d33;
+  margin-right: 7px;
+  animation: tour-blink 1.1s ease-in-out infinite;
+}
+.ss-pill,
+.ss-banner {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1c2733;
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+.ss-banner .icon-btn,
+.ss-pill .icon-btn {
+  color: #fff;
+}
+.ss-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  background: #0d131b;
+  display: flex;
+  flex-direction: column;
+}
+.ss-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #eee;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+.ss-viewer-tools {
+  display: flex;
+  gap: 8px;
+}
+.ss-viewer-tools .btn-ghost {
+  color: #cdd6df;
+}
+.ss-video {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+  background: #000;
+}

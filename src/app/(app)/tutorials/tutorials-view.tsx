@@ -76,6 +76,22 @@ const LIBRARY: Category[] = [
     ],
   },
   {
+    name: "Teamwork",
+    tutorials: [
+      {
+        id: "screen-share",
+        title: "Share your screen with a teammate",
+        kicker: "Quick how-to · 3 steps · 1 min",
+        desc: "Show your screen and talk it through — office to field, live.",
+        steps: [
+          { img: T("t-share-pill"), caption: "Tap the 🖥 button in the top bar. Your browser asks exactly what to share — your whole screen or one window — and a red pill shows you're live." },
+          { img: T("t-share-banner"), caption: "Everyone in your company sees a banner: Alex is sharing their screen. One tap on Watch joins them — nothing to install, nothing to configure." },
+          { img: T("t-share-viewer"), caption: "The viewer sees your screen live and you talk to each other through your microphones, like a phone call with eyes. Either side can mute or leave; Stop ends it for everyone." },
+        ],
+      },
+    ],
+  },
+  {
     name: "Calls & Texts",
     tutorials: [
       {
