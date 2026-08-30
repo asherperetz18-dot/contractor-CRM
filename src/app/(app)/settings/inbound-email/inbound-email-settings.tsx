@@ -68,20 +68,20 @@ export function InboundEmailSettings() {
             </button>
           </div>
           <p className="module-sub" style={{ marginBottom: 6 }}>
-            <strong>How to use it</strong> &mdash; auto-forward your lead notification emails:
+            <strong>How to use it</strong>{" "}&mdash; auto-forward your lead notification emails:
           </p>
           <ul className="module-sub" style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
             <li>
-              <strong>Gmail:</strong> Settings &rarr; Forwarding &rarr; Add a forwarding address
+              <strong>Gmail:</strong>{" "}Settings &rarr; Forwarding &rarr; Add a forwarding address
               (paste the address above, confirm the verification email that lands as a lead note),
               then create a filter &mdash; e.g. from:proreferral.homedepot.com &rarr; Forward.
             </li>
             <li>
-              <strong>Outlook:</strong> Settings &rarr; Rules &rarr; new rule: from the lead
+              <strong>Outlook:</strong>{" "}Settings &rarr; Rules &rarr; new rule: from the lead
               service &rarr; Redirect to the address above.
             </li>
             <li>
-              Each forwarded email becomes a lead in <strong>Unsorted</strong> with the right
+              Each forwarded email becomes a lead in <strong>Unsorted</strong>{" "}with the right
               source (Home Depot Pro Referral, Angi, Yelp&hellip;), and your new-lead text alerts
               fire. If the sender is already a lead, the email is added to their notes instead.
             </li>

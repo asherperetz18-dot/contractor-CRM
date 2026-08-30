@@ -165,6 +165,16 @@ const LIBRARY: Category[] = [
         ],
       },
       {
+        id: "lead-email-intake",
+        title: "Turn lead emails into leads",
+        kicker: "Admin · 2 steps · 1 min",
+        desc: "Home Depot Pro Referral, Angi, Yelp — forward the email, get the lead.",
+        steps: [
+          { img: T("t-inbound-email"), caption: "Settings → Lead Email Intake gives your company a private address. Auto-forward your lead-source emails to it — Gmail and Outlook steps are right on the page." },
+          { img: T("pipeline"), caption: "Every forwarded email becomes a lead in Unsorted with the true source, and your new-lead text alerts fire. If the sender is already a lead, the email lands on their notes instead." },
+        ],
+      },
+      {
         id: "portal-link",
         title: "Send the customer portal link",
         kicker: "Customer-facing · 2 steps · 1 min",
