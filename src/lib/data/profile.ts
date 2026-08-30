@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getSigningKeys } from "@/lib/supabase/jwks";
 import type { AppRole } from "@/lib/data/types";
 
 export type Profile = {
@@ -29,39 +30,32 @@ export type CompanyMembership = {
 };
 
 /**
- * The signed-in user, fetched at most once per request.
+ * The signed-in user, worked out at most once per request and without
+ * leaving the machine.
  *
- * supabase.auth.getUser() is a network call: it re-validates the JWT
- * against the Auth API rather than trusting what is in the cookie. That
- * is the behaviour we want, but it was happening twice per render --
- * once here and once in getCurrentProfile() -- because each had its own
- * client. Two identical validations of the same token, each a round
- * trip from the function region to the database region.
+ * This was getUser(), which hands the token to the Auth API and waits to
+ * be told it is valid -- a network call, and it happened twice per
+ * render because this function and getCurrentProfile() each had their
+ * own client. cache() collapsed those two into one. getClaims() then
+ * removed the call itself: the token is signed with ES256 and the
+ * matching public key is published, so the signature is checked here.
  *
- * cache() makes the second caller reuse the first result for the life of
- * the request. It cannot dedupe against the proxy's own getUser(), which
- * runs in a separate edge invocation.
- *
- * getClaims() would remove the round trip entirely by verifying the JWT
- * locally, but only for projects on asymmetric signing keys; on a
- * symmetric (HS*) secret it falls back to getUser() internally, so it
- * would buy nothing here until the project migrates its JWT keys.
+ * The key set is passed in rather than left to supabase-js to fetch.
+ * supabase-js caches it on the client object and this app builds a
+ * fresh client per request, so its cache was always cold and it went
+ * back to Supabase for the same unchanging document every time. See
+ * lib/supabase/jwks.ts.
  */
 const getAuthUserId = cache(async (): Promise<string | null> => {
   const supabase = await createClient();
-  // getClaims, not getUser. getUser asks the Auth API to validate the
-  // token over the network, every time; getClaims verifies the signature
-  // here, against this project's public key, and only reaches out when
-  // the key is not already cached. This project signs with ES256, so
-  // that verification is genuinely local -- on a symmetric secret
-  // getClaims falls back to getUser internally and nothing is saved.
-  //
   // The trade is that a token stays good until it expires. Deleting a
   // user no longer cuts them off mid-token, but it does take their
   // company_members row with it, and every policy in the database reads
   // that row -- so they are locked out of all data at once, which is the
   // part that matters.
-  const { data } = await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims(undefined, {
+    jwks: await getSigningKeys(),
+  });
   return data?.claims?.sub ?? null;
 });
 
