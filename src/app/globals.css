@@ -4515,16 +4515,25 @@ a.portal-header-stars:hover {
    beneath it. Done items keep their who-and-when, because "who signed
    off the final walkthrough" is the whole point of a checklist. */
 .proj-check-chip {
-  border: 1px solid #d8d4cc;
-  background: #fff;
+  border: 1px solid #b6cdea;
+  background: #eef4fb;
+  color: #2b5c9e;
   border-radius: 999px;
   padding: 1px 9px;
   font-size: 11px;
   cursor: pointer;
 }
 .proj-check-chip-done {
-  border-color: #2f855a;
+  border-color: #9fceb4;
+  background: #e8f5ee;
   color: #2f855a;
+}
+/* The receipt chip shares the pill shape but not the color: blue is
+   the checklist, amber is money going out. */
+.proj-receipt-chip {
+  border-color: #ecd2a4;
+  background: #fdf3e3;
+  color: #92610f;
 }
 .proj-checklist-row td {
   background: #faf8f4;

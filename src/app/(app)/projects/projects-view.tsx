@@ -346,7 +346,7 @@ export function ProjectsView({
                               already knows. */}
                           <button
                             type="button"
-                            className="proj-check-chip"
+                            className="proj-check-chip proj-receipt-chip"
                             onClick={() => setReceiptFor(p.leadId)}
                           >
                             🧾 + Receipt
