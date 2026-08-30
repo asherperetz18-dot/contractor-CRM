@@ -22,6 +22,17 @@ import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { CalendarBoard } from "./calendar-board";
 
+type LeadWithEvents = Lead & { events?: unknown };
+
+/** Drops the join key so the client receives a plain Lead. */
+function withoutJoin(rows: LeadWithEvents[] | null): Lead[] {
+  return (rows ?? []).map((row) => {
+    const lead = { ...row };
+    delete lead.events;
+    return lead as Lead;
+  });
+}
+
 export default async function CalendarPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
@@ -51,8 +62,26 @@ export default async function CalendarPage() {
     supabase.from("events").select("*").eq("company_id", companyId),
     supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
-    selectAll<Lead>((f, t) =>
-      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+    // Only the contacts an appointment actually points at.
+    //
+    // This used to be the whole book -- every lead in the company,
+    // serialised into the page and sent to the browser to draw a week of
+    // appointments. At 3,573 contacts that was 833kB of the response,
+    // against 72 contacts that actually have an appointment. It is the
+    // reason the calendar took seconds to appear while the server itself
+    // answered in under half of one.
+    //
+    // Expressed as an inner join on events rather than a list of ids, so
+    // it stays a single query and cannot outgrow the URL as the
+    // appointment history builds up. The embedded events come back as a
+    // key on each row and are dropped below -- the join is a filter here,
+    // not data anyone reads.
+    selectAll<LeadWithEvents>((f, t) =>
+      supabase
+        .from("leads")
+        .select("*, events!inner(id)")
+        .eq("company_id", companyId)
+        .range(f, t)
     ),
     supabase
       .from("lead_tasks")
@@ -115,7 +144,7 @@ export default async function CalendarPage() {
       viewerIsDispatchScoped={isDispatchScoped(profile)}
       appointmentHolders={appointmentHolders}
       dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
-      leads={[...((leads as Lead[]) ?? []), ...behindAppointments.leads]}
+      leads={[...withoutJoin(leads), ...behindAppointments.leads]}
       leadTasks={(leadTasks as LeadTask[]) ?? []}
       leadNotes={[...((leadNotes as LeadNote[]) ?? []), ...behindAppointments.notes]}
       estimates={(estimates as LinkedEstimate[]) ?? []}

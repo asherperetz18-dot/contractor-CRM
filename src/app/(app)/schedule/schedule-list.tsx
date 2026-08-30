@@ -142,7 +142,6 @@ export function ScheduleList({
 
       {showNew && canWrite && (
         <AppointmentWizard
-          leads={leads}
           reps={reps}
           stages={stages}
           calendars={calendars}
