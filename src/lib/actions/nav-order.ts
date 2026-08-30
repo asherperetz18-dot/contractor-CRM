@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
-import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
 
 /**
  * Save the company's sidebar order: an array of top-level entry keys
@@ -29,7 +28,6 @@ export async function saveNavOrder(keys: string[]): Promise<{ error?: string }> 
   if (error) return { error: error.message };
   if (!data?.length) return { error: "Could not save the order." };
 
-  revalidateCompanyChrome(profile.company_id);
   revalidatePath("/", "layout");
   revalidatePath("/settings/menu-order");
   return {};
