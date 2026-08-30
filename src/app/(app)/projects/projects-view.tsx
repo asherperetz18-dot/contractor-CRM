@@ -135,7 +135,10 @@ export function ProjectsView({
                 ? cancelled
                 : sorted;
 
-  const totals = active.reduce(
+  // The money cards follow the selected chip: pick "Complete" and the
+  // figures speak for finished work; pick "Cancelled" and Sold becomes
+  // "how much business fell through". The chip itself names the scope.
+  const totals = shown.reduce(
     (acc, p) => ({
       sold: acc.sold + p.rollup.soldCents,
       collected: acc.collected + p.rollup.collectedCents,
