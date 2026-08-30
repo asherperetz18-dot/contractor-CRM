@@ -601,6 +601,14 @@ body {
   height: 36px;
   font-size: 16px;
   background: #fff;
+  /* Buttons center their content on their own; the help link is an
+     <a>, which doesn't -- its ? sat in the top-left corner of the box.
+     Flex-center the class so every chip's glyph lands dead center. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  text-decoration: none;
 }
 
 .company-switcher-btn {
