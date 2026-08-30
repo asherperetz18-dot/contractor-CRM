@@ -38,15 +38,22 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims rather than getUser. This runs on every request in the
+  // app, and getUser spends a network call asking the Auth API to
+  // validate a token we can verify ourselves: this project signs with
+  // ES256, so the signature is checked here against a cached public key.
+  //
+  // Refreshing still happens. With no token passed, getClaims reads the
+  // session first, which is what renews an expired one and writes the
+  // new cookies through the setAll callback above -- the reason this
+  // proxy exists at all.
+  const { data: claims } = await supabase.auth.getClaims();
 
   const isPublicPath = PUBLIC_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path)
   );
 
-  if (!user && !isPublicPath) {
+  if (!claims && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

@@ -47,27 +47,37 @@ export type CompanyMembership = {
  * symmetric (HS*) secret it falls back to getUser() internally, so it
  * would buy nothing here until the project migrates its JWT keys.
  */
-const getAuthUser = cache(async () => {
+const getAuthUserId = cache(async (): Promise<string | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  // getClaims, not getUser. getUser asks the Auth API to validate the
+  // token over the network, every time; getClaims verifies the signature
+  // here, against this project's public key, and only reaches out when
+  // the key is not already cached. This project signs with ES256, so
+  // that verification is genuinely local -- on a symmetric secret
+  // getClaims falls back to getUser internally and nothing is saved.
+  //
+  // The trade is that a token stays good until it expires. Deleting a
+  // user no longer cuts them off mid-token, but it does take their
+  // company_members row with it, and every policy in the database reads
+  // that row -- so they are locked out of all data at once, which is the
+  // part that matters.
+  const { data } = await supabase.auth.getClaims();
+  return data?.claims?.sub ?? null;
 });
 
 // Every active company the signed-in user belongs to, for the switcher
 // and for resolving which one is "current." Wrapped in cache() so it's
 // only fetched once per request even though multiple call sites need it.
 export const getCurrentUserCompanies = cache(async (): Promise<CompanyMembership[]> => {
-  const user = await getAuthUser();
-  if (!user) return [];
+  const userId = await getAuthUserId();
+  if (!userId) return [];
 
   const supabase = await createClient();
 
   const { data } = await supabase
     .from("company_members")
     .select("company_id, companies(name)")
-    .eq("profile_id", user.id)
+    .eq("profile_id", userId)
     .eq("status", "Active");
 
   return ((data ?? []) as unknown as { company_id: string; companies: { name: string | null } | null }[]).map(
@@ -95,8 +105,8 @@ export const getCurrentCompanyId = cache(async (): Promise<string | null> => {
 // as of the multi-company migration -- a person can hold different roles
 // in different companies. profiles stays identity-only (name/email/phone).
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
-  const user = await getAuthUser();
-  if (!user) return null;
+  const userId = await getAuthUserId();
+  if (!userId) return null;
 
   const supabase = await createClient();
 
@@ -104,11 +114,11 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   if (!companyId) return null;
 
   const [{ data: identityData }, { data: membershipData }] = await Promise.all([
-    supabase.from("profiles").select("name, email, is_super_admin").eq("id", user.id).single(),
+    supabase.from("profiles").select("name, email, is_super_admin").eq("id", userId).single(),
     supabase
       .from("company_members")
       .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, is_dispatch_supervisor")
-      .eq("profile_id", user.id)
+      .eq("profile_id", userId)
       .eq("company_id", companyId)
       .single(),
   ]);
@@ -128,7 +138,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   if (!membership) return null;
 
   return {
-    id: user.id,
+    id: userId,
     name: identity?.name ?? null,
     email: identity?.email ?? null,
     roles: membership.roles,
