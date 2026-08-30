@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, type TimeFormat } from "@/lib/data/types";
+import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
 
 export type CompanyProfileInput = {
   name: string;
@@ -59,6 +60,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
 
   if (error) return { error: error.message };
   revalidatePath("/settings/company-profile");
+  revalidateCompanyChrome(companyId);
   revalidatePath("/", "layout");
   return {};
 }
@@ -174,6 +176,7 @@ export async function uploadLogo(formData: FormData) {
     .eq("company_id", companyId);
   if (error) return { error: error.message };
 
+  revalidateCompanyChrome(companyId);
   revalidatePath("/", "layout");
   return { url: publicUrl };
 }
@@ -189,6 +192,7 @@ export async function removeLogo() {
     .eq("company_id", companyId);
   if (error) return { error: error.message };
 
+  revalidateCompanyChrome(companyId);
   revalidatePath("/", "layout");
   return {};
 }
