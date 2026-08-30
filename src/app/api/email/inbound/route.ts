@@ -105,8 +105,13 @@ export async function POST(req: NextRequest) {
   if (!bodyRes?.ok) {
     // Non-200 makes Resend retry (7 attempts over ~18h) -- right call
     // for a transient fetch failure, since the email is safe on their
-    // side for 30 days.
-    return NextResponse.json({ error: "could not fetch email body" }, { status: 502 });
+    // side for 30 days. The upstream status is echoed because it names
+    // the fix: a 401 here means the API key lacks full access.
+    const upstream = bodyRes ? `${bodyRes.status} ${(await bodyRes.text().catch(() => "")).slice(0, 120)}` : "network error";
+    return NextResponse.json(
+      { error: "could not fetch email body", upstream },
+      { status: 502 }
+    );
   }
   const email = (await bodyRes.json()) as {
     from?: string;
