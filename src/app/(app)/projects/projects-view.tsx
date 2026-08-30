@@ -93,7 +93,9 @@ export function ProjectsView({
   const [filter, setFilter] = useState<Filter>("All");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
-  const [receiptOpen, setReceiptOpen] = useState(false);
+  // Which job the receipt modal opens on: a lead id from a row's chip,
+  // "any" from the page-level button, null when closed.
+  const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const itemsByEstimate = useMemo(() => {
@@ -193,14 +195,18 @@ export function ProjectsView({
           </p>
         </div>
         {canAddCosts && (
-          <button className="btn-primary" onClick={() => setReceiptOpen(true)}>
+          <button className="btn-primary" onClick={() => setReceiptFor("any")}>
             + Receipt
           </button>
         )}
       </div>
 
-      {receiptOpen && (
-        <QuickReceipt projects={sorted} onClose={() => setReceiptOpen(false)} />
+      {receiptFor && (
+        <QuickReceipt
+          projects={sorted}
+          initialLeadId={receiptFor === "any" ? "" : receiptFor}
+          onClose={() => setReceiptFor(null)}
+        />
       )}
 
       <div className="stat-grid stat-grid-5">
@@ -328,6 +334,22 @@ export function ProjectsView({
                             }
                           >
                             ☑ {items.length > 0 ? `${doneCount}/${items.length}` : "Checklist"}
+                          </button>
+                        </>
+                      )}
+                      {canAddCosts && p.status !== "cancelled" && (
+                        <>
+                          {" · "}
+                          {/* Straight into the modal with THIS job picked --
+                              the receipt is in one hand, the job is on this
+                              row, nobody re-answers a question the screen
+                              already knows. */}
+                          <button
+                            type="button"
+                            className="proj-check-chip"
+                            onClick={() => setReceiptFor(p.leadId)}
+                          >
+                            🧾 + Receipt
                           </button>
                         </>
                       )}
@@ -684,9 +706,12 @@ function ProjectChecklist({
  */
 function QuickReceipt({
   projects,
+  initialLeadId,
   onClose,
 }: {
   projects: ProjectCard[];
+  /** Pre-picked job, when the modal was opened from a specific row. */
+  initialLeadId?: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -719,7 +744,9 @@ function QuickReceipt({
     }));
   }, [projects]);
 
-  const [leadId, setLeadId] = useState(jobs.length === 1 ? jobs[0].leadId : "");
+  const [leadId, setLeadId] = useState(
+    initialLeadId || (jobs.length === 1 ? jobs[0].leadId : "")
+  );
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorId, setVendorId] = useState("");
   const [vendorText, setVendorText] = useState("");
