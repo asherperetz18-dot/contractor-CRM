@@ -196,7 +196,45 @@ export function canManageCosts(profile: Pick<Profile, "roles"> | null) {
     profile.roles.includes("Bookkeeping") ||
     profile.roles.includes("Office") ||
     profile.roles.includes("Admin") ||
-    profile.roles.includes("Production")
+    profile.roles.includes("Production") ||
+    // The crew member standing at the supply-house counter. Costs only:
+    // Field passes none of the estimate-view checks, so the money side
+    // of a job stays exactly as closed to them as before.
+    profile.roles.includes("Field")
+  );
+}
+
+/**
+ * Who may edit the vendor list. Mirrors the vendors_write policy, which
+ * stayed on the narrower role set when Field joined canManageCosts:
+ * a crew member types an unlisted supplier's name into the receipt
+ * instead of editing the company's vendor records.
+ */
+export function canEditVendors(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (["Bookkeeping", "Office", "Admin", "Production"] as const).some((r) =>
+    profile.roles.includes(r)
+  );
+}
+
+/**
+ * The crew: people on job sites, not in the office. Their Projects page
+ * is the stripped-down field view -- jobs, receipts, photos, checklists,
+ * and no dollar figure anywhere in what the server even sends.
+ */
+export function isFieldRole(profile: Pick<Profile, "roles"> | null) {
+  return !!profile && profile.roles.includes("Field");
+}
+
+/**
+ * Who may add a file to a job. Mirrors the lead_files insert policy --
+ * kept in sync so the Photos button never appears for someone whose
+ * upload the database would then refuse.
+ */
+export function canUploadLeadFiles(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (["Office", "Sales", "Field", "Admin", "Production"] as const).some((r) =>
+    profile.roles.includes(r)
   );
 }
 

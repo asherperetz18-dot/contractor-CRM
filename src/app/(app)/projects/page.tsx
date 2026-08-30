@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canManageCosts,
+  canUploadLeadFiles,
   canViewEstimates,
   isAdminRole,
+  isFieldRole,
   computeProjectRollup,
   type Estimate,
   type EstimatePayment,
@@ -12,6 +15,7 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import { ProjectsView, type ProjectCard } from "./projects-view";
+import { CrewProjectsView, type CrewJob } from "./crew-view";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +41,13 @@ export default async function ProjectsPage() {
   if (!profile) return null;
 
   if (!canViewEstimates(profile)) {
+    // The crew's version of this page: jobs, receipts, photos and
+    // checklists, with no dollar figure anywhere. Field users cannot
+    // read estimate rows at all under RLS, so this view is fed by its
+    // own query below -- one that never selects a money column, which
+    // is the point: the numbers aren't hidden from the crew's page,
+    // they are never in it.
+    if (isFieldRole(profile)) return <CrewProjects companyId={profile.company_id} />;
     return (
       <div className="empty-state">
         <p className="empty-label">You don&apos;t have access to projects</p>
@@ -202,6 +213,7 @@ export default async function ProjectsPage() {
       projects={cards}
       canManage={isAdminRole(profile) && holdReady}
       canAddCosts={canManageCosts(profile)}
+      canUploadPhotos={canUploadLeadFiles(profile)}
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={
@@ -227,3 +239,111 @@ type ChecklistRow = {
   completed_at: string | null;
   completed_by: string | null;
 };
+
+/**
+ * The field crew's Projects data. Fetched with the admin client because
+ * RLS (correctly) refuses a Field user every estimates row -- and scoped
+ * by hand to their company, selecting ONLY columns with no money in
+ * them. total_cents, payments and expenses are never queried, so the
+ * crew page's payload cannot leak a number it was built to omit.
+ */
+async function CrewProjects({ companyId }: { companyId: string }) {
+  const admin = createAdminClient();
+
+  // The admin client answers exactly what it is asked, so every query
+  // below is scoped by hand. profiles has no company column -- scope it
+  // through this company's membership rows, or the names map would
+  // quietly hold every user on the platform.
+  const memberIds =
+    (await admin.from("company_members").select("profile_id").eq("company_id", companyId)).data?.map(
+      (r) => r.profile_id as string
+    ) ?? [];
+
+  type SlimEstimate = {
+    id: string;
+    doc_number: string;
+    title: string | null;
+    lead_id: string;
+    status: string;
+    kind: string | null;
+    parent_estimate_id: string | null;
+    signed_at: string | null;
+    completed_on: string | null;
+    project_on_hold: boolean | null;
+  };
+
+  const [estimates, leads, checklistRows, reps] = await Promise.all([
+    selectAll<SlimEstimate>((from, to) =>
+      admin
+        .from("estimates")
+        .select(
+          "id, doc_number, title, lead_id, status, kind, parent_estimate_id, signed_at, completed_on, project_on_hold"
+        )
+        .eq("company_id", companyId)
+        .range(from, to)
+    ),
+    selectAll<ProjectLead>((from, to) =>
+      admin
+        .from("leads")
+        .select("id, first_name, last_name, company_name, address, assigned_to")
+        .eq("company_id", companyId)
+        .range(from, to)
+    ),
+    admin
+      .from("project_checklist_items")
+      .select("id, estimate_id, label, sort_order, due_date, assigned_to, completed_at, completed_by")
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true })
+      .then((r) => (r.data as ChecklistRow[] | null) ?? []),
+    selectAll<{ id: string; name: string | null }>((from, to) =>
+      admin.from("profiles").select("id, name").in("id", memberIds).range(from, to)
+    ),
+  ]);
+
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+
+  // Same project derivation the full page uses, minus everything the
+  // crew doesn't get: voided contracts (a cancelled job is office
+  // business) and every rollup.
+  const contracts = estimates.filter(
+    (e) => (e.kind ?? "contract") === "contract" && e.status === "Signed"
+  );
+
+  const jobs: CrewJob[] = contracts
+    .map((contract) => {
+      const completionSigned = estimates.some(
+        (e) =>
+          e.parent_estimate_id === contract.id &&
+          (e.kind ?? "") === "completion" &&
+          e.status === "Signed"
+      );
+      const lead = leadById.get(contract.lead_id) ?? null;
+      return {
+        estimateId: contract.id,
+        docNumber: contract.doc_number,
+        title: contract.title ?? "",
+        leadId: contract.lead_id,
+        customer:
+          lead?.company_name ||
+          [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
+          "Unnamed customer",
+        address: lead?.address ?? null,
+        status: contract.project_on_hold
+          ? ("on_hold" as const)
+          : completionSigned || contract.completed_on
+            ? ("complete" as const)
+            : ("in_progress" as const),
+      };
+    })
+    .sort((a, b) => a.customer.localeCompare(b.customer));
+
+  const jobEstimateIds = new Set(jobs.map((j) => j.estimateId));
+
+  return (
+    <CrewProjectsView
+      jobs={jobs}
+      checklistItems={checklistRows.filter((c) => jobEstimateIds.has(c.estimate_id))}
+      memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
+    />
+  );
+}

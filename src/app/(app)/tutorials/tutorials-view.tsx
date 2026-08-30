@@ -165,6 +165,17 @@ const LIBRARY: Category[] = [
           { img: T("t-checklist"), caption: "Each step carries a due date and an owner, editable right here. A step past its date and unchecked turns red — so 'did the permit get filed' has an answer, and a deadline." },
         ],
       },
+      {
+        id: "field-crew",
+        title: "Field crew: receipts and photos, no money",
+        kicker: "For the crew · 3 steps · 1.5 min",
+        desc: "Give crew the Field role and their Projects page becomes a job list with exactly what they need.",
+        steps: [
+          { img: T("tut-crew-jobs"), caption: "A Field user opens Projects and sees their jobs — address, checklist, and two buttons. No contract amounts, no collections, no totals: the money isn't hidden from this page, it's never sent to it. They check off their own steps as work lands." },
+          { img: T("tut-crew-photos"), caption: "Photos opens the job's gallery. Take photo goes straight to the camera; everything lands in the job's file list and its Google Drive Photos folder — the same pictures the office attaches to change orders." },
+          { img: T("tut-crew-receipt"), caption: "+ Receipt on a job row opens with that job already picked: snap the receipt at the counter, amount, save. It files against the job's costs, and the form stays open for the next one in the stack." },
+        ],
+      },
     ],
   },
   {
