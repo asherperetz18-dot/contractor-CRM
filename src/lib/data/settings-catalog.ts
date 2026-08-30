@@ -388,6 +388,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "📥",
         href: "/settings/incoming-webhooks",
       },
+      {
+        title: "Lead Email Intake",
+        desc: "Forward any lead-source email — Home Depot Pro Referral, Angi, Yelp — and it becomes a lead automatically",
+        icon: "📬",
+        href: "/settings/inbound-email",
+      },
       { title: "Outgoing Webhooks", desc: "Push lead status updates back to your CRM, lead source, or accounting system", icon: "📤" },
     ],
   },
