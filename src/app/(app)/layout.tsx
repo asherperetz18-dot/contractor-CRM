@@ -4,7 +4,15 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
-import { canEditDispatch, canSeePage, isAdminRole, isStrictAdmin, type RolePageVisibilityRow } from "@/lib/data/types";
+import {
+  canEditDispatch,
+  canSeePage,
+  canViewEstimates,
+  isAdminRole,
+  isFieldRole,
+  isStrictAdmin,
+  type RolePageVisibilityRow,
+} from "@/lib/data/types";
 import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
 import { MobileNav } from "./mobile-nav";
 import { MobileNavToggle } from "./mobile-nav-toggle";
@@ -131,26 +139,35 @@ export default async function AppLayout({
             <GlobalSearch />
           </div>
           <div className="global-topbar-right">
-            {/* Help lives outside the visibility matrix on purpose --
-                the person who can't find a page needs this the most. */}
-            <Link
-              href="/tutorials"
-              className="icon-btn topbar-icon-btn"
-              title="Video tutorials — narrated walkthroughs"
-              aria-label="Video tutorials"
-            >
-              ❓
-            </Link>
-            <ScreenShareButton />
-            <DialerButton />
-            {canEditDispatch(profile) && <DuplicateContactsButton />}
-            {isStrictAdmin(profile) && (
-              <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
+            {/* The crew's topbar is empty. A Field user's whole app is
+                the job list -- the dialer, quick create, screen share,
+                daily brief and AI assistant are office tools, and every
+                one of them opens onto data the crew view exists to keep
+                out of reach. Same condition as the crew Projects view. */}
+            {!(isFieldRole(profile) && !canViewEstimates(profile)) && (
+              <>
+                {/* Help lives outside the visibility matrix on purpose --
+                    the person who can't find a page needs this the most. */}
+                <Link
+                  href="/tutorials"
+                  className="icon-btn topbar-icon-btn"
+                  title="Video tutorials — narrated walkthroughs"
+                  aria-label="Video tutorials"
+                >
+                  ❓
+                </Link>
+                <ScreenShareButton />
+                <DialerButton />
+                {canEditDispatch(profile) && <DuplicateContactsButton />}
+                {isStrictAdmin(profile) && (
+                  <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
+                )}
+                <DailyBriefButton isAdmin={isAdminRole(profile)} />
+                <AiAssistantButton />
+                <QuickCreateMenu />
+                {isAdminRole(profile) && <AdminToolsMenu isAdmin={isStrictAdmin(profile)} />}
+              </>
             )}
-            <DailyBriefButton isAdmin={isAdminRole(profile)} />
-            <AiAssistantButton />
-            <QuickCreateMenu />
-            {isAdminRole(profile) && <AdminToolsMenu isAdmin={isStrictAdmin(profile)} />}
           </div>
         </div>
         <ActivityTracker />
