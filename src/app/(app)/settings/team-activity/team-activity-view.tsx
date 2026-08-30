@@ -7,6 +7,7 @@ import { DateRangeFilter, type RangeState } from "@/components/date-range-filter
 import { isoDay, resolveWindow, withinWindow, type DateWindow } from "@/lib/data/date-range";
 import { LeadsTouched } from "./leads-touched";
 import { getLeadViewsInRange, type RangeLeadView } from "@/lib/actions/lead-touches";
+import { getActivityEventsInRange } from "@/lib/actions/activity-range";
 
 const PRESETS = [
   { key: "today", label: "Today" },
@@ -94,10 +95,12 @@ function prettyPath(path: string): string {
 }
 
 export function TeamActivityView({
-  events,
+  initialEvents,
+  initialSince,
   users,
 }: {
-  events: ActivityEvent[];
+  initialEvents: ActivityEvent[];
+  initialSince: string;
   users: Profile[];
 }) {
   const [range, setRange] = useState<RangeState>({ preset: "today", from: "", to: "" });
@@ -112,6 +115,46 @@ export function TeamActivityView({
   // End of the last day, not its midnight -- an upper bound of
   // "2026-08-10T00:00" would drop everything that happened on the 10th.
   const untilISO = win.to ? new Date(`${win.to}T23:59:59.999`).toISOString() : undefined;
+
+  /**
+   * The events for the selected range, fetched when the range changes.
+   *
+   * The page arrives holding whatever window it opened on -- today --
+   * rather than ninety days of raw events narrowed down in the browser,
+   * which is what made this the slowest page in the app. Widening the
+   * range asks for that range, the same way the lead-view figures below
+   * already worked.
+   *
+   * Keyed on the window rather than reset in an effect, so the server's
+   * first batch is used as-is and the same window is not fetched twice
+   * on arrival.
+   */
+  const [loaded, setLoaded] = useState<{ key: string; events: ActivityEvent[]; truncated: boolean }>(
+    () => ({ key: `${initialSince}|`, events: initialEvents, truncated: false })
+  );
+  const windowKey = `${sinceISO}|${untilISO ?? ""}`;
+  // The previous range stays on screen while the new one is fetched --
+  // blanking the report and refilling it reads as a fault rather than a
+  // wait.
+  const events = loaded.events;
+  const loadingEvents = loaded.key !== windowKey;
+
+  useEffect(() => {
+    if (loaded.key === windowKey) return;
+    let cancelled = false;
+    (async () => {
+      const result = await getActivityEventsInRange(sinceISO, untilISO);
+      if (cancelled) return;
+      setLoaded({
+        key: windowKey,
+        events: result.events ?? [],
+        truncated: result.truncated === true,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [windowKey, loaded.key, sinceISO, untilISO]);
 
   // Lead-opens for the selected range, fetched once and reused by every
   // expanded page row.
@@ -347,7 +390,22 @@ export function TeamActivityView({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Team Activity</h1>
-          <p className="module-sub">Usage across your team, based on page activity</p>
+          <p className="module-sub">
+            Usage across your team, based on page activity
+            {/* Said out loud while a wider range is being fetched, so the
+                figures on screen are not mistaken for the new ones. */}
+            {loadingEvents && <span className="ta-loading"> · updating…</span>}
+          </p>
+          {/* The old page capped its fetch at 20,000 rows against 26,705
+              in ninety days and said nothing, so the report quietly
+              covered about sixty-seven of them. If a cap is ever reached
+              again it says so. */}
+          {loaded.truncated && (
+            <p className="ta-truncated">
+              Showing the most recent activity only — this range holds more than can be
+              loaded at once, so the oldest events are not included.
+            </p>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <select
