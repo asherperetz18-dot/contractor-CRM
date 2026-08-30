@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { logActivityPing } from "@/lib/actions/activity";
 import { touchDevice } from "@/lib/actions/devices";
 import { describeDevice, getOrCreateDeviceId } from "@/lib/device";
 import { createClient } from "@/lib/supabase/client";
@@ -26,6 +25,34 @@ const INTERACTION_EVENTS = [
   "wheel",
 ] as const;
 
+/**
+ * Fire and forget. sendBeacon hands the request to the browser and
+ * returns immediately: it does not block the navigation that triggered
+ * it, and it still goes out if the page is on its way out -- a ping used
+ * to be abandoned when somebody clicked away quickly. fetch with
+ * keepalive is the same contract for anything without sendBeacon.
+ */
+function sendPing(sessionId: string, path: string, kind: "pageview" | "heartbeat") {
+  const body = JSON.stringify({ sessionId, path, kind });
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon(
+        "/api/activity/ping",
+        new Blob([body], { type: "application/json" })
+      );
+      return;
+    }
+  } catch {
+    // Falls through to fetch below.
+  }
+  void fetch("/api/activity/ping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
 function getOrCreateSessionId(): string {
   let id = window.sessionStorage.getItem(SESSION_KEY);
   if (!id) {
@@ -39,7 +66,7 @@ export function ActivityTracker() {
   const pathname = usePathname();
 
   useEffect(() => {
-    logActivityPing(getOrCreateSessionId(), pathname, "pageview");
+    sendPing(getOrCreateSessionId(), pathname, "pageview");
   }, [pathname]);
 
   useEffect(() => {
@@ -87,7 +114,7 @@ export function ActivityTracker() {
         document.visibilityState === "visible" &&
         Date.now() - lastInteraction < IDLE_AFTER_MS;
       if (working) {
-        logActivityPing(sessionId, window.location.pathname, "heartbeat");
+        sendPing(sessionId, window.location.pathname, "heartbeat");
         touch();
       }
     }
