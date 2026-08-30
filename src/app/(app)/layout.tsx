@@ -124,6 +124,12 @@ export default async function AppLayout({
     if (fallback) redirect(fallback);
   }
 
+  // The crew's chrome is bare: no search, no topbar tools. A Field
+  // user's whole app is the job list, and search reaches leads,
+  // documents and money across the company. Same condition as the crew
+  // Projects view.
+  const crew = isFieldRole(profile) && !canViewEstimates(profile);
+
   return (
     <TimeFormatProvider value={timeFormat}>
     <div className="app-shell">
@@ -136,15 +142,13 @@ export default async function AppLayout({
               <img src={logoUrl} alt="Company logo" className="topbar-logo-img" />
             )}
             <span className="global-topbar-brand">{companyName || "Contractor CRM"}</span>
-            <GlobalSearch />
+            {!crew && <GlobalSearch />}
           </div>
           <div className="global-topbar-right">
-            {/* The crew's topbar is empty. A Field user's whole app is
-                the job list -- the dialer, quick create, screen share,
-                daily brief and AI assistant are office tools, and every
-                one of them opens onto data the crew view exists to keep
-                out of reach. Same condition as the crew Projects view. */}
-            {!(isFieldRole(profile) && !canViewEstimates(profile)) && (
+            {/* Office tools: the dialer, quick create, screen share,
+                daily brief and AI assistant all open onto data the
+                crew view exists to keep out of reach. */}
+            {!crew && (
               <>
                 {/* Help lives outside the visibility matrix on purpose --
                     the person who can't find a page needs this the most. */}
