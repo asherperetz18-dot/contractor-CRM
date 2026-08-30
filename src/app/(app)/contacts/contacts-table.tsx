@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -71,6 +71,11 @@ const ContactRow = memo(function ContactRow({
     </tr>
   );
 });
+
+// Rows rendered up front, and added each time the end of the list comes
+// into view. Comfortably more than a screenful, so the first batch never
+// looks short.
+const ROW_BATCH = 60;
 
 export function ContactsTable({
   leads,
@@ -253,6 +258,44 @@ export function ContactsTable({
     [leads, q, qDigits]
   );
 
+  /**
+   * Rows are put in the page as they are scrolled to, not all at once.
+   *
+   * Every contact was rendered whether or not anyone could see it: at
+   * 3,573 contacts that is 38,193 DOM nodes, against a recommended
+   * ceiling nearer 1,400, and it made this the slowest page in the app
+   * to open -- several seconds, and worse on the phones the crew
+   * actually use. Nobody reads three thousand rows; they search, or they
+   * scroll a little.
+   *
+   * The list itself is unchanged. Scrolling still just works, there are
+   * no pages to click through, and the search still runs over every
+   * contact rather than the ones on screen -- only how many rows exist
+   * in the document at once has changed.
+   */
+  const [reveal, setReveal] = useState({ q: "", n: ROW_BATCH });
+  // Derived, not reset in an effect: a different search is a different
+  // list, and it starts at the top again.
+  const shown = reveal.q === q ? reveal.n : ROW_BATCH;
+  const visible = shown >= filtered.length ? filtered : filtered.slice(0, shown);
+  const remaining = filtered.length - visible.length;
+
+  const endRef = useRef<HTMLTableRowElement | null>(null);
+  useEffect(() => {
+    const end = endRef.current;
+    if (!end) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setReveal({ q, n: shown + ROW_BATCH });
+      },
+      // Ahead of the viewport, so the next batch is already there by the
+      // time the last visible row is reached.
+      { rootMargin: "800px" }
+    );
+    io.observe(end);
+    return () => io.disconnect();
+  }, [q, shown]);
+
   return (
     <div>
       <div className="module-toolbar">
@@ -354,7 +397,7 @@ export function ContactsTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((l) => (
+            {visible.map((l) => (
               <ContactRow
                 key={l.id}
                 lead={l}
@@ -363,6 +406,13 @@ export function ContactsTable({
                 onOpen={setEditing}
               />
             ))}
+            {remaining > 0 && (
+              <tr ref={endRef}>
+                <td colSpan={7} className="table-more">
+                  {remaining.toLocaleString()} more
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
         </div>

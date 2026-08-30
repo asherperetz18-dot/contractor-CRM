@@ -49,6 +49,10 @@ function loadHiddenStages(): Set<string> {
   }
 }
 
+// Cards rendered in a column up front, and added as it is scrolled.
+// Comfortably more than a column shows at once.
+const CARD_BATCH = 40;
+
 /**
  * One stage column, memoized. Opening the lead window is a state change
  * on the board, and before this it re-rendered every card of every
@@ -86,6 +90,38 @@ const PipelineColumn = memo(function PipelineColumn({
   onDragLeaveCol: (stage: string) => void;
   onDropCol: (stage: string) => void;
 }) {
+  /**
+   * Cards enter the page as the column is scrolled, not all at once.
+   *
+   * The board rendered every lead in every stage: 36,379 DOM nodes on a
+   * full book, against a recommended ceiling nearer 1,400, which made
+   * this one of the two slowest pages to open and the worst of them on a
+   * phone. A column shows a handful of cards at a time and nobody reads
+   * a thousand of them.
+   *
+   * Dragging is unaffected: a card can only be picked up if it is on
+   * screen, and a drop targets the column rather than a position within
+   * it. The count in the header still counts every lead in the stage,
+   * not the rendered ones.
+   */
+  const [shown, setShown] = useState(CARD_BATCH);
+  const visible = shown >= items.length ? items : items.slice(0, shown);
+  const remaining = items.length - visible.length;
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const end = endRef.current;
+    if (!end) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setShown((n) => n + CARD_BATCH);
+      },
+      { rootMargin: "600px" }
+    );
+    io.observe(end);
+    return () => io.disconnect();
+  }, [shown, items.length]);
+
   return (
     <div
       className={
@@ -109,7 +145,7 @@ const PipelineColumn = memo(function PipelineColumn({
         <span className="count-pill">{items.length}</span>
       </div>
       <div className="pipeline-col-body">
-        {items.map((l) => {
+        {visible.map((l) => {
           const stale = daysSince(l.date_received);
           return (
             <div
@@ -168,6 +204,11 @@ const PipelineColumn = memo(function PipelineColumn({
             </div>
           );
         })}
+        {remaining > 0 && (
+          <div ref={endRef} className="pipeline-col-more">
+            {remaining.toLocaleString()} more
+          </div>
+        )}
       </div>
     </div>
   );
