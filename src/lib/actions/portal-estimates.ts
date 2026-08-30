@@ -7,6 +7,7 @@ import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { notifyRepOfSignature } from "@/lib/portal/rep-signed-notification";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
+import { applyAutoChecklist } from "@/lib/checklist-auto";
 import { sendEmail } from "@/lib/email-env";
 import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
@@ -335,6 +336,11 @@ export async function signEstimateAsCustomer(
         .from("leads")
         .update({ value: estimate.total_cents / 100 })
         .eq("id", estimate.lead_id);
+
+      // The company's auto-apply checklist lands on the fresh contract,
+      // its offset steps dated off today's signature -- "file for permit
+      // in 3 days" exists before anyone opens the job. Never throws.
+      await applyAutoChecklist(admin, estimate.company_id, estimateId, now);
     }
 
     // A signed contract is won work, whatever the board still says. Left

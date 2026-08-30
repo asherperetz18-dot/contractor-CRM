@@ -187,7 +187,7 @@ export default async function ProjectsPage() {
   const [{ data: checklistRows, error: clErr }, { data: templateRows }] = await Promise.all([
     supabase
       .from("project_checklist_items")
-      .select("id, estimate_id, label, sort_order, completed_at, completed_by")
+      .select("id, estimate_id, label, sort_order, due_date, assigned_to, completed_at, completed_by")
       .eq("company_id", companyId)
       .order("sort_order", { ascending: true }),
     supabase
@@ -205,7 +205,7 @@ export default async function ProjectsPage() {
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={
-        ((templateRows as { id: string; name: string; items: string[] }[]) ?? []).map((t) => ({
+        ((templateRows as { id: string; name: string; items: unknown[] }[]) ?? []).map((t) => ({
           id: t.id,
           name: t.name,
           count: t.items?.length ?? 0,
@@ -222,6 +222,8 @@ type ChecklistRow = {
   estimate_id: string;
   label: string;
   sort_order: number;
+  due_date: string | null;
+  assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
 };

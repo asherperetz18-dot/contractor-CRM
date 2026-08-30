@@ -11,7 +11,8 @@ import {
   type ChecklistTemplate,
 } from "@/lib/actions/checklists";
 
-type Draft = { id?: string; name: string; itemsText: string };
+type DraftItem = { label: string; offsetDays: number | null };
+type Draft = { id?: string; name: string; items: DraftItem[]; autoApply: boolean };
 
 export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemplate[] }) {
   const router = useRouter();
@@ -24,7 +25,12 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
     if (!draft) return;
     setPending(true);
     setError("");
-    const result = await saveChecklistTemplate(draft);
+    const result = await saveChecklistTemplate({
+      id: draft.id,
+      name: draft.name,
+      items: draft.items,
+      autoApply: draft.autoApply,
+    });
     setPending(false);
     if (result?.error) {
       setError(result.error);
@@ -43,6 +49,14 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
       return;
     }
     startTransition(() => router.refresh());
+  }
+
+  function setItem(i: number, patch: Partial<DraftItem>) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      items: draft.items.map((it, j) => (j === i ? { ...it, ...patch } : it)),
+    });
   }
 
   return (
@@ -66,7 +80,7 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
           className="btn-primary small"
           onClick={() => {
             setError("");
-            setDraft({ name: "", itemsText: "" });
+            setDraft({ name: "", items: [{ label: "", offsetDays: null }], autoApply: false });
           }}
         >
           + New template
@@ -78,7 +92,8 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
           <p className="empty-label">No checklist templates yet</p>
           <p className="empty-hint">
             Make one for each kind of job you run — &quot;Kitchen close-out&quot;,
-            &quot;Pre-drywall inspection&quot; — then apply it from the Projects page.
+            &quot;Pre-drywall inspection&quot; — then apply it from the Projects page, or mark one
+            to apply itself the moment a contract is signed.
           </p>
         </div>
       ) : (
@@ -97,8 +112,12 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
                 <tr key={t.id}>
                   <td>
                     {t.name}
+                    {t.auto_apply && <span className="count-pill"> auto on signing</span>}
                     <div className="est-tax-note">
-                      {t.items.slice(0, 3).join(" · ")}
+                      {t.items
+                        .slice(0, 3)
+                        .map((i) => i.label + (i.offset_days !== null ? ` (+${i.offset_days}d)` : ""))
+                        .join(" · ")}
                       {t.items.length > 3 ? " · …" : ""}
                     </div>
                   </td>
@@ -115,7 +134,12 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
                       className="btn-ghost small"
                       onClick={() => {
                         setError("");
-                        setDraft({ id: t.id, name: t.name, itemsText: t.items.join("\n") });
+                        setDraft({
+                          id: t.id,
+                          name: t.name,
+                          items: t.items.map((i) => ({ label: i.label, offsetDays: i.offset_days })),
+                          autoApply: t.auto_apply,
+                        });
                       }}
                     >
                       Edit
@@ -135,6 +159,7 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
         <Modal
           title={draft.id ? "Edit template" : "New checklist template"}
           onClose={() => setDraft(null)}
+          wide
         >
           <Field label="Template name">
             <input
@@ -143,16 +168,67 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
               placeholder="Kitchen close-out"
             />
           </Field>
-          <Field label="Steps — one per line, in order">
-            <textarea
-              value={draft.itemsText}
-              onChange={(e) => setDraft({ ...draft, itemsText: e.target.value })}
-              rows={12}
-              placeholder={
-                "Final walkthrough with customer\nTouch-up paint\nHaul away debris\nCollect final payment\nRequest a review"
-              }
+
+          <p className="module-sub" style={{ margin: "12px 0 6px" }}>
+            Steps, in order. &quot;Days after signing&quot; sets each step&apos;s due date
+            automatically when the checklist lands on a job — leave it blank for steps with no
+            deadline.
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {draft.items.map((it, i) => (
+              <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                <input
+                  style={{ flex: "1 1 260px", minWidth: 0 }}
+                  value={it.label}
+                  placeholder={i === 0 ? "e.g. File for permit" : "Next step…"}
+                  onChange={(e) => setItem(i, { label: e.target.value })}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  style={{ width: 90 }}
+                  value={it.offsetDays ?? ""}
+                  placeholder="days"
+                  title="Due this many days after the contract is signed"
+                  onChange={(e) =>
+                    setItem(i, { offsetDays: e.target.value === "" ? null : Number(e.target.value) })
+                  }
+                />
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Remove step"
+                  onClick={() =>
+                    setDraft({ ...draft, items: draft.items.filter((_, j) => j !== i) })
+                  }
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn-ghost small"
+            style={{ marginTop: 8 }}
+            onClick={() => setDraft({ ...draft, items: [...draft.items, { label: "", offsetDays: null }] })}
+          >
+            + Add step
+          </button>
+
+          <label style={{ display: "flex", gap: 8, alignItems: "center", margin: "14px 0 0" }}>
+            <input
+              type="checkbox"
+              checked={draft.autoApply}
+              onChange={(e) => setDraft({ ...draft, autoApply: e.target.checked })}
             />
-          </Field>
+            Apply this template automatically when a contract is signed
+          </label>
+          <p className="est-tax-note" style={{ marginTop: 4 }}>
+            One template per company can auto-apply; turning it on here turns it off on any other.
+          </p>
+
           {error && <p className="error-note">{error}</p>}
           <div className="modal-actions">
             <button type="button" className="btn-ghost" onClick={() => setDraft(null)}>

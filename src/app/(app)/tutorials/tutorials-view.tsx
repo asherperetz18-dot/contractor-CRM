@@ -158,11 +158,11 @@ const LIBRARY: Category[] = [
       {
         id: "project-checklists",
         title: "Run the job with checklists",
-        kicker: "Quick how-to · 2 steps · 1 min",
-        desc: "The steps every job goes through, ticked off as it moves.",
+        kicker: "Quick how-to · 2 steps · 1.5 min",
+        desc: "Dated, assigned steps that schedule themselves off the signing day.",
         steps: [
-          { img: T("projects"), caption: "Every job row carries a checklist chip. Build templates once — permits, demo, inspections — and apply them to each new job." },
-          { img: T("t-checklist"), caption: "Tick steps as the job moves. Who completed each step, and when, is recorded — so 'did the permit get filed' has an answer." },
+          { img: T("projects"), caption: "Every job row carries a checklist chip. Build templates once — and give each step a 'days after signing' number, so 'file for permit in 3 days' dates itself. Mark one template to apply automatically the moment a contract is signed." },
+          { img: T("t-checklist"), caption: "Each step carries a due date and an owner, editable right here. A step past its date and unchecked turns red — so 'did the permit get filed' has an answer, and a deadline." },
         ],
       },
     ],

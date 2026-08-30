@@ -370,7 +370,7 @@ export function JobCosts({
               📷 {receipt ? "Change receipt" : "Attach receipt (photo or PDF)"}
             </button>
             {receipt && (
-              <span className="est-tax-note">
+              <span className="est-tax-note" style={{ wordBreak: "break-all", minWidth: 0 }}>
                 {receipt.name}{" "}
                 <button
                   className="btn-ghost est-row-remove"

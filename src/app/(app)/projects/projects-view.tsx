@@ -9,6 +9,7 @@ import {
   applyChecklistTemplate,
   deleteProjectChecklistItem,
   setProjectChecklistItemDone,
+  updateProjectChecklistItem,
 } from "@/lib/actions/checklists";
 import { createJobExpense, createReceiptUploadUrl } from "@/lib/actions/job-expenses";
 import { getVendors } from "@/lib/actions/vendors";
@@ -31,6 +32,8 @@ export type ChecklistItemRow = {
   estimate_id: string;
   label: string;
   sort_order: number;
+  due_date: string | null;
+  assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
 };
@@ -513,42 +516,114 @@ function ProjectChecklist({
         </p>
       ) : (
         <ul className="proj-checklist-list">
-          {items.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className="proj-check-box"
-                onClick={() => toggle(item)}
-                disabled={busy === item.id}
-                aria-label={item.completed_at ? "Mark not done" : "Mark done"}
-              >
-                {item.completed_at ? "✓" : "☐"}
-              </button>
-              <span className={item.completed_at ? "proj-check-done" : undefined}>
-                {item.label}
-              </span>
-              {item.completed_at && (
-                <span className="proj-check-meta">
-                  {memberNames[item.completed_by ?? ""] || "someone"} ·{" "}
-                  {new Date(item.completed_at).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </span>
-              )}
-              {canEdit && (
+          {items.map((item) => {
+            const overdue =
+              !!item.due_date && !item.completed_at && item.due_date < new Date().toISOString().slice(0, 10);
+            return (
+              <li key={item.id}>
                 <button
                   type="button"
-                  className="icon-btn proj-check-remove"
-                  onClick={() => remove(item)}
+                  className="proj-check-box"
+                  onClick={() => toggle(item)}
                   disabled={busy === item.id}
-                  aria-label="Remove item"
+                  aria-label={item.completed_at ? "Mark not done" : "Mark done"}
                 >
-                  ✕
+                  {item.completed_at ? "✓" : "☐"}
                 </button>
-              )}
-            </li>
-          ))}
+                <span className={item.completed_at ? "proj-check-done" : undefined}>
+                  {item.label}
+                </span>
+
+                {/* The plan: when it's due and whose it is. Editable in
+                    place by the same roles that can shape the list;
+                    read-only facts for everyone else. */}
+                {canEdit ? (
+                  <input
+                    type="date"
+                    className={"proj-check-due" + (overdue ? " proj-check-overdue" : "")}
+                    value={item.due_date ?? ""}
+                    disabled={busy === item.id}
+                    onChange={(e) =>
+                      startTransition(async () => {
+                        setBusy(item.id);
+                        const r = await updateProjectChecklistItem(item.id, {
+                          dueDate: e.target.value || null,
+                        });
+                        setBusy("");
+                        if (r?.error) return setError(r.error);
+                        refresh();
+                      })
+                    }
+                  />
+                ) : (
+                  item.due_date && (
+                    <span className={"proj-check-meta" + (overdue ? " proj-check-overdue" : "")}>
+                      due{" "}
+                      {new Date(item.due_date + "T00:00:00").toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  )
+                )}
+                {canEdit ? (
+                  <select
+                    className="proj-check-assignee"
+                    value={item.assigned_to ?? ""}
+                    disabled={busy === item.id}
+                    onChange={(e) =>
+                      startTransition(async () => {
+                        setBusy(item.id);
+                        const r = await updateProjectChecklistItem(item.id, {
+                          assignedTo: e.target.value || null,
+                        });
+                        setBusy("");
+                        if (r?.error) return setError(r.error);
+                        refresh();
+                      })
+                    }
+                  >
+                    <option value="">Unassigned</option>
+                    {Object.entries(memberNames)
+                      .filter(([, name]) => name)
+                      .sort((a, b) => a[1].localeCompare(b[1]))
+                      .map(([id, name]) => (
+                        <option key={id} value={id}>
+                          {name}
+                        </option>
+                      ))}
+                  </select>
+                ) : (
+                  item.assigned_to && (
+                    <span className="proj-check-meta">
+                      {memberNames[item.assigned_to] || "assigned"}
+                    </span>
+                  )
+                )}
+
+                {item.completed_at && (
+                  <span className="proj-check-meta">
+                    ✓ {memberNames[item.completed_by ?? ""] || "someone"} ·{" "}
+                    {new Date(item.completed_at).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </span>
+                )}
+                {canEdit && (
+                  <button
+                    type="button"
+                    className="icon-btn proj-check-remove"
+                    onClick={() => remove(item)}
+                    disabled={busy === item.id}
+                    aria-label="Remove item"
+                  >
+                    ✕
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -780,7 +855,11 @@ function QuickReceipt({
           </Field>
         </div>
 
-        <div className="form-row" style={{ alignItems: "center", marginBottom: 10 }}>
+        {/* Real flex with wrap: .form-row has no stylesheet rule, and a
+            long receipt filename is one unbreakable token -- together
+            they forced the whole modal into sideways scrolling on a
+            phone. */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 10 }}>
           {/* No capture attribute: phones that honor it jump straight
               into the camera with no way back to the file picker, and
               the supplier's emailed PDF is half the point. */}
@@ -798,13 +877,17 @@ function QuickReceipt({
           >
             📷 {file ? "Change receipt" : "Snap or attach the receipt"}
           </button>
-          {file && <span className="est-tax-note">{file.name}</span>}
+          {file && (
+            <span className="est-tax-note" style={{ wordBreak: "break-all", minWidth: 0 }}>
+              {file.name}
+            </span>
+          )}
         </div>
 
         {error && <p className="error-note">{error}</p>}
         {savedNote && !error && <p className="hint-note">{savedNote}</p>}
 
-        <div className="form-row">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn-primary" onClick={save}>
             {saving ? "Saving…" : "Save receipt"}
           </button>

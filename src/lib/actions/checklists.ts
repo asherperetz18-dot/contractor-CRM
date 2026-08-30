@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
+import { normalizeTemplateItems, dueFromOffset, type TemplateItem } from "@/lib/checklist-auto";
 
 export type ChecklistTemplate = {
   id: string;
   name: string;
-  items: string[];
+  items: TemplateItem[];
+  auto_apply: boolean;
   updated_at: string;
 };
 
@@ -17,6 +19,8 @@ export type ProjectChecklistItem = {
   estimate_id: string;
   label: string;
   sort_order: number;
+  due_date: string | null;
+  assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
 };
@@ -24,12 +28,16 @@ export type ProjectChecklistItem = {
 const MAX_ITEMS = 100;
 const MAX_LABEL = 200;
 
-/** One item per line, trimmed, empties dropped, leading bullets stripped. */
-function parseItems(text: string): string[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim().replace(/^[-•*☐]\s*/, "").slice(0, MAX_LABEL))
-    .filter(Boolean)
+function cleanTemplateItems(items: { label: string; offsetDays: number | null }[]): TemplateItem[] {
+  return items
+    .map((it) => ({
+      label: it.label.trim().replace(/^[-•*☐]\s*/, "").slice(0, MAX_LABEL),
+      offset_days:
+        it.offsetDays !== null && Number.isFinite(it.offsetDays)
+          ? Math.max(0, Math.min(365, Math.round(it.offsetDays)))
+          : null,
+    }))
+    .filter((it) => it.label)
     .slice(0, MAX_ITEMS);
 }
 
@@ -42,18 +50,21 @@ export async function getChecklistTemplates(): Promise<{
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("checklist_templates")
-    .select("id, name, items, updated_at")
+    .select("id, name, items, auto_apply, updated_at")
     .eq("company_id", profile.company_id)
     .order("name", { ascending: true })
-    .returns<ChecklistTemplate[]>();
+    .returns<{ id: string; name: string; items: unknown; auto_apply: boolean; updated_at: string }[]>();
   if (error) return { error: error.message };
-  return { templates: data ?? [] };
+  return {
+    templates: (data ?? []).map((t) => ({ ...t, items: normalizeTemplateItems(t.items) })),
+  };
 }
 
 export async function saveChecklistTemplate(input: {
   id?: string;
   name: string;
-  itemsText: string;
+  items: { label: string; offsetDays: number | null }[];
+  autoApply: boolean;
 }): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -61,14 +72,26 @@ export async function saveChecklistTemplate(input: {
 
   const name = input.name.trim();
   if (!name) return { error: "Give the template a name." };
-  const items = parseItems(input.itemsText);
-  if (!items.length) return { error: "Add at least one item — one per line." };
+  const items = cleanTemplateItems(input.items);
+  if (!items.length) return { error: "Add at least one step." };
 
   const supabase = await createClient();
+
+  // One auto-apply template per company: two lists both claiming every
+  // new contract would double the checklist, so turning it on here
+  // turns it off everywhere else.
+  if (input.autoApply) {
+    await supabase
+      .from("checklist_templates")
+      .update({ auto_apply: false })
+      .eq("company_id", profile.company_id)
+      .eq("auto_apply", true);
+  }
+
   if (input.id) {
     const { data, error } = await supabase
       .from("checklist_templates")
-      .update({ name, items, updated_at: new Date().toISOString() })
+      .update({ name, items, auto_apply: input.autoApply, updated_at: new Date().toISOString() })
       .eq("id", input.id)
       .eq("company_id", profile.company_id)
       .select("id");
@@ -77,7 +100,7 @@ export async function saveChecklistTemplate(input: {
   } else {
     const { error } = await supabase
       .from("checklist_templates")
-      .insert({ company_id: profile.company_id, name, items });
+      .insert({ company_id: profile.company_id, name, items, auto_apply: input.autoApply });
     if (error) return { error: error.message };
   }
   revalidatePath("/settings/checklist-templates");
@@ -116,30 +139,40 @@ export async function applyChecklistTemplate(
   if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
 
   const supabase = await createClient();
-  const [{ data: template }, { data: existing }] = await Promise.all([
+  const [{ data: template }, { data: existing }, { data: estimate }] = await Promise.all([
     supabase
       .from("checklist_templates")
       .select("items")
       .eq("id", templateId)
       .eq("company_id", profile.company_id)
-      .maybeSingle<{ items: string[] }>(),
+      .maybeSingle<{ items: unknown }>(),
     supabase
       .from("project_checklist_items")
       .select("label, sort_order")
       .eq("estimate_id", estimateId)
       .returns<{ label: string; sort_order: number }[]>(),
+    supabase
+      .from("estimates")
+      .select("signed_at")
+      .eq("id", estimateId)
+      .maybeSingle<{ signed_at: string | null }>(),
   ]);
   if (!template) return { error: "Template not found." };
 
+  // Offsets count from the signing day; an unsigned job counts from
+  // today, which is the only day it has.
+  const base = estimate?.signed_at ?? new Date().toISOString();
+
   const have = new Set((existing ?? []).map((i) => i.label.trim().toLowerCase()));
   let sort = Math.max(-1, ...(existing ?? []).map((i) => i.sort_order)) + 1;
-  const rows = (template.items ?? [])
-    .filter((label) => !have.has(label.trim().toLowerCase()))
-    .map((label) => ({
+  const rows = normalizeTemplateItems(template.items)
+    .filter((it) => !have.has(it.label.trim().toLowerCase()))
+    .map((it) => ({
       company_id: profile.company_id,
       estimate_id: estimateId,
-      label,
+      label: it.label,
       sort_order: sort++,
+      due_date: it.offset_days !== null ? dueFromOffset(base, it.offset_days) : null,
     }));
   if (!rows.length) return { added: 0 };
 
@@ -196,6 +229,36 @@ export async function setProjectChecklistItemDone(
     .select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "Couldn't save that — your role may not have permission." };
+  revalidatePath("/projects");
+  return {};
+}
+
+/**
+ * Sets a step's planned date and/or owner. Same gate as reshaping the
+ * list: dates and owners are plans, and plans are Office/Admin work.
+ */
+export async function updateProjectChecklistItem(
+  itemId: string,
+  patch: { dueDate?: string | null; assignedTo?: string | null }
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
+
+  const fields: Record<string, string | null> = {};
+  if (patch.dueDate !== undefined) fields.due_date = patch.dueDate || null;
+  if (patch.assignedTo !== undefined) fields.assigned_to = patch.assignedTo || null;
+  if (!Object.keys(fields).length) return {};
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("project_checklist_items")
+    .update(fields)
+    .eq("id", itemId)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Couldn't save that step." };
   revalidatePath("/projects");
   return {};
 }
