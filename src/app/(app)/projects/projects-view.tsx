@@ -826,7 +826,11 @@ function QuickReceipt({
     // down while the save is in flight.
     <Modal title="Add a receipt" onClose={() => { if (!saving) onClose(); }}>
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0 }}>
-        <div className="form-grid">
+        {/* One stacked column, every field full width and clamped: the
+            job option carries a whole street address, and left to size
+            itself it forced a second column off-screen and gave the
+            modal a sideways scrollbar. */}
+        <div className="qr-form">
           <Field label="Job">
             <select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
               <option value="">Choose a job…</option>
@@ -869,17 +873,19 @@ function QuickReceipt({
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
-          <Field label="Amount">
-            <input
-              inputMode="decimal"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </Field>
-          <Field label="Date">
-            <input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
-          </Field>
+          <div className="qr-pair">
+            <Field label="Amount">
+              <input
+                inputMode="decimal"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
+            </Field>
+            <Field label="Date">
+              <input type="date" value={spentOn} onChange={(e) => setSpentOn(e.target.value)} />
+            </Field>
+          </div>
         </div>
 
         {/* Real flex with wrap: .form-row has no stylesheet rule, and a

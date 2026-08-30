@@ -8154,3 +8154,28 @@ textarea.est-item-desc:disabled {
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
+
+/* The quick-receipt form: one stacked column, fields clamped to the
+   modal. The job option carries a street address; unclamped it decides
+   the modal width instead of the other way round. */
+.qr-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.qr-form input,
+.qr-form select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.qr-pair {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.qr-pair .field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
