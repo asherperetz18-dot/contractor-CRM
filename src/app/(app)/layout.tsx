@@ -32,6 +32,7 @@ import { PageGate } from "./page-gate";
 import { ScreenShareButton, ScreenShareEngine } from "./screen-share";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
+import { NotificationBell } from "./notification-bell";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { version } from "../../../package.json";
@@ -167,6 +168,7 @@ export default async function AppLayout({
                   <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
                 )}
                 <DailyBriefButton isAdmin={isAdminRole(profile)} />
+                <NotificationBell />
                 <AiAssistantButton />
                 <QuickCreateMenu />
                 {isAdminRole(profile) && <AdminToolsMenu isAdmin={isStrictAdmin(profile)} />}

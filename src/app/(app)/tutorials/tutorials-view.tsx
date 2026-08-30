@@ -31,6 +31,16 @@ const LIBRARY: Category[] = [
     name: "Getting Started",
     tutorials: [
       {
+        id: "notification-bell",
+        title: "The notification bell",
+        kicker: "Quick how-to · 2 steps · 1 min",
+        desc: "One place for everything that needs you: failed texts, overdue invoices, proposal views, overdue steps.",
+        steps: [
+          { img: T("tut-bell"), caption: "The bell in the topbar counts what's new since you last looked. Open it and the Needs Attention line sums up the day — then every item below links straight to the thing itself: a text that never delivered, an invoice 30 days overdue, a customer who just opened your proposal." },
+          { img: T("tut-bell-money"), caption: "The tabs split the feed — Messages, Money, Jobs. The bell computes everything live from your real data, so it can never show a stale count. Mark all read clears the badge; new events light it up again." },
+        ],
+      },
+      {
         id: "get-around",
         title: "Get around the CRM",
         kicker: "Guided tour · 8 screens · 2 min",
