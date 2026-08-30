@@ -8440,3 +8440,19 @@ textarea.est-item-desc:disabled {
   white-space: nowrap;
   border: 0;
 }
+/* The "N more" row at the end of a long table -- see contacts-table.tsx */
+.table-more {
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: center;
+  padding: 14px;
+}
+/* The "N more" marker at the foot of a pipeline column -- see
+   pipeline-board.tsx. Also the thing the observer watches for, so it has
+   to be in the flow rather than absolutely positioned. */
+.pipeline-col-more {
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: center;
+  padding: 10px 0;
+}
