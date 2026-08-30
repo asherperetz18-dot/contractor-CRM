@@ -94,8 +94,8 @@ const LIBRARY: Category[] = [
         kicker: "Quick how-to · 3 steps · 1 min",
         desc: "Show your screen and talk it through — office to field, live.",
         steps: [
-          { img: T("t-share-pill"), caption: "Tap the 🖥 button in the top bar. Your browser asks exactly what to share — your whole screen or one window — and a red pill shows you're live." },
-          { img: T("t-share-banner"), caption: "Everyone in your company sees a banner: Alex is sharing their screen. One tap on Watch joins them — nothing to install, nothing to configure." },
+          { img: T("t-share-pill"), caption: "Tap the 🖥 button in the top bar and pick who should watch — one teammate by name, or anyone on the team. Your browser then asks exactly what to share — whole screen or one window — and a red pill shows you're live." },
+          { img: T("tut-share-invite"), caption: "The teammate you picked gets a pop-up that moment — with a chime: Alex wants to share their screen with you. One tap on Join and they're in — and nobody else in the company even sees the session. Pick 'anyone' instead and the whole team gets the old open banner." },
           { img: T("t-share-viewer"), caption: "The viewer sees your screen live and you talk to each other through your microphones, like a phone call with eyes. Either side can mute or leave; Stop ends it for everyone." },
         ],
       },

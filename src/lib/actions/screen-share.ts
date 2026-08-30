@@ -12,6 +12,8 @@ export type ActiveShare = {
   sharerId: string;
   sharerName: string;
   startedAt: string;
+  /** Who this share is aimed at; null means anyone on the team. */
+  invitedTo: string | null;
 };
 
 /**
@@ -19,14 +21,34 @@ export type ActiveShare = {
  * token is the ticket into the signaling channel. Any session this
  * person left dangling (a closed laptop never says goodbye) is ended
  * first, so one sharer never shows as two live sessions.
+ *
+ * With invitedTo, the session is aimed at one teammate: only they (and
+ * the sharer) can read the row at all -- RLS since 0116 -- so the rest
+ * of the company never even sees the banner.
  */
-export async function startScreenShare(): Promise<{
+export async function startScreenShare(invitedTo?: string | null): Promise<{
   error?: string;
   id?: string;
   token?: string;
 }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
+
+  // The invitee must be an active member of THIS company. Checked with
+  // the admin client because the value lands in a column that decides
+  // row visibility -- an unvalidated uuid would let a session be aimed
+  // at a stranger, which reads as "nobody can join".
+  if (invitedTo) {
+    const admin = createAdminClient();
+    const { data: member } = await admin
+      .from("company_members")
+      .select("profile_id")
+      .eq("profile_id", invitedTo)
+      .eq("company_id", profile.company_id)
+      .eq("status", "Active")
+      .maybeSingle();
+    if (!member) return { error: "That teammate isn't on this company." };
+  }
 
   const supabase = await createClient();
   await supabase
@@ -38,11 +60,46 @@ export async function startScreenShare(): Promise<{
   const token = crypto.randomBytes(16).toString("hex");
   const { data, error } = await supabase
     .from("screen_shares")
-    .insert({ company_id: profile.company_id, sharer_id: profile.id, token })
+    .insert({
+      company_id: profile.company_id,
+      sharer_id: profile.id,
+      token,
+      invited_to: invitedTo ?? null,
+    })
     .select("id")
     .single();
   if (error) return { error: error.message };
   return { id: (data as { id: string }).id, token };
+}
+
+/**
+ * Teammates the picker can aim a share at: active members of the
+ * caller's company, minus the caller. Names via the admin client
+ * because profiles carries no company column of its own.
+ */
+export async function getShareTargets(): Promise<{
+  error?: string;
+  targets?: { id: string; name: string }[];
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const admin = createAdminClient();
+  const { data: members } = await admin
+    .from("company_members")
+    .select("profile_id")
+    .eq("company_id", profile.company_id)
+    .eq("status", "Active");
+  const ids = [...new Set(((members as { profile_id: string }[]) ?? []).map((m) => m.profile_id))].filter(
+    (id) => id !== profile.id
+  );
+  if (!ids.length) return { targets: [] };
+
+  const { data: profs } = await admin.from("profiles").select("id, name, email").in("id", ids);
+  const targets = (((profs as { id: string; name: string | null; email: string | null }[]) ?? [])
+    .map((p) => ({ id: p.id, name: p.name || p.email || "Teammate" }))
+    .sort((a, b) => a.name.localeCompare(b.name)));
+  return { targets };
 }
 
 export async function endScreenShare(id: string): Promise<{ error?: string }> {
@@ -68,16 +125,20 @@ export async function getActiveShares(): Promise<{ error?: string; shares?: Acti
 
   const supabase = await createClient();
   const cutoff = new Date(Date.now() - 4 * 3600e3).toISOString();
+  // RLS (0116) already hides sessions aimed at somebody else; this
+  // select simply never receives a token that isn't this caller's to
+  // have.
   const { data, error } = await supabase
     .from("screen_shares")
-    .select("id, token, sharer_id, started_at")
+    .select("id, token, sharer_id, started_at, invited_to")
     .eq("company_id", profile.company_id)
     .is("ended_at", null)
     .gte("started_at", cutoff)
     .order("started_at", { ascending: false });
   if (error) return { error: error.message };
 
-  const rows = (data as { id: string; token: string; sharer_id: string; started_at: string }[]) ?? [];
+  const rows =
+    (data as { id: string; token: string; sharer_id: string; started_at: string; invited_to: string | null }[]) ?? [];
   if (!rows.length) return { shares: [] };
 
   const admin = createAdminClient();
@@ -99,6 +160,7 @@ export async function getActiveShares(): Promise<{ error?: string; shares?: Acti
       sharerId: r.sharer_id,
       sharerName: nameById.get(r.sharer_id) ?? "A teammate",
       startedAt: r.started_at,
+      invitedTo: r.invited_to ?? null,
     })),
   };
 }

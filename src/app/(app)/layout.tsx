@@ -155,7 +155,11 @@ export default async function AppLayout({
         </div>
         <ActivityTracker />
         <VoiceDialer />
-        <ScreenShareEngine selfId={profile.id} />
+        <ScreenShareEngine
+          selfId={profile.id}
+          selfName={profile.name || profile.email || "A teammate"}
+          companyId={profile.company_id}
+        />
         {/* The incoming-text watcher: badge, toast + ding, tab-title
             flash. For the people who staff the phones -- Office,
             Dispatch, Admin -- not every role that can merely open the
