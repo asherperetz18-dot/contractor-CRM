@@ -4,8 +4,10 @@ import React, { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { mapsUrl, moneyCents, projectTriageOrder, type ProjectRollup } from "@/lib/data/types";
+import { Modal } from "@/components/ui/modal";
 import { QuickReceipt } from "./quick-receipt";
 import { JobPhotos } from "./job-photos";
+import { JobReceipts } from "./job-receipts";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
 
 export type { ChecklistItemRow } from "./project-checklist";
@@ -23,6 +25,8 @@ export type ProjectCard = {
   repName: string | null;
   signedAt: string | null;
   changeOrderCount: number;
+  /** The contract's child documents, for the client-view shortcuts. */
+  changeOrders: { id: string; docNumber: string; title: string | null }[];
   rollup: ProjectRollup;
 };
 
@@ -48,6 +52,7 @@ export function ProjectsView({
   canManage,
   canAddCosts,
   canUploadPhotos,
+  canSeeDocChips,
   checklistReady,
   checklistItems,
   templates,
@@ -59,6 +64,9 @@ export function ProjectsView({
   canManage: boolean;
   canAddCosts: boolean;
   canUploadPhotos: boolean;
+  /** The document shortcuts: receipts list, client-view contract and
+   *  change orders. Office, Admin and Production -- never Field. */
+  canSeeDocChips: boolean;
   checklistReady: boolean;
   checklistItems: ChecklistItemRow[];
   templates: { id: string; name: string; count: number }[];
@@ -73,6 +81,8 @@ export function ProjectsView({
   // "any" from the page-level button, null when closed.
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [receiptsFor, setReceiptsFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
   const [, startTransition] = useTransition();
 
   const itemsByEstimate = useMemo(() => {
@@ -192,6 +202,30 @@ export function ProjectsView({
           canUpload={canUploadPhotos}
           onClose={() => setPhotosFor(null)}
         />
+      )}
+      {receiptsFor && (
+        <JobReceipts
+          leadId={receiptsFor.leadId}
+          jobLabel={receiptsFor.label}
+          onClose={() => setReceiptsFor(null)}
+        />
+      )}
+      {changeOrdersFor && (
+        <Modal
+          title={`Change orders — ${changeOrdersFor.customer}`}
+          onClose={() => setChangeOrdersFor(null)}
+        >
+          <ul className="co-link-list">
+            {changeOrdersFor.changeOrders.map((co) => (
+              <li key={co.id}>
+                <a href={`/estimates/${co.id}/preview`} target="_blank" rel="noopener noreferrer">
+                  👁 {co.docNumber}
+                  {co.title ? ` · ${co.title}` : ""}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Modal>
       )}
 
       <div className="stat-grid stat-grid-5">
@@ -346,6 +380,56 @@ export function ProjectsView({
                       >
                         📷 Photos
                       </button>
+                      {canSeeDocChips && (
+                        <>
+                          {" · "}
+                          <button
+                            type="button"
+                            className="proj-check-chip proj-doc-chip"
+                            onClick={() =>
+                              setReceiptsFor({ leadId: p.leadId, label: p.customer })
+                            }
+                          >
+                            🧾 Receipts
+                          </button>
+                          {" · "}
+                          {/* The customer's copy, one click away -- the same
+                              preview-as-customer render the portal serves. */}
+                          <a
+                            className="proj-check-chip proj-doc-chip"
+                            href={`/estimates/${p.estimateId}/preview`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            👁 Contract
+                          </a>
+                          {p.changeOrders.length === 1 && (
+                            <>
+                              {" · "}
+                              <a
+                                className="proj-check-chip proj-doc-chip"
+                                href={`/estimates/${p.changeOrders[0].id}/preview`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                👁 Change order
+                              </a>
+                            </>
+                          )}
+                          {p.changeOrders.length > 1 && (
+                            <>
+                              {" · "}
+                              <button
+                                type="button"
+                                className="proj-check-chip proj-doc-chip"
+                                onClick={() => setChangeOrdersFor(p)}
+                              >
+                                👁 Change orders ({p.changeOrders.length})
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
                     </div>
                     {(STATUS_TAG[p.status] ||
                       (canManage && p.status !== "complete" && p.status !== "cancelled")) && (

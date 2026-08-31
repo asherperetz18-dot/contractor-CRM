@@ -8467,3 +8467,26 @@ textarea.est-item-desc:disabled {
   margin: 6px 0 0;
   max-width: 60ch;
 }
+
+/* The document shortcuts: receipts, client-view contract, client-view
+   change orders. Teal -- paperwork, not money, not media. Anchors need
+   the button chip look spelled out. */
+.proj-doc-chip {
+  border-color: #9ed0c6;
+  background: #e9f6f3;
+  color: #1f6f60;
+  text-decoration: none;
+  display: inline-block;
+}
+.co-link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.co-link-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #f2eee6;
+}
+.co-link-list li:last-child {
+  border-bottom: 0;
+}
