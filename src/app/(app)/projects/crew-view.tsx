@@ -112,6 +112,7 @@ export function CrewProjectsView({
             items={items}
             templates={[]}
             canEdit={false}
+            canRemove={false}
             memberNames={memberNames}
           />
         )}

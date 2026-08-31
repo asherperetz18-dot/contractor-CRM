@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { canEditChecklists, isAdminRole } from "@/lib/data/types";
 import { normalizeTemplateItems, dueFromOffset, type TemplateItem } from "@/lib/checklist-auto";
 
 export type ChecklistTemplate = {
@@ -136,7 +136,7 @@ export async function applyChecklistTemplate(
 ): Promise<{ error?: string; added?: number }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
+  if (!canEditChecklists(profile)) return { error: "Only Office, Admin or Production users can change the list." };
 
   const supabase = await createClient();
   const [{ data: template }, { data: existing }, { data: estimate }] = await Promise.all([
@@ -188,7 +188,7 @@ export async function addProjectChecklistItem(
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
+  if (!canEditChecklists(profile)) return { error: "Only Office, Admin or Production users can change the list." };
   const trimmed = label.trim().slice(0, MAX_LABEL);
   if (!trimmed) return { error: "Type the item first." };
 
@@ -243,7 +243,7 @@ export async function updateProjectChecklistItem(
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
+  if (!canEditChecklists(profile)) return { error: "Only Office, Admin or Production users can change the list." };
 
   const fields: Record<string, string | null> = {};
   if (patch.dueDate !== undefined) fields.due_date = patch.dueDate || null;
@@ -266,7 +266,11 @@ export async function updateProjectChecklistItem(
 export async function deleteProjectChecklistItem(itemId: string): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the list." };
+  // Narrower than the other checklist writes on purpose: Production
+  // adds steps and shapes their dates, but removing a step erases the
+  // record that it was ever part of the plan -- that stays with the
+  // office.
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can remove steps." };
   const supabase = await createClient();
   const { error } = await supabase.from("project_checklist_items").delete().eq("id", itemId);
   if (error) return { error: error.message };

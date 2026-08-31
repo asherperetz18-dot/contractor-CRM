@@ -205,6 +205,22 @@ export function canManageCosts(profile: Pick<Profile, "roles"> | null) {
 }
 
 /**
+ * Who may shape a job's checklist: add and remove steps, set due dates
+ * and owners, apply a template. Production runs sold work and knows
+ * what the job actually needs, so they author the plan alongside the
+ * office; check-off stays open to any member, and the template LIBRARY
+ * (create/edit templates in settings) stays Office/Admin.
+ */
+export function canEditChecklists(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin") ||
+    profile.roles.includes("Production")
+  );
+}
+
+/**
  * Who may edit the vendor list. Mirrors the vendors_write policy, which
  * stayed on the narrower role set when Field joined canManageCosts:
  * a crew member types an unlisted supplier's name into the receipt

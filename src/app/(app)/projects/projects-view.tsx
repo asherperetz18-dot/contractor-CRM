@@ -52,6 +52,7 @@ export function ProjectsView({
   checklistItems,
   templates,
   canEditChecklist,
+  canRemoveChecklist,
   memberNames,
 }: {
   projects: ProjectCard[];
@@ -62,6 +63,7 @@ export function ProjectsView({
   checklistItems: ChecklistItemRow[];
   templates: { id: string; name: string; count: number }[];
   canEditChecklist: boolean;
+  canRemoveChecklist: boolean;
   memberNames: Record<string, string>;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
@@ -425,6 +427,7 @@ export function ProjectsView({
                         items={items}
                         templates={templates}
                         canEdit={canEditChecklist}
+                        canRemove={canRemoveChecklist}
                         memberNames={memberNames}
                       />
                     </td>
