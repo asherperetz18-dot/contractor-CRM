@@ -46,14 +46,30 @@ export async function GET(
       { headers: callrailAuthHeader(creds.apiKey) }
     );
     if (!metaRes.ok) {
-      return NextResponse.json({ error: "Could not fetch recording." }, { status: 502 });
+      // The upstream status is the whole diagnosis: 401/403 means the
+      // stored API key no longer works (rotated at CallRail without
+      // being re-saved here), 404 means this call has no recording.
+      return NextResponse.json(
+        { error: `Could not fetch recording (CallRail answered ${metaRes.status}).` },
+        { status: 502 }
+      );
     }
     const meta = (await metaRes.json()) as { url?: string };
     if (!meta.url) return NextResponse.json({ error: "No recording." }, { status: 404 });
 
-    const audio = await fetch(meta.url);
+    // Plain first -- the media URL is normally pre-signed. If that is
+    // refused, retry carrying the API key: CallRail has served both
+    // shapes, and a header S3 would reject is only sent after the
+    // plain fetch already failed.
+    let audio = await fetch(meta.url);
+    if (!audio.ok) {
+      audio = await fetch(meta.url, { headers: callrailAuthHeader(creds.apiKey) });
+    }
     if (!audio.ok || !audio.body) {
-      return NextResponse.json({ error: "Could not fetch recording." }, { status: 502 });
+      return NextResponse.json(
+        { error: `Could not fetch recording (media answered ${audio.status}).` },
+        { status: 502 }
+      );
     }
     return new NextResponse(audio.body, {
       status: 200,
