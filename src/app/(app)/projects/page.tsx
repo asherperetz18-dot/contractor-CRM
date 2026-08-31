@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
+  canEditChecklists,
   canManageCosts,
   canUploadLeadFiles,
   canViewEstimates,
@@ -223,7 +224,8 @@ export default async function ProjectsPage() {
           count: t.items?.length ?? 0,
         }))
       }
-      canEditChecklist={isAdminRole(profile)}
+      canEditChecklist={canEditChecklists(profile)}
+      canRemoveChecklist={isAdminRole(profile)}
       memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
     />
   );

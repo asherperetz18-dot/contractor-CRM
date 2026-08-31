@@ -31,12 +31,15 @@ export function ProjectChecklist({
   items,
   templates,
   canEdit,
+  canRemove,
   memberNames,
 }: {
   estimateId: string;
   items: ChecklistItemRow[];
   templates: { id: string; name: string; count: number }[];
   canEdit: boolean;
+  /** Deleting a step is narrower than shaping it: Office/Admin only. */
+  canRemove: boolean;
   memberNames: Record<string, string>;
 }) {
   const router = useRouter();
@@ -203,7 +206,7 @@ export function ProjectChecklist({
                     })}
                   </span>
                 )}
-                {canEdit && (
+                {canRemove && (
                   <button
                     type="button"
                     className="icon-btn proj-check-remove"
