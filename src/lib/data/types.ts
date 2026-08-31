@@ -2218,7 +2218,27 @@ export type LeadPhoto = {
   file_url: string;
   content_type: string | null;
   created_at: string;
+  /** Drive file id when storage_provider is google_drive, else bucket path. */
+  file_path?: string | null;
+  storage_provider?: string | null;
 };
+
+/**
+ * A URL an <img> can actually render. A Drive-promoted file's file_url
+ * is the Drive VIEWER page -- HTML, not pixels -- which is why photo
+ * grids showed broken icons for every file that had graduated to
+ * Drive. Drive's thumbnail endpoint serves a real image for the id;
+ * bucket files are public and serve themselves.
+ */
+export function leadPhotoThumbUrl(
+  photo: Pick<LeadPhoto, "file_url" | "file_path" | "storage_provider">,
+  width = 400
+): string {
+  if (photo.storage_provider === "google_drive" && photo.file_path) {
+    return `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.file_path)}&sz=w${width}`;
+  }
+  return photo.file_url;
+}
 
 /**
  * Whether an attachment can be drawn, or only linked to.
@@ -2257,6 +2277,9 @@ export type EstimatePhoto = {
   file_name: string;
   file_url: string;
   content_type: string | null;
+  /** Drive file id when storage_provider is google_drive; see leadPhotoThumbUrl. */
+  file_path?: string | null;
+  storage_provider?: string | null;
 };
 
 /** Photos grouped by the line they sit under; null key = document-level. */
