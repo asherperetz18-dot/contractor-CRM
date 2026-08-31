@@ -50,7 +50,27 @@ export function ScreenShareButton() {
       aria-label="Share my screen"
       onClick={() => window.dispatchEvent(new CustomEvent("crm:screenshare-toggle"))}
     >
-      🖥
+      {/* Drawn, not typed: the 🖥 emoji renders as a muddy dark slab on
+          Windows. A monitor with an outgoing arrow both reads at 16px
+          and says "share", not just "screen". */}
+      <svg
+        width="19"
+        height="19"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <rect x="2" y="4" width="20" height="13" rx="2" fill="#e3edf9" stroke="#2b5c9e" strokeWidth="1.8" />
+        <path d="M8.5 21h7M12 17.2V21" stroke="#2b5c9e" strokeWidth="1.8" strokeLinecap="round" />
+        <path
+          d="M12 13.2V8.2M9.6 10.4L12 8l2.4 2.4"
+          stroke="#2b5c9e"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
     </button>
   );
 }
