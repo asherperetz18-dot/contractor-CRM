@@ -12,7 +12,7 @@ import {
   getLeadPhotos,
   updateEstimatePhoto,
 } from "@/lib/actions/estimate-files";
-import type { EstimateItem, EstimatePhoto, LeadPhoto } from "@/lib/data/types";
+import { leadPhotoThumbUrl, type EstimateItem, type EstimatePhoto, type LeadPhoto } from "@/lib/data/types";
 
 /**
  * The tile for one attachment in this panel.
@@ -32,7 +32,7 @@ function Thumb({
 }) {
   if (attachmentIsImage(type, name)) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={name} loading="lazy" />;
+    return <img src={url} alt={name} loading="lazy" referrerPolicy="no-referrer" />;
   }
   return (
     <span className="estdoc-photo-file" title={name}>
@@ -228,7 +228,7 @@ export function PhotosPanel({
                 onClick={() => attach(a.id)}
                 title={a.file_name}
               >
-                <Thumb url={a.file_url} name={a.file_name} type={a.content_type} />
+                <Thumb url={leadPhotoThumbUrl(a)} name={a.file_name} type={a.content_type} />
               </button>
             ))}
           </div>
@@ -244,7 +244,7 @@ export function PhotosPanel({
         <div className="estdoc-photo-grid">
           {photos.map((p) => (
             <div key={p.id} className="estdoc-photo-edit">
-              <Thumb url={p.file_url} name={p.file_name} type={p.content_type} />
+              <Thumb url={leadPhotoThumbUrl(p)} name={p.file_name} type={p.content_type} />
               {locked ? (
                 <>
                   <div className="est-tax-note">{p.caption || "No caption"}</div>

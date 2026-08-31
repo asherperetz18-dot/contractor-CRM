@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getLeadPhotos } from "@/lib/actions/estimate-files";
 import { createLeadFileUploadUrl, recordLeadFile } from "@/lib/actions/lead-files";
 import { Modal } from "@/components/ui/modal";
-import type { LeadPhoto } from "@/lib/data/types";
+import { leadPhotoThumbUrl, type LeadPhoto } from "@/lib/data/types";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
@@ -162,7 +162,7 @@ export function JobPhotos({
                 <a key={p.id} href={p.file_url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element -- external
                       Drive/storage URLs, sizes unknown at build time */}
-                  <img src={p.file_url} alt={p.file_name} loading="lazy" />
+                  <img src={leadPhotoThumbUrl(p)} alt={p.file_name} loading="lazy" referrerPolicy="no-referrer" />
                 </a>
               ))}
             </div>

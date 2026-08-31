@@ -17,6 +17,7 @@ import {
   type EstimateGroup,
   type EstimatePhoto,
   type PortalPayment,
+  leadPhotoThumbUrl,
 } from "@/lib/data/types";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 
@@ -111,14 +112,14 @@ function pct(amountCents: number, totalCents: number): string {
 function AttachmentFigure({
   attachment,
 }: {
-  attachment: { file_url: string; file_name?: string; caption: string | null; content_type: string | null };
+  attachment: { file_url: string; file_name?: string; caption: string | null; content_type: string | null; file_path?: string | null; storage_provider?: string | null };
 }) {
   const image = attachmentIsImage(attachment.content_type, attachment.file_name);
   return (
     <figure className={"estdoc-photo" + (image ? "" : " estdoc-attachment")}>
       {image ? (
         /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={attachment.file_url} alt={attachment.caption ?? "Job photo"} />
+        <img src={leadPhotoThumbUrl(attachment, 1000)} alt={attachment.caption ?? "Job photo"} referrerPolicy="no-referrer" />
       ) : (
         <a href={attachment.file_url} target="_blank" rel="noopener noreferrer">
           <span className="estdoc-attachment-icon" aria-hidden>

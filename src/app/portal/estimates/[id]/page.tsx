@@ -64,7 +64,7 @@ export default async function PortalEstimatePage({
     // photos stay internal.
     admin
       .from("estimate_files")
-      .select("id, estimate_id, estimate_item_id, lead_file_id, caption, sort_order, lead_files ( file_name, file_url, content_type )")
+      .select("id, estimate_id, estimate_item_id, lead_file_id, caption, sort_order, lead_files ( file_name, file_url, content_type, file_path, storage_provider )")
       .eq("estimate_id", id)
       .order("sort_order")
       .returns<
@@ -75,7 +75,7 @@ export default async function PortalEstimatePage({
           lead_file_id: string;
           caption: string | null;
           sort_order: number;
-          lead_files: { file_name: string; file_url: string; content_type: string | null } | null;
+          lead_files: { file_name: string; file_url: string; content_type: string | null; file_path: string | null; storage_provider: string | null } | null;
         }[]
       >(),
     // Sections, read here rather than through the staff action: the
@@ -98,6 +98,8 @@ export default async function PortalEstimatePage({
     file_name: r.lead_files?.file_name ?? "Photo",
     file_url: r.lead_files?.file_url ?? "",
     content_type: r.lead_files?.content_type ?? null,
+    file_path: r.lead_files?.file_path ?? null,
+    storage_provider: r.lead_files?.storage_provider ?? null,
   }));
 
   const signerRows = (signers ?? []) as EstimateSigner[];

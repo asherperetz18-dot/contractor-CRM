@@ -54,8 +54,7 @@ export function ReceiptPeek({ url, path }: { url: string; path: string | null })
             // Mounted only while hovered, so a page of receipts does not
             // fetch a thumbnail per row on load.
             // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={src}
+            <img referrerPolicy="no-referrer"               src={src}
               alt="Receipt preview"
               onError={() => setFailed(true)}
             />

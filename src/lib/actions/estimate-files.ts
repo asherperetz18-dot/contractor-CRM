@@ -8,7 +8,7 @@ import type { EstimatePhoto, LeadPhoto } from "@/lib/data/types";
 
 const JOINED =
   "id, estimate_id, estimate_item_id, lead_file_id, caption, sort_order, " +
-  "lead_files ( file_name, file_url, content_type )";
+  "lead_files ( file_name, file_url, content_type, file_path, storage_provider )";
 
 /**
  * Refuses to change a document the customer has already signed.
@@ -52,7 +52,13 @@ export async function getEstimatePhotos(
     .order("sort_order", { ascending: true })
     .returns<
       (Omit<EstimatePhoto, "file_name" | "file_url" | "content_type"> & {
-        lead_files: { file_name: string; file_url: string; content_type: string | null } | null;
+        lead_files: {
+          file_name: string;
+          file_url: string;
+          content_type: string | null;
+          file_path: string | null;
+          storage_provider: string | null;
+        } | null;
       })[]
     >();
   if (error) return { error: error.message };
@@ -68,6 +74,8 @@ export async function getEstimatePhotos(
       file_name: r.lead_files?.file_name ?? "Photo",
       file_url: r.lead_files?.file_url ?? "",
       content_type: r.lead_files?.content_type ?? null,
+      file_path: r.lead_files?.file_path ?? null,
+      storage_provider: r.lead_files?.storage_provider ?? null,
     })),
   };
 }
@@ -83,7 +91,7 @@ export async function getLeadPhotos(
   const rows = await selectAll<LeadPhoto>((from, to) =>
     supabase
       .from("lead_files")
-      .select("id, file_name, file_url, content_type, created_at")
+      .select("id, file_name, file_url, content_type, created_at, file_path, storage_provider")
       .eq("lead_id", leadId)
       .eq("company_id", profile.company_id)
       // Pictures and PDFs. Plans, permits and spec sheets belong on a
