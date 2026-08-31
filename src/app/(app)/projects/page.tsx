@@ -179,6 +179,12 @@ export default async function ProjectsPage() {
         lead?.company_name ||
         [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
         "Unnamed customer",
+      // Every non-void child document, for the client-view shortcuts --
+      // the customer can be shown a draft change order too, that is
+      // what the preview is for.
+      changeOrders: changeOrders
+        .filter((e) => e.status !== "Void")
+        .map((e) => ({ id: e.id, docNumber: e.doc_number, title: e.title })),
       // The job site outranks the billing address: an investor with
       // three properties needs three rows that say which house is which.
       address: (contract as { job_address?: string | null }).job_address ?? lead?.address ?? null,
@@ -215,6 +221,7 @@ export default async function ProjectsPage() {
       canManage={isAdminRole(profile) && holdReady}
       canAddCosts={canManageCosts(profile)}
       canUploadPhotos={canUploadLeadFiles(profile)}
+      canSeeDocChips={isAdminRole(profile) || profile.roles.includes("Production")}
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={
