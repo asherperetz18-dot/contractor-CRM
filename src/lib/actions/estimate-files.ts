@@ -105,6 +105,36 @@ export async function getLeadPhotos(
   return { photos: rows };
 }
 
+/**
+ * The job's paperwork: every non-media file on the lead -- permits,
+ * plans, the signed contract scan, spec sheets. The complement of the
+ * photo gallery, for the chip that answers "where's the permit?".
+ */
+export async function getLeadDocuments(
+  leadId: string
+): Promise<{ error?: string; documents?: LeadPhoto[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const rows = await selectAll<LeadPhoto>((from, to) =>
+    supabase
+      .from("lead_files")
+      .select("id, file_name, file_url, content_type, created_at, file_path, storage_provider")
+      .eq("lead_id", leadId)
+      .eq("company_id", profile.company_id)
+      // Documents means "not media": images live in the Photos modal,
+      // site video with the visit. A file with no recorded type is
+      // kept -- an untyped permit beats a hidden one.
+      .or(
+        "content_type.is.null,and(content_type.not.like.image/%,content_type.not.like.video/%)"
+      )
+      .order("created_at", { ascending: false })
+      .range(from, to)
+  );
+  return { documents: rows };
+}
+
 export async function attachEstimatePhoto(input: {
   estimateId: string;
   leadFileId: string;
