@@ -107,10 +107,11 @@ const LIBRARY: Category[] = [
       {
         id: "work-the-phones",
         title: "Work the phones",
-        kicker: "Quick how-to · 2 steps · 1 min",
+        kicker: "Quick how-to · 3 steps · 1.5 min",
         desc: "Recordings, outcomes, and the ad that made it ring.",
         steps: [
           { img: T("call-reports"), caption: "Call Reports keeps every call — duration, recording, outcome, and the marketing source that produced it. Set the disposition right from the row." },
+          { img: T("tut-call-dates"), caption: "Pick the window first — today, last week, last month, or an exact custom range. The totals, talk time and connect rate all speak for the dates you chose, and the page only loads what it shows." },
           { img: T("t-lead-calls"), caption: "The same history lives on each lead's Calls tab, so before you dial you can hear how the last conversation went." },
         ],
       },
