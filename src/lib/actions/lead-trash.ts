@@ -38,14 +38,20 @@ export async function listLeadTrash(): Promise<{ error?: string; entries?: Trash
   if (!canDeleteLeads(profile)) return { error: "Office or Admin only." };
 
   const admin = createAdminClient();
-  const [{ data: rows }, { data: profs }] = await Promise.all([
-    admin
-      .from("lead_trash")
-      .select("id, lead_id, display_name, deleted_by, deleted_at, payload")
-      .eq("company_id", profile.company_id)
-      .order("deleted_at", { ascending: false }),
-    admin.from("profiles").select("id, name"),
-  ]);
+  const { data: rows } = await admin
+    .from("lead_trash")
+    .select("id, lead_id, display_name, deleted_by, deleted_at, payload")
+    .eq("company_id", profile.company_id)
+    .order("deleted_at", { ascending: false });
+  // Only the deleters actually named by these rows -- the admin client
+  // answers exactly what it is asked, and it was being asked for every
+  // profile on the platform to label a handful of ids.
+  const deleterIds = [
+    ...new Set(((rows as { deleted_by: string | null }[]) ?? []).map((r) => r.deleted_by).filter(Boolean)),
+  ] as string[];
+  const { data: profs } = deleterIds.length
+    ? await admin.from("profiles").select("id, name").in("id", deleterIds)
+    : { data: [] };
   const nameById = new Map(
     ((profs as { id: string; name: string | null }[]) ?? []).map((p) => [p.id, p.name])
   );
