@@ -19,23 +19,71 @@ function formatDuration(seconds: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** The preset windows the date picker offers, oldest-thinking first. */
+const RANGES: { key: string; label: string }[] = [
+  { key: "today", label: "Today" },
+  { key: "yesterday", label: "Yesterday" },
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "month", label: "This month" },
+  { key: "lastmonth", label: "Last month" },
+  { key: "all", label: "All time" },
+  { key: "custom", label: "Custom range…" },
+];
+
 export function CallReportsView({
   callLogs,
   leads,
   reps,
   dispositions,
   canWrite,
+  initialRange,
 }: {
   callLogs: CallLog[];
   leads: Lead[];
   reps: Profile[];
   dispositions: CallDispositionRow[];
   canWrite: boolean;
+  initialRange: string;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [repFilter, setRepFilter] = useState("All");
   const [dispositionFilter, setDispositionFilter] = useState("All");
+  const [rangeKey, setRangeKey] = useState(initialRange);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  // Local midnights, sent as UTC instants -- "today" means today where
+  // the person is sitting, not where the server happens to run.
+  function applyRange(key: string, from?: string, to?: string) {
+    setRangeKey(key);
+    if (key === "custom" && !(from && to)) return; // wait for Apply
+    const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const now = new Date();
+    let start: Date | null = null;
+    let end: Date | null = null;
+    if (key === "today") start = day(now);
+    else if (key === "yesterday") {
+      start = day(now);
+      start.setDate(start.getDate() - 1);
+      end = day(now);
+    } else if (key === "7d") start = new Date(now.getTime() - 7 * 86400000);
+    else if (key === "30d") start = new Date(now.getTime() - 30 * 86400000);
+    else if (key === "month") start = new Date(now.getFullYear(), now.getMonth(), 1);
+    else if (key === "lastmonth") {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (key === "custom" && from && to) {
+      start = new Date(from + "T00:00:00");
+      end = new Date(to + "T00:00:00");
+      end.setDate(end.getDate() + 1); // inclusive end day
+    }
+    const params = new URLSearchParams({ range: key });
+    if (start) params.set("fromTs", start.toISOString());
+    if (end) params.set("toTs", end.toISOString());
+    router.replace(`/call-reports?${params.toString()}`);
+  }
 
   const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
   const repById = useMemo(() => new Map(reps.map((r) => [r.id, r])), [reps]);
@@ -73,6 +121,44 @@ export function CallReportsView({
         <div>
           <h1 className="module-title">Call Reports</h1>
           <p className="module-sub">Every call placed through the in-app dialer, with recordings and outcomes</p>
+        </div>
+        <div className="cr-range">
+          <select
+            value={rangeKey}
+            onChange={(e) => applyRange(e.target.value)}
+            aria-label="Date range"
+          >
+            {RANGES.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          {rangeKey === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-label="From date"
+              />
+              <span>–</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-label="To date"
+              />
+              <button
+                type="button"
+                className="btn-ghost small"
+                disabled={!customFrom || !customTo || customFrom > customTo}
+                onClick={() => applyRange("custom", customFrom, customTo)}
+              >
+                Apply
+              </button>
+            </>
+          )}
         </div>
       </div>
 

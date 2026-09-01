@@ -8490,3 +8490,14 @@ textarea.est-item-desc:disabled {
 .co-link-list li:last-child {
   border-bottom: 0;
 }
+
+/* Call Reports date range: select plus the custom pair. */
+.cr-range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cr-range input[type="date"] {
+  padding: 6px 8px;
+}
