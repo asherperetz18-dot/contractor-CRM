@@ -8,6 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { QuickReceipt } from "./quick-receipt";
 import { JobPhotos } from "./job-photos";
 import { JobReceipts } from "./job-receipts";
+import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
 
 export type { ChecklistItemRow } from "./project-checklist";
@@ -83,6 +84,7 @@ export function ProjectsView({
   const [photosFor, setPhotosFor] = useState<{ leadId: string; label: string } | null>(null);
   const [receiptsFor, setReceiptsFor] = useState<{ leadId: string; label: string } | null>(null);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
+  const [documentsFor, setDocumentsFor] = useState<{ leadId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
 
   const itemsByEstimate = useMemo(() => {
@@ -208,6 +210,13 @@ export function ProjectsView({
           leadId={receiptsFor.leadId}
           jobLabel={receiptsFor.label}
           onClose={() => setReceiptsFor(null)}
+        />
+      )}
+      {documentsFor && (
+        <JobDocuments
+          leadId={documentsFor.leadId}
+          jobLabel={documentsFor.label}
+          onClose={() => setDocumentsFor(null)}
         />
       )}
       {changeOrdersFor && (
@@ -428,6 +437,16 @@ export function ProjectsView({
                               </button>
                             </>
                           )}
+                          {" · "}
+                          <button
+                            type="button"
+                            className="proj-check-chip proj-doc-chip"
+                            onClick={() =>
+                              setDocumentsFor({ leadId: p.leadId, label: p.customer })
+                            }
+                          >
+                            📄 Permits &amp; contracts
+                          </button>
                         </>
                       )}
                     </div>
