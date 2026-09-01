@@ -159,11 +159,12 @@ const LIBRARY: Category[] = [
       {
         id: "job-profitability",
         title: "Read a job's profitability",
-        kicker: "Deep dive · 3 steps · 2 min",
+        kicker: "Deep dive · 4 steps · 2.5 min",
         desc: "Contract, spent, and what's actually left — phase by phase.",
         steps: [
           { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
           { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Receipts lists every cost on the job with the receipt itself a hover away, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
+          { img: T("tut-permits"), caption: "Permits & contracts opens the job's paperwork — the building permit, the signed contract scan, the plans — each one a click to open. Upload them once on the contact's Files tab and they're always one chip away from the job." },
           { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
         ],
       },
