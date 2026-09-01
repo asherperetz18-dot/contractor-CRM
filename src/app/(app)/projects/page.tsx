@@ -97,9 +97,21 @@ export default async function ProjectsPage() {
         .eq("company_id", companyId)
         .range(from, to)
     ),
-    selectAll<{ id: string; name: string | null }>((from, to) =>
-      supabase.from("profiles").select("id, name").range(from, to)
-    ),
+    // THIS company's members, not "every profile the viewer can see".
+    // RLS confines a bare profiles select to co-members, but across ALL
+    // of the viewer's companies -- for a multi-company owner the
+    // assignee dropdown was listing other tenants' people (a stray
+    // "Vanessa" from a different company sat above Vanessa Sandoval).
+    supabase
+      .from("company_members")
+      .select("profile_id")
+      .eq("company_id", companyId)
+      .then(async ({ data: mem }) => {
+        const ids = [...new Set((mem ?? []).map((m) => m.profile_id as string))];
+        if (!ids.length) return [] as { id: string; name: string | null }[];
+        const { data } = await supabase.from("profiles").select("id, name").in("id", ids);
+        return (data ?? []) as { id: string; name: string | null }[];
+      }),
   ]);
 
   // Signed contracts are live projects; a voided one that had been
