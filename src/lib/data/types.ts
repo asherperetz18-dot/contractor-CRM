@@ -336,6 +336,7 @@ export type PageKey =
   | "documents"
   | "payments"
   | "bills"
+  | "collect"
   | "commissions"
   | "sales-commission"
   | "calendar"
@@ -393,6 +394,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
   { key: "bills", label: "Bills to Pay", href: "/bills", group: "General" },
+  { key: "collect", label: "Money to Collect", href: "/collect", group: "General" },
   // Two separate schemes, two separate screens. The dispatcher earns a
   // percentage of the gross sale for bringing the lead in; the rep earns
   // a share of what the job actually made. One page showing both invites
@@ -470,6 +472,7 @@ const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
   "documents",
   "payments",
   "bills",
+  "collect",
 ];
 
 // Platform default when no explicit override row exists for a role/page --
@@ -504,6 +507,8 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
   // Bills to Pay is the company checkbook -- same footing as Payments.
   if (pageKey === "bills" && (role === "Field" || role === "Sales")) return false;
+  // Money to Collect is company-wide receivables -- same footing.
+  if (pageKey === "collect" && (role === "Field" || role === "Sales")) return false;
   // Commission is payroll, so who sees whose matters, and the two schemes
   // are gated separately now that they are separate screens.
   //

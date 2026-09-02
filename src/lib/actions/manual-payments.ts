@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
+  canManageBills,
   depositCents,
   isAdminRole,
   moneyCents,
@@ -62,9 +63,11 @@ export async function recordManualPayment(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   // Money entry sits with the people who chase it. Cash recorded by
-  // anyone, with no trail, is how money goes missing.
-  if (!isAdminRole(profile)) {
-    return { error: "Only Office or Admin users can record a payment." };
+  // anyone, with no trail, is how money goes missing. Bookkeeping
+  // joined when Money to Collect shipped -- reconciling what arrived
+  // is the role's whole job.
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can record a payment." };
   }
 
   const amountCents = Math.round(input.amountCents);

@@ -132,6 +132,16 @@ const LIBRARY: Category[] = [
     name: "Estimates & Money",
     tutorials: [
       {
+        id: "money-to-collect",
+        title: "Money to Collect",
+        kicker: "Deep dive · 2 steps · 1.5 min",
+        desc: "Who owes you, how old it is — and the work nobody invoiced yet.",
+        steps: [
+          { img: T("tut-collect"), caption: "Money to Collect ages every unpaid invoice — current, 31 to 90 days, and 90-plus in red — oldest first, with the rep, the job and what is left after partial payments. Record a check or transfer right from the row." },
+          { img: T("tut-collect-billable"), caption: "Billable Now is the quiet gold: phases on signed contracts that nobody has asked for yet. One click on Request Now bills it with a one-week due date — turning forgot-to-invoice into a two-second act. Nothing is sent; telling the customer stays your call." },
+        ],
+      },
+      {
         id: "bills-to-pay",
         title: "Bills to Pay",
         kicker: "Deep dive · 2 steps · 1.5 min",
