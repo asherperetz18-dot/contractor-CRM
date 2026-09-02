@@ -35,6 +35,7 @@ function toRow(input: LeadInput) {
     second_contact_first_name: input.second_contact_first_name || null,
     second_contact_last_name: input.second_contact_last_name || null,
     second_contact_phone: input.second_contact_phone || null,
+    second_contact_email: input.second_contact_email || null,
     assigned_to: input.assigned_to || null,
   };
 }

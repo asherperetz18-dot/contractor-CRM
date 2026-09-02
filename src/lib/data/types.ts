@@ -1242,6 +1242,7 @@ export type Lead = {
   second_contact_first_name: string | null;
   second_contact_last_name: string | null;
   second_contact_phone: string | null;
+  second_contact_email: string | null;
   assigned_to: string | null;
   // The dispatcher who holds this lead until it sells and is paid a
   // percentage of the sale. Separate from assigned_to, which is the rep
@@ -1298,6 +1299,7 @@ export type LeadInput = {
   second_contact_first_name: string;
   second_contact_last_name: string;
   second_contact_phone: string;
+  second_contact_email: string;
   assigned_to: string;
 };
 

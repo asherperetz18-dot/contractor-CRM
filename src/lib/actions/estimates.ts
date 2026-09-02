@@ -338,7 +338,7 @@ export async function createEstimate(
   // retyping what the lead record already knows.
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, email, phone, address, assigned_to, company_id")
+    .select("id, first_name, last_name, email, phone, address, assigned_to, company_id, second_contact_first_name, second_contact_last_name, second_contact_phone, second_contact_email")
     .eq("id", leadId)
     .eq("company_id", guard.companyId)
     .maybeSingle<LeadRow & { address: string | null }>();
@@ -429,9 +429,26 @@ export async function createEstimate(
   if (error) return { error: error.message };
   if (!created) return { error: "Could not create the estimate." };
 
+  // Every owner signs. A second contact on the client card is a joint
+  // owner, and a contract signed by one owner of two is not a signed
+  // contract -- the portal already refuses to bind a document while any
+  // customer signer is missing, so listing both here is what enforces
+  // it. Change orders and completion certificates copy these rows, so
+  // both names follow the job to its end.
   const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
+  const secondRow = lead as unknown as {
+    second_contact_first_name: string | null;
+    second_contact_last_name: string | null;
+    second_contact_phone: string | null;
+    second_contact_email: string | null;
+  };
+  const secondName = [secondRow.second_contact_first_name, secondRow.second_contact_last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const signerRows = [];
   if (customerName) {
-    await supabase.from("estimate_signers").insert({
+    signerRows.push({
       company_id: guard.companyId,
       estimate_id: created.id,
       party: "customer",
@@ -440,6 +457,20 @@ export async function createEstimate(
       phone: lead.phone,
       sort_order: 0,
     });
+  }
+  if (secondName || secondRow.second_contact_email) {
+    signerRows.push({
+      company_id: guard.companyId,
+      estimate_id: created.id,
+      party: "customer",
+      name: secondName || "Co-owner",
+      email: secondRow.second_contact_email,
+      phone: secondRow.second_contact_phone,
+      sort_order: 1,
+    });
+  }
+  if (signerRows.length) {
+    await supabase.from("estimate_signers").insert(signerRows);
   }
 
   revalidateEstimates(created.id);
@@ -895,7 +926,7 @@ export async function sendEstimateToCustomer(
 
   const { data: lead } = await admin
     .from("leads")
-    .select("id, first_name, last_name, address, phone, email, company_id")
+    .select("id, first_name, last_name, address, phone, email, company_id, second_contact_email")
     .eq("id", estimate.lead_id)
     .maybeSingle<{
       id: string;
@@ -1023,6 +1054,31 @@ export async function sendEstimateToCustomer(
         twilio_sid: sent.id || null,
         channel: "email",
       });
+    }
+
+    // The co-owner reads it too. Same document, same link -- a joint
+    // owner is a signer, and a signer who never received the proposal
+    // is a signature that never arrives. Best-effort: their inbox
+    // failing must not fail the send that already worked.
+    const secondEmail = (lead as unknown as { second_contact_email?: string | null })
+      .second_contact_email;
+    if (secondEmail && secondEmail !== lead.email) {
+      const cc = await sendEmail(secondEmail, mail.subject, mail.html, mail.text, {
+        replyTo: sender?.email ?? undefined,
+        env: emailEnv ?? undefined,
+      });
+      if (cc.error) {
+        problems.push(`co-owner email failed (${cc.error})`);
+      } else {
+        sentTo.push(secondEmail);
+        logRows.push({
+          from_number: "email",
+          to_number: secondEmail,
+          body: `[Estimate emailed — co-owner] ${mail.subject}`,
+          twilio_sid: cc.id || null,
+          channel: "email",
+        });
+      }
     }
   } else if (wantsEmail && channel === "both" && !lead.email) {
     problems.push("no email address on file");
