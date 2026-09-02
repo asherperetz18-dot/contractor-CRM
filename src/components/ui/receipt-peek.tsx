@@ -20,18 +20,27 @@ function previewSrc(url: string, path: string | null): string | null {
 }
 
 /**
- * The 📎 Receipt link, with a peek: hovering shows the receipt itself
- * before anyone commits to opening the full file in a new tab. Touch
- * screens have no hover and simply tap straight through, as before.
+ * A link with a peek: hovering shows the file itself before anyone
+ * commits to opening it in a new tab. Touch screens have no hover and
+ * simply tap straight through. Shared by the receipt links and the
+ * per-job document lists.
  */
-export function ReceiptPeek({ url, path }: { url: string; path: string | null }) {
+export function PeekLink({
+  url,
+  src,
+  children,
+}: {
+  url: string;
+  /** The preview image, or null for the "click to open" card. */
+  src: string | null;
+  children: React.ReactNode;
+}) {
   // Where to pin the preview, in viewport coordinates. Position: fixed
-  // rather than absolute-in-place, because these links live inside the
-  // cost table's scroll container and anything absolutely positioned in
-  // there gets clipped at the table edge -- rendered, loaded, invisible.
+  // rather than absolute-in-place, because these links live inside
+  // scroll containers and anything absolutely positioned in there gets
+  // clipped at the edge -- rendered, loaded, invisible.
   const [peek, setPeek] = useState<{ x: number; y: number } | null>(null);
   const [failed, setFailed] = useState(false);
-  const src = previewSrc(url, path);
 
   return (
     <span
@@ -43,7 +52,7 @@ export function ReceiptPeek({ url, path }: { url: string; path: string | null })
       onMouseLeave={() => setPeek(null)}
     >
       <a href={url} target="_blank" rel="noreferrer">
-        📎 Receipt
+        {children}
       </a>
       {peek && (
         <span
@@ -51,11 +60,13 @@ export function ReceiptPeek({ url, path }: { url: string; path: string | null })
           style={{ left: Math.min(peek.x, window.innerWidth - 270), top: peek.y - 8 }}
         >
           {src && !failed ? (
-            // Mounted only while hovered, so a page of receipts does not
+            // Mounted only while hovered, so a page of files does not
             // fetch a thumbnail per row on load.
             // eslint-disable-next-line @next/next/no-img-element
-            <img referrerPolicy="no-referrer"               src={src}
-              alt="Receipt preview"
+            <img
+              referrerPolicy="no-referrer"
+              src={src}
+              alt="File preview"
               onError={() => setFailed(true)}
             />
           ) : (
@@ -66,5 +77,14 @@ export function ReceiptPeek({ url, path }: { url: string; path: string | null })
         </span>
       )}
     </span>
+  );
+}
+
+/** The 📎 Receipt link with its peek, exactly as before. */
+export function ReceiptPeek({ url, path }: { url: string; path: string | null }) {
+  return (
+    <PeekLink url={url} src={previewSrc(url, path)}>
+      📎 Receipt
+    </PeekLink>
   );
 }

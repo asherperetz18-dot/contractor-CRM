@@ -7952,6 +7952,9 @@ textarea.est-item-desc:disabled {
   display: block;
   transform: translateY(-100%);
   z-index: 80;
+  /* Purely visual: the popup must never trap the mouse, or hovering
+     one file blocks reaching the row beneath its preview. */
+  pointer-events: none;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 10px;
