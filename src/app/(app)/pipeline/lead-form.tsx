@@ -95,6 +95,7 @@ function toInput(lead?: Lead): LeadInput {
     second_contact_first_name: lead?.second_contact_first_name ?? "",
     second_contact_last_name: lead?.second_contact_last_name ?? "",
     second_contact_phone: lead?.second_contact_phone ?? "",
+    second_contact_email: lead?.second_contact_email ?? "",
     assigned_to: lead?.assigned_to ?? "",
   };
 }
@@ -146,7 +147,7 @@ export function LeadForm({
   const [error, setError] = useState("");
   const [form, setForm] = useState<LeadInput>(toInput(lead));
   const [hasSecondContact, setHasSecondContact] = useState(
-    !!(lead?.second_contact_first_name || lead?.second_contact_phone)
+    !!(lead?.second_contact_first_name || lead?.second_contact_phone || lead?.second_contact_email)
   );
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>("Overview");
@@ -409,6 +410,7 @@ export function LeadForm({
             second_contact_first_name: "",
             second_contact_last_name: "",
             second_contact_phone: "",
+            second_contact_email: "",
           };
       const result = await updateLead(lead.id, payload, { deferRevalidate: true });
       if (result?.error) {
@@ -439,6 +441,7 @@ export function LeadForm({
           second_contact_first_name: "",
           second_contact_last_name: "",
           second_contact_phone: "",
+          second_contact_email: "",
         };
     const result = lead
       ? await updateLead(lead.id, payload)
@@ -751,6 +754,14 @@ export function LeadForm({
                 <input
                   value={form.second_contact_phone}
                   onChange={(e) => set("second_contact_phone", e.target.value)}
+                />
+              </Field>
+              <Field label="Email">
+                <input
+                  type="email"
+                  value={form.second_contact_email}
+                  onChange={(e) => set("second_contact_email", e.target.value)}
+                  placeholder="spouse@email.com"
                 />
               </Field>
             </div>

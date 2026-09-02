@@ -141,6 +141,7 @@ export function AppointmentWizard({
         second_contact_first_name: "",
         second_contact_last_name: "",
         second_contact_phone: "",
+        second_contact_email: "",
         assigned_to: "",
       });
       if (result?.error || !result?.id) {

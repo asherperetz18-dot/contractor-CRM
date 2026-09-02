@@ -68,7 +68,7 @@ const LIBRARY: Category[] = [
         desc: "From phone call to lead card in under a minute.",
         steps: [
           { img: T("pipeline"), caption: "Open Leads Pipeline and tap + New Lead, top right." },
-          { img: T("t-new-lead-form"), caption: "Fill in the name, phone and where the lead came from — the source is what makes your marketing numbers true. Save." },
+          { img: T("t-new-lead-form"), caption: "Fill in the name, phone, email and where the lead came from — the source is what makes your marketing numbers true. A spouse or co-owner gets their own second-contact block, email included. Save." },
           { img: T("lead-card"), caption: "The lead card opens, ready to work: call or text from the card, add notes, book the first appointment." },
         ],
       },
@@ -169,7 +169,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("estimates"), caption: "Estimates & Contracts lists every document. Open one, or start fresh from a lead's card." },
           { img: T("t-estimate-builder"), caption: "The builder holds the scope, line items, photos and discounts. The customer-facing document builds itself as you type." },
-          { img: T("t-estimate-payments"), caption: "Set the payment schedule by phases, then send. The customer signs from their phone, and the estimate becomes the contract." },
+          { img: T("t-estimate-payments"), caption: "Set the payment schedule by phases, then send — the co-owner on the client card gets the email too. Each owner signs from their phone, and with joint owners the document stays pending until every signature is in. Then the estimate becomes the contract." },
         ],
       },
       {
