@@ -234,6 +234,7 @@ export default async function ProjectsPage() {
       canAddCosts={canManageCosts(profile)}
       canUploadPhotos={canUploadLeadFiles(profile)}
       canSeeDocChips={isAdminRole(profile) || profile.roles.includes("Production")}
+      canFileDocs={canEditChecklists(profile)}
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={

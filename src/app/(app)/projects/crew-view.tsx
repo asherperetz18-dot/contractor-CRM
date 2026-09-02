@@ -37,7 +37,7 @@ export function CrewProjectsView({
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // A lead id from a row's button, "any" from the page-level one.
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
-  const [photosFor, setPhotosFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
 
   const itemsByEstimate = useMemo(() => {
     const map = new Map<string, ChecklistItemRow[]>();
@@ -100,7 +100,7 @@ export function CrewProjectsView({
             type="button"
             className="proj-check-chip proj-photo-chip"
             onClick={() =>
-              setPhotosFor({ leadId: j.leadId, label: j.customer })
+              setPhotosFor({ leadId: j.leadId, estimateId: j.estimateId, label: j.customer })
             }
           >
             📷 Photos
@@ -157,8 +157,10 @@ export function CrewProjectsView({
       {photosFor && (
         <JobPhotos
           leadId={photosFor.leadId}
+          estimateId={photosFor.estimateId}
           jobLabel={photosFor.label}
           canUpload
+          canFile={false}
           onClose={() => setPhotosFor(null)}
         />
       )}

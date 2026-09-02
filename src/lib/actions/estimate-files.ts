@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import type { EstimatePhoto, LeadPhoto } from "@/lib/data/types";
+import { canEditChecklists, type EstimatePhoto, type LeadPhoto } from "@/lib/data/types";
 
 const JOINED =
   "id, estimate_id, estimate_item_id, lead_file_id, caption, sort_order, " +
@@ -106,21 +107,24 @@ export async function getLeadPhotos(
 }
 
 /**
- * The job's paperwork: every non-media file on the lead -- permits,
- * plans, the signed contract scan, spec sheets. The complement of the
- * photo gallery, for the chip that answers "where's the permit?".
+ * The paperwork of ONE job: files filed under this contract, plus the
+ * customer's not-yet-filed documents offered separately -- a customer
+ * with two contracts must never see job A's permit under job B, but a
+ * file nobody has filed yet should be one click from its home, not
+ * hidden.
  */
-export async function getLeadDocuments(
-  leadId: string
-): Promise<{ error?: string; documents?: LeadPhoto[] }> {
+export async function getJobDocuments(
+  leadId: string,
+  estimateId: string
+): Promise<{ error?: string; filed?: LeadPhoto[]; unfiled?: LeadPhoto[] }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
-  const rows = await selectAll<LeadPhoto>((from, to) =>
+  const rows = await selectAll<LeadPhoto & { estimate_id: string | null }>((from, to) =>
     supabase
       .from("lead_files")
-      .select("id, file_name, file_url, content_type, created_at, file_path, storage_provider")
+      .select("id, file_name, file_url, content_type, created_at, file_path, storage_provider, estimate_id")
       .eq("lead_id", leadId)
       .eq("company_id", profile.company_id)
       // Documents means "not media": images live in the Photos modal,
@@ -132,7 +136,85 @@ export async function getLeadDocuments(
       .order("created_at", { ascending: false })
       .range(from, to)
   );
-  return { documents: rows };
+  return {
+    filed: rows.filter((r) => r.estimate_id === estimateId),
+    // Files filed under a DIFFERENT contract are someone else's
+    // paperwork and appear nowhere here.
+    unfiled: rows.filter((r) => r.estimate_id === null),
+  };
+}
+
+/**
+ * The photos of ONE job, split the same way the documents are: filed
+ * under this contract, and the customer's unfiled pictures offered
+ * separately for one-click filing.
+ */
+export async function getJobPhotos(
+  leadId: string,
+  estimateId: string
+): Promise<{ error?: string; filed?: LeadPhoto[]; unfiled?: LeadPhoto[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const rows = await selectAll<LeadPhoto & { estimate_id: string | null }>((from, to) =>
+    supabase
+      .from("lead_files")
+      .select("id, file_name, file_url, content_type, created_at, file_path, storage_provider, estimate_id")
+      .eq("lead_id", leadId)
+      .eq("company_id", profile.company_id)
+      .like("content_type", "image/%")
+      .order("created_at", { ascending: false })
+      .range(from, to)
+  );
+  return {
+    filed: rows.filter((r) => r.estimate_id === estimateId),
+    unfiled: rows.filter((r) => r.estimate_id === null),
+  };
+}
+
+/**
+ * Files a document under a job (or back to the customer with null).
+ * Same roles that shape checklists: the people who run the paperwork.
+ */
+export async function fileDocumentUnderJob(
+  leadFileId: string,
+  estimateId: string | null
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canEditChecklists(profile)) {
+    return { error: "Only Office, Admin or Production users can file documents." };
+  }
+
+  const admin = createAdminClient();
+  const { data: file } = await admin
+    .from("lead_files")
+    .select("id, lead_id")
+    .eq("id", leadFileId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; lead_id: string }>();
+  if (!file) return { error: "That file couldn't be found." };
+
+  if (estimateId) {
+    // The target must be a document on the SAME customer.
+    const { data: est } = await admin
+      .from("estimates")
+      .select("id")
+      .eq("id", estimateId)
+      .eq("lead_id", file.lead_id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!est) return { error: "That job doesn't belong to this customer." };
+  }
+
+  const { error } = await admin
+    .from("lead_files")
+    .update({ estimate_id: estimateId })
+    .eq("id", leadFileId);
+  if (error) return { error: error.message };
+  revalidatePath("/projects");
+  return {};
 }
 
 export async function attachEstimatePhoto(input: {

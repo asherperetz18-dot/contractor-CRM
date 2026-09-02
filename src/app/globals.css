@@ -8501,3 +8501,19 @@ textarea.est-item-desc:disabled {
 .cr-range input[type="date"] {
   padding: 6px 8px;
 }
+
+/* Filed/unfiled photo cells and the unfiled fold. */
+.jp-cell {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.jp-unfiled {
+  margin-top: 14px;
+}
+.jp-unfiled > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #6b675f;
+  margin-bottom: 8px;
+}

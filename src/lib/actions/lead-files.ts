@@ -215,13 +215,31 @@ export async function recordLeadFile(
   fileName: string,
   fileSize: number,
   contentType: string | null,
-  eventId?: string | null
+  eventId?: string | null,
+  /** Files the upload under one job -- see migration 0120. */
+  estimateId?: string | null
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!path.startsWith(`${leadId}/`)) return { error: "That upload doesn't belong here." };
 
   const admin = createAdminClient();
+
+  // The job a file is filed under must be this lead's own document --
+  // estimate_id decides which project row shows the file, and an
+  // unvalidated id would let an upload masquerade under another
+  // customer's contract.
+  let fileUnder: string | null = null;
+  if (estimateId) {
+    const { data: est } = await admin
+      .from("estimates")
+      .select("id")
+      .eq("id", estimateId)
+      .eq("lead_id", leadId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (est) fileUnder = estimateId;
+  }
   const slash = path.lastIndexOf("/");
   const { data: found } = await admin.storage
     .from(BUCKET)
@@ -306,6 +324,7 @@ export async function recordLeadFile(
     storage_provider: stored.provider,
     drive_shortcut_id: stored.shortcutId ?? null,
     event_id: eventId ?? null,
+    estimate_id: fileUnder,
     company_id: profile.company_id,
   });
   if (error) {
