@@ -9,6 +9,7 @@ import { getEmailForCompany } from "@/lib/email-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
+import { finalizeSignedEstimate } from "@/lib/estimate-signing";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import {
@@ -1452,5 +1453,120 @@ export async function setProjectHold(
     return { error: "Could not update that project." };
   }
   revalidatePath("/projects");
+  return {};
+}
+
+/**
+ * Records a document that was signed on paper, outside the system.
+ *
+ * The office builds the contract (or change order, or completion form)
+ * with its payment stages exactly as usual, then marks it here: status,
+ * signer row (signature_type 'paper' -- a staff member attesting to ink
+ * on a page, never a fabricated e-signature), and every downstream
+ * effect a portal signature has, via the same finalizeSignedEstimate the
+ * portal calls -- so a paper contract behaves identically in Projects,
+ * money, and checklists. Nothing is sent to the customer.
+ *
+ * Backdatable on purpose: the signed date drives stage due dates and
+ * auto-checklist offsets, and the paper was signed when it was signed.
+ */
+export async function markSignedOnPaper(
+  estimateId: string,
+  input: { signerName: string; signedDate: string; scanFileName?: string | null }
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canCreateEstimates(profile)) {
+    return { error: "You don't have access to record signatures." };
+  }
+
+  const signerName = input.signerName.trim();
+  if (!signerName) return { error: "Enter the name as it was signed." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.signedDate)) {
+    return { error: "Pick the date it was signed." };
+  }
+  if (input.signedDate > new Date().toISOString().slice(0, 10)) {
+    return { error: "The signing date can't be in the future." };
+  }
+  // Noon UTC: the paper knows the day, not the hour, and noon keeps the
+  // date stable in every US timezone.
+  const signedIso = `${input.signedDate}T12:00:00.000Z`;
+
+  const supabase = await createClient();
+  const { data: estimate } = await supabase
+    .from("estimates")
+    .select(
+      "id, lead_id, company_id, status, total_cents, kind, parent_estimate_id, doc_number, title, assigned_to"
+    )
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{
+      id: string;
+      lead_id: string;
+      company_id: string;
+      status: string;
+      total_cents: number;
+      kind: string | null;
+      parent_estimate_id: string | null;
+      doc_number: string;
+      title: string | null;
+      assigned_to: string | null;
+    }>();
+  if (!estimate) return { error: "That document couldn't be found." };
+  if (estimate.status === "Signed") return { error: "This document is already signed." };
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled — un-cancel it before recording a signature." };
+  }
+
+  const admin = createAdminClient();
+
+  // The paper document carries every signature at once, so every
+  // outstanding customer signer is marked from it. A document that
+  // never had signer rows gets one, named as signed.
+  const { data: signerRows } = await admin
+    .from("estimate_signers")
+    .select("id, party, signed_at")
+    .eq("estimate_id", estimateId)
+    .returns<{ id: string; party: string; signed_at: string | null }[]>();
+  const unsigned = (signerRows ?? []).filter((s) => s.party === "customer" && !s.signed_at);
+  if (unsigned.length) {
+    await admin
+      .from("estimate_signers")
+      .update({
+        signed_at: signedIso,
+        signature_name: signerName,
+        signature_type: "paper",
+        signature_image: null,
+      })
+      .in("id", unsigned.map((s) => s.id));
+  } else if (!(signerRows ?? []).some((s) => s.party === "customer")) {
+    await admin.from("estimate_signers").insert({
+      company_id: estimate.company_id,
+      estimate_id: estimateId,
+      party: "customer",
+      name: signerName,
+      sort_order: 0,
+      signed_at: signedIso,
+      signature_name: signerName,
+      signature_type: "paper",
+    });
+  }
+
+  await finalizeSignedEstimate(admin, estimate, signedIso);
+
+  // The paper trail on the contact: who recorded it, who signed, when,
+  // and whether the scan came along.
+  await admin.from("lead_notes").insert({
+    company_id: estimate.company_id,
+    lead_id: estimate.lead_id,
+    author_id: profile.id,
+    body:
+      `${estimate.doc_number} marked signed on paper by ${profile.name || profile.email || "staff"}. ` +
+      `Signed by ${signerName} on ${input.signedDate}.` +
+      (input.scanFileName ? ` Scan attached: ${input.scanFileName}.` : ""),
+  });
+
+  revalidatePath(`/estimates/${estimateId}`);
+  revalidatePath("/estimates");
   return {};
 }
