@@ -75,12 +75,13 @@ const LIBRARY: Category[] = [
       {
         id: "book-appointment",
         title: "Book an appointment",
-        kicker: "Quick how-to · 3 steps · 1 min",
+        kicker: "Quick how-to · 4 steps · 1.5 min",
         desc: "Put a visit on the board and get it confirmed.",
         steps: [
           { img: T("calendar"), caption: "Open the Calendar — the week view shows every rep's day side by side." },
           { img: T("t-event-form"), caption: "Tap + New Appointment. Pick the customer, the rep and the time; the property photo and map help you route the day." },
           { img: T("calendar"), caption: "The visit lands on the board in the rep's color. When the customer confirms by text, the CUST badge turns on." },
+          { img: T("tut-schedule-filters"), caption: "The Schedule page shows the same visits as a list, opening on what's coming — not a scroll through history. Filter it by window — today, tomorrow, the next 7 days, a custom range — and by rep, so a crew lead sees exactly their own day." },
         ],
       },
     ],
