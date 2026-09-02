@@ -75,10 +75,54 @@ export function ScheduleList({
   // Captured once rather than read during render, so the same list does
   // not render differently on a re-render.
   const [openedAtMs] = useState(() => Date.now());
+  // The window opens on what's coming. The page used to open on the
+  // oldest appointment in history and everyone scrolled past months to
+  // find today.
+  const [range, setRange] = useState("upcoming");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [repFilter, setRepFilter] = useState("All");
 
-  const sorted = [...events].sort((a, b) =>
-    (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""))
-  );
+  // Local calendar days, compared as the same yyyy-mm-dd strings the
+  // rows store -- no timezone arithmetic to get wrong.
+  const dayStr = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = dayStr(new Date(openedAtMs));
+  const plusDays = (n: number) => {
+    const d = new Date(openedAtMs);
+    d.setDate(d.getDate() + n);
+    return dayStr(d);
+  };
+  let fromDay: string | null = null;
+  let toDay: string | null = null; // inclusive
+  if (range === "upcoming") fromDay = today;
+  else if (range === "today") { fromDay = today; toDay = today; }
+  else if (range === "tomorrow") { fromDay = plusDays(1); toDay = plusDays(1); }
+  else if (range === "7d") { fromDay = today; toDay = plusDays(7); }
+  else if (range === "month") {
+    const d = new Date(openedAtMs);
+    fromDay = dayStr(new Date(d.getFullYear(), d.getMonth(), 1));
+    toDay = dayStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+  } else if (range === "past") toDay = plusDays(-1);
+  else if (range === "custom") {
+    fromDay = customFrom || null;
+    toDay = customTo || null;
+  }
+
+  const shown = events.filter((ev) => {
+    if (fromDay && ev.date < fromDay) return false;
+    if (toDay && ev.date > toDay) return false;
+    if (repFilter !== "All" && ev.assigned_to !== repFilter && ev.second_assigned_to !== repFilter)
+      return false;
+    return true;
+  });
+
+  const sorted = [...shown].sort((a, b) => {
+    const cmp = (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""));
+    // History reads newest-first -- "what happened lately", not a
+    // scroll to July.
+    return range === "past" ? -cmp : cmp;
+  });
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -94,13 +138,58 @@ export function ScheduleList({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Schedule</h1>
-          <p className="module-sub">{events.length} appointments</p>
+          <p className="module-sub">
+            {shown.length === events.length
+              ? `${events.length} appointments`
+              : `${shown.length} of ${events.length} appointments`}
+          </p>
         </div>
-        {canWrite && (
-          <button className="btn-primary" onClick={() => setShowNew(true)}>
-            + New Appointment
-          </button>
-        )}
+        <div className="cr-range">
+          <select value={range} onChange={(e) => setRange(e.target.value)} aria-label="Date range">
+            <option value="upcoming">Upcoming</option>
+            <option value="today">Today</option>
+            <option value="tomorrow">Tomorrow</option>
+            <option value="7d">Next 7 days</option>
+            <option value="month">This month</option>
+            <option value="past">Past</option>
+            <option value="all">All</option>
+            <option value="custom">Custom range…</option>
+          </select>
+          {range === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-label="From date"
+              />
+              <span>–</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-label="To date"
+              />
+            </>
+          )}
+          <select
+            value={repFilter}
+            onChange={(e) => setRepFilter(e.target.value)}
+            aria-label="Rep"
+          >
+            <option value="All">All Reps</option>
+            {reps.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name || r.email}
+              </option>
+            ))}
+          </select>
+          {canWrite && (
+            <button className="btn-primary" onClick={() => setShowNew(true)}>
+              + New Appointment
+            </button>
+          )}
+        </div>
       </div>
 
       {sorted.length === 0 ? (
@@ -108,8 +197,14 @@ export function ScheduleList({
           <div className="empty-mark" aria-hidden="true">
             ＋
           </div>
-          <p className="empty-label">Nothing scheduled</p>
-          <p className="empty-hint">Add estimates, site visits, or crew appointments.</p>
+          <p className="empty-label">
+            {events.length === 0 ? "Nothing scheduled" : "Nothing in this window"}
+          </p>
+          <p className="empty-hint">
+            {events.length === 0
+              ? "Add estimates, site visits, or crew appointments."
+              : "Widen the date range or switch back to All Reps."}
+          </p>
         </div>
       ) : (
         <div className="schedule-list">
