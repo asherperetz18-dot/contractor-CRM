@@ -131,6 +131,16 @@ const LIBRARY: Category[] = [
     name: "Estimates & Money",
     tutorials: [
       {
+        id: "signed-on-paper",
+        title: "Record a contract signed on paper",
+        kicker: "Quick how-to · 2 steps · 1 min",
+        desc: "Signed at the kitchen table with a pen? Load it in without sending the customer anything.",
+        steps: [
+          { img: T("tut-paper-sign"), caption: "Build the contract with its payment stages exactly as usual, then hit Signed on paper. Name who signed, pick the real signing date — it's backdatable, and the stage due dates and checklist run from it — and attach the scan of the signed pages." },
+          { img: T("t-estimate-payments"), caption: "One click and the document behaves exactly like a portal signature: the job appears in Projects, the value lands on the lead, the auto-checklist dates itself off the paper date — and the customer is never emailed or texted. Works the same for change orders and completion forms." },
+        ],
+      },
+      {
         id: "estimate-to-contract",
         title: "From estimate to signed contract",
         kicker: "Deep dive · 3 steps · 2 min",

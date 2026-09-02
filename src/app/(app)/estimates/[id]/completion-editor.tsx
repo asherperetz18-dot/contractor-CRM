@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import type { Estimate, EstimateSigner } from "@/lib/data/types";
 import { saveCompletionDetails } from "@/lib/actions/completion";
 import {
@@ -39,6 +40,7 @@ export function CompletionEditor({
 }) {
   const router = useRouter();
   const [completedOn, setCompletedOn] = useState(estimate.completed_on ?? "");
+  const [paperDialog, setPaperDialog] = useState(false);
   const [notes, setNotes] = useState(estimate.completion_notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -113,6 +115,14 @@ export function CompletionEditor({
                 title="Mark as sent without texting or emailing"
               >
                 Mark Sent
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => save(async () => setPaperDialog(true))}
+                disabled={pending}
+                title="Record a signature that happened with a pen -- nothing is sent to the customer"
+              >
+                Signed on paper
               </button>
               <button
                 className="btn-ghost"
@@ -270,6 +280,14 @@ export function CompletionEditor({
         {error && <p className="error-note">{error}</p>}
         {saved && <p className="est-saved-note">{saved}</p>}
       </div>
+      {paperDialog && (
+        <SignedOnPaperDialog
+          estimateId={estimate.id}
+          leadId={estimate.lead_id}
+          docLabel="completion form"
+          onClose={() => setPaperDialog(false)}
+        />
+      )}
     </div>
   );
 }

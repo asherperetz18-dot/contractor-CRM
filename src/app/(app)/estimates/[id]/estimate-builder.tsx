@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import {
   centsFromInput,
   centsToInput,
@@ -136,6 +137,7 @@ export function EstimateBuilder({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
+  const [paperDialog, setPaperDialog] = useState(false);
   const [title, setTitle] = useState(estimate.title);
   const [message, setMessage] = useState(estimate.customer_message ?? "");
   const [terms, setTerms] = useState(estimate.terms ?? "");
@@ -393,6 +395,14 @@ export function EstimateBuilder({
                 title="Mark as sent without texting or emailing -- for a customer with no mobile number or email"
               >
                 Mark Sent
+              </button>
+              <button
+                className="btn-ghost"
+                onClick={() => save(() => setPaperDialog(true))}
+                disabled={pending}
+                title="Record a signature that happened with a pen -- nothing is sent to the customer"
+              >
+                Signed on paper
               </button>
               <button
                 className="btn-ghost"
@@ -1216,6 +1226,14 @@ export function EstimateBuilder({
             patch(scopeRow, { description: text });
             setScopeRow(null);
           }}
+        />
+      )}
+      {paperDialog && (
+        <SignedOnPaperDialog
+          estimateId={estimate.id}
+          leadId={estimate.lead_id}
+          docLabel={estimate.kind === "change_order" ? "change order" : "contract"}
+          onClose={() => setPaperDialog(false)}
         />
       )}
     </div>
