@@ -131,6 +131,16 @@ const LIBRARY: Category[] = [
     name: "Estimates & Money",
     tutorials: [
       {
+        id: "bills-to-pay",
+        title: "Bills to Pay",
+        kicker: "Deep dive · 2 steps · 1.5 min",
+        desc: "Every vendor bill, what goes out this week, and what is past its date — the company checkbook.",
+        steps: [
+          { img: T("tut-bills"), caption: "Bills to Pay is the vendor side of the money: every unpaid bill grouped by job, with Total Due, what is scheduled this week, and what is overdue — overdue meaning past the date YOU planned to pay it. Set that date right on the row, add a whole stack at once with Add Bills, and the through-date view answers how much cash a payday needs." },
+          { img: T("tut-bills-pay"), caption: "Record a payment — full or partial, with the check number — and a bill linked to a job files that payment as the job cost automatically. One entry, and the job Spent and profit on the Projects page stay true. Partly-paid bills show the original amount and what is left." },
+        ],
+      },
+      {
         id: "signed-on-paper",
         title: "Record a contract signed on paper",
         kicker: "Quick how-to · 2 steps · 1 min",

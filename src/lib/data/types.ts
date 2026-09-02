@@ -335,6 +335,7 @@ export type PageKey =
   | "production"
   | "documents"
   | "payments"
+  | "bills"
   | "commissions"
   | "sales-commission"
   | "calendar"
@@ -391,6 +392,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
+  { key: "bills", label: "Bills to Pay", href: "/bills", group: "General" },
   // Two separate schemes, two separate screens. The dispatcher earns a
   // percentage of the gross sale for bringing the lead in; the rep earns
   // a share of what the job actually made. One page showing both invites
@@ -467,6 +469,7 @@ const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
   "projects",
   "documents",
   "payments",
+  "bills",
 ];
 
 // Platform default when no explicit override row exists for a role/page --
@@ -499,6 +502,8 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // off for the field roles and an Admin can turn it on per role in Role
   // Visibility. Office and Admin keep it: that is who chases the money.
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
+  // Bills to Pay is the company checkbook -- same footing as Payments.
+  if (pageKey === "bills" && (role === "Field" || role === "Sales")) return false;
   // Commission is payroll, so who sees whose matters, and the two schemes
   // are gated separately now that they are separate screens.
   //
@@ -2949,4 +2954,51 @@ export function leadAfterContractVoid(
     (b.signed_at ?? "").localeCompare(a.signed_at ?? "")
   )[0];
   return { demote: false, valueDollars: latest.total_cents / 100 };
+}
+
+/**
+ * Who runs the checkbook: Bills to Pay writes. Bookkeeping, Office,
+ * Admin -- the page's audience. (RLS additionally admits Production,
+ * mirroring their cost access, but the page is not in their nav by
+ * default and the actions gate on this.)
+ */
+export function canManageBills(profile: Pick<Profile, "roles"> | null) {
+  if (!profile) return false;
+  return (
+    profile.roles.includes("Bookkeeping") ||
+    profile.roles.includes("Office") ||
+    profile.roles.includes("Admin")
+  );
+}
+
+export type VendorBill = {
+  id: string;
+  company_id: string;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  lead_id: string | null;
+  reference: string | null;
+  amount_cents: number;
+  bill_date: string | null;
+  due_date: string | null;
+  scheduled_date: string | null;
+  voided_at: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type VendorBillPayment = {
+  id: string;
+  bill_id: string;
+  amount_cents: number;
+  paid_on: string;
+  check_number: string | null;
+  note: string | null;
+  job_expense_id: string | null;
+};
+
+/** What a bill still waits on. Never negative -- an overpayment is a
+ *  bookkeeping note, not negative debt. */
+export function billRemainingCents(bill: Pick<VendorBill, "amount_cents">, payments: Pick<VendorBillPayment, "amount_cents">[]): number {
+  return Math.max(0, bill.amount_cents - payments.reduce((s, p) => s + p.amount_cents, 0));
 }
