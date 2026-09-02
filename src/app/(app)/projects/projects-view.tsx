@@ -54,6 +54,7 @@ export function ProjectsView({
   canAddCosts,
   canUploadPhotos,
   canSeeDocChips,
+  canFileDocs,
   checklistReady,
   checklistItems,
   templates,
@@ -68,6 +69,8 @@ export function ProjectsView({
   /** The document shortcuts: receipts list, client-view contract and
    *  change orders. Office, Admin and Production -- never Field. */
   canSeeDocChips: boolean;
+  /** Moving files between jobs: Office/Admin/Production. */
+  canFileDocs: boolean;
   checklistReady: boolean;
   checklistItems: ChecklistItemRow[];
   templates: { id: string; name: string; count: number }[];
@@ -81,10 +84,10 @@ export function ProjectsView({
   // Which job the receipt modal opens on: a lead id from a row's chip,
   // "any" from the page-level button, null when closed.
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
-  const [photosFor, setPhotosFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [receiptsFor, setReceiptsFor] = useState<{ leadId: string; label: string } | null>(null);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
-  const [documentsFor, setDocumentsFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [documentsFor, setDocumentsFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
 
   const itemsByEstimate = useMemo(() => {
@@ -200,8 +203,10 @@ export function ProjectsView({
       {photosFor && (
         <JobPhotos
           leadId={photosFor.leadId}
+          estimateId={photosFor.estimateId}
           jobLabel={photosFor.label}
           canUpload={canUploadPhotos}
+          canFile={canFileDocs}
           onClose={() => setPhotosFor(null)}
         />
       )}
@@ -215,7 +220,9 @@ export function ProjectsView({
       {documentsFor && (
         <JobDocuments
           leadId={documentsFor.leadId}
+          estimateId={documentsFor.estimateId}
           jobLabel={documentsFor.label}
+          canFile={canFileDocs}
           onClose={() => setDocumentsFor(null)}
         />
       )}
@@ -385,7 +392,7 @@ export function ProjectsView({
                       <button
                         type="button"
                         className="proj-check-chip proj-photo-chip"
-                        onClick={() => setPhotosFor({ leadId: p.leadId, label: p.customer })}
+                        onClick={() => setPhotosFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })}
                       >
                         📷 Photos
                       </button>
@@ -442,7 +449,7 @@ export function ProjectsView({
                             type="button"
                             className="proj-check-chip proj-doc-chip"
                             onClick={() =>
-                              setDocumentsFor({ leadId: p.leadId, label: p.customer })
+                              setDocumentsFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })
                             }
                           >
                             📄 Permits &amp; contracts

@@ -63,7 +63,9 @@ export function SignedOnPaperDialog({
           signed.path,
           shrunk.name,
           shrunk.size,
-          shrunk.type || null
+          shrunk.type || null,
+          null,
+          estimateId
         );
         if (recorded.error) return setError(recorded.error);
         scanFileName = shrunk.name;
