@@ -57,7 +57,13 @@ export default async function SchedulePage() {
     { data: estimates },
     { data: calendars },
   ] = await Promise.all([
-    supabase.from("events").select("*").eq("company_id", companyId),
+    // selectAll: a bare select stops at 1000 rows in silence, and a
+    // schedule that quietly drops the newest appointments once the
+    // history passes a thousand is exactly the page nobody would
+    // suspect. Wrapped to keep the destructuring shape.
+    selectAll<Event>((f, t) =>
+      supabase.from("events").select("*").eq("company_id", companyId).range(f, t)
+    ).then((rows) => ({ data: rows })),
     supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     // Only the contacts an appointment actually points at, matching the
