@@ -174,7 +174,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
           { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Receipts lists every cost on the job with the receipt itself a hover away, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
-          { img: T("tut-permits"), caption: "Permits & contracts opens the job's paperwork — the building permit, the signed contract scan, the plans — each one a click to open. Upload them once on the contact's Files tab and they're always one chip away from the job." },
+          { img: T("tut-permits"), caption: "Permits & contracts opens the job's own paperwork — only files filed under this contract, so a customer with two jobs never mixes their piles. Anything not filed yet waits below with a one-click File under this job, and Remove from job undoes a mistake." },
           { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
         ],
       },
@@ -195,7 +195,7 @@ const LIBRARY: Category[] = [
         desc: "Give crew the Field role and their Projects page becomes a job list with exactly what they need.",
         steps: [
           { img: T("tut-crew-jobs"), caption: "A Field user opens Projects and sees their jobs — address, checklist, and two buttons. No contract amounts, no collections, no totals: the money isn't hidden from this page, it's never sent to it. They check off their own steps as work lands." },
-          { img: T("tut-crew-photos"), caption: "Photos opens the job's gallery. Take photo goes straight to the camera; everything lands in the job's file list and its Google Drive Photos folder — the same pictures the office attaches to change orders." },
+          { img: T("tut-crew-photos"), caption: "Photos opens this job's own gallery. Take photo goes straight to the camera, and every shot files itself under the job you took it from — a customer with two jobs keeps two separate galleries. It all lands in Google Drive too, the same pictures the office attaches to change orders." },
           { img: T("tut-crew-receipt"), caption: "+ Receipt on a job row opens with that job already picked: snap the receipt at the counter, amount, save. It files against the job's costs, and the form stays open for the next one in the stack." },
         ],
       },
