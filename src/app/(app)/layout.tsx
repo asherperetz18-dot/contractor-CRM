@@ -132,11 +132,11 @@ export default async function AppLayout({
                     the person who can't find a page needs this the most. */}
                 <Link
                   href="/tutorials"
-                  className="icon-btn topbar-icon-btn"
+                  className="icon-btn topbar-icon-btn topbar-help-btn"
                   title="Video tutorials — narrated walkthroughs"
                   aria-label="Video tutorials"
                 >
-                  ❓
+                  ?
                 </Link>
                 <ScreenShareButton />
                 <DialerButton />
