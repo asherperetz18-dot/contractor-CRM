@@ -132,9 +132,12 @@ export default async function AppLayout({
                     the person who can't find a page needs this the most. */}
                 <Link
                   href="/tutorials"
-                  className="icon-btn topbar-icon-btn topbar-help-btn"
+                  className="icon-btn topbar-icon-btn"
                   title="Video tutorials — narrated walkthroughs"
                   aria-label="Video tutorials"
+                  // A plain glyph, not the ❓ emoji: the emoji renders red
+                  // and ignores color, so it could never be made black.
+                  style={{ color: "#000", fontWeight: 700, fontSize: 18 }}
                 >
                   ?
                 </Link>
