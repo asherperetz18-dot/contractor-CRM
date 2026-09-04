@@ -30,9 +30,12 @@ import { useRef } from "react";
 export function NavLink({
   href,
   children,
+  className = "nav-item",
 }: {
   href: string;
   children: React.ReactNode;
+  /** "nav-item" for a top-level link, "nav-subitem" inside a group. */
+  className?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -52,7 +55,7 @@ export function NavLink({
       onMouseEnter={warm}
       onFocus={warm}
       onTouchStart={warm}
-      className={"nav-item" + (active ? " active" : "")}
+      className={className + (active ? " active" : "")}
     >
       {children}
     </Link>

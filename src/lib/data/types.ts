@@ -91,15 +91,40 @@ export function sortNavEntries(
 ): NavEntry[] {
   if (!order?.length) return entries;
   const pos = new Map(order.map((k, i) => [k, i]));
+
+  // Where the saved order puts an entry. A group the order predates --
+  // pages that were top-level links when the admin arranged the menu and
+  // have since been folded into one dropdown -- takes the highest spot
+  // any of its pages held, so regrouping the sidebar does not drop the
+  // new group to the bottom of a menu somebody already arranged.
+  function savedPos(entry: NavEntry): number | undefined {
+    const own = pos.get(navEntryKey(entry));
+    if (own !== undefined || entry.type === "link") return own;
+    let best: number | undefined;
+    for (const item of entry.items) {
+      const p = item.href ? pos.get(item.href) : undefined;
+      if (p !== undefined && (best === undefined || p < best)) best = p;
+    }
+    return best;
+  }
+
   const settings: NavEntry[] = [];
   const known: NavEntry[] = [];
   const unknown: NavEntry[] = [];
+  const at = new Map<NavEntry, number>();
   for (const entry of entries) {
-    if (entry.type === "link" && entry.href === "/settings") settings.push(entry);
-    else if (pos.has(navEntryKey(entry))) known.push(entry);
-    else unknown.push(entry);
+    if (entry.type === "link" && entry.href === "/settings") {
+      settings.push(entry);
+      continue;
+    }
+    const p = savedPos(entry);
+    if (p === undefined) unknown.push(entry);
+    else {
+      at.set(entry, p);
+      known.push(entry);
+    }
   }
-  known.sort((a, b) => pos.get(navEntryKey(a))! - pos.get(navEntryKey(b))!);
+  known.sort((a, b) => at.get(a)! - at.get(b)!);
   return [...known, ...unknown, ...settings];
 }
 
@@ -385,16 +410,27 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     href: "/appointment-reports",
     group: "Your Sales Center",
   },
-  { key: "projects", label: "Projects", href: "/projects", group: "General" },
-  { key: "production", label: "Production", href: "/production", group: "General" },
+  // Production is one collapsible sidebar section: the sold work and the
+  // money that follows it. The board keeps its "production" key so saved
+  // Role Visibility overrides and the /production route are untouched;
+  // only its menu label changes, because "Production > Production" reads
+  // as a typo.
+  {
+    key: "production",
+    label: "Production Board",
+    href: "/production",
+    group: "Production",
+  },
+  { key: "projects", label: "Projects", href: "/projects", group: "Production" },
+  { key: "contracts", label: "Contracts", href: "/contracts", group: "Production" },
+  { key: "bills", label: "Bills to Pay", href: "/bills", group: "Production" },
+  { key: "collect", label: "Money to Collect", href: "/collect", group: "Production" },
   // Key stays "documents" so existing role_page_visibility overrides keep
   // pointing at it; only the label and route move. Named "Contracts"
   // rather than "Invoices" because a signed estimate becomes a contract --
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   { key: "payments", label: "Payments", href: "/payments", group: "General" },
-  { key: "bills", label: "Bills to Pay", href: "/bills", group: "General" },
-  { key: "collect", label: "Money to Collect", href: "/collect", group: "General" },
   // Two separate schemes, two separate screens. The dispatcher earns a
   // percentage of the gross sale for bringing the lead in; the rep earns
   // a share of what the job actually made. One page showing both invites
@@ -408,7 +444,6 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
   { key: "schedule", label: "Schedule", href: "/schedule", group: "General" },
-  { key: "contracts", label: "Contracts", href: "/contracts", group: "General" },
 ];
 
 // Roles that can be individually restricted via Role Visibility.
