@@ -122,6 +122,7 @@ export default async function CollectPage() {
       unpaid.push({
         phaseId: ph.id,
         estimateId: contract.id,
+        leadId: contract.lead_id,
         title: contract.title || contract.doc_number,
         phase: ph.name || `Phase ${ph.sort_order + 1}`,
         requestedAt: ph.requested_at,
@@ -133,6 +134,7 @@ export default async function CollectPage() {
       billable.push({
         phaseId: ph.id,
         estimateId: contract.id,
+        leadId: contract.lead_id,
         title: contract.title || contract.doc_number,
         phase: ph.name || `Phase ${ph.sort_order + 1}`,
         amountCents: ph.amount_cents,
