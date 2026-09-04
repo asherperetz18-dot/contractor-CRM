@@ -380,7 +380,9 @@ export async function recordBillPayment(
     jobExpenseId = (exp as { id: string }).id;
   }
 
-  const paymentRow = {
+  // Typed as a plain record on purpose: handing insert() a conditional
+  // object (with or without `method`) trips its excess-property check.
+  const paymentRow: Record<string, unknown> = {
     company_id: profile.company_id,
     bill_id: billId,
     amount_cents: amount,
@@ -390,13 +392,13 @@ export async function recordBillPayment(
     job_expense_id: jobExpenseId,
     created_by: profile.id,
   };
-  let { error } = await supabase
-    .from("vendor_bill_payments")
-    .insert(method ? { ...paymentRow, method } : paymentRow);
+  if (method) paymentRow.method = method;
+  let { error } = await supabase.from("vendor_bill_payments").insert(paymentRow);
   // The method column arrives with migration 0124. On a database where it
   // hasn't run yet, record the payment without it rather than refuse the
   // payment -- the money moved either way; only the "how" is lost.
   if (error && method && /schema cache/i.test(error.message) && /method/.test(error.message)) {
+    delete paymentRow.method;
     ({ error } = await supabase.from("vendor_bill_payments").insert(paymentRow));
   }
   if (error) {
