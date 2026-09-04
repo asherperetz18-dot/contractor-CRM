@@ -14,23 +14,31 @@ import {
   getValidAccessToken,
   uploadBlobToDrive,
 } from "@/lib/actions/google-drive";
+import {
+  MAX_RECEIPT_BYTES,
+  RECEIPT_BUCKET,
+  confirmReceiptUpload,
+  receiptPathBelongs,
+  receiptUploadPath,
+  type UploadedReceipt,
+} from "@/lib/receipts";
 
 const COLUMNS =
   "id, company_id, lead_id, estimate_payment_id, vendor, vendor_id, category, description, " +
   "amount_cents, spent_on, source, qb_txn_id, qb_txn_type, qb_project_id, created_at, " +
   "receipt_url, receipt_path";
 
-const RECEIPT_BUCKET = "lead-files";
-const MAX_RECEIPT_BYTES = 30 * 1024 * 1024;
-
 /**
  * A signed slot for the receipt file (a photo from the phone camera or
  * the supplier's PDF). Uploaded straight from the browser like lead
- * files; recorded onto the expense only once createJobExpense confirms
- * the object actually landed.
+ * files; recorded onto the bill or cost only once the save confirms the
+ * object actually landed.
+ *
+ * leadId null is an overhead bill with no job (fuel, the office): the
+ * slot lives under the company instead.
  */
 export async function createReceiptUploadUrl(
-  leadId: string,
+  leadId: string | null,
   fileName: string,
   fileSize: number
 ): Promise<{ error?: string; path?: string; token?: string }> {
@@ -45,16 +53,17 @@ export async function createReceiptUploadUrl(
   }
 
   const admin = createAdminClient();
-  const { data: lead } = await admin
-    .from("leads")
-    .select("id")
-    .eq("id", leadId)
-    .eq("company_id", profile.company_id)
-    .maybeSingle();
-  if (!lead) return { error: "Job not found." };
+  if (leadId) {
+    const { data: lead } = await admin
+      .from("leads")
+      .select("id")
+      .eq("id", leadId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!lead) return { error: "Job not found." };
+  }
 
-  const safeName = fileName.replace(/[^\w.\-() ]+/g, "_").slice(-120);
-  const path = `receipts/${leadId}/${Date.now()}-${safeName}`;
+  const path = receiptUploadPath(profile.company_id, leadId, fileName);
   const { data, error } = await admin.storage
     .from(RECEIPT_BUCKET)
     .createSignedUploadUrl(path);
@@ -154,7 +163,7 @@ export async function getJobExpenses(
 export async function createJobExpense(
   input: JobExpenseInput,
   // The already-uploaded receipt file, when one was attached.
-  receipt?: { path: string; fileName: string; contentType: string | null } | null
+  receipt?: UploadedReceipt | null
 ): Promise<{ error?: string; id?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -162,6 +171,7 @@ export async function createJobExpense(
   const amount = Math.round(Number(input.amountCents) || 0);
   if (!amount) return { error: "Enter an amount." };
   if (!input.spentOn) return { error: "Enter the date it was spent." };
+  if (!input.leadId) return { error: "Pick the job this belongs to." };
 
   // The receipt path is client-supplied and this function reaches for
   // the admin client, so it is held to the slot createReceiptUploadUrl
@@ -171,7 +181,7 @@ export async function createJobExpense(
   let receiptFields: { receipt_url: string; receipt_path: string } | null = null;
   if (receipt?.path) {
     if (!canManageCosts(profile)) return { error: "You don't have access to record costs." };
-    if (!receipt.path.startsWith(`receipts/${input.leadId}/`)) {
+    if (!receiptPathBelongs(receipt.path, profile.company_id, input.leadId)) {
       return { error: "That receipt doesn't belong to this job." };
     }
     const admin = createAdminClient();
@@ -183,18 +193,9 @@ export async function createJobExpense(
       .maybeSingle();
     if (!lead) return { error: "Job not found." };
 
-    const folder = receipt.path.slice(0, receipt.path.lastIndexOf("/"));
-    const base = receipt.path.slice(receipt.path.lastIndexOf("/") + 1);
-    const { data: listed } = await admin.storage
-      .from(RECEIPT_BUCKET)
-      .list(folder, { search: base });
-    if (!listed?.some((f) => f.name === base)) {
-      return { error: "The receipt upload didn't finish. Try attaching it again." };
-    }
-    receiptFields = {
-      receipt_url: admin.storage.from(RECEIPT_BUCKET).getPublicUrl(receipt.path).data.publicUrl,
-      receipt_path: receipt.path,
-    };
+    const confirmed = await confirmReceiptUpload(admin, receipt.path);
+    if (confirmed.error || !confirmed.fields) return { error: confirmed.error };
+    receiptFields = confirmed.fields;
   }
 
   const supabase = await createClient();
@@ -286,7 +287,7 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
     .delete()
     .eq("id", expenseId)
     .eq("company_id", profile.company_id)
-    .select("id, receipt_path");
+    .select("id, receipt_path, source");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "That cost couldn't be deleted." };
 
@@ -294,7 +295,12 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
   // keeps serving at its old public URL and a Drive file sits in the
   // customer's folder claiming a cost that no longer exists. Best
   // effort: a cleanup hiccup must not resurrect the row.
-  const receiptPath = (data[0] as { receipt_path?: string | null }).receipt_path;
+  //
+  // Except a cost written by paying a bill: the file is the BILL's, and
+  // the bill still points at it. Deleting it here would blank the bill's
+  // thumbnail on the checkbook page.
+  const row = data[0] as { receipt_path?: string | null; source?: string | null };
+  const receiptPath = row.source === "bill" ? null : row.receipt_path;
   if (receiptPath) {
     try {
       if (receiptPath.startsWith("drive:")) {
