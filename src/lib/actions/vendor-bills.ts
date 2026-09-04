@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { billRemainingCents, canManageBills } from "@/lib/data/types";
-import type { OpenJobBill } from "@/lib/data/bills";
+import { BILL_PAYMENT_METHODS, billPaymentMethodLabel, type OpenJobBill } from "@/lib/data/bills";
 import {
   RECEIPT_BUCKET,
   confirmReceiptUpload,
@@ -298,13 +298,27 @@ export async function setBillSchedule(
  */
 export async function recordBillPayment(
   billId: string,
-  input: { amountCents: number; paidOn: string; checkNumber?: string | null; note?: string | null }
+  input: {
+    amountCents: number;
+    paidOn: string;
+    /** How it was paid -- one of BILL_PAYMENT_METHODS. Optional so older
+     *  callers keep working; stored as-is. */
+    method?: string | null;
+    /** Check number, Zelle confirmation, card last four -- whatever the
+     *  method's reference is. The column kept its old name. */
+    checkNumber?: string | null;
+    note?: string | null;
+  }
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canManageBills(profile)) return { error: "Bookkeeping, Office or Admin only." };
   const amount = Math.round(Number(input.amountCents) || 0);
   if (amount <= 0) return { error: "Enter the payment amount." };
+  const method = (input.method ?? "").trim().toLowerCase();
+  if (method && !(BILL_PAYMENT_METHODS as readonly string[]).includes(method)) {
+    return { error: "Pick how it was paid from the list." };
+  }
   if (!isDay(input.paidOn)) return { error: "Pick the payment date." };
 
   const supabase = await createClient();
@@ -347,7 +361,12 @@ export async function recordBillPayment(
         estimate_payment_id: bill.estimate_payment_id ?? null,
         vendor_id: bill.vendor_id,
         vendor: bill.vendor_id ? null : bill.vendor_name,
-        description: [bill.reference, "bill payment"].filter(Boolean).join(" — "),
+        description: [
+          bill.reference,
+          method ? `paid by ${billPaymentMethodLabel(method)}` : "bill payment",
+        ]
+          .filter(Boolean)
+          .join(" — "),
         amount_cents: amount,
         spent_on: input.paidOn,
         source: "bill",
@@ -361,7 +380,7 @@ export async function recordBillPayment(
     jobExpenseId = (exp as { id: string }).id;
   }
 
-  const { error } = await supabase.from("vendor_bill_payments").insert({
+  const paymentRow = {
     company_id: profile.company_id,
     bill_id: billId,
     amount_cents: amount,
@@ -370,7 +389,16 @@ export async function recordBillPayment(
     note: input.note?.trim() || null,
     job_expense_id: jobExpenseId,
     created_by: profile.id,
-  });
+  };
+  let { error } = await supabase
+    .from("vendor_bill_payments")
+    .insert(method ? { ...paymentRow, method } : paymentRow);
+  // The method column arrives with migration 0124. On a database where it
+  // hasn't run yet, record the payment without it rather than refuse the
+  // payment -- the money moved either way; only the "how" is lost.
+  if (error && method && /schema cache/i.test(error.message) && /method/.test(error.message)) {
+    ({ error } = await supabase.from("vendor_bill_payments").insert(paymentRow));
+  }
   if (error) {
     // The payment never happened; don't leave its cost behind.
     if (jobExpenseId) {
