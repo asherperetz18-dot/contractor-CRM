@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import "./receipt-thumb.css";
 
 /**
  * Where a receipt's preview image lives, given where the file went.
@@ -85,6 +86,47 @@ export function ReceiptPeek({ url, path }: { url: string; path: string | null })
   return (
     <PeekLink url={url} src={previewSrc(url, path)}>
       📎 Receipt
+    </PeekLink>
+  );
+}
+
+/**
+ * The receipt itself, small and always visible: a thumbnail of the photo
+ * (or the first page of a Drive PDF) that opens the file on click and
+ * shows the big peek on hover. A bucket PDF has no image anywhere, so it
+ * gets a little "PDF" tile that still opens the file.
+ *
+ * Same on every screen that lists money going out -- Bills to Pay, the
+ * job's bill list, Job costs -- so a bill looks like the same bill
+ * wherever it is met.
+ */
+export function ReceiptThumb({
+  url,
+  path,
+  size = 44,
+}: {
+  url: string;
+  path: string | null;
+  size?: number;
+}) {
+  const src = previewSrc(url, path);
+  const [failed, setFailed] = useState(false);
+  return (
+    <PeekLink url={url} src={src}>
+      <span className="receipt-thumb" style={{ width: size, height: size }} title="Open the receipt">
+        {src && !failed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            referrerPolicy="no-referrer"
+            src={src}
+            alt="Receipt"
+            loading="lazy"
+            onError={() => setFailed(true)}
+          />
+        ) : (
+          <span className="receipt-thumb-pdf">PDF</span>
+        )}
+      </span>
     </PeekLink>
   );
 }

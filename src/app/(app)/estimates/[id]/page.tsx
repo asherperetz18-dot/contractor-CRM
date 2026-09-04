@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canCreateEstimates, canDeleteLeads, canManageCosts, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
+import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { CompletionEditor } from "./completion-editor";
 
@@ -100,6 +100,7 @@ export default async function EstimateDetailPage({
       // job cost without being able to touch the contract it is recorded
       // against -- which is the whole reason the Bookkeeping role exists.
       canManageCosts={canManageCosts(profile)}
+      canManageBills={canManageBills(profile)}
       canVoid={isStrictAdmin(profile)}
       canDelete={canDeleteLeads(profile)}
     />
