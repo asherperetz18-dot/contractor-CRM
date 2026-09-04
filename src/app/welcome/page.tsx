@@ -27,9 +27,13 @@ export default async function WelcomePage({
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h1 className="auth-title">Thanks — you&apos;re paid up</h1>
+        {/* The heading belongs inside the branch, not above it. Outside, a
+            visitor who lands here with no session id -- or whose bank
+            debit has not cleared -- is congratulated on a payment that
+            hasn't happened. */}
         {result.ok ? (
           <>
+            <h1 className="auth-title">Thanks — you&apos;re paid up</h1>
             <p className="auth-sub">
               We&apos;ve emailed a setup link to <strong>{result.email}</strong>. Open it
               to pick a password, and {result.companyName} is ready to use.
@@ -41,9 +45,10 @@ export default async function WelcomePage({
           </>
         ) : (
           <>
+            <h1 className="auth-title">Not quite there yet</h1>
             <p className="auth-sub">{result.error}</p>
             <p className="hint-note">
-              Your payment is safe. If the email doesn&apos;t arrive, get in touch and
+              If money did leave your account, it&apos;s safe. Get in touch and
               we&apos;ll finish the setup for you.
             </p>
           </>

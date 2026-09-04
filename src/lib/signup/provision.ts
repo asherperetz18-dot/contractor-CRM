@@ -60,7 +60,7 @@ async function insertCompanyWithUniqueName(name: string): Promise<{ id?: string;
 export async function createCompanyWithDefaults(
   name: string,
   ownerProfileId: string
-): Promise<{ companyId?: string; error?: string }> {
+): Promise<{ companyId?: string; error?: string; seedErrors?: string[] }> {
   const admin = createAdminClient();
 
   const created = await insertCompanyWithUniqueName(name);
@@ -86,7 +86,13 @@ export async function createCompanyWithDefaults(
     return { error: memberError.message };
   }
 
-  await Promise.all([
+  // The results are read, not discarded. These are the rows the file
+  // header is about: a company that quietly lost its pipeline_stages
+  // insert opens on a board with no columns, and the owner has no way to
+  // tell that from "this is how the product looks". The company still
+  // stands -- membership is what governs access, and every one of these
+  // lists can be typed in by hand -- so this reports rather than unwinds.
+  const seeded = await Promise.all([
     admin.from("company_profile").insert({ company_id: companyId, name }),
     admin.from("pipeline_stages").insert(withCompany(DEFAULT_PIPELINE_STAGES)),
     admin.from("calendars").insert(withCompany(DEFAULT_CALENDARS)),
@@ -94,8 +100,16 @@ export async function createCompanyWithDefaults(
     admin.from("project_types").insert(withCompany(DEFAULT_PROJECT_TYPES)),
     admin.from("lead_sources").insert(withCompany(DEFAULT_LEAD_SOURCES)),
   ]);
+  const seedErrors = seeded
+    .map((result) => result.error?.message)
+    .filter((message): message is string => Boolean(message));
+  if (seedErrors.length > 0) {
+    console.error(
+      `[signup] company ${companyId} created with incomplete defaults: ${seedErrors.join("; ")}`
+    );
+  }
 
-  return { companyId };
+  return { companyId, seedErrors: seedErrors.length > 0 ? seedErrors : undefined };
 }
 
 function inviteEmailBody(companyName: string, link: string): { html: string; text: string } {
@@ -149,6 +163,15 @@ export async function provisionSignup(
     return { ok: false, error: "This payment hasn't cleared yet. We'll email you the moment it does." };
   }
 
+  // The same test the webhook applies before it calls this. /welcome hands
+  // us a session id straight off a URL the visitor can edit, so the two
+  // entrances have to agree on what a signup session is -- otherwise this
+  // one is defined by "happens to carry a company name", which is a
+  // weaker claim than the marker the checkout deliberately set.
+  if (session.metadata?.kind !== "crm_signup") {
+    return { ok: false, error: "That checkout isn't a CRM signup." };
+  }
+
   const email = (session.customer_details?.email ?? session.customer_email ?? "")
     .trim()
     .toLowerCase();
@@ -183,6 +206,12 @@ export async function provisionSignup(
   // retry mint a fresh code and try again.
   if (sent.error) return { ok: false, retryable: true, error: sent.error };
 
-  await markInviteSent(id);
+  // Also retryable: an unrecorded send is worse than a failed one. Left
+  // as "unsent", the next attempt mints a fresh code and overwrites the
+  // hash, which kills the link that is already in their inbox. Retrying
+  // costs a duplicate email; not retrying costs them the working one.
+  const marked = await markInviteSent(id);
+  if (marked.error) return { ok: false, retryable: true, error: marked.error };
+
   return { ok: true, email, companyName };
 }

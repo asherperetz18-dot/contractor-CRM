@@ -6,7 +6,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { postLoginPath } from "@/lib/landing";
-import { consumeInvite, loadUsableInvite } from "@/lib/signup/invites";
+import {
+  claimInvite,
+  loadUsableInvite,
+  recordInviteResult,
+  releaseInvite,
+} from "@/lib/signup/invites";
 import { createCompanyWithDefaults, signupPriceId } from "@/lib/signup/provision";
 
 export type SignupFormState =
@@ -90,6 +95,15 @@ export async function completeSignup(
   const { invite, error: inviteError } = await loadUsableInvite(token);
   if (!invite) return { error: inviteError ?? "This setup link isn't valid." };
 
+  // Taken before anything is created, not after. loadUsableInvite only
+  // read consumed_at; acting on what it said left a window in which the
+  // same link submitted twice -- two tabs, or an impatient double click --
+  // ran the whole creation path twice and produced two companies for one
+  // payment. Whoever loses this race gets the message instead.
+  if (!(await claimInvite(invite.id))) {
+    return { error: "This setup link has already been used — sign in instead." };
+  }
+
   const admin = createAdminClient();
 
   // Somebody can already have a login here -- they work for another
@@ -110,8 +124,11 @@ export async function completeSignup(
 
   if (existingId) {
     const { companyId, error } = await createCompanyWithDefaults(invite.company_name, existingId);
-    if (!companyId) return { error: error ?? "Couldn't create the company." };
-    await consumeInvite(invite.id, companyId, existingId);
+    if (!companyId) {
+      await releaseInvite(invite.id);
+      return { error: error ?? "Couldn't create the company." };
+    }
+    await recordInviteResult(invite.id, companyId, existingId);
     return {
       info: `${invite.company_name} is ready. Sign in with your existing password and switch to it from the company menu.`,
     };
@@ -127,6 +144,7 @@ export async function completeSignup(
   });
   const newUserId = created?.user?.id;
   if (createError || !newUserId) {
+    await releaseInvite(invite.id);
     return { error: createError?.message ?? "Couldn't create the account." };
   }
 
@@ -139,10 +157,11 @@ export async function completeSignup(
     // behind it -- that is precisely the stuck state this whole flow
     // exists to remove.
     await admin.auth.admin.deleteUser(newUserId);
+    await releaseInvite(invite.id);
     return { error: companyError ?? "Couldn't create the company." };
   }
 
-  await consumeInvite(invite.id, companyId, newUserId);
+  await recordInviteResult(invite.id, companyId, newUserId);
 
   const supabase = await createClient();
   const { error: signInError } = await supabase.auth.signInWithPassword({

@@ -13,14 +13,22 @@ export function GetStartedForm() {
     e.preventDefault();
     setPending(true);
     setError("");
-    const result = await startSignupCheckout({ companyName, email });
-    if (result.url) {
-      // Stripe hosts the payment page; card details never touch this app.
-      window.location.href = result.url;
-      return;
+    try {
+      const result = await startSignupCheckout({ companyName, email });
+      if (result.url) {
+        // Stripe hosts the payment page; card details never touch this app.
+        window.location.href = result.url;
+        return;
+      }
+      setError(result.error ?? "Couldn't start checkout.");
+    } catch {
+      // A server action can reject outright -- a dropped connection, a 500
+      // from the action endpoint. Without this the button stays disabled
+      // reading "Opening checkout…" for good, with nothing on screen
+      // saying why.
+      setError("Couldn't reach the server. Check your connection and try again.");
     }
     setPending(false);
-    setError(result.error ?? "Couldn't start checkout.");
   }
 
   return (

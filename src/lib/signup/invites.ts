@@ -79,12 +79,21 @@ export async function createInvite(input: {
       return { id: existing.id, alreadySent: true };
     }
     const retryToken = newRawToken();
-    const { error } = await admin
+    // .select() matters here, and not for the data. Without it a PostgREST
+    // update that matches no rows is indistinguishable from one that
+    // matched: both come back with no error. The select turns "somebody
+    // else sent this while I was reading it" -- the exact race this file
+    // says is normal -- into an empty result instead of a link whose hash
+    // was never stored, which the customer would click and be told was
+    // invalid.
+    const { data, error } = await admin
       .from("signup_invites")
       .update({ token_hash: hashToken(retryToken), expires_at: expiryFromNow() })
       .eq("id", existing.id)
-      .is("invite_sent_at", null);
+      .is("invite_sent_at", null)
+      .select("id");
     if (error) return { error: error.message };
+    if (!data || data.length === 0) return { id: existing.id, alreadySent: true };
     return { id: existing.id, token: retryToken };
   }
 
@@ -115,13 +124,21 @@ export async function createInvite(input: {
   return { id: (data as { id: string }).id, token: raw };
 }
 
-/** Recorded only once Resend has accepted the message. */
-export async function markInviteSent(inviteId: string): Promise<void> {
+/**
+ * Recorded only once Resend has accepted the message.
+ *
+ * The failure is reported rather than swallowed. A row left saying
+ * "unsent" when the email did go out is the one state that actively
+ * harms: the next retry mints a fresh code and overwrites the hash,
+ * killing the link already sitting in the customer's inbox.
+ */
+export async function markInviteSent(inviteId: string): Promise<{ error?: string }> {
   const admin = createAdminClient();
-  await admin
+  const { error } = await admin
     .from("signup_invites")
     .update({ invite_sent_at: new Date().toISOString() })
     .eq("id", inviteId);
+  return error ? { error: error.message } : {};
 }
 
 /**
@@ -153,8 +170,38 @@ export async function loadUsableInvite(
   return { invite };
 }
 
-/** Marks the invite spent and records what it produced. */
-export async function consumeInvite(
+/**
+ * Takes the invite before anything is created with it.
+ *
+ * Reading `consumed_at` and then acting on what it said is not enough:
+ * the same link opened in two tabs, or double-clicked, gets through both
+ * reads and builds two companies for one payment. The claim is a single
+ * conditional update -- Postgres serialises the two writers on the row,
+ * so exactly one of them sees a row come back.
+ */
+export async function claimInvite(inviteId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("signup_invites")
+    .update({ consumed_at: new Date().toISOString() })
+    .eq("id", inviteId)
+    .is("consumed_at", null)
+    .select("id");
+  return Boolean(data && data.length > 0);
+}
+
+/**
+ * Hands a claimed invite back when the work behind it failed, so the
+ * customer can simply click their link again instead of holding a receipt
+ * for an account that was never created.
+ */
+export async function releaseInvite(inviteId: string): Promise<void> {
+  const admin = createAdminClient();
+  await admin.from("signup_invites").update({ consumed_at: null }).eq("id", inviteId);
+}
+
+/** Records what a redeemed invite actually produced. */
+export async function recordInviteResult(
   inviteId: string,
   companyId: string,
   profileId: string
@@ -162,11 +209,6 @@ export async function consumeInvite(
   const admin = createAdminClient();
   await admin
     .from("signup_invites")
-    .update({
-      consumed_at: new Date().toISOString(),
-      company_id: companyId,
-      profile_id: profileId,
-    })
-    .eq("id", inviteId)
-    .is("consumed_at", null);
+    .update({ company_id: companyId, profile_id: profileId })
+    .eq("id", inviteId);
 }
