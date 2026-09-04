@@ -60,8 +60,9 @@ const today = () => {
  * it goes straight to the job's costs, the way a receipt snapped at the
  * supply-house counter should.
  *
- * Built for a phone in one hand: the form stays open after saving so a
- * stack goes in one after another, with the job, vendor and date
+ * Save bill saves and closes -- one bill, done. Save & add another
+ * keeps the form open for the phone-at-the-counter case: a stack of
+ * receipts goes in one after another, with the job, vendor and date
  * carrying over between them.
  */
 export function AddBillModal({
@@ -149,7 +150,7 @@ export function AddBillModal({
     }
   }
 
-  async function save() {
+  async function save(andAnother = false) {
     const cents = centsFromInput(amount);
     if (!leadId && (paid || !allowNoJob)) {
       return setError(
@@ -204,7 +205,11 @@ export function AddBillModal({
               vendorId: vendorId || null,
               vendorName: vendorText,
               leadId: leadId || null,
-              estimatePaymentId: phaseId || null,
+              // Only when a phase was actually picked. Sending null would
+              // still write the column, and on a database where migration
+              // 0123 hasn't run yet that column doesn't exist -- the save
+              // failed on the Bills page, which has no phase picker at all.
+              estimatePaymentId: phaseId || undefined,
               reference: description,
               amountCents: cents,
               billDate: date,
@@ -214,6 +219,13 @@ export function AddBillModal({
           ]);
       if (res.error) return setError(res.error);
 
+      onSaved?.();
+      router.refresh();
+      if (!andAnother) {
+        // The normal case: saved, close, back to the page.
+        onClose();
+        return;
+      }
       // Job, vendor, date and the paid switch stay -- the next one in the
       // stack is usually from the same counter on the same day.
       setAmount("");
@@ -221,10 +233,8 @@ export function AddBillModal({
       setFile(null);
       if (fileInput.current) fileInput.current.value = "";
       setSavedNote(
-        `Saved ${moneyCents(cents)} ${paid ? "to the job's costs" : "to Bills to Pay"} — add the next one or close.`
+        `Saved ${moneyCents(cents)} ${paid ? "to the job's costs" : "to Bills to Pay"} — add the next one.`
       );
-      onSaved?.();
-      router.refresh();
     } catch {
       // Flaky site cellular is this form's home turf. Without a catch a
       // rejected fetch just stops the spinner and says nothing.
@@ -400,11 +410,14 @@ export function AddBillModal({
         {savedNote && !error && <p className="hint-note">{savedNote}</p>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button type="button" className="btn-primary" onClick={save}>
+          <button type="button" className="btn-primary" onClick={() => void save(false)}>
             {saving ? "Saving…" : "Save bill"}
           </button>
+          <button type="button" className="btn-ghost" onClick={() => void save(true)}>
+            Save &amp; add another
+          </button>
           <button type="button" className="btn-ghost" onClick={onClose}>
-            Close
+            Cancel
           </button>
         </div>
       </fieldset>
