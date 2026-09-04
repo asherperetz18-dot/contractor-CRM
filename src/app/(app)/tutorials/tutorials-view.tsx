@@ -178,8 +178,8 @@ const LIBRARY: Category[] = [
         kicker: "Quick how-to · 2 steps · 45 sec",
         desc: "At the supply-house counter: job, photo, amount, done.",
         steps: [
-          { img: T("projects"), caption: "Open Projects and tap + Receipt. It's built for a phone in one hand and a receipt in the other." },
-          { img: T("t-receipt-modal"), caption: "Pick the job, snap or attach the receipt, enter the amount, save. It files against the job's costs — and the form stays open for the next one in the stack." },
+          { img: T("projects"), caption: "Open Projects and tap + Add bill. It's built for a phone in one hand and a receipt in the other." },
+          { img: T("t-receipt-modal"), caption: "Pick the job, snap or attach the receipt, enter the amount, save. A receipt is a bill that's already paid, so leave \"Already paid\" on and it files against the job's costs — and the form stays open for the next one in the stack. Switch it off for a vendor invoice you haven't paid yet and it goes to Bills to Pay instead." },
         ],
       },
     ],
@@ -194,7 +194,7 @@ const LIBRARY: Category[] = [
         desc: "Contract, spent, and what's actually left — phase by phase.",
         steps: [
           { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
-          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Receipts lists every cost on the job with the receipt itself a hover away, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
+          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Bills lists every bill on the job — unpaid on top, paid below — with the receipt showing as a thumbnail, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
           { img: T("tut-permits"), caption: "Permits & contracts opens the job's own paperwork — only files filed under this contract, so a customer with two jobs never mixes their piles. Anything not filed yet waits below with a one-click File under this job, and Remove from job undoes a mistake. Hover any file to peek at it before opening — Drive even previews the first page of a PDF." },
           { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
         ],
@@ -217,7 +217,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("tut-crew-jobs"), caption: "A Field user opens Projects and sees their jobs — address, checklist, and two buttons. No contract amounts, no collections, no totals: the money isn't hidden from this page, it's never sent to it. They check off their own steps as work lands." },
           { img: T("tut-crew-photos"), caption: "Photos opens this job's own gallery. Take photo goes straight to the camera, and every shot files itself under the job you took it from — a customer with two jobs keeps two separate galleries. It all lands in Google Drive too, the same pictures the office attaches to change orders." },
-          { img: T("tut-crew-receipt"), caption: "+ Receipt on a job row opens with that job already picked: snap the receipt at the counter, amount, save. It files against the job's costs, and the form stays open for the next one in the stack." },
+          { img: T("tut-crew-receipt"), caption: "+ Bill on a job row opens with that job already picked: snap the receipt at the counter, amount, save. It files against the job's costs, and the form stays open for the next one in the stack." },
         ],
       },
     ],

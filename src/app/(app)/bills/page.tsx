@@ -5,9 +5,9 @@ import {
   canManageBills,
   type Lead,
   type Vendor,
-  type VendorBill,
   type VendorBillPayment,
 } from "@/lib/data/types";
+import type { VendorBillRow as VendorBill } from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { BillsView } from "./bills-view";
 

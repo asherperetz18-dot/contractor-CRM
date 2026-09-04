@@ -5,7 +5,7 @@ import Link from "next/link";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { mapsUrl, moneyCents, projectTriageOrder, type ProjectRollup } from "@/lib/data/types";
 import { Modal } from "@/components/ui/modal";
-import { QuickReceipt } from "./quick-receipt";
+import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
 import { JobReceipts } from "./job-receipts";
 import { JobDocuments } from "./job-documents";
@@ -29,6 +29,10 @@ export type ProjectCard = {
   /** The contract's child documents, for the client-view shortcuts. */
   changeOrders: { id: string; docNumber: string; title: string | null }[];
   rollup: ProjectRollup;
+  /** Bills on this job that are not paid yet. Not part of Spent -- the
+   *  money hasn't left -- but shown beside it so an open bill is never
+   *  invisible on the job. */
+  unpaidBillsCents: number;
 };
 
 type Filter = "All" | "InProgress" | "OnHold" | "Complete" | "Cancelled" | "Bleeding" | "Owed";
@@ -52,6 +56,7 @@ export function ProjectsView({
   projects,
   canManage,
   canAddCosts,
+  canBills,
   canUploadPhotos,
   canSeeDocChips,
   canFileDocs,
@@ -65,6 +70,8 @@ export function ProjectsView({
   projects: ProjectCard[];
   canManage: boolean;
   canAddCosts: boolean;
+  /** May file an unpaid bill (Bookkeeping, Office, Admin). */
+  canBills: boolean;
   canUploadPhotos: boolean;
   /** The document shortcuts: receipts list, client-view contract and
    *  change orders. Office, Admin and Production -- never Field. */
@@ -81,7 +88,7 @@ export function ProjectsView({
   const [filter, setFilter] = useState<Filter>("All");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
-  // Which job the receipt modal opens on: a lead id from a row's chip,
+  // Which job the bill modal opens on: a lead id from a row's chip,
   // "any" from the page-level button, null when closed.
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
@@ -142,8 +149,9 @@ export function ProjectsView({
       cost: acc.cost + p.rollup.costCents,
       receivable: acc.receivable + p.rollup.receivableCents,
       net: acc.net + p.rollup.netCashCents,
+      unpaid: acc.unpaid + p.unpaidBillsCents,
     }),
-    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0 }
+    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0, unpaid: 0 }
   );
 
   // Costs nobody can attribute, because the customer has more than one
@@ -188,15 +196,17 @@ export function ProjectsView({
         </div>
         {canAddCosts && (
           <button className="btn-primary" onClick={() => setReceiptFor("any")}>
-            + Receipt
+            + Add bill
           </button>
         )}
       </div>
 
       {receiptFor && (
-        <QuickReceipt
-          projects={sorted}
+        <AddBillModal
+          jobs={jobOptionsFromProjects(sorted)}
           initialLeadId={receiptFor === "any" ? "" : receiptFor}
+          canBills={canBills}
+          defaultPaid
           onClose={() => setReceiptFor(null)}
         />
       )}
@@ -260,6 +270,9 @@ export function ProjectsView({
         <div className="stat-card">
           <div className="stat-value mono">{moneyCents(totals.cost)}</div>
           <div className="stat-label">Spent</div>
+          {totals.unpaid > 0 && (
+            <div className="est-tax-note">+ {moneyCents(totals.unpaid)} in unpaid bills</div>
+          )}
         </div>
         <div className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}>
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
@@ -384,7 +397,7 @@ export function ProjectsView({
                             className="proj-check-chip proj-receipt-chip"
                             onClick={() => setReceiptFor(p.leadId)}
                           >
-                            🧾 + Receipt
+                            🧾 + Bill
                           </button>
                         </>
                       )}
@@ -406,7 +419,7 @@ export function ProjectsView({
                               setReceiptsFor({ leadId: p.leadId, label: p.customer })
                             }
                           >
-                            🧾 Receipts
+                            🧾 Bills
                           </button>
                           {" · "}
                           {/* The customer's copy, one click away -- the same
@@ -515,6 +528,9 @@ export function ProjectsView({
                   </td>
                   <td className="right mono">
                     {p.rollup.costCents ? moneyCents(p.rollup.costCents) : "—"}
+                    {p.unpaidBillsCents > 0 && (
+                      <div className="est-tax-note">+ {moneyCents(p.unpaidBillsCents)} unpaid</div>
+                    )}
                   </td>
                   <td className="right mono">
                     {/* Only coloured once something has actually been spent.
