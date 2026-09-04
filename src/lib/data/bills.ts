@@ -1,4 +1,4 @@
-import type { VendorBill } from "./types";
+import type { VendorBill, VendorBillPayment } from "./types";
 
 /**
  * The bill side of "money out", as the newer screens read it. Kept in
@@ -52,3 +52,38 @@ export function openBillsByPhase(bills: OpenJobBill[]): Map<string | null, OpenJ
   }
   return map;
 }
+
+/**
+ * How a vendor bill gets paid. The customer side (MANUAL_PAYMENT_METHODS)
+ * plus card, because a supply-house counter takes a card and a customer
+ * mostly doesn't pay a contractor with one by hand. Stored as-is in
+ * vendor_bill_payments.method (migration 0124).
+ */
+export const BILL_PAYMENT_METHODS = ["check", "cash", "zelle", "card", "wire", "other"] as const;
+export type BillPaymentMethod = (typeof BILL_PAYMENT_METHODS)[number];
+
+export const BILL_PAYMENT_METHOD_LABEL: Record<BillPaymentMethod, string> = {
+  check: "Check",
+  cash: "Cash",
+  zelle: "Zelle",
+  card: "Card",
+  wire: "Wire / bank transfer",
+  other: "Other",
+};
+
+/** The label for a stored method, tolerant of rows saved before 0124. */
+export function billPaymentMethodLabel(method: string | null | undefined): string | null {
+  if (!method) return null;
+  return (BILL_PAYMENT_METHOD_LABEL as Record<string, string>)[method] ?? method;
+}
+
+/** What the reference box is called for a given method. */
+export function billReferenceLabel(method: BillPaymentMethod): string {
+  if (method === "check") return "Check #";
+  if (method === "card") return "Last 4 / receipt #";
+  if (method === "cash") return "Receipt #";
+  return "Confirmation #";
+}
+
+/** A vendor_bill_payments row including the method column from 0124. */
+export type VendorBillPaymentRow = VendorBillPayment & { method?: string | null };

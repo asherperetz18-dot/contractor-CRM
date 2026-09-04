@@ -5,9 +5,8 @@ import {
   canManageBills,
   type Lead,
   type Vendor,
-  type VendorBillPayment,
 } from "@/lib/data/types";
-import type { VendorBillRow as VendorBill } from "@/lib/data/bills";
+import type { VendorBillRow as VendorBill, VendorBillPaymentRow } from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { BillsView } from "./bills-view";
 
@@ -47,10 +46,12 @@ export default async function BillsPage() {
         .order("created_at", { ascending: false })
         .range(f, t)
     ),
-    selectAll<VendorBillPayment>((f, t) =>
+    // select * so the method column (migration 0124) rides along when it
+    // exists and is simply absent when it doesn't.
+    selectAll<VendorBillPaymentRow>((f, t) =>
       supabase
         .from("vendor_bill_payments")
-        .select("id, bill_id, amount_cents, paid_on, check_number, note, job_expense_id")
+        .select("*")
         .eq("company_id", companyId)
         .range(f, t)
     ),
