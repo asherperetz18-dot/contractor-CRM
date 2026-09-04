@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
+import { ReceiptThumb } from "@/components/ui/receipt-peek";
+import { AddBillModal } from "@/components/bills/add-bill-modal";
 import {
   billRemainingCents,
   centsFromInput,
@@ -11,18 +13,20 @@ import {
   vendorLabel,
   type Lead,
   type Vendor,
-  type VendorBill,
   type VendorBillPayment,
 } from "@/lib/data/types";
+import type { VendorBillRow as VendorBill } from "@/lib/data/bills";
 import {
-  createVendorBills,
   deleteBillPayment,
   recordBillPayment,
+  setBillReceipt,
   setBillSchedule,
   setBillVoided,
   updateVendorBill,
-  type BillInput,
 } from "@/lib/actions/vendor-bills";
+import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
+import { downscaleImage } from "@/lib/images/downscale";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 
 type Tab = "outstanding" | "scheduled" | "paid" | "void";
 
@@ -40,7 +44,7 @@ function fmtDay(s: string | null): string {
   });
 }
 
-/** A single editable bill row in the new/bulk dialog. */
+/** The editable fields of one bill, in the edit dialog. */
 type DraftBill = {
   vendorId: string;
   vendorName: string;
@@ -50,16 +54,6 @@ type DraftBill = {
   billDate: string;
   dueDate: string;
 };
-
-const emptyDraft = (): DraftBill => ({
-  vendorId: "",
-  vendorName: "",
-  leadId: "",
-  reference: "",
-  amount: "",
-  billDate: today(),
-  dueDate: "",
-});
 
 export function BillsView({
   bills,
@@ -77,7 +71,7 @@ export function BillsView({
   const [flat, setFlat] = useState(false);
   const [through, setThrough] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<DraftBill[] | null>(null);
+  const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<VendorBill | null>(null);
   const [paying, setPaying] = useState<VendorBill | null>(null);
   const [busy, setBusy] = useState(false);
@@ -193,8 +187,8 @@ export function BillsView({
           <button className="btn-ghost small" onClick={() => setFlat((f) => !f)}>
             {flat ? "Group by job" : "Flat list"}
           </button>
-          <button className="btn-primary" onClick={() => setDrafts([emptyDraft()])}>
-            + Add bills
+          <button className="btn-primary" onClick={() => setAdding(true)}>
+            + Add bill
           </button>
         </div>
       </div>
@@ -257,7 +251,7 @@ export function BillsView({
           <p className="empty-label">Nothing here</p>
           <p className="empty-hint">
             {tab === "outstanding"
-              ? "Add the bills you owe and this page becomes the company checkbook."
+              ? "Add the bills you owe — receipt attached — and this page becomes the company checkbook."
               : "Nothing in this tab yet."}
           </p>
         </div>
@@ -276,6 +270,7 @@ export function BillsView({
               <table className="data-table">
                 <thead>
                   <tr>
+                    <th>Receipt</th>
                     <th>Vendor / Ref</th>
                     <th>Bill / Due</th>
                     <th>Scheduled</th>
@@ -290,8 +285,22 @@ export function BillsView({
                     const rowPayments = paymentsByBill.get(b.id) ?? [];
                     const isOverdue = rem > 0 && b.scheduled_date && b.scheduled_date < t;
                     return (
-                      <>
-                        <tr key={b.id}>
+                      <Fragment key={b.id}>
+                        <tr>
+                          <td>
+                            {b.receipt_url ? (
+                              <ReceiptThumb url={b.receipt_url} path={b.receipt_path ?? null} />
+                            ) : b.voided_at ? (
+                              <span className="est-tax-note">none</span>
+                            ) : (
+                              <AttachReceipt
+                                bill={b}
+                                busy={busy}
+                                onError={setError}
+                                onDone={() => router.refresh()}
+                              />
+                            )}
+                          </td>
                           <td>
                             <strong>{vendorName(b)}</strong>
                             {b.reference && <div className="est-tax-note">{b.reference}</div>}
@@ -372,7 +381,7 @@ export function BillsView({
                         {expanded === b.id &&
                           rowPayments.map((p) => (
                             <tr key={p.id} className="bills-payment-row">
-                              <td colSpan={3}>
+                              <td colSpan={4}>
                                 <span className="est-tax-note">
                                   Paid {fmtDay(p.paid_on)}
                                   {p.check_number ? ` · check #${p.check_number}` : ""}
@@ -396,7 +405,7 @@ export function BillsView({
                               </td>
                             </tr>
                           ))}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -406,52 +415,40 @@ export function BillsView({
         ))
       )}
 
-      {drafts && (
-        <BillDraftsModal
-          drafts={drafts}
-          setDrafts={setDrafts}
+      {adding && (
+        // The same form Projects and Job costs use. Here it starts as
+        // "not paid yet" -- this page is where vendor invoices arrive --
+        // and allows a bill with no job (overhead). It stays open after
+        // each save so a stack of invoices goes in one after another.
+        <AddBillModal
+          jobs={jobLeads.map((l) => ({
+            leadId: l.id,
+            label: `${leadDisplayName(l)}${l.address ? ` — ${l.address}` : ""}`,
+          }))}
+          canBills
+          allowNoJob
+          defaultPaid={false}
           vendors={vendors}
-          jobLeads={jobLeads}
-          busy={busy}
-          onSave={async () => {
-            const inputs: BillInput[] = drafts
-              .filter((d) => d.amount.trim() || d.vendorId || d.vendorName.trim())
-              .map((d) => ({
-                vendorId: d.vendorId || null,
-                vendorName: d.vendorName,
-                leadId: d.leadId || null,
-                reference: d.reference,
-                amountCents: centsFromInput(d.amount),
-                billDate: d.billDate || null,
-                dueDate: d.dueDate || null,
-              }));
-            if (!inputs.length) return setError("Fill in at least one bill.");
-            if (await run(() => createVendorBills(inputs))) setDrafts(null);
-          }}
-          onClose={() => setDrafts(null)}
+          onClose={() => setAdding(false)}
         />
       )}
 
       {editing && (
-        <BillDraftsModal
+        <EditBillModal
           title={`Edit bill — ${vendorName(editing)}`}
-          drafts={[
-            {
-              vendorId: editing.vendor_id ?? "",
-              vendorName: editing.vendor_name ?? "",
-              leadId: editing.lead_id ?? "",
-              reference: editing.reference ?? "",
-              amount: (editing.amount_cents / 100).toFixed(2),
-              billDate: editing.bill_date ?? "",
-              dueDate: editing.due_date ?? "",
-            },
-          ]}
-          setDrafts={() => {}}
-          single
+          draft={{
+            vendorId: editing.vendor_id ?? "",
+            vendorName: editing.vendor_name ?? "",
+            leadId: editing.lead_id ?? "",
+            reference: editing.reference ?? "",
+            amount: (editing.amount_cents / 100).toFixed(2),
+            billDate: editing.bill_date ?? "",
+            dueDate: editing.due_date ?? "",
+          }}
           vendors={vendors}
           jobLeads={jobLeads}
           busy={busy}
-          onSaveSingle={async (d) => {
+          onSave={async (d) => {
             const ok = await run(() =>
               updateVendorBill(editing.id, {
                 vendorId: d.vendorId || null,
@@ -486,147 +483,170 @@ export function BillsView({
   );
 }
 
-function BillDraftsModal({
+function EditBillModal({
   title,
-  drafts,
-  setDrafts,
-  single,
+  draft: initial,
   vendors,
   jobLeads,
   busy,
   onSave,
-  onSaveSingle,
   onClose,
 }: {
-  title?: string;
-  drafts: DraftBill[];
-  setDrafts: (d: DraftBill[]) => void;
-  single?: boolean;
+  title: string;
+  draft: DraftBill;
   vendors: Vendor[];
   jobLeads: Lead[];
   busy: boolean;
-  onSave?: () => void;
-  onSaveSingle?: (d: DraftBill) => void;
+  onSave: (d: DraftBill) => void;
   onClose: () => void;
 }) {
-  // Single-edit mode keeps its own copy; bulk mode edits the parent's.
-  const [own, setOwn] = useState(drafts);
-  const rows = single ? own : drafts;
-  const setRows = single ? setOwn : setDrafts;
-  const patch = (i: number, p: Partial<DraftBill>) =>
-    setRows(rows.map((r, j) => (j === i ? { ...r, ...p } : r)));
+  const [d, setD] = useState(initial);
+  const patch = (p: Partial<DraftBill>) => setD((cur) => ({ ...cur, ...p }));
 
   return (
-    <Modal title={title ?? "Add bills"} onClose={() => { if (!busy) onClose(); }} wide>
-      {!single && (
-        <p className="module-sub" style={{ marginTop: 0 }}>
-          Row after row, the whole stack at once — pick the vendor, the job it belongs to,
-          the amount, done.
-        </p>
-      )}
+    <Modal title={title} onClose={() => { if (!busy) onClose(); }} wide>
       <div className="bills-draft-list">
-        {rows.map((d, i) => (
-          <div key={i} className="bills-draft-row">
-            <select
-              value={d.vendorId}
-              disabled={busy}
-              onChange={(e) => patch(i, { vendorId: e.target.value, vendorName: "" })}
-            >
-              <option value="">Vendor not on the list</option>
-              {vendors.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {vendorLabel(v)}
-                </option>
-              ))}
-            </select>
-            {!d.vendorId && (
-              <input
-                placeholder="Vendor name"
-                value={d.vendorName}
-                disabled={busy}
-                onChange={(e) => patch(i, { vendorName: e.target.value })}
-              />
-            )}
-            <select
-              value={d.leadId}
-              disabled={busy}
-              onChange={(e) => patch(i, { leadId: e.target.value })}
-            >
-              <option value="">No job (overhead)</option>
-              {jobLeads.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {leadDisplayName(l)}
-                  {l.address ? ` — ${l.address}` : ""}
-                </option>
-              ))}
-            </select>
+        <div className="bills-draft-row">
+          <select
+            value={d.vendorId}
+            disabled={busy}
+            onChange={(e) => patch({ vendorId: e.target.value, vendorName: "" })}
+          >
+            <option value="">Vendor not on the list</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {vendorLabel(v)}
+              </option>
+            ))}
+          </select>
+          {!d.vendorId && (
             <input
-              placeholder="Ref / what for"
-              value={d.reference}
+              placeholder="Vendor name"
+              value={d.vendorName}
               disabled={busy}
-              onChange={(e) => patch(i, { reference: e.target.value })}
+              onChange={(e) => patch({ vendorName: e.target.value })}
             />
-            <input
-              inputMode="decimal"
-              placeholder="0.00"
-              style={{ width: 110 }}
-              value={d.amount}
-              disabled={busy}
-              onChange={(e) => patch(i, { amount: e.target.value })}
-            />
-            <input
-              type="date"
-              title="Bill date"
-              value={d.billDate}
-              disabled={busy}
-              onChange={(e) => patch(i, { billDate: e.target.value })}
-            />
-            <input
-              type="date"
-              title="Due date"
-              value={d.dueDate}
-              disabled={busy}
-              onChange={(e) => patch(i, { dueDate: e.target.value })}
-            />
-            {!single && rows.length > 1 && (
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Remove row"
-                disabled={busy}
-                onClick={() => setRows(rows.filter((_, j) => j !== i))}
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
+          )}
+          <select value={d.leadId} disabled={busy} onChange={(e) => patch({ leadId: e.target.value })}>
+            <option value="">No job (overhead)</option>
+            {jobLeads.map((l) => (
+              <option key={l.id} value={l.id}>
+                {leadDisplayName(l)}
+                {l.address ? ` — ${l.address}` : ""}
+              </option>
+            ))}
+          </select>
+          <input
+            placeholder="Ref / what for"
+            value={d.reference}
+            disabled={busy}
+            onChange={(e) => patch({ reference: e.target.value })}
+          />
+          <input
+            inputMode="decimal"
+            placeholder="0.00"
+            style={{ width: 110 }}
+            value={d.amount}
+            disabled={busy}
+            onChange={(e) => patch({ amount: e.target.value })}
+          />
+          <input
+            type="date"
+            title="Bill date"
+            value={d.billDate}
+            disabled={busy}
+            onChange={(e) => patch({ billDate: e.target.value })}
+          />
+          <input
+            type="date"
+            title="Due date"
+            value={d.dueDate}
+            disabled={busy}
+            onChange={(e) => patch({ dueDate: e.target.value })}
+          />
+        </div>
       </div>
-      {!single && (
-        <button
-          type="button"
-          className="btn-ghost small"
-          style={{ marginTop: 8 }}
-          disabled={busy}
-          onClick={() => setRows([...rows, emptyDraft()])}
-        >
-          + Another bill
-        </button>
-      )}
       <div className="modal-actions">
         <button type="button" className="btn-ghost" disabled={busy} onClick={onClose}>
           Cancel
         </button>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={busy}
-          onClick={() => (single ? onSaveSingle?.(rows[0]) : onSave?.())}
-        >
-          {busy ? "Saving…" : single ? "Save bill" : `Save ${rows.length} bill${rows.length === 1 ? "" : "s"}`}
+        <button type="button" className="btn-primary" disabled={busy} onClick={() => onSave(d)}>
+          {busy ? "Saving…" : "Save bill"}
         </button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * The 📎 button on a bill that was entered without its receipt: pick
+ * the photo or PDF, it uploads straight to storage and lands on the
+ * bill -- and from there on every payment of it, and on the job.
+ */
+function AttachReceipt({
+  bill,
+  busy,
+  onError,
+  onDone,
+}: {
+  bill: VendorBill;
+  busy: boolean;
+  onError: (msg: string) => void;
+  onDone: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  async function upload(file: File) {
+    setUploading(true);
+    onError("");
+    try {
+      const shrunk = await downscaleImage(file);
+      const signed = await createReceiptUploadUrl(bill.lead_id, shrunk.name, shrunk.size);
+      if (signed.error || !signed.path || !signed.token) {
+        return onError(signed.error ?? "Could not start the receipt upload.");
+      }
+      const { error: uploadError } = await createBrowserClient()
+        .storage.from("lead-files")
+        .uploadToSignedUrl(signed.path, signed.token, shrunk, { contentType: shrunk.type || undefined });
+      if (uploadError) return onError(uploadError.message);
+      const res = await setBillReceipt(bill.id, {
+        path: signed.path,
+        fileName: shrunk.name,
+        contentType: shrunk.type || null,
+      });
+      if (res.error) return onError(res.error);
+      onDone();
+    } catch {
+      onError("Didn't upload — check your connection and try again.");
+    } finally {
+      setUploading(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*,application/pdf"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void upload(f);
+        }}
+      />
+      <button
+        type="button"
+        className="btn-ghost small"
+        title="Attach the receipt (photo or PDF)"
+        disabled={busy || uploading}
+        onClick={() => input.current?.click()}
+      >
+        {uploading ? "…" : "📎 Attach"}
+      </button>
+    </>
   );
 }
 
