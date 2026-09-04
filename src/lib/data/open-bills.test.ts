@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { billRemainingCents } from "./types.ts";
-import { openBillsByPhase, type OpenJobBill } from "./bills.ts";
+import { billPaymentMethodLabel, billReferenceLabel, openBillsByPhase, type OpenJobBill } from "./bills.ts";
 
 /**
  * What Job costs shows as "Unpaid" per phase is these two functions
@@ -44,4 +44,16 @@ test("bills group by the phase they are filed to, unfiled under null", () => {
   assert.equal(sum("plans"), 600100);
   assert.equal(sum(null), 10000);
   assert.equal(sum("demo"), 0);
+});
+
+test("the reference box is named for the method, and old rows read back plainly", () => {
+  assert.equal(billReferenceLabel("check"), "Check #");
+  assert.equal(billReferenceLabel("zelle"), "Confirmation #");
+  assert.equal(billReferenceLabel("card"), "Last 4 / receipt #");
+  assert.equal(billPaymentMethodLabel("wire"), "Wire / bank transfer");
+  // A payment recorded before migration 0124 has no method at all.
+  assert.equal(billPaymentMethodLabel(null), null);
+  assert.equal(billPaymentMethodLabel(undefined), null);
+  // An unknown stored value is shown as-is rather than hidden.
+  assert.equal(billPaymentMethodLabel("venmo"), "venmo");
 });
