@@ -204,7 +204,11 @@ export function AddBillModal({
               vendorId: vendorId || null,
               vendorName: vendorText,
               leadId: leadId || null,
-              estimatePaymentId: phaseId || null,
+              // Only when a phase was actually picked. Sending null would
+              // still write the column, and on a database where migration
+              // 0123 hasn't run yet that column doesn't exist -- the save
+              // failed on the Bills page, which has no phase picker at all.
+              estimatePaymentId: phaseId || undefined,
               reference: description,
               amountCents: cents,
               billDate: date,

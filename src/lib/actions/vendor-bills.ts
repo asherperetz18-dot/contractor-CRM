@@ -33,6 +33,21 @@ export type BillInput = {
 
 const isDay = (s?: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
+/**
+ * PostgREST's "Could not find the 'receipt_url' column of 'vendor_bills'
+ * in the schema cache" means migration 0123 hasn't been run. Said in
+ * plain words, with the file to run, instead of a sentence about caches.
+ */
+function plainDbError(message: string): string {
+  if (/schema cache/i.test(message) && /(receipt_url|receipt_path|estimate_payment_id)/.test(message)) {
+    return (
+      "The database needs one update first: run supabase/migrations/0123_vendor_bill_receipts.sql " +
+      "in the Supabase SQL editor, then try again. Until then a bill can't carry a receipt or a phase."
+    );
+  }
+  return message;
+}
+
 function cleanBill(profileCompany: string, input: BillInput) {
   const amount = Math.round(Number(input.amountCents) || 0);
   if (amount <= 0) return { error: "Enter the bill amount." as const };
@@ -52,11 +67,12 @@ function cleanBill(profileCompany: string, input: BillInput) {
       due_date: isDay(input.dueDate) ? input.dueDate : null,
       scheduled_date: isDay(input.scheduledDate) ? input.scheduledDate : null,
       notes: input.notes?.trim() || null,
-      // Only written when the caller said something about it, so the
-      // column is never touched on a database where migration 0123
-      // hasn't run yet -- and an edit never blanks a phase it didn't show.
-      ...(input.estimatePaymentId !== undefined
-        ? { estimate_payment_id: (input.leadId && input.estimatePaymentId) || null }
+      // Only written when a phase was actually given, so the column is
+      // never touched on a database where migration 0123 hasn't run yet
+      // -- a new bill without a phase is "not filed" by default anyway,
+      // and an edit never blanks a phase it didn't show.
+      ...(input.estimatePaymentId && input.leadId
+        ? { estimate_payment_id: input.estimatePaymentId }
         : {}),
     },
   };
@@ -117,7 +133,7 @@ export async function createVendorBills(
     if (uploadedPaths.length) {
       await createAdminClient().storage.from(RECEIPT_BUCKET).remove(uploadedPaths);
     }
-    return { error: error.message };
+    return { error: plainDbError(error.message) };
   }
   revalidatePath("/bills");
   revalidatePath("/projects");
@@ -156,7 +172,7 @@ export async function setBillReceipt(
     .eq("id", billId)
     .eq("company_id", profile.company_id)
     .select("id");
-  if (error) return { error: error.message };
+  if (error) return { error: plainDbError(error.message) };
   if (!data?.length) return { error: "That bill couldn't be updated." };
 
   if (bill.receipt_path?.startsWith("receipts/")) {
