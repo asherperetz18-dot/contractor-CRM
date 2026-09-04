@@ -32,31 +32,13 @@ export async function login(
   redirect(await postLoginPath());
 }
 
-export async function signup(
-  _prevState: AuthFormState,
-  formData: FormData
-): Promise<AuthFormState> {
-  const name = String(formData.get("name") ?? "");
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { name } },
-  });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (!data.session) {
-    return { info: "Check your email to confirm your account before signing in." };
-  }
-
-  redirect("/");
-}
+// The open signup() action that used to live here is gone, not merely
+// unlinked from the form. An exported server action is an endpoint: it
+// keeps answering on its action id whether or not anything renders a
+// button for it. It called supabase.auth.signUp directly, which creates a
+// login with no company and no company_members row -- an account that can
+// sign in and reach nothing. Paid signups go through
+// lib/actions/signup.ts, which creates the company in the same breath.
 
 /**
  * Email a password-reset link.
