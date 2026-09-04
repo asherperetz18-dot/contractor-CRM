@@ -8,6 +8,10 @@ import {
   type BellData,
   type BellItem,
 } from "@/lib/actions/notifications";
+import { FRESH_EVENT } from "./popup-alerts";
+import { usePopupPrefs } from "./popup-prefs";
+import { PopupPrefsPanel } from "./popup-toast-list";
+import "./popup-alerts.css";
 
 type Tab = "all" | "message" | "money" | "job";
 
@@ -30,13 +34,16 @@ function ago(iso: string): string {
  * The topbar bell. The feed is computed server-side from the tables
  * that already hold the facts, so this component only has to ask,
  * badge what's newer than the reader's watermark, and get out of the
- * way. Polls on the same lazy cadence as the text watcher.
+ * way. Polls lazily, and refreshes at once when the popup watcher says
+ * something new just landed -- so the badge never lags the toast.
  */
 export function NotificationBell() {
   const router = useRouter();
   const [data, setData] = useState<BellData | null>(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("all");
+  const [showPrefs, setShowPrefs] = useState(false);
+  const [prefs, updatePrefs] = usePopupPrefs();
 
   useEffect(() => {
     let dead = false;
@@ -46,9 +53,12 @@ export function NotificationBell() {
     };
     load();
     const timer = setInterval(load, 60000);
+    const onFresh = () => void load();
+    window.addEventListener(FRESH_EVENT, onFresh);
     return () => {
       dead = true;
       clearInterval(timer);
+      window.removeEventListener(FRESH_EVENT, onFresh);
     };
   }, []);
 
@@ -85,10 +95,23 @@ export function NotificationBell() {
           <div className="quick-create-menu bell-menu">
             <div className="bell-head">
               <strong>Notifications</strong>
-              <button type="button" className="btn-ghost small" onClick={markRead}>
-                ✓ Mark all read
-              </button>
+              <span className="bell-head-actions">
+                <button type="button" className="btn-ghost small" onClick={markRead}>
+                  ✓ Mark all read
+                </button>
+                <button
+                  type="button"
+                  className={"btn-ghost small" + (showPrefs ? " bell-prefs-open" : "")}
+                  title="Which alerts pop up on your screen"
+                  aria-expanded={showPrefs}
+                  onClick={() => setShowPrefs((s) => !s)}
+                >
+                  ⚙ Popups
+                </button>
+              </span>
             </div>
+
+            {showPrefs && <PopupPrefsPanel prefs={prefs} onChange={updatePrefs} />}
 
             {data?.summary && (
               <p className="bell-summary">

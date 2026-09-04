@@ -26,7 +26,7 @@ import { UpdateNotice } from "./update-notice";
 import { CompanySwitcher } from "./company-switcher";
 import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
-import { InboxAlerts } from "./inbox-alerts";
+import { PopupAlerts } from "./popup-alerts";
 import { PageGate } from "./page-gate";
 import { ScreenShareButton, ScreenShareEngine } from "./screen-share";
 import { AiAssistantButton } from "./ai-assistant-button";
@@ -160,18 +160,13 @@ export default async function AppLayout({
           selfName={profile.name || profile.email || "A teammate"}
           companyId={profile.company_id}
         />
-        {/* The incoming-text watcher: badge, toast + ding, tab-title
-            flash. For the people who staff the phones -- Office,
-            Dispatch, Admin -- not every role that can merely open the
-            inbox: a Sales rep on the road did not ask to be dinged for
-            every customer text. The page-visibility check rides along so
-            hiding Reply Inbox from a role silences its alerts too. */}
-        {(isAdminRole(profile) ||
-          profile.roles.includes("Office") ||
-          profile.roles.includes("Dispatch")) &&
-          canSeePage(profile, "reply-inbox", overrides) && (
-            <InboxAlerts companyId={profile.company_id} />
-          )}
+        {/* The popup watcher: corner toast + ding, sidebar badge,
+            tab-title flash -- for everything that just happened, on
+            whatever screen the person is on. Mounted for every role
+            that has a bell; the server action decides per role what
+            each poll may say (texts still only reach the people who
+            staff the phones, money only the people who see money). */}
+        {!crew && <PopupAlerts companyId={profile.company_id} />}
         {/* `version` here is baked into this render, so it is whatever the
             browser actually loaded -- which is exactly what the banner
             needs to compare against. */}
