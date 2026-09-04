@@ -4,12 +4,14 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canEditChecklists,
+  canManageBills,
   canManageCosts,
   canUploadLeadFiles,
   canViewEstimates,
   isAdminRole,
   isFieldRole,
   computeProjectRollup,
+  billRemainingCents,
   type Estimate,
   type EstimatePayment,
   type JobExpense,
@@ -65,7 +67,7 @@ export default async function ProjectsPage() {
 
   // selectAll throughout: a bare select stops at 1000 rows in silence,
   // and a projects page that quietly omits jobs is worse than none.
-  const [estimates, payments, paid, expenses, leads, reps] = await Promise.all([
+  const [estimates, payments, paid, expenses, leads, reps, openBills, billPayments] = await Promise.all([
     selectAll<Estimate>((from, to) =>
       supabase.from("estimates").select("*").eq("company_id", companyId).range(from, to)
     ),
@@ -112,7 +114,39 @@ export default async function ProjectsPage() {
         const { data } = await supabase.from("profiles").select("id, name").in("id", ids);
         return (data ?? []) as { id: string; name: string | null }[];
       }),
+    // Unpaid vendor bills, job by job. RLS hands a role without cost
+    // access an empty list, and the column simply reads blank.
+    // select * because estimate_payment_id arrives with migration 0123
+    // and naming it would break the page before that has run.
+    selectAll<{ id: string; lead_id: string | null; amount_cents: number; estimate_payment_id?: string | null }>((from, to) =>
+      supabase
+        .from("vendor_bills")
+        .select("*")
+        .eq("company_id", companyId)
+        .is("voided_at", null)
+        .not("lead_id", "is", null)
+        .range(from, to)
+    ),
+    selectAll<{ bill_id: string; amount_cents: number }>((from, to) =>
+      supabase
+        .from("vendor_bill_payments")
+        .select("bill_id, amount_cents")
+        .eq("company_id", companyId)
+        .range(from, to)
+    ),
   ]);
+
+  // What each job still owes its vendors: every live bill minus what
+  // has been paid on it. Kept apart from Spent -- the money hasn't left.
+  const paymentsByBill = new Map<string, { amount_cents: number }[]>();
+  for (const p of billPayments) {
+    const list = paymentsByBill.get(p.bill_id) ?? [];
+    list.push(p);
+    paymentsByBill.set(p.bill_id, list);
+  }
+  const unpaidBills = openBills
+    .map((b) => ({ ...b, remaining: billRemainingCents(b, paymentsByBill.get(b.id) ?? []) }))
+    .filter((b) => b.lead_id && b.remaining > 0);
 
   // Signed contracts are live projects; a voided one that had been
   // signed is a cancelled project -- still worth listing, because a job
@@ -204,6 +238,18 @@ export default async function ProjectsPage() {
       signedAt: contract.signed_at ?? null,
       changeOrderCount: signedChangeOrders.length,
       rollup,
+      // Same rule as costs: a bill filed to one of this contract's
+      // phases is this row's; an unfiled bill is the customer's, and
+      // lands here only when this is their one contract.
+      unpaidBillsCents: unpaidBills
+        .filter(
+          (b) =>
+            b.lead_id === contract.lead_id &&
+            (b.estimate_payment_id
+              ? ownPhaseIds.has(b.estimate_payment_id)
+              : (contractsPerLead.get(contract.lead_id) ?? 1) === 1)
+        )
+        .reduce((s, b) => s + b.remaining, 0),
     };
   });
 
@@ -232,6 +278,7 @@ export default async function ProjectsPage() {
       projects={cards}
       canManage={isAdminRole(profile) && holdReady}
       canAddCosts={canManageCosts(profile)}
+      canBills={canManageBills(profile)}
       canUploadPhotos={canUploadLeadFiles(profile)}
       canSeeDocChips={isAdminRole(profile) || profile.roles.includes("Production")}
       canFileDocs={canEditChecklists(profile)}

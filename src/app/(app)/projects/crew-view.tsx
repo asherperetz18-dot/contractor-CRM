@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { mapsUrl } from "@/lib/data/types";
-import { QuickReceipt } from "./quick-receipt";
+import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
 
@@ -18,7 +18,7 @@ export type CrewJob = {
 
 /**
  * The Projects page as the crew sees it: which jobs are running, what's
- * on each job's checklist, and two buttons -- receipt and photos.
+ * on each job's checklist, and two buttons -- bill (receipt) and photos.
  *
  * There is deliberately no dollar figure anywhere in this component's
  * props. The server builds this view from a query that never selects a
@@ -93,7 +93,7 @@ export function CrewProjectsView({
               className="proj-check-chip proj-receipt-chip"
               onClick={() => setReceiptFor(j.leadId)}
             >
-              🧾 + Receipt
+              🧾 + Bill
             </button>
           )}
           <button
@@ -126,11 +126,11 @@ export function CrewProjectsView({
         <div>
           <h1>Jobs</h1>
           <p className="module-sub">
-            Your running jobs — snap receipts, add photos, check off the plan.
+            Your running jobs — snap receipts onto bills, add photos, check off the plan.
           </p>
         </div>
         <button className="btn-primary" onClick={() => setReceiptFor("any")}>
-          + Receipt
+          + Add bill
         </button>
       </div>
 
@@ -148,9 +148,12 @@ export function CrewProjectsView({
       )}
 
       {receiptFor && (
-        <QuickReceipt
-          projects={jobs}
+        // The crew records what was paid at the counter; filing an
+        // unpaid bill is the office's job, so the switch is hidden.
+        <AddBillModal
+          jobs={jobOptionsFromProjects(jobs)}
           initialLeadId={receiptFor === "any" ? undefined : receiptFor}
+          canBills={false}
           onClose={() => setReceiptFor(null)}
         />
       )}
