@@ -45,3 +45,26 @@ test("Admin Settings stays pinned last even when the order names it first", () =
   const sorted = sortNavEntries(NAV, ["/settings", keys[1]]).map(navEntryKey);
   assert.equal(sorted[sorted.length - 1], "/settings");
 });
+
+test("a group the saved order predates takes the spot its pages held", () => {
+  // Projects and the board were top-level links when this order was
+  // saved; the deploy since folded both into a Production dropdown.
+  const regrouped: NavEntry[] = [
+    NAV[0],
+    NAV[1],
+    {
+      type: "group",
+      label: "Production",
+      icon: "o",
+      items: [
+        { label: "Production Board", href: "/production" },
+        { label: "Projects", href: "/projects" },
+      ],
+    },
+    NAV[5],
+  ];
+  const saved = ["/marketing-analytics", "/projects", "/", "/production"];
+  const sorted = sortNavEntries(regrouped, saved).map(navEntryKey);
+  // The group sits where Projects was -- above Dashboard, not at the end.
+  assert.deepEqual(sorted, ["/marketing-analytics", "group:Production", "/", "/settings"]);
+});

@@ -68,18 +68,17 @@ export function filterNavForProfile(
 const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   dashboard: "◎",
   "marketing-analytics": "📈",
-  production: "▦",
   documents: "📄",
   payments: "💵",
   commissions: "🧾",
   calendar: "📅",
   schedule: "▧",
-  contracts: "✎",
 };
 
 const GROUP_ICONS: Record<string, string> = {
   "Dispatch (Leads Mgmt.)": "▸",
   "Your Sales Center": "☎",
+  Production: "▦",
 };
 
 const FALLBACK_ICON = "▪";

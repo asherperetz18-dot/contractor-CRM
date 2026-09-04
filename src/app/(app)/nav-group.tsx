@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { NavGroupItem } from "@/lib/nav";
+import { NavLink } from "./nav-link";
 import { useInboxCount } from "./use-inbox-count";
 
 export function NavGroup({ group }: { group: NavGroupItem }) {
@@ -35,21 +35,17 @@ export function NavGroup({ group }: { group: NavGroupItem }) {
       </div>
       {open && (
         <div className="nav-group-items">
+          {/* Same fetch-on-hover link as the top-level entries: an open
+              group with five pages in it should not queue five prefetches
+              ahead of the one click that is coming. */}
           {group.items.map((item) =>
             item.href ? (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={
-                  "nav-subitem" +
-                  (pathname.startsWith(item.href) ? " active" : "")
-                }
-              >
+              <NavLink key={item.label} href={item.href} className="nav-subitem">
                 {item.label}
                 {item.href === "/reply-inbox" && inboxCount > 0 && (
                   <span className="nav-badge">{inboxCount}</span>
                 )}
-              </Link>
+              </NavLink>
             ) : (
               <div key={item.label} className="nav-subitem nav-subitem-disabled">
                 {item.label}
