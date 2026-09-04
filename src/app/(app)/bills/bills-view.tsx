@@ -13,9 +13,16 @@ import {
   vendorLabel,
   type Lead,
   type Vendor,
-  type VendorBillPayment,
 } from "@/lib/data/types";
-import type { VendorBillRow as VendorBill } from "@/lib/data/bills";
+import {
+  BILL_PAYMENT_METHODS,
+  BILL_PAYMENT_METHOD_LABEL,
+  billPaymentMethodLabel,
+  billReferenceLabel,
+  type BillPaymentMethod,
+  type VendorBillRow as VendorBill,
+  type VendorBillPaymentRow as VendorBillPayment,
+} from "@/lib/data/bills";
 import {
   deleteBillPayment,
   recordBillPayment,
@@ -384,7 +391,10 @@ export function BillsView({
                               <td colSpan={4}>
                                 <span className="est-tax-note">
                                   Paid {fmtDay(p.paid_on)}
-                                  {p.check_number ? ` · check #${p.check_number}` : ""}
+                                  {billPaymentMethodLabel(p.method) ? ` · ${billPaymentMethodLabel(p.method)}` : ""}
+                                  {p.check_number
+                                    ? ` · ${p.method && p.method !== "check" ? "ref" : "check"} #${p.check_number}`
+                                    : ""}
                                   {p.note ? ` · ${p.note}` : ""}
                                   {p.job_expense_id ? " · filed as job cost" : ""}
                                 </span>
@@ -650,7 +660,7 @@ function AttachReceipt({
   );
 }
 
-function PaymentModal({
+export function PaymentModal({
   bill,
   vendorName,
   remainingCents,
@@ -662,11 +672,18 @@ function PaymentModal({
   vendorName: string;
   remainingCents: number;
   busy: boolean;
-  onSave: (input: { amountCents: number; paidOn: string; checkNumber?: string | null; note?: string | null }) => void;
+  onSave: (input: {
+    amountCents: number;
+    paidOn: string;
+    method: BillPaymentMethod;
+    checkNumber?: string | null;
+    note?: string | null;
+  }) => void;
   onClose: () => void;
 }) {
   const [amount, setAmount] = useState((remainingCents / 100).toFixed(2));
   const [paidOn, setPaidOn] = useState(today());
+  const [method, setMethod] = useState<BillPaymentMethod>("check");
   const [checkNumber, setCheckNumber] = useState("");
   const [note, setNote] = useState("");
 
@@ -690,10 +707,26 @@ function PaymentModal({
             <input type="date" value={paidOn} disabled={busy} onChange={(e) => setPaidOn(e.target.value)} />
           </label>
           <label className="field">
-            <span>Check #</span>
-            <input value={checkNumber} disabled={busy} onChange={(e) => setCheckNumber(e.target.value)} placeholder="optional" />
+            <span>Paid by</span>
+            <select
+              value={method}
+              disabled={busy}
+              onChange={(e) => setMethod(e.target.value as BillPaymentMethod)}
+            >
+              {BILL_PAYMENT_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {BILL_PAYMENT_METHOD_LABEL[m]}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
+        <label className="field">
+          {/* The box is the same; its name follows the method -- a check
+              has a number, Zelle a confirmation, a card its last four. */}
+          <span>{billReferenceLabel(method)}</span>
+          <input value={checkNumber} disabled={busy} onChange={(e) => setCheckNumber(e.target.value)} placeholder="optional" />
+        </label>
         <label className="field">
           <span>Note</span>
           <input value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} placeholder="optional" />
@@ -708,7 +741,7 @@ function PaymentModal({
           className="btn-primary"
           disabled={busy}
           onClick={() =>
-            onSave({ amountCents: centsFromInput(amount), paidOn, checkNumber, note })
+            onSave({ amountCents: centsFromInput(amount), paidOn, method, checkNumber, note })
           }
         >
           {busy ? "Recording…" : "Record payment"}
