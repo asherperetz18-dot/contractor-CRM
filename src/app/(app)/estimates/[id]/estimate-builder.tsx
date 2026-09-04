@@ -114,6 +114,7 @@ export function EstimateBuilder({
   lead,
   canEdit,
   canManageCosts,
+  canManageBills,
   canVoid,
   canDelete,
   customerViews,
@@ -127,6 +128,8 @@ export function EstimateBuilder({
   canEdit: boolean;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
+  /** Filing an UNPAID vendor bill from the job costs panel. */
+  canManageBills: boolean;
   /** Admin only. Voiding cancels work the customer committed to and can
    *  strand money already collected. */
   canVoid: boolean;
@@ -1112,11 +1115,17 @@ export function EstimateBuilder({
       {estimate.status === "Signed" && estimate.kind === "contract" && (
         <JobCosts
           leadId={estimate.lead_id}
+          jobLabel={
+            (lead
+              ? [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim()
+              : "") || estimate.title || estimate.doc_number
+          }
           payments={payments}
           totalCents={estimate.total_cents}
           depositPercentBp={estimate.deposit_percent_bp}
           depositCapCents={estimate.deposit_cap_cents}
           canEdit={canManageCosts}
+          canBills={canManageBills}
         />
       )}
 
