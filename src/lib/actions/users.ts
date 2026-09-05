@@ -341,6 +341,29 @@ export async function updateCanCreateEstimates(
   );
 }
 
+/**
+ * The Send Estimates switch. Off means drafts only: the person keeps
+ * writing estimates and the office sends them. Touches nothing else --
+ * create and view stay exactly as they were, so switching send back on
+ * later restores today's behaviour with one click.
+ */
+export async function updateCanSendEstimates(
+  userId: string,
+  canSend: boolean
+): Promise<{ error?: string }> {
+  const res = await updateMemberFlag(userId, { can_send_estimates: canSend });
+  // "Could not find the 'can_send_estimates' column ... in the schema
+  // cache" means migration 0126 hasn't been run yet. Said in those words
+  // rather than left as a database message nobody can act on.
+  if (res.error && /schema cache/i.test(res.error) && /can_send_estimates/.test(res.error)) {
+    return {
+      error:
+        "The Send Estimates switch needs a one-time database update first: run supabase/migrations/0126_send_estimates.sql in the Supabase SQL editor, then try again.",
+    };
+  }
+  return res;
+}
+
 export async function toggleUserStatus(
   userId: string,
   currentStatus: string

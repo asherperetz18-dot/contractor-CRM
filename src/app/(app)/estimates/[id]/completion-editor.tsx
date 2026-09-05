@@ -30,12 +30,15 @@ export function CompletionEditor({
   signers,
   customer,
   canEdit,
+  canSend = true,
   canDelete,
 }: {
   estimate: Estimate;
   signers: EstimateSigner[];
   customer: { name: string; address: string | null };
   canEdit: boolean;
+  /** The Send Estimates switch -- same meaning as on the estimate builder. */
+  canSend?: boolean;
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -104,10 +107,14 @@ export function CompletionEditor({
             Print / PDF
           </button>
           {!locked && (
+            <button className="btn-save-red" onClick={() => save()} disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          )}
+          {/* Behind the Send Estimates switch, like the estimate builder:
+              each of these takes the certificate out of Draft. */}
+          {!locked && canSend && (
             <>
-              <button className="btn-save-red" onClick={() => save()} disabled={pending}>
-                {pending ? "Saving…" : "Save"}
-              </button>
               <button
                 className="btn-ghost"
                 onClick={() => save(() => send("manual"))}
@@ -178,6 +185,14 @@ export function CompletionEditor({
           <button className="btn-ghost small" onClick={() => setDeleting(false)}>
             Cancel
           </button>
+        </div>
+      )}
+
+      {!locked && !canSend && (
+        <div className="est-locked-banner">
+          Drafts only: you can fill in and save this certificate, but sending it to the
+          customer is done by the office. Ask an Office or Admin user to send it — or to turn
+          on Send Estimates for you in Users &amp; Roles.
         </div>
       )}
 
