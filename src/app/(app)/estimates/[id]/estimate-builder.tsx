@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import {
   centsFromInput,
@@ -26,12 +27,14 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import {
+  applyCompanyTaxRate,
   markEstimateSent,
   saveEstimateDraft,
   sendEstimateToCustomer,
   deleteEstimate,
   voidEstimate,
 } from "@/lib/actions/estimates";
+import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
@@ -326,6 +329,20 @@ export function EstimateBuilder({
       // are already on screen; the refresh only reconciles server props.
       setTimeout(() => router.refresh(), 0);
       then?.();
+    });
+  }
+
+  // Puts the company's sales-tax rate on this estimate, then saves the
+  // lines on screen so the stored total is the one the rep is looking at.
+  // The rate is copied onto an estimate when it is created, so one written
+  // before the company set a rate stays at 0% until this is clicked.
+  function applyCompanyRate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await applyCompanyTaxRate(estimate.id);
+      if (res.error) return setError(res.error);
+      const rate = taxRateLabel(res.taxRateBp);
+      save(() => setSaved((s) => (s ? `Sales tax ${rate} applied · ${s}` : `Sales tax ${rate} applied`)));
     });
   }
 
@@ -1015,9 +1032,27 @@ export function EstimateBuilder({
           <span>Total</span>
           <span className="mono">{moneyCents(totals.totalCents)}</span>
         </div>
+        {/* The rate is frozen onto the estimate when it is created, so an
+            estimate written before the company set one stays at 0% until
+            somebody asks for the company rate here. The old text sent
+            people to "Admin Settings", where no such field existed. */}
         {estimate.tax_rate_bp === 0 && (
           <p className="est-tax-note">
-            No tax rate set. Add one in Admin Settings to tax the lines marked above.
+            No sales tax on this estimate.{" "}
+            {!locked && (
+              <>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={applyCompanyRate}
+                  disabled={pending}
+                >
+                  Use company rate
+                </button>
+                {" · "}
+              </>
+            )}
+            <Link href="/settings/company-profile">Set the rate in Settings › Company Profile</Link>
           </p>
         )}
         {/* The customer sees a blank rather than $0.00, which reads as
