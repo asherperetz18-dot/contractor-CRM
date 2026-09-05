@@ -6,8 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { postLoginPath } from "@/lib/landing";
+import { passwordProblem } from "@/lib/auth/password";
 
 export type AuthFormState = { error: string; info?: never } | { info: string; error?: never } | undefined;
+
 
 export async function login(
   _prevState: AuthFormState,
@@ -32,31 +34,13 @@ export async function login(
   redirect(await postLoginPath());
 }
 
-export async function signup(
-  _prevState: AuthFormState,
-  formData: FormData
-): Promise<AuthFormState> {
-  const name = String(formData.get("name") ?? "");
-  const email = String(formData.get("email") ?? "");
-  const password = String(formData.get("password") ?? "");
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { name } },
-  });
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  if (!data.session) {
-    return { info: "Check your email to confirm your account before signing in." };
-  }
-
-  redirect("/");
-}
+// The open signup() action that used to live here is gone, not merely
+// unlinked from the form. An exported server action is an endpoint: it
+// keeps answering on its action id whether or not anything renders a
+// button for it. It called supabase.auth.signUp directly, which creates a
+// login with no company and no company_members row -- an account that can
+// sign in and reach nothing. Paid signups go through
+// lib/actions/signup.ts, which creates the company in the same breath.
 
 /**
  * Email a password-reset link.
@@ -112,8 +96,8 @@ export async function resetPassword(
   const tokenHash = String(formData.get("token_hash") ?? "");
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-  if (password.length < 8) return { error: "Use at least 8 characters." };
-  if (password !== confirm) return { error: "The two passwords don't match." };
+  const weak = passwordProblem(password, confirm);
+  if (weak) return { error: weak };
 
   const supabase = await createClient();
   const { error: verifyError } = await supabase.auth.verifyOtp({
