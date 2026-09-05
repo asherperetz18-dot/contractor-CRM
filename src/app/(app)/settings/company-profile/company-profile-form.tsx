@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { saveCompanyProfile, type CompanyProfileInput } from "@/lib/actions/settings";
 import type { CompanyProfile, TimeFormat } from "@/lib/data/types";
+import { taxRateBpToInput, taxRateInputToBp, taxRateLabel } from "@/lib/data/tax-rate";
 
 const US_STATES = [
   "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
@@ -55,6 +56,7 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     license_number: p?.license_number ?? "",
     license_state: p?.license_state ?? "",
     license_type: p?.license_type ?? "",
+    tax_rate_bp: p?.tax_rate_bp ?? 0,
     timezone: p?.timezone ?? "Pacific",
     time_format: p?.time_format ?? "12h",
   };
@@ -64,6 +66,9 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [form, setForm] = useState<CompanyProfileInput>(toInput(profile));
+  // The tax rate as typed ("9.5"), kept as text while editing so a half-typed
+  // "9." is not snapped to 9 under the cursor; converted only on save.
+  const [taxRateInput, setTaxRateInput] = useState(taxRateBpToInput(profile?.tax_rate_bp));
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -78,10 +83,17 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
     if (guess) set("timezone", guess);
   }
 
+  // What the typed rate will be once saved, or null while it is not a rate.
+  const taxRateBp = taxRateInputToBp(taxRateInput);
+
   async function save() {
-    setPending(true);
     setError("");
-    const result = await saveCompanyProfile(form);
+    if (taxRateBp === null) {
+      setError("Sales tax rate must be a number between 0 and 100, like 9.5.");
+      return;
+    }
+    setPending(true);
+    const result = await saveCompanyProfile({ ...form, tax_rate_bp: taxRateBp });
     setPending(false);
     if (result?.error) {
       setError(result.error);
@@ -257,6 +269,32 @@ export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null
           />
         </Field>
         <p className="cp-hint">Type of license held by the company</p>
+
+        <div className="cp-divider" />
+        <div className="cp-tz-head">
+          <span>🧾 Sales Tax</span>
+        </div>
+        <Field label="Sales Tax Rate (%)">
+          <input
+            inputMode="decimal"
+            value={taxRateInput}
+            onChange={(e) => {
+              setTaxRateInput(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="e.g. 9.5"
+            aria-invalid={taxRateBp === null}
+          />
+        </Field>
+        <p className="cp-hint">
+          {taxRateBp === null
+            ? "Enter a number between 0 and 100, like 9.5."
+            : taxRateBp === 0
+              ? "No sales tax. Leave blank if you don't charge it."
+              : `Every new estimate charges ${taxRateLabel(taxRateBp)} on the lines marked Taxable.`}{" "}
+          Estimates that already exist keep the rate they were created with — open one
+          and click &quot;Use company rate&quot; under its total to update it.
+        </p>
 
         <div className="cp-divider" />
         <div className="cp-tz-head">
