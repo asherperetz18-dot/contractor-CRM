@@ -1,7 +1,11 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { PopupKind } from "@/lib/popup-shape";
+import { POPUP_KINDS, type PopupKind } from "@/lib/popup-shape";
+
+// The list itself lives in popup-shape.ts (pure, so the bell and the
+// tests can read it); re-exported here for the switches panel.
+export { POPUP_KINDS };
 
 /**
  * Which popups this browser shows, and whether they ding. Everything is
@@ -12,14 +16,6 @@ import type { PopupKind } from "@/lib/popup-shape";
  * kept its mute. A dispatcher's two desk screens can differ on purpose.
  */
 export type PopupPrefs = Record<PopupKind, boolean> & { sound: boolean };
-
-export const POPUP_KINDS: { key: PopupKind; label: string; hint: string }[] = [
-  { key: "message", label: "Texts", hint: "New customer texts, and texts that didn't deliver" },
-  { key: "money", label: "Money", hint: "Payments received in the portal" },
-  { key: "job", label: "Jobs", hint: "Signatures, proposal views, job steps assigned to you" },
-  { key: "lead", label: "Leads", hint: "New leads coming in" },
-  { key: "appointment", label: "Appointments", hint: "Appointments booked for you by a teammate" },
-];
 
 const KEY = "crm:popup-prefs";
 // The text watcher's old mute switch, honored so nobody who muted the
