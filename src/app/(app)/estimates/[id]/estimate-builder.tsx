@@ -113,6 +113,7 @@ export function EstimateBuilder({
   paid,
   lead,
   canEdit,
+  canSend = true,
   canManageCosts,
   canManageBills,
   canVoid,
@@ -126,6 +127,9 @@ export function EstimateBuilder({
   paid: PortalPayment[];
   lead: BuilderLead | null;
   canEdit: boolean;
+  /** The Send Estimates switch. Off = drafts only: Save stays, everything
+   *  that would put the document in front of the customer goes. */
+  canSend?: boolean;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
   /** Filing an UNPAID vendor bill from the job costs panel. */
@@ -387,10 +391,16 @@ export function EstimateBuilder({
             Print / PDF
           </button>
           {!locked && (
+            <button className="btn-save-red" onClick={() => save()} disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          )}
+          {/* Everything past Save takes the document out of Draft, so it
+              is behind the Send Estimates switch. The server refuses
+              these too; hiding them just stops a rep clicking into an
+              error. */}
+          {!locked && canSend && (
             <>
-              <button className="btn-save-red" onClick={() => save()} disabled={pending}>
-                {pending ? "Saving…" : "Save"}
-              </button>
               <button
                 className="btn-ghost"
                 onClick={() => save(() => send("manual"))}
@@ -537,6 +547,14 @@ export function EstimateBuilder({
           >
             Cancel
           </button>
+        </div>
+      )}
+
+      {!locked && !canSend && (
+        <div className="est-locked-banner">
+          Drafts only: you can build and save this estimate, and preview or print it, but
+          sending it to the customer is done by the office. Ask an Office or Admin user to
+          send it — or to turn on Send Estimates for you in Users &amp; Roles.
         </div>
       )}
 
