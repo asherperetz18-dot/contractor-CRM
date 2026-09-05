@@ -8,19 +8,32 @@ import {
   type BellData,
   type BellItem,
 } from "@/lib/actions/notifications";
+import { POPUP_KINDS, type PopupKind } from "@/lib/popup-shape";
 import { FRESH_EVENT } from "./popup-alerts";
 import { usePopupPrefs } from "./popup-prefs";
 import { PopupPrefsPanel } from "./popup-toast-list";
 import "./popup-alerts.css";
 
-type Tab = "all" | "message" | "money" | "job";
+type Tab = "all" | PopupKind;
 
+// One tab per popup kind, from the same list as the "⚙ Popups"
+// switches -- so the tabs and the switches always show the same names
+// and a kind can never have a switch but no tab.
 const TABS: { key: Tab; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "message", label: "Messages" },
-  { key: "money", label: "Money" },
-  { key: "job", label: "Jobs" },
+  ...POPUP_KINDS.map((k) => ({ key: k.key, label: k.label })),
 ];
+
+/** What an empty tab says. The two "for you" tabs explain their own rule. */
+function emptyText(tab: Tab): string {
+  if (tab === "lead") {
+    return "No new leads in the last 7 days. Leads that come in from forms, imports or teammates show here; ones you enter yourself don't.";
+  }
+  if (tab === "appointment") {
+    return "No appointments booked for you by a teammate in the last 7 days.";
+  }
+  return "You're all caught up.";
+}
 
 function ago(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -134,7 +147,7 @@ export function NotificationBell() {
 
             {shown.length === 0 ? (
               <p className="empty-hint" style={{ padding: "14px 12px" }}>
-                You&apos;re all caught up.
+                {emptyText(tab)}
               </p>
             ) : (
               <ul className="bell-list">

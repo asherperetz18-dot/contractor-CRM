@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shapeToasts, type PopupKind, type PopupToast } from "./popup-shape.ts";
+import { GROUP_LABEL, POPUP_KINDS, shapeToasts, type PopupKind, type PopupToast } from "./popup-shape.ts";
 
 const ALL_ON: Record<PopupKind, boolean> = {
   message: true,
@@ -63,4 +63,17 @@ test("a kind switched off never pops, and does not count toward a group", () => 
 
 test("nothing in, nothing out", () => {
   assert.deepEqual(shapeToasts([], ALL_ON), []);
+});
+
+test("every popup kind has a switch label and a group label", () => {
+  // The bell builds its filter tabs from POPUP_KINDS, and the switches
+  // panel does too. If a kind is missing here it has no tab -- which is
+  // exactly how "Leads" could be switched on but never seen.
+  const kinds = POPUP_KINDS.map((k) => k.key).sort();
+  assert.deepEqual(kinds, (Object.keys(GROUP_LABEL) as PopupKind[]).sort());
+  assert.deepEqual(kinds, Object.keys(ALL_ON).sort());
+  for (const k of POPUP_KINDS) {
+    assert.ok(k.label.trim(), `${k.key} needs a label`);
+    assert.ok(k.hint.trim(), `${k.key} needs a hint`);
+  }
 });
