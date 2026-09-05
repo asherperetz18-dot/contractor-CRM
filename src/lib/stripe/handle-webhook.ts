@@ -65,7 +65,11 @@ export async function handleStripeWebhook(
       // once when it settles -- and Stripe retries on any non-2xx.
       // provisionSignup is written to be called repeatedly: the unique
       // stripe_session_id column means one invite and one email.
-      const result = await provisionSignup(session.id);
+      // The session object comes from the event Stripe signed, which is
+      // the same object provisionSignup would otherwise fetch back. Not
+      // passing it meant a round trip per delivery, and a bank debit
+      // delivers at least twice.
+      const result = await provisionSignup(session.id, session);
 
       // A failure that another attempt could fix -- the mail provider
       // was down, the database refused a write -- is answered with a 500
@@ -73,7 +77,7 @@ export async function handleStripeWebhook(
       // email; swallowing the error behind a 200 is how they end up with
       // a charge and no account.
       if (!result.ok && result.retryable) {
-        return NextResponse.json({ error: result.error ?? "provisioning failed" }, { status: 500 });
+        return NextResponse.json({ error: result.error }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }

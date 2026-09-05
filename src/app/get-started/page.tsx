@@ -3,12 +3,15 @@ import { signupConfigured } from "@/lib/signup/provision";
 
 export const metadata = { title: "Get started — Contractor CRM" };
 
-// Whether there is anything to sell is read from the environment, and this
-// page uses no other dynamic API -- so without this it is prerendered at
-// build time and the answer is frozen into static HTML. Setting
-// SIGNUP_PRICE_ID in the hosting dashboard would then change nothing until
-// somebody happened to redeploy: the page would keep serving "signing up
-// isn't open yet" to every visitor.
+// Whether there is anything to sell is read from the environment, and
+// this page uses no other dynamic API -- so without this Next prerenders
+// it and the answer is frozen into the build's static HTML.
+//
+// On Vercel an env var change needs a redeploy anyway, so this is not
+// about the dashboard taking effect instantly. It is about the page and
+// the button never disagreeing: a stale prerender offering a checkout
+// the action refuses, or refusing one the action would have honoured, is
+// worse than one server render on a page nobody hits in a loop.
 export const dynamic = "force-dynamic";
 
 export default function GetStartedPage() {

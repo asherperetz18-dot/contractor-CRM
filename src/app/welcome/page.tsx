@@ -1,4 +1,5 @@
 import { provisionSignup } from "@/lib/signup/provision";
+import { INVITE_TTL_DAYS } from "@/lib/signup/invites";
 
 export const metadata = { title: "Thanks for signing up" };
 
@@ -39,8 +40,8 @@ export default async function WelcomePage({
               to pick a password, and {result.companyName} is ready to use.
             </p>
             <p className="hint-note">
-              The link works once and expires in 7 days. Check spam if it hasn&apos;t
-              arrived in a few minutes.
+              The link works once and expires in {INVITE_TTL_DAYS} days. Check spam
+              if it hasn&apos;t arrived in a few minutes.
             </p>
           </>
         ) : (

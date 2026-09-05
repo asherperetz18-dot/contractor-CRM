@@ -6,8 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { postLoginPath } from "@/lib/landing";
+import { passwordProblem } from "@/lib/auth/password";
 
 export type AuthFormState = { error: string; info?: never } | { info: string; error?: never } | undefined;
+
 
 export async function login(
   _prevState: AuthFormState,
@@ -94,8 +96,8 @@ export async function resetPassword(
   const tokenHash = String(formData.get("token_hash") ?? "");
   const password = String(formData.get("password") ?? "");
   const confirm = String(formData.get("confirm") ?? "");
-  if (password.length < 8) return { error: "Use at least 8 characters." };
-  if (password !== confirm) return { error: "The two passwords don't match." };
+  const weak = passwordProblem(password, confirm);
+  if (weak) return { error: weak };
 
   const supabase = await createClient();
   const { error: verifyError } = await supabase.auth.verifyOtp({

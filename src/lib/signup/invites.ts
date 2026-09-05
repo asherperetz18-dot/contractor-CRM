@@ -1,13 +1,16 @@
 import "server-only";
-import crypto from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hashLinkToken, newLinkToken } from "@/lib/crypto/link-tokens";
 // Same public origin the customer portal builds its links from -- there is
 // one deployment and one domain, so there is no second answer to derive.
 import { portalBaseUrl } from "@/lib/portal/session";
 
 // A week. Long enough to survive a spam folder and a weekend, short
 // enough that a forwarded email doesn't stay a live account forever.
-const INVITE_TTL_DAYS = 7;
+// Exported because the email and the confirmation page both quote it --
+// a constant nobody can read is a constant three copies of "7 days" go
+// stale behind.
+export const INVITE_TTL_DAYS = 7;
 
 export type SignupInvite = {
   id: string;
@@ -15,19 +18,14 @@ export type SignupInvite = {
   company_name: string;
   expires_at: string;
   consumed_at: string | null;
-  company_id: string | null;
 };
 
 // Only hashes are stored, so a dump of signup_invites can't be replayed
-// to claim somebody's paid signup. Copied deliberately from
-// lib/portal/session.ts rather than invented again.
-function hashToken(raw: string): string {
-  return crypto.createHash("sha256").update(raw).digest("hex");
-}
-
-function newRawToken(): string {
-  return crypto.randomBytes(32).toString("base64url");
-}
+// to claim somebody's paid signup. Shared with the customer portal's
+// magic links rather than copied into a second place that can drift --
+// see lib/crypto/link-tokens.ts.
+const hashToken = hashLinkToken;
+const newRawToken = newLinkToken;
 
 export function registerUrl(rawToken: string): string {
   return `${portalBaseUrl()}/register?token=${encodeURIComponent(rawToken)}`;
@@ -35,6 +33,32 @@ export function registerUrl(rawToken: string): string {
 
 function expiryFromNow(): string {
   return new Date(Date.now() + INVITE_TTL_DAYS * 86400000).toISOString();
+}
+
+/**
+ * What we already know about a checkout, if anything.
+ *
+ * Everything /welcome renders is in this row, so a reload, a bookmark, a
+ * back-navigation or the second of the two webhooks a bank debit fires
+ * can all be answered from here. Without it every one of those pays a
+ * Stripe round trip to be told there is nothing to do.
+ */
+export async function sentInviteForSession(
+  stripeSessionId: string
+): Promise<{ email: string; company_name: string } | null> {
+  if (!stripeSessionId) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("signup_invites")
+    .select("email, company_name, invite_sent_at")
+    .eq("stripe_session_id", stripeSessionId)
+    .maybeSingle();
+  const row = data as
+    | { email: string; company_name: string; invite_sent_at: string | null }
+    | null;
+  // A row with no send time is the retry case, which has to go back to
+  // Stripe -- it still needs a fresh code minted and an email sent.
+  return row?.invite_sent_at ? { email: row.email, company_name: row.company_name } : null;
 }
 
 /**
@@ -155,7 +179,7 @@ export async function loadUsableInvite(
   const admin = createAdminClient();
   const { data } = await admin
     .from("signup_invites")
-    .select("id, email, company_name, expires_at, consumed_at, company_id")
+    .select("id, email, company_name, expires_at, consumed_at")
     .eq("token_hash", hashToken(raw))
     .maybeSingle();
 

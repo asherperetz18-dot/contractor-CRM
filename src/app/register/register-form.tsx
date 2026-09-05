@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { completeSignup, type SignupFormState } from "@/lib/actions/signup";
+import { completeSignup } from "@/lib/actions/signup";
+import type { AuthFormState } from "@/lib/actions/auth";
 
 export function RegisterForm({
   token,
@@ -12,7 +13,7 @@ export function RegisterForm({
   companyName: string;
   email: string;
 }) {
-  const [state, action, pending] = useActionState<SignupFormState, FormData>(
+  const [state, action, pending] = useActionState<AuthFormState, FormData>(
     completeSignup,
     undefined
   );
