@@ -2117,7 +2117,7 @@ export type JobExpenseInput = {
   spentOn: string;
 };
 
-// ── Vendors ────────────────────────────────────────────────────────
+// ── Vendors ──────────────────────────────────────────────────────────
 
 /**
  * A supplier or subcontractor, as a record rather than a spelling.
@@ -2212,7 +2212,7 @@ export function expensesByPhase(expenses: JobExpense[]): Map<string | null, JobE
   return map;
 }
 
-// ── Projects ───────────────────────────────────────────────────────
+// ── Projects ─────────────────────────────────────────────────────────
 
 /**
  * A sold job: one signed contract, its change orders, and the money.
@@ -2285,7 +2285,7 @@ export function projectTriageOrder(a: ProjectRollup, b: ProjectRollup): number {
   return b.soldCents - a.soldCents;
 }
 
-// ── Photos on documents ────────────────────────────────────────────
+// ── Photos on documents ──────────────────────────────────────────────
 
 /** A job photo, as offered in the picker. */
 export type LeadPhoto = {
