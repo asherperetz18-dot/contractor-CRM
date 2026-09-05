@@ -16,6 +16,7 @@ import {
   updateIsDispatchSupervisor,
   updateCanDeleteLeads,
   updateCanCreateEstimates,
+  updateCanSendEstimates,
   updateCanViewEstimates,
   updateUserProfile,
   updateUserRoles,
@@ -86,6 +87,9 @@ export function UsersRolesTable({
   const [newUserRoles, setNewUserRoles] = useState<AppRole[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // A switch in the table that could not be saved. Its own state: `error`
+  // above only shows inside the Create User dialog.
+  const [tableError, setTableError] = useState("");
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [reassign, setReassign] = useState<{ user: Profile; mode: ReassignMode } | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
@@ -179,6 +183,14 @@ export function UsersRolesTable({
 
   async function handleToggleCreateEstimates(u: Profile) {
     await updateCanCreateEstimates(u.id, !u.can_create_estimates);
+    refresh();
+  }
+
+  async function handleToggleSendEstimates(u: Profile) {
+    const res = await updateCanSendEstimates(u.id, !u.can_send_estimates);
+    // The other switches fail silently; this one can fail for a reason
+    // the admin can fix (the migration), so it says so above the table.
+    setTableError(res.error ?? "");
     refresh();
   }
 
@@ -309,11 +321,13 @@ export function UsersRolesTable({
             this the only way to reach them is the page's own scrollbar
             pinned to the bottom of a long table -- so the switches read
             as missing rather than as off-screen. */}
+        {tableError && <p className="error-note">{tableError}</p>}
         {hasHiddenColumns && (
           <p className="ur-scroll-hint">
             More columns to the right — <strong>Can Delete Leads</strong>,{" "}
-            <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong> and{" "}
-            <strong>Create Estimates</strong>. Scroll the table sideways to reach them.
+            <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong>,{" "}
+            <strong>Create Estimates</strong> and <strong>Send Estimates</strong>. Scroll the
+            table sideways to reach them.
           </p>
         )}
         <div className="ur-table-scroll" ref={tableScrollRef}>
@@ -328,6 +342,7 @@ export function UsersRolesTable({
               <th>Dispatch Supervisor</th>
               <th>View Estimates</th>
               <th>Create Estimates</th>
+              <th>Send Estimates</th>
               <th className="right">Status</th>
             </tr>
           </thead>
@@ -522,6 +537,39 @@ export function UsersRolesTable({
                         <span className="toggle-thumb" />
                       </span>
                     </button>
+                  )}
+                </td>
+                {/* Send Estimates. Office and Admin always send, so they
+                    show as fixed. Anyone who cannot write an estimate has
+                    nothing to send, so the switch only appears once
+                    Create is on (Production always can). Off = drafts
+                    only: they build it, the office sends it. */}
+                <td>
+                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : u.roles.includes("Production") || u.can_create_estimates ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleSendEstimates(u)}
+                      title={
+                        u.can_send_estimates
+                          ? "Turn off sending — this person can only save drafts; the office sends them"
+                          : "Let this person send estimates to customers"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_send_estimates ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone" title="Turn on Create Estimates first">
+                      —
+                    </span>
                   )}
                 </td>
                 <td className="right">
