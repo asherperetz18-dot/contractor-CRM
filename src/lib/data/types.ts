@@ -32,6 +32,10 @@ export type Profile = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // Send Estimates: may this person put a document in front of the
+  // customer, or only build drafts for the office to send. On by default
+  // -- the owner switches it off per person in Users & Roles.
+  can_send_estimates: boolean;
   // A dispatcher who runs the desk: sees every lead, enters new ones,
   // adds sources, assigns dispatchers. Only meaningful alongside the
   // Dispatch role; set per member in Users & Roles like the flags above.
@@ -289,6 +293,31 @@ export function canCreateEstimates(
   // Writing an estimate you are not allowed to open is incoherent, so
   // create is meaningless without view and does not stand on its own.
   return profile.can_create_estimates && profile.can_view_estimates;
+}
+
+/**
+ * Who may take a document out of Draft: Save & Email / Text, Mark Sent,
+ * and recording a signature that happened on paper. Everything else --
+ * building it, saving it, previewing and printing it -- stays with
+ * canCreateEstimates.
+ *
+ * Its own switch because "can write it" and "can put it in front of the
+ * customer" are different trusts: a new rep drafts, the office reads it
+ * over and sends. Office and Admin always send (an owner must not be
+ * able to lock themselves out of their own sales); everyone else,
+ * Production included, needs create (the send buttons live in the
+ * editor, so send without create is meaningless) plus the Send switch,
+ * which is on unless the owner turned it off.
+ */
+export function canSendEstimates(
+  profile: Pick<
+    Profile,
+    "roles" | "can_view_estimates" | "can_create_estimates" | "can_send_estimates"
+  > | null
+) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  return canCreateEstimates(profile) && profile.can_send_estimates;
 }
 
 // Calendar, Schedule and Production: who can book, edit, drag and

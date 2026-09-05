@@ -15,6 +15,7 @@ import { sendEmail, escapeHtml } from "@/lib/email-env";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
+  canSendEstimates,
   canDeleteEstimateStatus,
   canDeleteLeads,
   isAdminRole,
@@ -257,6 +258,26 @@ async function requireEstimateEditor(): Promise<
   if (!profile) return { error: "Not signed in." };
   if (!canCreateEstimates(profile))
     return { error: "You don't have permission to create or edit estimates." };
+  return { companyId: profile.company_id, userId: profile.id };
+}
+
+// The same message everywhere a drafts-only person tries to send. Not
+// exported: a "use server" file may only export async functions.
+const SEND_NOT_ALLOWED =
+  "You can save this as a draft, but sending it is turned off for your account — ask the office to send it.";
+
+// An editor who also holds the Send Estimates switch. Guards everything
+// that takes a document out of Draft: texting or emailing it, marking it
+// sent, recording a paper signature. The send itself happens here on the
+// server, so this check -- not the hidden buttons -- is the permission.
+async function requireEstimateSender(): Promise<
+  { error: string } | { companyId: string; userId: string }
+> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canCreateEstimates(profile))
+    return { error: "You don't have permission to create or edit estimates." };
+  if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
   return { companyId: profile.company_id, userId: profile.id };
 }
 
@@ -728,7 +749,7 @@ export async function applyCompanyTaxRate(
 // rep leaderboard are all computed over almost nothing. Nobody fills in a
 // "value" field; everybody writes an estimate.
 export async function markEstimateSent(estimateId: string): Promise<{ error?: string }> {
-  const guard = await requireEstimateEditor();
+  const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
@@ -980,7 +1001,7 @@ export async function sendEstimateToCustomer(
   /** Set on a "both" send where one of the two channels didn't go out. */
   warning?: string;
 }> {
-  const guard = await requireEstimateEditor();
+  const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
 
   const admin = createAdminClient();
@@ -1611,6 +1632,10 @@ export async function markSignedOnPaper(
   if (!canCreateEstimates(profile)) {
     return { error: "You don't have access to record signatures." };
   }
+  // A paper signature takes the document out of Draft without it ever
+  // being sent -- the one way around "the office sends", so it needs the
+  // same switch.
+  if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
 
   const signerName = input.signerName.trim();
   if (!signerName) return { error: "Enter the name as it was signed." };
