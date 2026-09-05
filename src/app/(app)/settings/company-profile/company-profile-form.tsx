@@ -56,19 +56,27 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     license_number: p?.license_number ?? "",
     license_state: p?.license_state ?? "",
     license_type: p?.license_type ?? "",
-    tax_rate_bp: p?.tax_rate_bp ?? 0,
+    // Replaced with the typed rate on save; see taxRateInput below.
+    tax_rate_bp: 0,
     timezone: p?.timezone ?? "Pacific",
     time_format: p?.time_format ?? "12h",
   };
 }
 
-export function CompanyProfileForm({ profile }: { profile: CompanyProfile | null }) {
+export function CompanyProfileForm({
+  profile,
+  taxRateBp: savedTaxRateBp,
+}: {
+  profile: CompanyProfile | null;
+  /** company_profile.tax_rate_bp, in basis points (950 = 9.50%). */
+  taxRateBp: number;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [form, setForm] = useState<CompanyProfileInput>(toInput(profile));
   // The tax rate as typed ("9.5"), kept as text while editing so a half-typed
   // "9." is not snapped to 9 under the cursor; converted only on save.
-  const [taxRateInput, setTaxRateInput] = useState(taxRateBpToInput(profile?.tax_rate_bp));
+  const [taxRateInput, setTaxRateInput] = useState(taxRateBpToInput(savedTaxRateBp));
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
