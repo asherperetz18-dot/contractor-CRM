@@ -8,6 +8,8 @@ type CompanyMemberRow = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // Optional until migration 0126 has run -- see the select below.
+  can_send_estimates?: boolean;
   is_dispatch_supervisor: boolean;
   profiles: {
     id: string;
@@ -25,9 +27,12 @@ type CompanyMemberRow = {
 // meaningful outside of a specific company.
 export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
   const supabase = await createClient();
+  // "*" for the member row, same reason as getCurrentProfile: a column
+  // named here before its migration has run would empty the whole
+  // roster, and a missing column reading as undefined is harmless.
   const { data } = await supabase
     .from("company_members")
-    .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, is_dispatch_supervisor, profiles(id, name, email, phone, created_at, is_super_admin)")
+    .select("*, profiles(id, name, email, phone, created_at, is_super_admin)")
     .eq("company_id", companyId);
 
   return ((data ?? []) as unknown as CompanyMemberRow[])
@@ -44,6 +49,7 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
       can_delete_leads: row.can_delete_leads,
       can_view_estimates: row.can_view_estimates,
       can_create_estimates: row.can_create_estimates,
+      can_send_estimates: row.can_send_estimates !== false,
       is_dispatch_supervisor: row.is_dispatch_supervisor === true,
       is_super_admin: row.profiles.is_super_admin === true,
       created_at: row.profiles.created_at,
