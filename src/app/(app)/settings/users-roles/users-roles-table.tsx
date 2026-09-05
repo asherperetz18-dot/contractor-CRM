@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
@@ -87,9 +87,14 @@ export function UsersRolesTable({
   const [newUserRoles, setNewUserRoles] = useState<AppRole[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  // A switch in the table that could not be saved. Its own state: `error`
-  // above only shows inside the Create User dialog.
-  const [tableError, setTableError] = useState("");
+  // A switch in the table that could not be saved, and whose row it was.
+  // Shown directly under that row: this used to be one note at the top of
+  // the table, which on a long roster sat a screen above the switch that
+  // was clicked -- so a refused change read as a switch that did nothing.
+  // (`error` above only shows inside the Create User dialog.)
+  const [switchError, setSwitchError] = useState<{ userId: string; message: string } | null>(
+    null
+  );
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [reassign, setReassign] = useState<{ user: Profile; mode: ReassignMode } | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
@@ -116,6 +121,20 @@ export function UsersRolesTable({
 
   function refresh() {
     startTransition(() => router.refresh());
+  }
+
+  /**
+   * Runs one switch's save and reports its outcome under that row.
+   *
+   * Every switch goes through here. A refusal from the server -- a
+   * migration not run yet, a role the caller may not grant, the last
+   * Admin -- is a sentence the person can act on, and it belongs next to
+   * the thing they clicked, not somewhere they have scrolled past.
+   */
+  async function runSwitch(u: Profile, save: () => Promise<{ error?: string }>) {
+    const res = await save();
+    setSwitchError(res.error ? { userId: u.id, message: res.error } : null);
+    refresh();
   }
 
   async function handleCreate() {
@@ -145,8 +164,7 @@ export function UsersRolesTable({
       setReassign({ user: u, mode: "archive" });
       return;
     }
-    await toggleUserStatus(u.id, u.status);
-    refresh();
+    await runSwitch(u, () => toggleUserStatus(u.id, u.status));
   }
 
   async function finishReassign() {
@@ -162,36 +180,27 @@ export function UsersRolesTable({
     const next = u.roles.includes(role)
       ? u.roles.filter((r) => r !== role)
       : [...u.roles, role];
-    await updateUserRoles(u.id, next);
-    refresh();
+    await runSwitch(u, () => updateUserRoles(u.id, next));
   }
 
   async function handleToggleDispatchSupervisor(u: Profile) {
-    await updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor);
-    router.refresh();
+    await runSwitch(u, () => updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor));
   }
 
   async function handleToggleCanDelete(u: Profile) {
-    await updateCanDeleteLeads(u.id, !u.can_delete_leads);
-    refresh();
+    await runSwitch(u, () => updateCanDeleteLeads(u.id, !u.can_delete_leads));
   }
 
   async function handleToggleViewEstimates(u: Profile) {
-    await updateCanViewEstimates(u.id, !u.can_view_estimates);
-    refresh();
+    await runSwitch(u, () => updateCanViewEstimates(u.id, !u.can_view_estimates));
   }
 
   async function handleToggleCreateEstimates(u: Profile) {
-    await updateCanCreateEstimates(u.id, !u.can_create_estimates);
-    refresh();
+    await runSwitch(u, () => updateCanCreateEstimates(u.id, !u.can_create_estimates));
   }
 
   async function handleToggleSendEstimates(u: Profile) {
-    const res = await updateCanSendEstimates(u.id, !u.can_send_estimates);
-    // The other switches fail silently; this one can fail for a reason
-    // the admin can fix (the migration), so it says so above the table.
-    setTableError(res.error ?? "");
-    refresh();
+    await runSwitch(u, () => updateCanSendEstimates(u.id, !u.can_send_estimates));
   }
 
   function openEdit(u: Profile) {
@@ -321,7 +330,6 @@ export function UsersRolesTable({
             this the only way to reach them is the page's own scrollbar
             pinned to the bottom of a long table -- so the switches read
             as missing rather than as off-screen. */}
-        {tableError && <p className="error-note">{tableError}</p>}
         {hasHiddenColumns && (
           <p className="ur-scroll-hint">
             More columns to the right — <strong>Can Delete Leads</strong>,{" "}
@@ -348,7 +356,8 @@ export function UsersRolesTable({
           </thead>
           <tbody>
             {filtered.map((u) => (
-              <tr key={u.id}>
+              <Fragment key={u.id}>
+              <tr>
                 <td>
                   <div className="ur-name-cell">
                     <span className="ur-avatar">
@@ -587,6 +596,23 @@ export function UsersRolesTable({
                   </button>
                 </td>
               </tr>
+              {/* The refusal, directly under the row whose switch was
+                  clicked. Its own row spanning the table so it reads as
+                  belonging to the person above it wherever the table has
+                  been scrolled to. */}
+              {switchError?.userId === u.id && (
+                <tr className="ur-switch-error-row">
+                  {/* Left-aligned explicitly: as the row's last cell it
+                      would otherwise inherit the Status column's right
+                      alignment and hang off the edge. */}
+                  <td colSpan={10} style={{ paddingTop: 0, textAlign: "left" }}>
+                    <p className="error-note" style={{ margin: 0 }} role="alert">
+                      {switchError.message}
+                    </p>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
