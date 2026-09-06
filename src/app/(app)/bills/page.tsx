@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { canViewFinancials } from "@/lib/data/accounting-access";
 import {
-  canManageBills,
   type Lead,
   type Vendor,
 } from "@/lib/data/types";
@@ -22,13 +22,16 @@ export default async function BillsPage() {
   const profile = await getCurrentProfile();
   if (!profile) return null;
 
-  if (!canManageBills(profile)) {
+  // Was canManageBills (role only). canViewFinancials is that same role
+  // check plus the View Financials switch, so this only ever widens who
+  // gets in -- Bookkeeping, Office and Admin are unaffected.
+  if (!canViewFinancials(profile)) {
     return (
       <div className="empty-state">
         <p className="empty-label">You don&apos;t have access to bills</p>
         <p className="empty-hint">
-          Bills to Pay is the company checkbook — Bookkeeping, Office and Admin. Ask an
-          admin to adjust your role if you need it.
+          Bills to Pay is the company checkbook — Bookkeeping, Office and Admin, or
+          anyone switched on under Settings › Users &amp; Roles › View Financials.
         </p>
       </div>
     );
