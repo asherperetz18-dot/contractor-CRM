@@ -17,7 +17,11 @@ export const INVITE_TTL_DAYS = 7;
 export type SignupInvite = {
   id: string;
   email: string;
-  company_name: string;
+  // Null on an invite an admin sent by hand (createManualInvite): nobody
+  // has typed a company name yet at that point, unlike a paid signup,
+  // which always has one from the Get Started form before Stripe is ever
+  // reached. /register asks for it itself when this is null.
+  company_name: string | null;
   expires_at: string;
   consumed_at: string | null;
 };
@@ -140,6 +144,41 @@ export async function createInvite(input: {
     return { error: error.message };
   }
 
+  return { id: (data as { id: string }).id, token: raw };
+}
+
+/**
+ * The other door in: an Office/Admin user invites a specific address
+ * directly, no payment involved. Always a fresh row -- unlike the paid
+ * path there is no Stripe session id to dedupe repeat webhook delivery
+ * against, and there is no repeat delivery to guard against either; this
+ * runs once, when someone on the team clicks the button.
+ *
+ * company_name is left unset. The register page collects it from the
+ * person redeeming the link instead (see completeSignup), since nobody
+ * on this path has typed one in yet.
+ */
+export async function createManualInvite(
+  email: string
+): Promise<{ id?: string; token?: string; error?: string }> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized.includes("@")) return { error: "Enter a valid email address." };
+
+  const admin = createAdminClient();
+  const raw = newRawToken();
+  const { data, error } = await admin
+    .from("signup_invites")
+    .insert({
+      email: normalized,
+      company_name: null,
+      source: "manual",
+      token_hash: hashToken(raw),
+      expires_at: expiryFromNow(),
+    })
+    .select("id")
+    .single();
+
+  if (error) return { error: error.message };
   return { id: (data as { id: string }).id, token: raw };
 }
 

@@ -10,7 +10,11 @@ export function RegisterForm({
   email,
 }: {
   token: string;
-  companyName: string;
+  // Set on a paid signup (carried on the invite from the Get Started
+  // form) and null on one an admin sent by hand -- nobody has typed a
+  // company name in yet on that path, so this form collects it instead
+  // of showing it.
+  companyName: string | null;
   email: string;
 }) {
   const [state, action, pending] = useActionState<AuthFormState, FormData>(
@@ -21,17 +25,28 @@ export function RegisterForm({
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h1 className="auth-title">{companyName}</h1>
-        <p className="auth-sub">Set your password and you&apos;re in</p>
+        <h1 className="auth-title">{companyName || "Set up your account"}</h1>
+        <p className="auth-sub">
+          {companyName
+            ? "Set your password and you're in"
+            : "Name your company, set your password, and you're in"}
+        </p>
         <form action={action} className="auth-form">
           <input type="hidden" name="token" value={token} />
           <label className="field">
             <span className="field-label">Email</span>
-            {/* Fixed: it is the address that paid, and the address this
-                link was sent to. Editable would make it a free account
-                for anyone the email gets forwarded to. */}
+            {/* Fixed: it is the address that paid (or that the invite was
+                sent to), and the address this link was sent to. Editable
+                would make it a free account for anyone the email gets
+                forwarded to. */}
             <input type="email" value={email} readOnly disabled />
           </label>
+          {companyName === null && (
+            <label className="field">
+              <span className="field-label">Company name</span>
+              <input type="text" name="company_name" required autoComplete="organization" />
+            </label>
+          )}
           <label className="field">
             <span className="field-label">Your name</span>
             <input type="text" name="name" required autoComplete="name" />

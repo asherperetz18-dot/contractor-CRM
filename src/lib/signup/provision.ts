@@ -270,6 +270,28 @@ function inviteEmailBody(companyName: string, link: string): { html: string; tex
 }
 
 /**
+ * The copy for an admin-sent invite (createManualInvite). Separate from
+ * inviteEmailBody rather than the same function with an empty company
+ * name: that one's wording ("Thanks for signing up") assumes a purchase
+ * just happened, which isn't true here -- nobody has paid, and nobody
+ * has named a company yet. This one says what's actually being offered.
+ */
+export function manualInviteEmailBody(link: string): { html: string; text: string } {
+  const life = `The link works once and expires in ${INVITE_TTL_DAYS} days.`;
+  return {
+    html:
+      `<p>You've been invited to set up your own Contractor CRM.</p>` +
+      `<p>Pick a password and a name for your company, and it's ready.</p>` +
+      `<p><a href="${link}">Set up your account</a></p>` +
+      `<p>${life}</p>`,
+    text:
+      `You've been invited to set up your own Contractor CRM.\n\n` +
+      `Set up your account: ${link}\n\n` +
+      life,
+  };
+}
+
+/**
  * The outcome of provisioning, as a shape that cannot lie.
  *
  * Two flat objects rather than one with five optional fields: on the

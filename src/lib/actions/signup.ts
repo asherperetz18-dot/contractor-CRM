@@ -97,8 +97,15 @@ function checkoutModeFor(
  * lists, then signs the owner in.
  *
  * The email is never taken from the form. It comes off the invite, which
- * came off the Stripe session, which is the address that paid -- so the
- * person setting up an account is the person who received the link there.
+ * came off the Stripe session (or, for a manually-sent invite, off the
+ * address an admin typed in) -- so the person setting up an account is
+ * the person who received the link there.
+ *
+ * Company name is different: a paid signup already has one (carried on
+ * the invite from the Get Started form), but a manually-sent invite does
+ * not -- nobody has typed one in yet, so it's collected here instead.
+ * Either way there is exactly one company name by the time anything is
+ * created; the two sources never both apply.
  */
 export async function completeSignup(
   _prevState: AuthFormState,
@@ -116,6 +123,15 @@ export async function completeSignup(
   const { invite, error: inviteError } = await loadUsableInvite(token);
   if (!invite) return { error: inviteError ?? "This setup link isn't valid." };
 
+  // invite.company_name wins when it's set -- a paid signup's name is
+  // not the registering visitor's to change on this form, since it's
+  // what the Stripe receipt says was bought. Only asked for here when
+  // the invite genuinely has none.
+  const companyName = (invite.company_name ?? String(formData.get("company_name") ?? "")).trim();
+  if (!companyName) return { error: "Enter your company name." };
+
+  // Checked before the invite is spent, not after: an empty company name
+  // must not burn the one use a manually-sent link gets.
   // Taken before anything is created, not after. loadUsableInvite only
   // read consumed_at; acting on what it said left a window in which the
   // same link submitted twice -- two tabs, or an impatient double click --
@@ -166,7 +182,7 @@ export async function completeSignup(
   // it had just made -- and the next thing added to the failure path
   // would have had to be remembered twice.
   const { companyId, error: companyError } = await createCompanyWithDefaults(
-    invite.company_name,
+    companyName,
     profileId
   );
   if (!companyId) {
@@ -180,7 +196,7 @@ export async function completeSignup(
 
   if (existingId) {
     return {
-      info: `${invite.company_name} is ready. Sign in with your existing password and switch to it from the company menu.`,
+      info: `${companyName} is ready. Sign in with your existing password and switch to it from the company menu.`,
     };
   }
 
