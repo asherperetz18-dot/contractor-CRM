@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
+  addressKey,
   addressLine,
   addressSearches,
   noRecordMessage,
@@ -15,15 +16,21 @@ import {
  * PropertyRadar lookups: who really owns the property, what it's worth,
  * and every loan and lien recorded against it.
  *
- * Every fetched result bills a PropertyRadar credit, so reports cache
- * per contact and a fresh pull happens only on an explicit click (or
- * when the contact's address has changed since the cached pull).
+ * Every fetched result bills PropertyRadar credits, so the rule is ONE
+ * PULL PER PROPERTY, company-wide: a house is bought once, and every
+ * contact at that address shows the same report. Reports are stored per
+ * contact (property_reports.lead_id), but before anything is bought the
+ * house is looked for among the company's existing reports -- by address
+ * on load, and by RadarID (PropertyRadar's own id for the house) at pull
+ * time, which catches two cards spelling the address differently. There
+ * is no refresh: a second pull for the same house is refused, and a
+ * contact only gets a new pull when its address changes to another house.
  *
  * A pull is two steps. First find the house's RadarID with searches that
  * ask for RadarID only -- PropertyRadar never bills those, so several
  * spellings of the address can be tried (see property-address.ts).
  * Then buy that one record by RadarID: exactly one credit, and only once
- * the house is actually found.
+ * the house is actually found and known not to be on file already.
  */
 
 export type PropertyTransaction = {
@@ -50,12 +57,88 @@ export type PropertyReport = {
   listed_for_sale: boolean | null;
   transactions: PropertyTransaction[];
   fetched_at: string;
+  /** True when this report was pulled for another contact at the same
+   *  address -- shown, not bought again. */
+  from_other_contact?: boolean;
 };
 
 const API = "https://api.propertyradar.com/v1";
 
 const REPORT_COLUMNS =
   "address, owner, ownership_type, owner_occupied, avm, available_equity, equity_percent, total_loan_balance, in_foreclosure, listed_for_sale, transactions, fetched_at";
+
+/** A stored report plus what identifies the house it is about. */
+type StoredReport = PropertyReport & { lead_id: string; radar_id: string | null };
+
+const STORED_COLUMNS = `lead_id, radar_id, ${REPORT_COLUMNS}`;
+
+function publicReport(row: StoredReport, fromOtherContact: boolean): PropertyReport {
+  return {
+    address: row.address,
+    owner: row.owner,
+    ownership_type: row.ownership_type,
+    owner_occupied: row.owner_occupied,
+    avm: row.avm,
+    available_equity: row.available_equity,
+    equity_percent: row.equity_percent,
+    total_loan_balance: row.total_loan_balance,
+    in_foreclosure: row.in_foreclosure,
+    listed_for_sale: row.listed_for_sale,
+    transactions: row.transactions ?? [],
+    fetched_at: row.fetched_at,
+    ...(fromOtherContact ? { from_other_contact: true } : {}),
+  };
+}
+
+/** For an ilike pattern: the street's own % and _ must not act as wildcards. */
+function likeEscape(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * The company's report for this house, if any contact already has one.
+ * Matched by address key (see property-address.ts), so "Chatsworth CA"
+ * and "Chatsworth, CA" are the same house. The ilike on the house number
+ * and first word of the street ("10229 Oakdale") only narrows the rows
+ * fetched; the key decides. `except` is the contact being looked at.
+ */
+async function reportForAddress(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string,
+  address: string,
+  except: string
+): Promise<StoredReport | null> {
+  const key = addressKey(address);
+  if (!key) return null;
+  const start = key.split("|")[0].split(" ").slice(0, 2).join(" ");
+  const { data } = await supabase
+    .from("property_reports")
+    .select(STORED_COLUMNS)
+    .eq("company_id", companyId)
+    .neq("lead_id", except)
+    .ilike("address", `%${likeEscape(start)}%`)
+    .limit(50);
+  const rows = (data ?? []) as StoredReport[];
+  return rows.find((r) => addressKey(r.address) === key) ?? null;
+}
+
+/** The company's report for this RadarID, if any contact already has one. */
+async function reportForRadarId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string,
+  radarId: string,
+  except: string
+): Promise<StoredReport | null> {
+  const { data } = await supabase
+    .from("property_reports")
+    .select(STORED_COLUMNS)
+    .eq("company_id", companyId)
+    .eq("radar_id", radarId)
+    .neq("lead_id", except)
+    .limit(1);
+  const rows = (data ?? []) as StoredReport[];
+  return rows[0] ?? null;
+}
 
 /** The paid fields of the one record bought once the house is found. */
 const REPORT_FIELDS =
@@ -204,18 +287,24 @@ export async function getPropertyReport(
 
   const configured = !!process.env.PROPERTYRADAR_API_TOKEN;
   const supabase = await createClient();
-  const { data: report } = await supabase
+  const { data: own } = await supabase
     .from("property_reports")
-    .select(REPORT_COLUMNS)
+    .select(STORED_COLUMNS)
     .eq("lead_id", leadId)
-    .maybeSingle<PropertyReport>();
+    .maybeSingle<StoredReport>();
 
   // A report pulled for a different address is a report about somebody
   // else's house; better to show nothing than the wrong owner.
-  if (report && lead.address && report.address !== lead.address) {
-    return { configured, report: null };
+  if (own && (!lead.address || addressKey(own.address) === addressKey(lead.address))) {
+    return { configured, report: publicReport(own, false) };
   }
-  return { configured, report: report ?? null };
+  // One pull per property: another contact at this address already has
+  // the report, so this card shows it instead of offering to buy it.
+  if (lead.address) {
+    const shared = await reportForAddress(supabase, lead.company_id, lead.address, leadId);
+    if (shared) return { configured, report: publicReport(shared, true) };
+  }
+  return { configured, report: null };
 }
 
 export async function fetchPropertyReport(
@@ -229,6 +318,22 @@ export async function fetchPropertyReport(
   const { profile, lead } = loaded;
   if (!lead.address?.trim()) return { error: "This contact has no address on file." };
 
+  // One pull per property. Already pulled for this contact, or for another
+  // contact at the same address: hand that back, buy nothing. The button
+  // is hidden when a report shows, so this is the guard against a stale
+  // screen or a double click, not the normal path.
+  const supabase = await createClient();
+  const { data: own } = await supabase
+    .from("property_reports")
+    .select(STORED_COLUMNS)
+    .eq("lead_id", leadId)
+    .maybeSingle<StoredReport>();
+  if (own && addressKey(own.address) === addressKey(lead.address)) {
+    return { report: publicReport(own, false) };
+  }
+  const byAddress = await reportForAddress(supabase, lead.company_id, lead.address, leadId);
+  if (byAddress) return { report: publicReport(byAddress, true) };
+
   const headers = {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -239,6 +344,25 @@ export async function fetchPropertyReport(
     const found = await findRadarId(headers, lead.address);
     if ("error" in found) return { error: found.error };
     const radarId = found.radarId;
+
+    // Still one pull per property: the same house under another spelling
+    // on another card is found by PropertyRadar's own id for it. Copy
+    // that report onto this contact rather than buying it twice.
+    const byRadarId = await reportForRadarId(supabase, lead.company_id, radarId, leadId);
+    if (byRadarId) {
+      const admin = createAdminClient();
+      const { lead_id: sourceLead, ...copy } = byRadarId;
+      console.info("[propertyradar] reused report, nothing bought", { radarId, from: sourceLead, to: leadId });
+      const { error: copyErr } = await admin.from("property_reports").upsert({
+        ...copy,
+        lead_id: leadId,
+        company_id: profile.company_id,
+        address: lead.address,
+        fetched_by: profile.id,
+      });
+      if (copyErr) return { error: copyErr.message };
+      return { report: publicReport({ ...byRadarId, address: lead.address }, true) };
+    }
 
     // Step 2, the one credit: the record itself, by RadarID.
     const res = await fetch(

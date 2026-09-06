@@ -16,7 +16,9 @@ import {
  *
  * Every PropertyRadar search bills a credit, so nothing is fetched
  * automatically: cached reports load free, and a fresh pull takes a
- * deliberate two-click confirmation that names the cost.
+ * deliberate two-click confirmation that names the cost. One pull per
+ * property: once a house has a report, every contact at that address
+ * shows it and there is no refresh button.
  */
 
 function dollars(n: number | null): string {
@@ -186,16 +188,19 @@ export function PropertyPeek({
                   ))}
                 </ul>
               )}
+              {/* No refresh: one pull per property. A house is bought
+                  once and every contact at that address shows the same
+                  report; a new pull happens only when the contact's
+                  address changes to another house. */}
               <p className="property-intel-meta">
                 PropertyRadar · pulled{" "}
                 {new Date(report.fetched_at).toLocaleDateString(undefined, {
                   month: "short",
                   day: "numeric",
                 })}
-                {" · "}
-                <button type="button" className="pi-refresh" onClick={pull} disabled={pulling}>
-                  {pulling ? "Refreshing…" : armed ? "Confirm — bills 1 search" : "Refresh (1 credit)"}
-                </button>
+                {report.from_other_contact
+                  ? " for another contact at this address · one pull per property"
+                  : " · one pull per property"}
               </p>
             </>
           ) : (

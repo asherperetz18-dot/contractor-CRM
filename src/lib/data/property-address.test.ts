@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addressKey,
   addressLine,
   addressSearches,
   noRecordMessage,
@@ -133,6 +134,27 @@ test("streetNumberAndName keeps only the number and the name", () => {
   assert.deepEqual(streetNumberAndName("4307 Hazeltine Ave"), { number: 4307, name: "Hazeltine" });
   assert.deepEqual(streetNumberAndName("1 Avenue of the Stars"), { number: 1, name: "Avenue of the Stars" });
   assert.equal(streetNumberAndName("One Wilshire"), null);
+});
+
+test("addressKey is the same for every spelling of one house, different for another", () => {
+  const key = addressKey(TYPED);
+  assert.equal(key, "10229 oakdale ave|91311");
+  for (const same of [
+    "10229 OAKDALE AVE, Chatsworth, CA 91311, USA",
+    "10229 Oakdale Ave Chatsworth CA 91311",
+    "10229 Oakdale Ave., Chatsworth, CA 91311-2204",
+    "  10229  Oakdale Ave ,Chatsworth CA 91311 ",
+  ]) {
+    assert.equal(addressKey(same), key, same);
+  }
+  // Next door, and the same number on another street, are other houses.
+  assert.notEqual(addressKey("10231 Oakdale Ave, Chatsworth CA 91311"), key);
+  assert.notEqual(addressKey("10229 Oakdale Ct, Chatsworth CA 91311"), key);
+  // No ZIP: the city stands in for it.
+  assert.equal(addressKey("123 Main St, Los Angeles, CA"), "123 main st|los angeles");
+  // Unreadable addresses still get a stable key, and nothing gets "".
+  assert.equal(addressKey("10229 Oakdale, Chatsworth"), "10229 oakdale chatsworth");
+  assert.equal(addressKey("   "), "");
 });
 
 test("addressLine is the address without the country", () => {
