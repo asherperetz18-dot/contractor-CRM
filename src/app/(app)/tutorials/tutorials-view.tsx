@@ -204,7 +204,7 @@ const LIBRARY: Category[] = [
         desc: "Contract, spent, and what's actually left — phase by phase.",
         steps: [
           { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
-          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Bills lists every bill on the job — unpaid on top, paid below — with the receipt showing as a thumbnail, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
+          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Bills lists every bill on the job — unpaid on top, paid below — with the receipt showing as a thumbnail, and the eye chips open the contract — or any change order — exactly as the customer sees it. The rose Client chip at the end — or a click on the customer's name — jumps to their full client card on Contacts: calls, texts, appointments, files, with a back button straight to Projects." },
           { img: T("tut-permits"), caption: "Permits & contracts opens the job's own paperwork — only files filed under this contract, so a customer with two jobs never mixes their piles. Anything not filed yet waits below with a one-click File under this job, and Remove from job undoes a mistake. Hover any file to peek at it before opening — Drive even previews the first page of a PDF." },
           { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
         ],
