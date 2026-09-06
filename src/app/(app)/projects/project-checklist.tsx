@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   addProjectChecklistItem,
@@ -9,6 +9,8 @@ import {
   setProjectChecklistItemDone,
   updateProjectChecklistItem,
 } from "@/lib/actions/checklists";
+import { MAX_CHECKLIST_NOTE, cleanChecklistNote } from "@/lib/data/checklist-note";
+import "./checklist-note.css";
 
 export type ChecklistItemRow = {
   id: string;
@@ -19,6 +21,9 @@ export type ChecklistItemRow = {
   assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
+  /** Free text on the step. Optional because the column arrives with
+   *  migration 0128 -- before it has run, the rows simply have none. */
+  note?: string | null;
 };
 
 /**
@@ -197,6 +202,19 @@ export function ProjectChecklist({
                   )
                 )}
 
+                {/* The note fills the empty stretch of the row. Same gate
+                    as the date and the owner: whoever plans the step
+                    writes on it, everyone else reads it. */}
+                {canEdit ? (
+                  <StepNote item={item} onError={setError} onSaved={refresh} />
+                ) : (
+                  item.note && (
+                    <span className="proj-check-note-text" title={item.note}>
+                      📝 {item.note}
+                    </span>
+                  )
+                )}
+
                 {item.completed_at && (
                   <span className="proj-check-meta">
                     ✓ {memberNames[item.completed_by ?? ""] || "someone"} ·{" "}
@@ -269,5 +287,115 @@ export function ProjectChecklist({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One step's note.
+ *
+ * Saved when the box loses focus rather than on every keystroke -- a
+ * server call per letter would be one per letter -- and it says "Saved"
+ * for a moment so nobody wonders. Enter saves and leaves; Escape puts
+ * back what was there before.
+ */
+function StepNote({
+  item,
+  onError,
+  onSaved,
+}: {
+  item: ChecklistItemRow;
+  onError: (message: string) => void;
+  onSaved: () => void;
+}) {
+  const stored = item.note ?? "";
+  const [text, setText] = useState(stored);
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  const box = useRef<HTMLInputElement | null>(null);
+  // What the server last told us this note is. Compared against on save
+  // so clicking away without typing writes nothing.
+  const storedRef = useRef(stored);
+  // Escape restores the old text and blurs; without this flag the blur
+  // it causes would save the abandoned edit.
+  const abandon = useRef(false);
+  const flagTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // If the row comes back from the server holding a different note --
+  // somebody else wrote one -- show theirs, unless this box is being
+  // typed in right now.
+  useEffect(() => {
+    if (stored === storedRef.current) return;
+    storedRef.current = stored;
+    if (typeof document !== "undefined" && document.activeElement === box.current) return;
+    setText(stored);
+  }, [stored]);
+
+  useEffect(
+    () => () => {
+      if (flagTimer.current) clearTimeout(flagTimer.current);
+    },
+    []
+  );
+
+  async function save() {
+    const next = cleanChecklistNote(text);
+    if ((next ?? "") === storedRef.current) {
+      // Nothing changed (or only spaces did): tidy the box, call nobody.
+      setText(storedRef.current);
+      return;
+    }
+    setSaving(true);
+    const result = await updateProjectChecklistItem(item.id, { note: next });
+    setSaving(false);
+    if (result?.error) {
+      onError(result.error);
+      setText(storedRef.current);
+      return;
+    }
+    storedRef.current = next ?? "";
+    setText(next ?? "");
+    setJustSaved(true);
+    if (flagTimer.current) clearTimeout(flagTimer.current);
+    flagTimer.current = setTimeout(() => setJustSaved(false), 1500);
+    onSaved();
+  }
+
+  return (
+    <span className="proj-check-note-wrap">
+      <input
+        ref={box}
+        className={"proj-check-note" + (text ? " has-note" : "")}
+        value={text}
+        maxLength={MAX_CHECKLIST_NOTE}
+        placeholder="Add a note…"
+        title={text || undefined}
+        disabled={saving}
+        aria-label={`Note on ${item.label}`}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          if (abandon.current) {
+            abandon.current = false;
+            setText(storedRef.current);
+            return;
+          }
+          save();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            box.current?.blur();
+          }
+          if (e.key === "Escape") {
+            abandon.current = true;
+            box.current?.blur();
+          }
+        }}
+      />
+      {saving ? (
+        <span className="proj-check-note-flag">Saving…</span>
+      ) : justSaved ? (
+        <span className="proj-check-note-flag">Saved</span>
+      ) : null}
+    </span>
   );
 }
