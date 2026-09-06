@@ -68,18 +68,28 @@ export async function startSignupCheckout(input: {
   }
 }
 
-const checkoutModes = new Map<string, "subscription" | "payment">();
+// The pending lookup is cached, not just its answer -- SIGNUP_PRICE_ID is
+// one env var, constant for the process, so there is only ever one key.
+// Caching the resolved value alone still let concurrent clicks on a cold
+// instance each start their own Stripe call before the first returned;
+// caching the promise means every caller in that window shares the one
+// request already in flight.
+let checkoutMode: Promise<"subscription" | "payment"> | undefined;
 
-async function checkoutModeFor(
+function checkoutModeFor(
   stripe: ReturnType<typeof stripeClient>,
   priceId: string
 ): Promise<"subscription" | "payment"> {
-  const cached = checkoutModes.get(priceId);
-  if (cached) return cached;
-  const price = await stripe.prices.retrieve(priceId);
-  const mode = price.recurring ? "subscription" : "payment";
-  checkoutModes.set(priceId, mode);
-  return mode;
+  checkoutMode ??= stripe.prices
+    .retrieve(priceId)
+    .then((price) => (price.recurring ? "subscription" : "payment"))
+    .catch((err) => {
+      // A failed lookup must not be cached, or every signup attempt for
+      // the rest of the process's life fails the same way.
+      checkoutMode = undefined;
+      throw err;
+    });
+  return checkoutMode;
 }
 
 /**

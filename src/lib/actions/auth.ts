@@ -10,7 +10,6 @@ import { passwordProblem } from "@/lib/auth/password";
 
 export type AuthFormState = { error: string; info?: never } | { info: string; error?: never } | undefined;
 
-
 export async function login(
   _prevState: AuthFormState,
   formData: FormData

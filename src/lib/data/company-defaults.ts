@@ -31,12 +31,23 @@ import {
  */
 
 export type DefaultStageRow = { name: string; color: string; sort_order: number; is_system: boolean };
-export type DefaultCalendarRow = DefaultStageRow;
 export type DefaultDispositionRow = DefaultStageRow & {
   move_to_stage: string | null;
   creates_followup_task: boolean;
 };
 export type DefaultSimpleRow = { name: string; sort_order: number };
+
+// sort_order is always the row's position in its own list -- deriving it
+// here means inserting a row in the middle never means retyping every
+// number after it by hand, which is exactly how two rows end up sharing
+// a sort_order (nothing stops that -- there's no unique constraint on
+// the column, so the disposition list would just render in a different
+// order on every reload).
+function ordered<T extends { sort_order?: number }>(
+  rows: Omit<T, "sort_order">[]
+): T[] {
+  return rows.map((row, index) => ({ ...row, sort_order: index + 1 })) as T[];
+}
 
 // is_system is derived, not retyped. It marks the stages the app itself
 // moves leads into -- Unsorted for anything unrecognised, Appointment
@@ -66,18 +77,16 @@ const STAGES: { name: string; color: string }[] = [
   { name: "DNC", color: "#C0392B" },
 ];
 
-export const DEFAULT_PIPELINE_STAGES: DefaultStageRow[] = STAGES.map((stage, index) => ({
-  ...stage,
-  sort_order: index + 1,
-  is_system: SYSTEM_STAGE_NAMES.includes(stage.name),
-}));
+export const DEFAULT_PIPELINE_STAGES: DefaultStageRow[] = ordered(
+  STAGES.map((stage) => ({ ...stage, is_system: SYSTEM_STAGE_NAMES.includes(stage.name) }))
+);
 
-export const DEFAULT_CALENDARS: DefaultCalendarRow[] = [
-  { name: "Estimate", color: "#2D5F8A", sort_order: 1, is_system: false },
-  { name: "Job Visit", color: "#2F855A", sort_order: 2, is_system: false },
-  { name: "Meeting", color: "#C7691B", sort_order: 3, is_system: false },
-  { name: "Other", color: "#7C8798", sort_order: 4, is_system: false },
-];
+export const DEFAULT_CALENDARS: DefaultStageRow[] = ordered([
+  { name: "Estimate", color: "#2D5F8A", is_system: false },
+  { name: "Job Visit", color: "#2F855A", is_system: false },
+  { name: "Meeting", color: "#C7691B", is_system: false },
+  { name: "Other", color: "#7C8798", is_system: false },
+]);
 
 /**
  * Dispositions carry their rules, not just their names.
@@ -93,37 +102,37 @@ export const DEFAULT_CALENDARS: DefaultCalendarRow[] = [
  * Won" moves nothing, because Won is what a signed contract makes true,
  * not what a phone call says.
  */
-export const DEFAULT_CALL_DISPOSITIONS: DefaultDispositionRow[] = [
-  { name: NO_DISPOSITION, color: FALLBACK_STAGE_COLOR, sort_order: 1, is_system: true, move_to_stage: null, creates_followup_task: false },
-  { name: "Connected", color: "#2D5F8A", sort_order: 2, is_system: false, move_to_stage: "Contacted", creates_followup_task: false },
-  { name: "Sale / Won", color: "#2F855A", sort_order: 3, is_system: false, move_to_stage: null, creates_followup_task: false },
+export const DEFAULT_CALL_DISPOSITIONS: DefaultDispositionRow[] = ordered([
+  { name: NO_DISPOSITION, color: FALLBACK_STAGE_COLOR, is_system: true, move_to_stage: null, creates_followup_task: false },
+  { name: "Connected", color: "#2D5F8A", is_system: false, move_to_stage: "Contacted", creates_followup_task: false },
+  { name: "Sale / Won", color: "#2F855A", is_system: false, move_to_stage: null, creates_followup_task: false },
   // A callback nobody is reminded of is a lost lead -- 0091's words.
-  { name: "Callback", color: "#C7691B", sort_order: 4, is_system: false, move_to_stage: "Contacted", creates_followup_task: true },
-  { name: "Appointment Set", color: "#6B4FA0", sort_order: 5, is_system: false, move_to_stage: "Appointment Scheduled", creates_followup_task: false },
-  { name: "Left Voicemail", color: "#4A90A4", sort_order: 6, is_system: false, move_to_stage: "No Answer", creates_followup_task: false },
-  { name: "No Answer", color: "#B7862B", sort_order: 7, is_system: false, move_to_stage: "No Answer", creates_followup_task: false },
-  { name: "Not Interested", color: "#C0392B", sort_order: 8, is_system: false, move_to_stage: "Not Interested", creates_followup_task: false },
-  { name: "Wrong Number", color: "#7C8798", sort_order: 9, is_system: false, move_to_stage: "DNC", creates_followup_task: false },
-  { name: "Other", color: FALLBACK_STAGE_COLOR, sort_order: 10, is_system: false, move_to_stage: null, creates_followup_task: false },
-];
+  { name: "Callback", color: "#C7691B", is_system: false, move_to_stage: "Contacted", creates_followup_task: true },
+  { name: "Appointment Set", color: "#6B4FA0", is_system: false, move_to_stage: "Appointment Scheduled", creates_followup_task: false },
+  { name: "Left Voicemail", color: "#4A90A4", is_system: false, move_to_stage: "No Answer", creates_followup_task: false },
+  { name: "No Answer", color: "#B7862B", is_system: false, move_to_stage: "No Answer", creates_followup_task: false },
+  { name: "Not Interested", color: "#C0392B", is_system: false, move_to_stage: "Not Interested", creates_followup_task: false },
+  { name: "Wrong Number", color: "#7C8798", is_system: false, move_to_stage: "DNC", creates_followup_task: false },
+  { name: "Other", color: FALLBACK_STAGE_COLOR, is_system: false, move_to_stage: null, creates_followup_task: false },
+]);
 
 // Kept short on purpose. Trades differ far more than pipelines do, and a
 // roofer should not have to delete "Kitchen Cabinets" before adding their
 // own -- these four are only here so the dropdown is never empty.
-export const DEFAULT_PROJECT_TYPES: DefaultSimpleRow[] = [
-  { name: "Kitchen Remodel", sort_order: 1 },
-  { name: "Bathroom Remodel", sort_order: 2 },
-  { name: "Kitchen Cabinets", sort_order: 3 },
-  { name: "Roofing", sort_order: 4 },
-];
+export const DEFAULT_PROJECT_TYPES: DefaultSimpleRow[] = ordered([
+  { name: "Kitchen Remodel" },
+  { name: "Bathroom Remodel" },
+  { name: "Kitchen Cabinets" },
+  { name: "Roofing" },
+]);
 
-export const DEFAULT_LEAD_SOURCES: DefaultSimpleRow[] = [
-  { name: "Website", sort_order: 1 },
-  { name: "Google", sort_order: 2 },
-  { name: "Facebook", sort_order: 3 },
-  { name: "Referral", sort_order: 4 },
-  { name: "Cold Call", sort_order: 5 },
-  { name: "Repeat Customer", sort_order: 6 },
-  { name: "CSV Import", sort_order: 7 },
-  { name: "Other", sort_order: 8 },
-];
+export const DEFAULT_LEAD_SOURCES: DefaultSimpleRow[] = ordered([
+  { name: "Website" },
+  { name: "Google" },
+  { name: "Facebook" },
+  { name: "Referral" },
+  { name: "Cold Call" },
+  { name: "Repeat Customer" },
+  { name: "CSV Import" },
+  { name: "Other" },
+]);

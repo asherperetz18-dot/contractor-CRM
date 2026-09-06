@@ -9,6 +9,9 @@ import {
   DEFAULT_LEAD_SOURCES,
   DEFAULT_PIPELINE_STAGES,
   DEFAULT_PROJECT_TYPES,
+  type DefaultDispositionRow,
+  type DefaultSimpleRow,
+  type DefaultStageRow,
 } from "@/lib/data/company-defaults";
 import {
   createInvite,
@@ -78,11 +81,15 @@ async function insertCompanyWithUniqueName(
 
   // Everything already using this name or a suffix of it. Wildcards a
   // caller might have typed only widen the match, and the exact shapes
-  // are picked out below, so the pattern needs no escaping.
+  // are picked out below, so the pattern needs no escaping. Ordered, not
+  // left arbitrary: PostgREST does not otherwise guarantee which 200 rows
+  // come back, and an unordered page could omit the very "(2)".."(50)"
+  // rows the suffix loop below is checking for.
   const { data: siblings } = await admin
     .from("companies")
     .select("name")
     .ilike("name", `${name}%`)
+    .order("name")
     .limit(200);
 
   const taken = new Set(((siblings as { name: string }[] | null) ?? []).map((row) => row.name));
@@ -113,16 +120,24 @@ async function insertCompanyWithUniqueName(
  * new company dispositions that log an outcome and move nothing -- the
  * broken-looking dialer buttons migration 0091 was written to fix.
  */
-async function seedRowsFor(sourceCompanyId?: string) {
+type SeedRows = {
+  timezone?: string;
+  timeFormat?: string;
+  stages: DefaultStageRow[];
+  calendars: DefaultStageRow[];
+  dispositions: DefaultDispositionRow[];
+  projectTypes: DefaultSimpleRow[];
+  leadSources: DefaultSimpleRow[];
+};
+
+async function seedRowsFor(sourceCompanyId?: string): Promise<SeedRows> {
   if (!sourceCompanyId) {
     return {
-      timezone: undefined as string | undefined,
-      timeFormat: undefined as string | undefined,
-      stages: DEFAULT_PIPELINE_STAGES as object[],
-      calendars: DEFAULT_CALENDARS as object[],
-      dispositions: DEFAULT_CALL_DISPOSITIONS as object[],
-      projectTypes: DEFAULT_PROJECT_TYPES as object[],
-      leadSources: DEFAULT_LEAD_SOURCES as object[],
+      stages: DEFAULT_PIPELINE_STAGES,
+      calendars: DEFAULT_CALENDARS,
+      dispositions: DEFAULT_CALL_DISPOSITIONS,
+      projectTypes: DEFAULT_PROJECT_TYPES,
+      leadSources: DEFAULT_LEAD_SOURCES,
     };
   }
 
@@ -140,8 +155,14 @@ async function seedRowsFor(sourceCompanyId?: string) {
   ]);
 
   const source = profile.data as { timezone: string | null; time_format: string | null } | null;
-  const orDefault = (rows: unknown[] | null, fallback: object[]) =>
-    rows && rows.length > 0 ? (rows as object[]) : fallback;
+  // Typed by the caller rather than erased to object[] -- the column list
+  // in each .select() above and the shape each DEFAULT_* constant
+  // promises are two places that have to keep agreeing, and only a real
+  // type catches the day they don't: withCompany() below is generic over
+  // whatever it's handed, so an object[] here would insert silently.
+  function orDefault<T>(rows: unknown[] | null, fallback: T[]): T[] {
+    return rows && rows.length > 0 ? (rows as T[]) : fallback;
+  }
 
   return {
     timezone: source?.timezone ?? undefined,
@@ -160,9 +181,11 @@ async function seedRowsFor(sourceCompanyId?: string) {
  * boards and empty dropdowns (see lib/data/company-defaults.ts).
  *
  * The single answer to "what is a working new company", used by both
- * doors -- the paid signup and Settings' New company button. When there
- * were two, they had already drifted: one seeded a timezone and the other
- * did not, and only one of them carried the dispositions' rules.
+ * doors -- the paid signup and Settings' New company button. The admin
+ * path's own version of this (before this file existed) dropped a
+ * disposition's move_to_stage and creates_followup_task on the way,
+ * which is what left the dialer's buttons doing nothing on a copied
+ * company -- see lib/data/company-defaults.ts for what that broke.
  *
  * Service role throughout -- a company this new has no company_members
  * row yet for RLS to check the caller against.
@@ -293,15 +316,21 @@ export async function provisionSignup(
     return { ok: false, retryable: false, error: "Signup isn't configured on this deployment." };
   }
 
+  // /welcome is public and reachable with any session_id a visitor cares
+  // to type -- checked before spending a Stripe call on it, since a real
+  // Checkout Session id always looks like this.
+  if (!/^cs_[a-zA-Z0-9_]+$/.test(sessionId)) {
+    return { ok: false, retryable: false, error: "We couldn't find that checkout." };
+  }
+
   let session: Stripe.Checkout.Session;
-  if (verified && verified.id === sessionId) {
-    session = verified;
-  } else {
-    try {
-      session = await stripeClient(config.env).checkout.sessions.retrieve(sessionId);
-    } catch {
-      return { ok: false, retryable: false, error: "We couldn't find that checkout." };
-    }
+  try {
+    // The webhook is the only caller that ever passes `verified`, and it
+    // always builds it from the same id it passes as `sessionId` -- so
+    // there is one real case here, not a mismatch to guard against.
+    session = verified ?? (await stripeClient(config.env).checkout.sessions.retrieve(sessionId));
+  } catch {
+    return { ok: false, retryable: false, error: "We couldn't find that checkout." };
   }
 
   // 'unpaid' is Stripe's own signal to hold off -- a bank debit sits

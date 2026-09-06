@@ -1,6 +1,8 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hashLinkToken, newLinkToken } from "@/lib/crypto/link-tokens";
+// Shared with the customer portal's magic links rather than kept as a
+// second copy that can drift -- see lib/crypto/link-tokens.ts.
+import { hashLinkToken as hashToken, newLinkToken as newRawToken } from "@/lib/crypto/link-tokens";
 // Same public origin the customer portal builds its links from -- there is
 // one deployment and one domain, so there is no second answer to derive.
 import { portalBaseUrl } from "@/lib/portal/session";
@@ -19,13 +21,6 @@ export type SignupInvite = {
   expires_at: string;
   consumed_at: string | null;
 };
-
-// Only hashes are stored, so a dump of signup_invites can't be replayed
-// to claim somebody's paid signup. Shared with the customer portal's
-// magic links rather than copied into a second place that can drift --
-// see lib/crypto/link-tokens.ts.
-const hashToken = hashLinkToken;
-const newRawToken = newLinkToken;
 
 export function registerUrl(rawToken: string): string {
   return `${portalBaseUrl()}/register?token=${encodeURIComponent(rawToken)}`;

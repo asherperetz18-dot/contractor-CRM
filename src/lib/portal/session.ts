@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hashLinkToken, newLinkToken } from "@/lib/crypto/link-tokens";
+import { hashLinkToken as hashToken, newLinkToken as newRawToken } from "@/lib/crypto/link-tokens";
 import type { Lead } from "@/lib/data/types";
 
 export const PORTAL_COOKIE = "portal_session";
@@ -62,12 +62,10 @@ export function streetNumberOf(address: string | null): string | null {
 }
 
 // Only hashes are ever stored, so a dump of portal_login_tokens or
-// portal_sessions can't be replayed to sign in as a customer. The pair
-// now lives in lib/crypto/link-tokens.ts, shared with the signup invites
-// that use the same scheme -- see the note there on why two copies of it
-// was the wrong number.
-const hashToken = hashLinkToken;
-const newRawToken = newLinkToken;
+// portal_sessions can't be replayed to sign in as a customer. hashToken /
+// newRawToken are lib/crypto/link-tokens.ts, imported under their old
+// names above -- shared with the signup invites that use the same scheme
+// rather than kept as a second copy that can drift.
 
 /**
  * Issues a single-use magic-link token for a lead. Returns the raw token,
