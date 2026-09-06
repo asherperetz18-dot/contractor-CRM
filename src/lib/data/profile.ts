@@ -27,6 +27,10 @@ export type Profile = {
   is_dispatch_supervisor?: boolean;
   // Mirrors profiles.is_super_admin -- see isSuperAdmin in data/types.
   is_super_admin?: boolean;
+  // Mirrors profiles.is_platform_admin -- see isPlatformAdmin in
+  // data/types. Independent of is_super_admin and of company_id below:
+  // it's read off the identity, not the membership.
+  is_platform_admin?: boolean;
   company_id: string;
 };
 
@@ -116,7 +120,12 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   if (!companyId) return null;
 
   const [{ data: identityData }, { data: membershipData }] = await Promise.all([
-    supabase.from("profiles").select("name, email, is_super_admin").eq("id", userId).single(),
+    // "*", not a named list -- same reason as company_members below.
+    // is_platform_admin (0132) is the second column this select has
+    // needed to survive not having run yet; naming it explicitly would
+    // fail this query for every signed-in person on the deployment the
+    // moment the code ships, if the migration hasn't landed first.
+    supabase.from("profiles").select("*").eq("id", userId).single(),
     // Every column rather than a list of them. Naming a column that is
     // not there yet (can_send_estimates before migration 0126 has run)
     // fails the whole select, and a failed select here signs everyone
@@ -133,6 +142,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     name: string | null;
     email: string | null;
     is_super_admin: boolean | null;
+    is_platform_admin?: boolean | null;
   } | null;
   const membership = membershipData as {
     roles: AppRole[];
@@ -166,6 +176,9 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_view_profit_loss: membership.can_view_profit_loss === true,
     is_dispatch_supervisor: membership.is_dispatch_supervisor === true,
     is_super_admin: identity?.is_super_admin === true,
+    // Undefined (0132 not yet run) reads as false -- off costs nobody
+    // anything, same reasoning as the accounting flags above.
+    is_platform_admin: identity?.is_platform_admin === true,
     company_id: companyId,
   };
 });
