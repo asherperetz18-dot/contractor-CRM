@@ -75,12 +75,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/users-roles",
       },
       {
-        title: "Invite a Business",
-        desc: "Send a new company its own setup link by email — no payment involved",
-        icon: "✉️",
-        href: "/settings/invite-business",
-      },
-      {
         title: "Team Activity",
         desc: "Active users, session time, and top pages across your team",
         icon: "📈",

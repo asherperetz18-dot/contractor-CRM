@@ -8,10 +8,22 @@ const ITEMS = [
   // Admin role only -- Office users configure the company, they don't
   // get a readout of what each teammate has been doing all day.
   { label: "Team Activity", icon: "📈", href: "/settings/team-activity", adminOnly: true },
+  // Platform Admin only -- independent of Office/Admin in any company,
+  // and independent of Admin Settings above. See isPlatformAdmin in
+  // lib/data/types and migration 0132.
+  { label: "Platform Admin", icon: "🛡️", href: "/platform-admin", platformAdminOnly: true },
 ];
 
-export function AdminToolsMenu({ isAdmin }: { isAdmin: boolean }) {
-  const items = ITEMS.filter((it) => !it.adminOnly || isAdmin);
+export function AdminToolsMenu({
+  isAdmin,
+  isPlatformAdmin,
+}: {
+  isAdmin: boolean;
+  isPlatformAdmin: boolean;
+}) {
+  const items = ITEMS.filter(
+    (it) => (!it.adminOnly || isAdmin) && (!it.platformAdminOnly || isPlatformAdmin)
+  );
   const [open, setOpen] = useState(false);
   const router = useRouter();
 

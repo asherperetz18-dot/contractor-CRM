@@ -9,6 +9,7 @@ import {
   canViewEstimates,
   isAdminRole,
   isFieldRole,
+  isPlatformAdmin,
   isStrictAdmin,
 } from "@/lib/data/types";
 import { NAV, filterNavForProfile, sortNavEntries, type NavEntry } from "@/lib/nav";
@@ -148,7 +149,17 @@ export default async function AppLayout({
                 <NotificationBell />
                 <AiAssistantButton />
                 <QuickCreateMenu />
-                {isAdminRole(profile) && <AdminToolsMenu isAdmin={isStrictAdmin(profile)} />}
+                {/* isPlatformAdmin is independent of which company is
+                    selected, unlike everything else this menu holds -- so
+                    the button itself has to show for that reason alone,
+                    even in a company where this person holds no role at
+                    all. What's inside is still filtered per person. */}
+                {(isAdminRole(profile) || isPlatformAdmin(profile)) && (
+                  <AdminToolsMenu
+                    isAdmin={isStrictAdmin(profile)}
+                    isPlatformAdmin={isPlatformAdmin(profile)}
+                  />
+                )}
               </>
             )}
           </div>

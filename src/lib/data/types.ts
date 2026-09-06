@@ -43,6 +43,12 @@ export type Profile = {
   // Break-glass flag set in the database, not through the UI. Grants
   // Admin in every company and makes the account undemotable in-app.
   is_super_admin?: boolean;
+  // Operates the platform itself -- can send a setup link that creates a
+  // brand-new company (lib/actions/admin-invite.ts) and manage who else
+  // holds this. Deliberately independent of is_super_admin: one being
+  // true says nothing about the other, in either direction. See
+  // isPlatformAdmin below and migration 0132.
+  is_platform_admin?: boolean;
   created_at: string;
 };
 
@@ -150,6 +156,19 @@ export function isStrictAdmin(profile: Pick<Profile, "roles" | "is_super_admin">
 /** Cannot be demoted, archived or removed through the app, by anyone. */
 export function isSuperAdmin(profile: Pick<Profile, "is_super_admin"> | null) {
   return profile?.is_super_admin === true;
+}
+
+/**
+ * Operates the platform, not a company. Every other predicate in this
+ * file answers a question scoped to "the company currently selected";
+ * this one deliberately isn't -- it's read straight off the profile, the
+ * same way is_super_admin is, and it means something different: not
+ * "Admin everywhere," but "may send a setup link that creates a brand-new
+ * company, and may grant or revoke this same flag on someone else."
+ * isSuperAdmin does not imply this, and this does not imply isSuperAdmin.
+ */
+export function isPlatformAdmin(profile: Pick<Profile, "is_platform_admin"> | null) {
+  return profile?.is_platform_admin === true;
 }
 
 // Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office
