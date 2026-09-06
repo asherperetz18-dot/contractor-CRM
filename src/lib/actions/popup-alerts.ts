@@ -8,6 +8,7 @@ import {
   isAdminRole,
   isFieldRole,
 } from "@/lib/data/types";
+import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
 import { getTextAlerts, type FreshText } from "@/lib/actions/text-alerts";
 import type { PopupToast } from "@/lib/popup-shape";
 
@@ -92,6 +93,9 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
     canViewEstimates(profile) && (isAdminRole(profile) || profile.roles.includes("Bookkeeping"));
   const seesEstimates = canViewEstimates(profile);
   const worksLeads = canEditDispatch(profile);
+  // A rep is told about the rep's own customers, not the whole floor's
+  // -- same rule and same reasons as the bell (document-news-scope).
+  const ownDocsOnly = seesOnlyOwnDocuments(profile);
 
   // Texts keep their own role rule: the people who staff the phones,
   // not every role that can merely open the inbox. getTextAlerts checks
@@ -142,22 +146,35 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
             .limit(PER_KIND)
         : Promise.resolve({ data: [] }),
       seesEstimates
-        ? supabase
-            .from("estimates")
-            .select("id, doc_number, title, signed_at")
-            .eq("company_id", companyId)
-            .gt("signed_at", since)
-            .order("signed_at", { ascending: false })
-            .limit(PER_KIND)
+        ? (() => {
+            let q = supabase
+              .from("estimates")
+              .select("id, doc_number, title, signed_at")
+              .eq("company_id", companyId)
+              .gt("signed_at", since);
+            if (ownDocsOnly) q = q.eq("assigned_to", me);
+            return q.order("signed_at", { ascending: false }).limit(PER_KIND);
+          })()
         : Promise.resolve({ data: [] }),
       seesEstimates
-        ? supabase
-            .from("estimate_views")
-            .select("id, estimate_id, viewed_at")
-            .eq("company_id", companyId)
-            .gt("viewed_at", since)
-            .order("viewed_at", { ascending: false })
-            .limit(PER_KIND)
+        ? (ownDocsOnly
+            ? // The inner join is the scope: only views of documents
+              // assigned to this person survive the filter.
+              supabase
+                .from("estimate_views")
+                .select("id, estimate_id, viewed_at, estimates!inner(assigned_to)")
+                .eq("company_id", companyId)
+                .eq("estimates.assigned_to", me)
+                .gt("viewed_at", since)
+                .order("viewed_at", { ascending: false })
+                .limit(PER_KIND)
+            : supabase
+                .from("estimate_views")
+                .select("id, estimate_id, viewed_at")
+                .eq("company_id", companyId)
+                .gt("viewed_at", since)
+                .order("viewed_at", { ascending: false })
+                .limit(PER_KIND))
         : Promise.resolve({ data: [] }),
       // RLS already narrows a Sales rep to their own leads, so "every new
       // lead" means "every new lead you are allowed to see".

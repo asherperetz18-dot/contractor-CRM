@@ -10,6 +10,7 @@ import {
   paidTotalCents,
   type PortalPayment,
 } from "@/lib/data/types";
+import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
 import type { PopupKind } from "@/lib/popup-shape";
 
 export type BellItem = {
@@ -63,6 +64,9 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   const seesEstimates = canViewEstimates(profile);
   const worksLeads = canEditDispatch(profile);
   const me = profile.id;
+  // A rep's bell talks about the rep's own customers. See the module
+  // note on seesOnlyOwnDocuments for why, and which roles stay wide.
+  const ownDocsOnly = seesOnlyOwnDocuments(profile);
 
   const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts] =
     await Promise.all([
@@ -106,22 +110,35 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
             .limit(10)
         : Promise.resolve({ data: [] }),
       seesEstimates
-        ? supabase
-            .from("estimate_views")
-            .select("id, estimate_id, viewed_at")
-            .eq("company_id", companyId)
-            .gte("viewed_at", since48h)
-            .order("viewed_at", { ascending: false })
-            .limit(15)
+        ? (ownDocsOnly
+            ? // The inner join is the scope: only views of documents
+              // whose assigned rep is this person survive the filter.
+              supabase
+                .from("estimate_views")
+                .select("id, estimate_id, viewed_at, estimates!inner(assigned_to)")
+                .eq("company_id", companyId)
+                .eq("estimates.assigned_to", me)
+                .gte("viewed_at", since48h)
+                .order("viewed_at", { ascending: false })
+                .limit(15)
+            : supabase
+                .from("estimate_views")
+                .select("id, estimate_id, viewed_at")
+                .eq("company_id", companyId)
+                .gte("viewed_at", since48h)
+                .order("viewed_at", { ascending: false })
+                .limit(15))
         : Promise.resolve({ data: [] }),
       seesEstimates
-        ? supabase
-            .from("estimates")
-            .select("id, doc_number, title, signed_at")
-            .eq("company_id", companyId)
-            .gte("signed_at", since48h)
-            .order("signed_at", { ascending: false })
-            .limit(10)
+        ? (() => {
+            let q = supabase
+              .from("estimates")
+              .select("id, doc_number, title, signed_at")
+              .eq("company_id", companyId)
+              .gte("signed_at", since48h);
+            if (ownDocsOnly) q = q.eq("assigned_to", me);
+            return q.order("signed_at", { ascending: false }).limit(10);
+          })()
         : Promise.resolve({ data: [] }),
       supabase
         .from("project_checklist_items")
