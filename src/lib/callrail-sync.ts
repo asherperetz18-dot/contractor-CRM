@@ -1,7 +1,13 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
-import { normalizePhone } from "@/lib/data/types";
+import { leadForPhoneNumber, leadPhoneMatch } from "@/lib/data/lead-for-number";
+import {
+  phoneIndex,
+  phoneMatchInIndex,
+  rememberInIndex,
+  type LeadPhoneRow,
+  type PhoneMatch,
+} from "@/lib/data/phone-match";
 import { selectAll } from "@/lib/data/select-all";
 import { notifyNewLead } from "@/lib/notify-new-lead";
 import {
@@ -138,7 +144,7 @@ export type CallProcessOpts = {
   quiet?: boolean;
   /** Pre-built phone lookup for bulk sweeps -- per-call scans of the
    *  whole lead book would time a 90-day backfill out. */
-  matchLead?: (phone: string) => string | null;
+  matchLead?: (phone: string) => PhoneMatch;
   registerLead?: (phone: string, id: string) => void;
 };
 
@@ -155,22 +161,7 @@ export async function processCallRailCall(
   const from = call.customer_phone_number ?? "";
   if (!from) return { skipped: "no caller number" };
 
-  let leadId = opts?.matchLead
-    ? opts.matchLead(from)
-    : await leadForPhoneNumber(admin, companyId, from);
-  const source = leadSource(call.source);
   const marketing = marketingSourceLine(call);
-
-  if (!leadId) {
-    leadId = await createLeadFromCallRail(admin, companyId, {
-      name: call.customer_name ?? null,
-      phone: from,
-      source,
-      notes: marketing ? `Called in via ${marketing}` : "Called in (CallRail)",
-      quiet: opts?.quiet,
-    });
-    if (leadId) opts?.registerLead?.(from, leadId);
-  }
 
   // Only the facts CallRail owns. Disposition and the lead link are
   // deliberately absent: a rep may have set the disposition or re-filed
@@ -185,6 +176,10 @@ export async function processCallRailCall(
     marketing_source: marketing,
   };
 
+  // Have we imported this call before? Asked FIRST, ahead of anything
+  // to do with contacts. The sweep re-reads the last two days of calls
+  // four times a day, so a contact created above this line was a fresh
+  // duplicate of the same caller on every pass.
   const { data: existing } = await admin
     .from("call_logs")
     .select("id")
@@ -198,6 +193,27 @@ export async function processCallRailCall(
       .update(factsFromCallRail)
       .eq("id", (existing as { id: string }).id);
     return { created: false };
+  }
+
+  // A new contact only for a number nobody has. When several contacts
+  // share it the call is logged under the number alone and left for a
+  // person to file -- guessing would put a call on a customer who was
+  // never spoken to, and creating another card is how one caller turned
+  // into three.
+  const match = opts?.matchLead
+    ? opts.matchLead(from)
+    : await leadPhoneMatch(admin, companyId, from);
+  let leadId = match.kind === "one" ? match.leadId : null;
+
+  if (match.kind === "none") {
+    leadId = await createLeadFromCallRail(admin, companyId, {
+      name: call.customer_name ?? null,
+      phone: from,
+      source: leadSource(call.source),
+      notes: marketing ? `Called in via ${marketing}` : "Called in (CallRail)",
+      quiet: opts?.quiet,
+    });
+    if (leadId) opts?.registerLead?.(from, leadId);
   }
 
   const { error } = await admin.from("call_logs").insert({
@@ -356,34 +372,21 @@ export async function backfillCallRail(
   let created = 0;
 
   // The whole phone book once, then in-memory matching -- the same
-  // rules as leadForPhoneNumber (last 10 digits, both phone fields,
-  // and an ambiguous number matches nobody rather than someone).
-  const phoneToLead = new Map<string, string | null>();
-  const allLeads = await selectAll<{ id: string; phone: string | null; second_contact_phone: string | null }>(
-    (f, t) =>
-      admin
-        .from("leads")
-        .select("id, phone, second_contact_phone")
-        .eq("company_id", companyId)
-        .range(f, t)
+  // rules as leadPhoneMatch (last 10 digits, both phone fields, and a
+  // number several contacts share reported as "many" rather than as an
+  // unknown caller).
+  const allLeads = await selectAll<LeadPhoneRow>((f, t) =>
+    admin
+      .from("leads")
+      .select("id, phone, second_contact_phone")
+      .eq("company_id", companyId)
+      .range(f, t)
   );
-  for (const l of allLeads) {
-    for (const raw of [l.phone, l.second_contact_phone]) {
-      const digits = normalizePhone(raw ?? "");
-      if (digits.length < 10) continue;
-      phoneToLead.set(digits, phoneToLead.has(digits) ? null : l.id);
-    }
-  }
+  const index = phoneIndex(allLeads);
   const opts: CallProcessOpts = {
     quiet: true,
-    matchLead: (phone) => {
-      const digits = normalizePhone(phone);
-      return digits.length >= 10 ? (phoneToLead.get(digits) ?? null) : null;
-    },
-    registerLead: (phone, id) => {
-      const digits = normalizePhone(phone);
-      if (digits.length >= 10) phoneToLead.set(digits, id);
-    },
+    matchLead: (phone) => phoneMatchInIndex(index, phone),
+    registerLead: (phone, id) => rememberInIndex(index, phone, id),
   };
 
   for (const crCompanyId of creds.callrailCompanyIds) {
