@@ -14,6 +14,13 @@ import { portalBaseUrl } from "@/lib/portal/session";
 // stale behind.
 export const INVITE_TTL_DAYS = 7;
 
+// How long an unsent row gets the benefit of the doubt before createInvite
+// will rotate its token. sendEmail is one HTTPS call to Resend -- seconds,
+// not tens of seconds, even under load -- so this is a wide margin, not a
+// tight deadline: it exists to outlast a legitimate in-flight send, not to
+// bound one.
+const RETRY_GRACE_MS = 20_000;
+
 export type SignupInvite = {
   id: string;
   email: string;
@@ -66,7 +73,10 @@ export async function sentInviteForSession(
  *
  * The Checkout Session id is unique in the table, so a webhook delivered
  * twice -- or the webhook and the success page racing each other, which
- * is the normal case -- produces one invite and one email.
+ * is the normal case -- produces one invite and one email. That race is
+ * also why an existing row with no send time is not automatically a
+ * retry candidate: it's just as often the other concurrent caller's row,
+ * inserted moments ago and still being mailed out. See RETRY_GRACE_MS.
  *
  * The awkward case is a row that exists with no send time against it: the
  * insert worked and Resend then failed. The raw code from that attempt is
@@ -90,29 +100,53 @@ export async function createInvite(input: {
 
   const { data: existingRow } = await admin
     .from("signup_invites")
-    .select("id, invite_sent_at, consumed_at")
+    .select("id, token_hash, invite_sent_at, consumed_at, created_at")
     .eq("stripe_session_id", input.stripeSessionId)
     .maybeSingle();
   const existing = existingRow as
-    | { id: string; invite_sent_at: string | null; consumed_at: string | null }
+    | {
+        id: string;
+        token_hash: string;
+        invite_sent_at: string | null;
+        consumed_at: string | null;
+        created_at: string;
+      }
     | null;
 
   if (existing) {
     if (existing.consumed_at || existing.invite_sent_at) {
       return { id: existing.id, alreadySent: true };
     }
+
+    // A row this fresh is not a retry candidate -- it is the ordinary
+    // shape of the race this file already calls normal, caught one step
+    // earlier. The webhook and /welcome can both reach this branch for a
+    // row the FIRST caller only just inserted a moment ago and has not
+    // finished sending yet: markInviteSent happens after a real network
+    // call to Resend, so "not yet marked sent" does not mean "abandoned"
+    // for a good few seconds. Rotating the hash here would invalidate the
+    // link the original sender is mid-flight on. RETRY_GRACE_MS is far
+    // longer than a single Resend call ever takes; treating this as
+    // "somebody else has it" costs an extra few seconds before a
+    // genuinely failed send gets retried, which is cheap next to mailing
+    // a link that stops working the moment a second request touches it.
+    const ageMs = Date.now() - new Date(existing.created_at).getTime();
+    if (ageMs < RETRY_GRACE_MS) return { id: existing.id, alreadySent: true };
+
     const retryToken = newRawToken();
-    // .select() matters here, and not for the data. Without it a PostgREST
-    // update that matches no rows is indistinguishable from one that
-    // matched: both come back with no error. The select turns "somebody
-    // else sent this while I was reading it" -- the exact race this file
-    // says is normal -- into an empty result instead of a link whose hash
-    // was never stored, which the customer would click and be told was
-    // invalid.
+    // `.is("invite_sent_at", null)` alone is not exclusive: it stays true
+    // for every concurrent caller until the winner finishes sending and
+    // calls markInviteSent. Pinning the update to the exact token_hash
+    // just read turns it into a compare-and-swap on top of the age
+    // check above -- if two callers both clear the grace window at
+    // nearly the same instant, only the one whose read is still current
+    // wins, and the other's update matches zero rows, same as if the row
+    // had already been marked sent.
     const { data, error } = await admin
       .from("signup_invites")
       .update({ token_hash: hashToken(retryToken), expires_at: expiryFromNow() })
       .eq("id", existing.id)
+      .eq("token_hash", existing.token_hash)
       .is("invite_sent_at", null)
       .select("id");
     if (error) return { error: error.message };
