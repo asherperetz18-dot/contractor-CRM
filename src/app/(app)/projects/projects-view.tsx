@@ -469,6 +469,17 @@ export function ProjectsView({
                           </button>
                         </>
                       )}
+                      {" · "}
+                      {/* The person behind the job: the full client card on
+                          Contacts (calls, texts, appointments, files), via
+                          the same openLead deep link the reports and the
+                          dialer use -- its back button returns here. */}
+                      <Link
+                        className="proj-check-chip proj-client-chip"
+                        href={`/contacts?openLead=${p.leadId}&from=/projects`}
+                      >
+                        👤 Client
+                      </Link>
                     </div>
                     {(STATUS_TAG[p.status] ||
                       (canManage && p.status !== "complete" && p.status !== "cancelled")) && (
@@ -505,7 +516,12 @@ export function ProjectsView({
                     )}
                   </td>
                   <td>
-                    {p.customer}
+                    <Link
+                      className="proj-client-name"
+                      href={`/contacts?openLead=${p.leadId}&from=/projects`}
+                    >
+                      {p.customer}
+                    </Link>
                     {p.address && (
                       <div className="est-tax-note">
                         <a href={mapsUrl(p.address)} target="_blank" rel="noopener noreferrer">
