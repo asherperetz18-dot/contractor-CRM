@@ -210,14 +210,26 @@ export async function createCompanyWithDefaults(
   // whose owner has no row in it is a company nobody can open -- worse
   // than no company at all, and the one failure here worth unwinding.
   // Missing starter lists, by contrast, can be typed in by hand.
+  //
+  // Upsert, not insert: the companies row was just created above, which
+  // fires add_platform_admins_to_new_company_trigger (migration 0132) --
+  // if the owner is themselves a Platform Admin, that trigger has
+  // already given them a row here with granted_via_platform_admin true.
+  // The upsert overwrites it with the real owner's values, explicitly
+  // setting that flag back to false: they are a genuine owner of this
+  // company, not merely someone the platform granted a look into it.
   const [member, ...seeded] = await Promise.all([
-    admin.from("company_members").insert({
-      profile_id: ownerProfileId,
-      company_id: companyId,
-      roles: ["Office", "Admin"],
-      can_delete_leads: true,
-      status: "Active",
-    }),
+    admin.from("company_members").upsert(
+      {
+        profile_id: ownerProfileId,
+        company_id: companyId,
+        roles: ["Office", "Admin"],
+        can_delete_leads: true,
+        status: "Active",
+        granted_via_platform_admin: false,
+      },
+      { onConflict: "profile_id,company_id" }
+    ),
     admin.from("company_profile").insert({
       company_id: companyId,
       name,

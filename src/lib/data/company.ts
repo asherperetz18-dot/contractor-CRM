@@ -20,6 +20,8 @@ type CompanyMemberRow = {
   can_view_financials?: boolean;
   can_view_profit_loss?: boolean;
   is_dispatch_supervisor: boolean;
+  // Optional until migration 0132 has run, same reason.
+  granted_via_platform_admin?: boolean;
   profiles: {
     id: string;
     name: string | null;
@@ -34,6 +36,14 @@ type CompanyMemberRow = {
 // company_members row for that company. Replaces querying `profiles`
 // directly for roles/status/can_delete_leads, which are no longer
 // meaningful outside of a specific company.
+//
+// A Platform Admin's row here (migration 0132) is real -- the same
+// company_members row RLS reads to grant them access -- but it exists
+// because they operate the platform, not because this company hired
+// them, so it's filtered out of the one roster every consumer of this
+// function builds on: Users & Roles, assignment pickers, presence,
+// reports. All of them should see this company's actual team, not a
+// name nobody there recognizes.
 export async function getCompanyMembers(companyId: string): Promise<CompanyMember[]> {
   const supabase = await createClient();
   // "*" for the member row, same reason as getCurrentProfile: a column
@@ -46,7 +56,7 @@ export async function getCompanyMembers(companyId: string): Promise<CompanyMembe
 
   return ((data ?? []) as unknown as CompanyMemberRow[])
     .filter((row): row is CompanyMemberRow & { profiles: NonNullable<CompanyMemberRow["profiles"]> } =>
-      row.profiles !== null
+      row.profiles !== null && row.granted_via_platform_admin !== true
     )
     .map((row) => ({
       id: row.profiles.id,
