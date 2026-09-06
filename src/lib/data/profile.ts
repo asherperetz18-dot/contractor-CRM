@@ -16,6 +16,12 @@ export type Profile = {
   can_create_estimates: boolean;
   // Send Estimates switch -- see canSendEstimates in data/types.
   can_send_estimates: boolean;
+  // The two Accounting switches -- see canViewFinancials and
+  // canViewProfitLoss in data/accounting-access. Note these default OFF
+  // where can_send_estimates above defaults ON: an ability nobody had
+  // yesterday, rather than one being taken away.
+  can_view_financials: boolean;
+  can_view_profit_loss: boolean;
   // Dispatch Supervisor: runs the desk -- whole book, new leads, new
   // sources, assigns dispatchers. Only meaningful with the Dispatch role.
   is_dispatch_supervisor?: boolean;
@@ -135,6 +141,8 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_view_estimates: boolean;
     can_create_estimates: boolean;
     can_send_estimates?: boolean;
+    can_view_financials?: boolean;
+    can_view_profit_loss?: boolean;
     is_dispatch_supervisor: boolean;
   } | null;
   if (!membership) return null;
@@ -150,6 +158,12 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_create_estimates: membership.can_create_estimates,
     // Default true, matching the column: only an explicit false restricts.
     can_send_estimates: membership.can_send_estimates !== false,
+    // Default FALSE, matching columns added in 0127: only an explicit
+    // true grants. Before that migration runs both read as undefined,
+    // and undefined is off -- which costs nobody anything, because the
+    // roles whose job is the money hold it by role in accounting-access.
+    can_view_financials: membership.can_view_financials === true,
+    can_view_profit_loss: membership.can_view_profit_loss === true,
     is_dispatch_supervisor: membership.is_dispatch_supervisor === true,
     is_super_admin: identity?.is_super_admin === true,
     company_id: companyId,
