@@ -104,27 +104,38 @@ async function searchRadarId(
 /**
  * PropertyRadar's own reading of the address: the search box's first
  * suggestion for it, as criteria in PropertyRadar's spelling (its city
- * name for the house, its ZIP). Null when it offers nothing usable; any
- * trouble here just means one fewer search to try.
+ * name for the house, its ZIP). No search when it offers nothing usable;
+ * any trouble here just means one fewer search to try. The note is for
+ * the server log, so a failed pull shows what this call got back too.
  */
 async function suggestedSearch(
   headers: Record<string, string>,
   full: string
-): Promise<RadarSearch | null> {
+): Promise<{ search: RadarSearch | null; note: string }> {
   const line = addressLine(full);
-  if (!line) return null;
+  if (!line) return { search: null, note: "suggestion: no address" };
   try {
     const res = await fetch(
       `${API}/suggestions/SiteAddress?SuggestionInput=${encodeURIComponent(line)}&Limit=1`,
       { method: "POST", headers, body: JSON.stringify({}) }
     );
-    if (!res.ok) return null;
     const json = (await res.json().catch(() => null)) as {
       results?: { Label?: string; Criteria?: { name: string; value: (string | number)[] }[] }[];
+      error?: string;
+      message?: string;
     } | null;
-    return searchFromSuggestion(json?.results?.[0]);
+    if (!res.ok) {
+      return { search: null, note: `suggestion: ${res.status} ${apiComplaint(json) ?? ""}`.trim() };
+    }
+    const first = json?.results?.[0];
+    const search = searchFromSuggestion(first);
+    // The label and criteria names only -- enough to see what came back.
+    const shape = first
+      ? `${first.Label ?? "?"} [${(first.Criteria ?? []).map((c) => c.name).join(",")}]`
+      : "no results";
+    return { search, note: `suggestion: ${res.status} ${search ? "usable" : "unusable"} ${shape}` };
   } catch {
-    return null;
+    return { search: null, note: "suggestion: unreachable" };
   }
 }
 
@@ -138,12 +149,16 @@ async function findRadarId(
   headers: Record<string, string>,
   full: string
 ): Promise<{ radarId: string; via: string } | { error: string }> {
-  const searches = addressSearches(full, await suggestedSearch(headers, full));
-  if (!searches.length) return { error: noRecordMessage(full, searches) };
+  const suggested = await suggestedSearch(headers, full);
+  const searches = addressSearches(full, suggested.search);
+  if (!searches.length) {
+    console.warn("[propertyradar] unreadable address", { address: full, note: suggested.note });
+    return { error: noRecordMessage(full, searches) };
+  }
 
   let complaint: string | null = null;
   let anyAnswered = false;
-  const attempts: string[] = [];
+  const attempts: string[] = [suggested.note];
   for (const search of searches) {
     const r = await searchRadarId(headers, search);
     if (r.radarId) return { radarId: r.radarId, via: search.label };
