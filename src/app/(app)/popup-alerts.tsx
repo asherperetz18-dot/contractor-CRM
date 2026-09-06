@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { getPopupAlerts } from "@/lib/actions/popup-alerts";
 import type { FreshText } from "@/lib/actions/text-alerts";
 import { shapeToasts, type PopupToast } from "@/lib/popup-shape";
+import { pageTitle, tabTitle } from "@/lib/tab-title";
 import { readPopupPrefs, usePopupPrefs } from "./popup-prefs";
 import { PopupToastList } from "./popup-toast-list";
 import "./popup-alerts.css";
@@ -111,7 +112,6 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
   const [prefs, updatePrefs] = usePopupPrefs();
   const textsSeen = useRef<string | null>(null);
   const eventsSeen = useRef<string | null>(null);
-  const baseTitle = useRef<string>("");
   // Mirrors `count` for the poll closure, which must not restart on
   // every state change.
   const awaiting = useRef(0);
@@ -127,7 +127,6 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
   const eventsKey = `crm:events-seen:${companyId}`;
 
   useEffect(() => {
-    baseTitle.current = document.title;
     // Start from where this browser last left off, so a text that
     // arrived overnight still greets the morning with a toast -- but a
     // brand-new browser starts at "now" instead of replaying a month.
@@ -149,14 +148,14 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
 
     // The tab title carries the alert when the window is behind another
     // one -- and stands down there too, once the texts get answered from
-    // some other screen.
+    // some other screen. Always derived from the CURRENT title, never a
+    // copy taken at mount: this layout mounts once and outlives every
+    // in-app navigation, so a copy would be the first page's title
+    // forever, and writing it back each poll wiped out the title a page
+    // had set for itself -- the document number a proposal page sets so
+    // "Save as PDF" names the file after it.
     function setTitle() {
-      if (document.hidden) {
-        const n = awaiting.current + hiddenNew.current;
-        document.title = n > 0 ? `(${n}) New alerts — ${baseTitle.current}` : baseTitle.current;
-      } else {
-        document.title = baseTitle.current;
-      }
+      document.title = tabTitle(document.title, document.hidden, awaiting.current + hiddenNew.current);
     }
 
     async function poll() {
@@ -241,7 +240,7 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
     const onVisible = () => {
       if (!document.hidden) {
         hiddenNew.current = 0;
-        document.title = baseTitle.current;
+        document.title = pageTitle(document.title);
         poll();
       }
     };
@@ -253,7 +252,7 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
       for (const t of timers) clearTimeout(t);
-      document.title = baseTitle.current;
+      document.title = pageTitle(document.title);
     };
   }, [textsKey, eventsKey]);
 

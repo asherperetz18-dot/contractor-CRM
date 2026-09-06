@@ -300,12 +300,21 @@ export type PortalViewer = {
   companyId: string;
 };
 
+type PortalSessionRow = {
+  id: string;
+  lead_id: string;
+  company_id: string;
+  expires_at: string;
+};
+
 /**
- * Resolves the signed-in customer from the session cookie. Every portal
- * page and action goes through this -- it is the single place that decides
- * whose data the portal is allowed to touch.
+ * The live session behind the cookie, or null -- which customer this
+ * request belongs to, and nothing more. A pure read: no lead lookup, no
+ * access refresh, no last-seen stamp. For the places that only need the
+ * lead id (a page title naming the customer's own document) and should
+ * not pay for -- or double-write -- the full viewer resolution below.
  */
-export async function getPortalViewer(): Promise<PortalViewer | null> {
+export async function readPortalSession(): Promise<PortalSessionRow | null> {
   const store = await cookies();
   const raw = store.get(PORTAL_COOKIE)?.value;
   if (!raw) return null;
@@ -317,15 +326,22 @@ export async function getPortalViewer(): Promise<PortalViewer | null> {
     .eq("token_hash", hashToken(raw))
     .maybeSingle();
 
-  const session = sessionRow as {
-    id: string;
-    lead_id: string;
-    company_id: string;
-    expires_at: string;
-  } | null;
+  const session = sessionRow as PortalSessionRow | null;
   if (!session) return null;
   if (new Date(session.expires_at).getTime() < Date.now()) return null;
+  return session;
+}
 
+/**
+ * Resolves the signed-in customer from the session cookie. Every portal
+ * page and action goes through this -- it is the single place that decides
+ * whose data the portal is allowed to touch.
+ */
+export async function getPortalViewer(): Promise<PortalViewer | null> {
+  const session = await readPortalSession();
+  if (!session) return null;
+
+  const admin = createAdminClient();
   const { data: lead } = await admin
     .from("leads")
     .select("*")
