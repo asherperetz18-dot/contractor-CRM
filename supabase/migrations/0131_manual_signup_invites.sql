@@ -4,7 +4,7 @@
 --
 -- Every signup_invites row so far came from a paid Checkout session, so
 -- company_name and stripe_session_id were both guaranteed to exist by
--- the time a row did (0125). A manually-sent invite has neither: nobody
+-- the time a row did (0130). A manually-sent invite has neither: nobody
 -- has typed a company name yet, and there is no checkout to attach to.
 -- Both become optional here; the register page asks for a company name
 -- itself when the invite didn't already carry one (completeSignup in
