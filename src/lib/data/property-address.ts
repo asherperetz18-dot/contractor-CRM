@@ -204,6 +204,26 @@ export function streetNumberAndName(street: string): { number: number; name: str
   return name ? { number: Number(m[1]), name } : null;
 }
 
+/**
+ * The same house, however the card spells it: "10229 Oakdale Ave,
+ * Chatsworth CA 91311", "10229 OAKDALE AVE, Chatsworth, CA 91311, USA"
+ * and "10229 Oakdale Ave Chatsworth CA 91311" all give one key, so a
+ * report pulled for one contact is found for another at the same
+ * address. Street + ZIP (city when there is no ZIP); the whole line when
+ * the address can't be read. Empty for a blank address.
+ */
+export function addressKey(full: string): string {
+  const squash = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[.,#']/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const parts = splitAddress(full);
+  if (!parts) return squash(addressLine(full));
+  return `${squash(parts.street)}|${squash(parts.zip ?? parts.city ?? parts.state ?? "")}`;
+}
+
 /** The address as one line without the country, for the suggestion lookup. */
 export function addressLine(full: string): string {
   return full
