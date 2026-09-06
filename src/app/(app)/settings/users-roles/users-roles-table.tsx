@@ -8,6 +8,11 @@ import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { APP_ROLES, isSuperAdmin, type AppRole, type Profile } from "@/lib/data/types";
 import {
+  canViewFinancials,
+  FINANCIALS_ALWAYS_ROLES,
+  PROFIT_LOSS_ALWAYS_ROLES,
+} from "@/lib/data/accounting-access";
+import {
   addUserToCompany,
   createUser,
   findUserByEmail,
@@ -18,6 +23,8 @@ import {
   updateCanCreateEstimates,
   updateCanSendEstimates,
   updateCanViewEstimates,
+  updateCanViewFinancials,
+  updateCanViewProfitLoss,
   updateUserProfile,
   updateUserRoles,
 } from "@/lib/actions/users";
@@ -203,6 +210,14 @@ export function UsersRolesTable({
     await runSwitch(u, () => updateCanSendEstimates(u.id, !u.can_send_estimates));
   }
 
+  async function handleToggleViewFinancials(u: Profile) {
+    await runSwitch(u, () => updateCanViewFinancials(u.id, !u.can_view_financials));
+  }
+
+  async function handleToggleViewProfitLoss(u: Profile) {
+    await runSwitch(u, () => updateCanViewProfitLoss(u.id, !u.can_view_profit_loss));
+  }
+
   function openEdit(u: Profile) {
     setEditingUser(u);
     setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "", password: "" });
@@ -334,8 +349,9 @@ export function UsersRolesTable({
           <p className="ur-scroll-hint">
             More columns to the right — <strong>Can Delete Leads</strong>,{" "}
             <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong>,{" "}
-            <strong>Create Estimates</strong> and <strong>Send Estimates</strong>. Scroll the
-            table sideways to reach them.
+            <strong>Create Estimates</strong>, <strong>Send Estimates</strong>,{" "}
+            <strong>View Financials</strong> and <strong>View Profit &amp; Loss</strong>.
+            Scroll the table sideways to reach them.
           </p>
         )}
         <div className="ur-table-scroll" ref={tableScrollRef}>
@@ -351,6 +367,8 @@ export function UsersRolesTable({
               <th>View Estimates</th>
               <th>Create Estimates</th>
               <th>Send Estimates</th>
+              <th>View Financials</th>
+              <th>View Profit &amp; Loss</th>
               <th className="right">Status</th>
             </tr>
           </thead>
@@ -581,6 +599,70 @@ export function UsersRolesTable({
                     </span>
                   )}
                 </td>
+                {/* View Financials: Bills to Pay, Money to Collect,
+                    Payments. Office, Admin and Bookkeeping hold these by
+                    role, so they read "Always" rather than showing a
+                    switch that could not take the money away from them.
+                    Everyone else starts OFF -- this one grants. */}
+                <td>
+                  {FINANCIALS_ALWAYS_ROLES.some((role) => u.roles.includes(role)) ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleViewFinancials(u)}
+                      title={
+                        u.can_view_financials
+                          ? "Turn off the money screens — also removes Profit & Loss"
+                          : "Let this person open Bills to Pay, Money to Collect and Payments"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_view_financials ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  )}
+                </td>
+                {/* View Profit & Loss, separate on purpose: chasing
+                    receivables and reading company profit are different
+                    jobs. Only Office and Admin hold it outright --
+                    Bookkeeping runs the money but is not shown profit
+                    until someone says so. The report is built from the
+                    financial screens, so the switch only appears once
+                    those are open. */}
+                <td>
+                  {PROFIT_LOSS_ALWAYS_ROLES.some((role) => u.roles.includes(role)) ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : canViewFinancials(u) ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleViewProfitLoss(u)}
+                      title={
+                        u.can_view_profit_loss
+                          ? "Turn off the Profit & Loss report"
+                          : "Let this person read the Profit & Loss report"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_view_profit_loss ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone" title="Turn on View Financials first">
+                      —
+                    </span>
+                  )}
+                </td>
                 <td className="right">
                   <button
                     className="ur-toggle-btn"
@@ -605,7 +687,7 @@ export function UsersRolesTable({
                   {/* Left-aligned explicitly: as the row's last cell it
                       would otherwise inherit the Status column's right
                       alignment and hang off the edge. */}
-                  <td colSpan={10} style={{ paddingTop: 0, textAlign: "left" }}>
+                  <td colSpan={12} style={{ paddingTop: 0, textAlign: "left" }}>
                     <p className="error-note" style={{ margin: 0 }} role="alert">
                       {switchError.message}
                     </p>
