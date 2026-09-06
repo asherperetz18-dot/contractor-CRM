@@ -11,6 +11,7 @@ import {
   canViewFinancials,
   FINANCIALS_ALWAYS_ROLES,
   PROFIT_LOSS_ALWAYS_ROLES,
+  type AccountingFlags,
 } from "@/lib/data/accounting-access";
 import {
   addUserToCompany,
@@ -31,6 +32,13 @@ import {
 import { ReassignWorkModal, type ReassignMode } from "./reassign-work-modal";
 
 type StatusTab = "Active" | "Archived" | "All";
+
+/**
+ * One row of the roster: Profile plus the two accounting flags, which
+ * live alongside it rather than inside it -- see AccountingFlags in
+ * data/accounting-access. Matches what getCompanyMembers returns.
+ */
+type MemberRow = Profile & AccountingFlags;
 
 const NEW_USER_BLANK = { name: "", email: "", phone: "", password: "" };
 
@@ -80,7 +88,7 @@ export function UsersRolesTable({
   users,
   isAdmin,
 }: {
-  users: Profile[];
+  users: MemberRow[];
   /** Admin role itself. Office may manage people but not mint Admins. */
   isAdmin: boolean;
 }) {
@@ -102,8 +110,8 @@ export function UsersRolesTable({
   const [switchError, setSwitchError] = useState<{ userId: string; message: string } | null>(
     null
   );
-  const [editingUser, setEditingUser] = useState<Profile | null>(null);
-  const [reassign, setReassign] = useState<{ user: Profile; mode: ReassignMode } | null>(null);
+  const [editingUser, setEditingUser] = useState<MemberRow | null>(null);
+  const [reassign, setReassign] = useState<{ user: MemberRow; mode: ReassignMode } | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [editPending, setEditPending] = useState(false);
   const [editError, setEditError] = useState("");
@@ -138,7 +146,7 @@ export function UsersRolesTable({
    * Admin -- is a sentence the person can act on, and it belongs next to
    * the thing they clicked, not somewhere they have scrolled past.
    */
-  async function runSwitch(u: Profile, save: () => Promise<{ error?: string }>) {
+  async function runSwitch(u: MemberRow, save: () => Promise<{ error?: string }>) {
     const res = await save();
     setSwitchError(res.error ? { userId: u.id, message: res.error } : null);
     refresh();
@@ -166,7 +174,7 @@ export function UsersRolesTable({
   // Archiving someone who still owns live work strands it exactly as
   // removal does, so the handover prompt runs first either way. Turning
   // an archived user back on has nothing to hand over.
-  async function handleToggleStatus(u: Profile) {
+  async function handleToggleStatus(u: MemberRow) {
     if (u.status === "Active") {
       setReassign({ user: u, mode: "archive" });
       return;
@@ -183,42 +191,42 @@ export function UsersRolesTable({
     refresh();
   }
 
-  async function handleToggleRole(u: Profile, role: AppRole) {
+  async function handleToggleRole(u: MemberRow, role: AppRole) {
     const next = u.roles.includes(role)
       ? u.roles.filter((r) => r !== role)
       : [...u.roles, role];
     await runSwitch(u, () => updateUserRoles(u.id, next));
   }
 
-  async function handleToggleDispatchSupervisor(u: Profile) {
+  async function handleToggleDispatchSupervisor(u: MemberRow) {
     await runSwitch(u, () => updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor));
   }
 
-  async function handleToggleCanDelete(u: Profile) {
+  async function handleToggleCanDelete(u: MemberRow) {
     await runSwitch(u, () => updateCanDeleteLeads(u.id, !u.can_delete_leads));
   }
 
-  async function handleToggleViewEstimates(u: Profile) {
+  async function handleToggleViewEstimates(u: MemberRow) {
     await runSwitch(u, () => updateCanViewEstimates(u.id, !u.can_view_estimates));
   }
 
-  async function handleToggleCreateEstimates(u: Profile) {
+  async function handleToggleCreateEstimates(u: MemberRow) {
     await runSwitch(u, () => updateCanCreateEstimates(u.id, !u.can_create_estimates));
   }
 
-  async function handleToggleSendEstimates(u: Profile) {
+  async function handleToggleSendEstimates(u: MemberRow) {
     await runSwitch(u, () => updateCanSendEstimates(u.id, !u.can_send_estimates));
   }
 
-  async function handleToggleViewFinancials(u: Profile) {
+  async function handleToggleViewFinancials(u: MemberRow) {
     await runSwitch(u, () => updateCanViewFinancials(u.id, !u.can_view_financials));
   }
 
-  async function handleToggleViewProfitLoss(u: Profile) {
+  async function handleToggleViewProfitLoss(u: MemberRow) {
     await runSwitch(u, () => updateCanViewProfitLoss(u.id, !u.can_view_profit_loss));
   }
 
-  function openEdit(u: Profile) {
+  function openEdit(u: MemberRow) {
     setEditingUser(u);
     setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "", password: "" });
     setEditError("");
@@ -280,7 +288,7 @@ export function UsersRolesTable({
     refresh();
   }
 
-  function handleRemoveFromCompany(u: Profile) {
+  function handleRemoveFromCompany(u: MemberRow) {
     setReassign({ user: u, mode: "remove" });
   }
 
