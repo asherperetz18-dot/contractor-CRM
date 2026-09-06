@@ -44,10 +44,12 @@ export type Profile = {
   // Admin in every company and makes the account undemotable in-app.
   is_super_admin?: boolean;
   // Operates the platform itself -- can send a setup link that creates a
-  // brand-new company (lib/actions/admin-invite.ts) and manage who else
-  // holds this. Deliberately independent of is_super_admin: one being
-  // true says nothing about the other, in either direction. See
-  // isPlatformAdmin below and migration 0132.
+  // brand-new company (lib/actions/admin-invite.ts), manage who else
+  // holds this, and is kept (by a database trigger, migration 0132) as a
+  // real Office+Admin member of every company on the platform, not just
+  // ones actually joined. Deliberately independent of is_super_admin:
+  // one being true says nothing about the other, in either direction.
+  // See isPlatformAdmin below.
   is_platform_admin?: boolean;
   created_at: string;
 };
@@ -162,9 +164,18 @@ export function isSuperAdmin(profile: Pick<Profile, "is_super_admin"> | null) {
  * Operates the platform, not a company. Every other predicate in this
  * file answers a question scoped to "the company currently selected";
  * this one deliberately isn't -- it's read straight off the profile, the
- * same way is_super_admin is, and it means something different: not
- * "Admin everywhere," but "may send a setup link that creates a brand-new
- * company, and may grant or revoke this same flag on someone else."
+ * same way is_super_admin is.
+ *
+ * Two things follow from this being true, one checked here and one not:
+ * this predicate gates sending a setup link that creates a brand-new
+ * company and granting/revoking itself on someone else (see
+ * lib/actions/admin-invite.ts and lib/actions/platform-admin.ts). The
+ * broader consequence -- becoming a real Office+Admin member of every
+ * company on the platform -- is not decided here at all; it's a database
+ * trigger (migration 0132) reacting to the same column, so it applies
+ * consistently whether the flag changed through this app's own actions
+ * or a hand-run SQL statement.
+ *
  * isSuperAdmin does not imply this, and this does not imply isSuperAdmin.
  */
 export function isPlatformAdmin(profile: Pick<Profile, "is_platform_admin"> | null) {

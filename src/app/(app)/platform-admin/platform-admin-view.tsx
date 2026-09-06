@@ -119,9 +119,12 @@ function PlatformAdminsCard({ admins, selfId }: { admins: PlatformAdminRow[]; se
     <div className="cp-card">
       <div className="cp-card-head">🛡️ Platform Admins</div>
       <p className="cp-card-sub">
-        Separate from being Office or Admin of any one company. Holding this
-        is what lets someone invite a business above, and grant or revoke this
-        same access on someone else.
+        Holding this makes someone a real Office + Admin member of{" "}
+        <strong>every company on the platform</strong>, present and future —
+        not just the ones they&apos;d otherwise belong to. It&apos;s also what lets
+        them invite a business above, and grant or revoke this same access on
+        someone else. Revoking it removes that access again, except from any
+        company they were already a genuine member of on their own.
       </p>
 
       {admins.length === 0 ? (
