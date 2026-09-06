@@ -1,0 +1,68 @@
+/* The note on a checklist step.
+
+   It sits in the empty stretch of the step row -- the space to the right
+   of the date and the owner -- and stretches to fill it, so a long note
+   stays readable and a step with no note still shows where to type one.
+
+   Its own file rather than globals.css: that file is 176KB and this is
+   thirty lines. Colours borrow the same token and fallback the date box
+   next to it uses, so the two controls can't drift apart. */
+
+.proj-check-note-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 200px;
+  min-width: 110px;
+}
+
+.proj-check-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 2px 8px;
+  border: 1px dashed var(--rule, #d8d3c8);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+/* Dashed while empty (an invitation), solid once it holds something (a
+   fact). */
+.proj-check-note.has-note {
+  border-style: solid;
+}
+.proj-check-note:hover:not(:disabled),
+.proj-check-note:focus {
+  border-style: solid;
+  border-color: #8c8578;
+}
+.proj-check-note:focus {
+  background: #fff;
+  outline: none;
+}
+.proj-check-note::placeholder {
+  opacity: 0.5;
+}
+.proj-check-note:disabled {
+  opacity: 0.6;
+}
+
+/* "Saving…" / "Saved", in the same quiet voice as the rest of the row. */
+.proj-check-note-flag {
+  font-size: 11px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+/* The crew's copy: same note, read-only, one line. */
+.proj-check-note-text {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

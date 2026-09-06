@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canEditChecklists, isAdminRole } from "@/lib/data/types";
+import {
+  cleanChecklistNote,
+  isMissingNoteColumn,
+  RUN_NOTE_MIGRATION,
+} from "@/lib/data/checklist-note";
 import { normalizeTemplateItems, dueFromOffset, type TemplateItem } from "@/lib/checklist-auto";
 
 export type ChecklistTemplate = {
@@ -23,6 +28,8 @@ export type ProjectChecklistItem = {
   assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
+  /** Optional: the column arrives with migration 0128. */
+  note?: string | null;
 };
 
 const MAX_ITEMS = 100;
@@ -234,12 +241,18 @@ export async function setProjectChecklistItemDone(
 }
 
 /**
- * Sets a step's planned date and/or owner. Same gate as reshaping the
- * list: dates and owners are plans, and plans are Office/Admin work.
+ * Sets a step's planned date, owner and/or note. Same gate as reshaping
+ * the list: dates, owners and notes are the plan, and the plan is
+ * Office/Admin/Production work.
+ *
+ * note is written only when the caller passes one. A screen that is
+ * saving a date must not also send an empty note -- before migration
+ * 0128 that column does not exist, and naming it would fail a save that
+ * has nothing to do with notes.
  */
 export async function updateProjectChecklistItem(
   itemId: string,
-  patch: { dueDate?: string | null; assignedTo?: string | null }
+  patch: { dueDate?: string | null; assignedTo?: string | null; note?: string | null }
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -248,6 +261,7 @@ export async function updateProjectChecklistItem(
   const fields: Record<string, string | null> = {};
   if (patch.dueDate !== undefined) fields.due_date = patch.dueDate || null;
   if (patch.assignedTo !== undefined) fields.assigned_to = patch.assignedTo || null;
+  if (patch.note !== undefined) fields.note = cleanChecklistNote(patch.note);
   if (!Object.keys(fields).length) return {};
 
   const supabase = await createClient();
@@ -257,7 +271,9 @@ export async function updateProjectChecklistItem(
     .eq("id", itemId)
     .eq("company_id", profile.company_id)
     .select("id");
-  if (error) return { error: error.message };
+  // "Could not find the 'note' column ... in the schema cache" is not a
+  // bug report, it is a migration that hasn't been run -- so say that.
+  if (error) return { error: isMissingNoteColumn(error.message) ? RUN_NOTE_MIGRATION : error.message };
   if (!data?.length) return { error: "Couldn't save that step." };
   revalidatePath("/projects");
   return {};
