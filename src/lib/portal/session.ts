@@ -1,7 +1,7 @@
 import "server-only";
-import crypto from "crypto";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hashLinkToken as hashToken, newLinkToken as newRawToken } from "@/lib/crypto/link-tokens";
 import type { Lead } from "@/lib/data/types";
 
 export const PORTAL_COOKIE = "portal_session";
@@ -62,14 +62,10 @@ export function streetNumberOf(address: string | null): string | null {
 }
 
 // Only hashes are ever stored, so a dump of portal_login_tokens or
-// portal_sessions can't be replayed to sign in as a customer.
-function hashToken(raw: string): string {
-  return crypto.createHash("sha256").update(raw).digest("hex");
-}
-
-function newRawToken(): string {
-  return crypto.randomBytes(32).toString("base64url");
-}
+// portal_sessions can't be replayed to sign in as a customer. hashToken /
+// newRawToken are lib/crypto/link-tokens.ts, imported under their old
+// names above -- shared with the signup invites that use the same scheme
+// rather than kept as a second copy that can drift.
 
 /**
  * Issues a single-use magic-link token for a lead. Returns the raw token,

@@ -5,7 +5,19 @@ import { getSigningKeys } from "@/lib/supabase/jwks";
 // /portal is the customer-facing Client Portal. It runs on its own
 // magic-link session (see lib/portal/session.ts), not Supabase Auth, so it
 // must not be bounced to the staff login page.
-const PUBLIC_PATHS = ["/login", "/auth", "/portal", "/forgot-password", "/reset-password"];
+// /get-started, /welcome and /register are the self-serve signup: whoever
+// walks them has no account yet by definition, so bouncing them to the
+// login page would close the only door in.
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth",
+  "/portal",
+  "/forgot-password",
+  "/reset-password",
+  "/get-started",
+  "/welcome",
+  "/register",
+];
 
 export async function updateSession(request: NextRequest) {
   // Rebuilt fresh each time (not snapshotted once) so it always reflects

@@ -1,116 +1,60 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { login, signup, type AuthFormState } from "@/lib/actions/auth";
+import { useActionState } from "react";
+import { login, type AuthFormState } from "@/lib/actions/auth";
 
+/**
+ * Sign-in only.
+ *
+ * This form used to have a "Create account" tab wired to a plain
+ * supabase.auth.signUp. It made a login and nothing else: no company, no
+ * company_members row, and every page in the app reads permissions from
+ * that row -- so the account it produced could sign in and immediately be
+ * redirected back here, forever. New businesses now come in through
+ * /get-started, which creates the company alongside the account. Staff
+ * are still added by an Office/Admin user in Settings -> Users & Roles.
+ */
 export function LoginForm() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [loginState, loginAction, loginPending] = useActionState<
-    AuthFormState,
-    FormData
-  >(login, undefined);
-  const [signupState, signupAction, signupPending] = useActionState<
-    AuthFormState,
-    FormData
-  >(signup, undefined);
-
-  const state = mode === "login" ? loginState : signupState;
+  const [state, action, pending] = useActionState<AuthFormState, FormData>(
+    login,
+    undefined
+  );
 
   return (
     <div className="auth-shell">
       <div className="auth-card">
         <h1 className="auth-title">Contractor CRM</h1>
-        <p className="auth-sub">
-          {mode === "login" ? "Sign in to your account" : "Create an account"}
-        </p>
+        <p className="auth-sub">Sign in to your account</p>
 
-        {mode === "login" ? (
-          <form action={loginAction} className="auth-form">
-            <label className="field">
-              <span className="field-label">Email</span>
-              <input type="email" name="email" required autoComplete="email" />
-            </label>
-            <label className="field">
-              <span className="field-label">Password</span>
-              <input
-                type="password"
-                name="password"
-                required
-                autoComplete="current-password"
-              />
-            </label>
-            {state?.error && <p className="error-note">{state.error}</p>}
-            <button
-              type="submit"
-              className="btn-primary auth-submit"
-              disabled={loginPending}
-            >
-              {loginPending ? "Signing in…" : "Sign in"}
-            </button>
-            <p className="auth-switch" style={{ marginTop: 8 }}>
-              <a href="/forgot-password">Forgot password?</a>
-            </p>
-          </form>
-        ) : (
-          <form action={signupAction} className="auth-form">
-            <label className="field">
-              <span className="field-label">Name</span>
-              <input type="text" name="name" required autoComplete="name" />
-            </label>
-            <label className="field">
-              <span className="field-label">Email</span>
-              <input type="email" name="email" required autoComplete="email" />
-            </label>
-            <label className="field">
-              <span className="field-label">Password</span>
-              <input
-                type="password"
-                name="password"
-                required
-                minLength={6}
-                autoComplete="new-password"
-              />
-            </label>
-            {state?.error && <p className="error-note">{state.error}</p>}
-            {state?.info && (
-              <p className="hint-note" style={{ color: "var(--success)" }}>
-                {state.info}
-              </p>
-            )}
-            <button
-              type="submit"
-              className="btn-primary auth-submit"
-              disabled={signupPending}
-            >
-              {signupPending ? "Creating account…" : "Create account"}
-            </button>
-          </form>
-        )}
+        <form action={action} className="auth-form">
+          <label className="field">
+            <span className="field-label">Email</span>
+            <input type="email" name="email" required autoComplete="email" />
+          </label>
+          <label className="field">
+            <span className="field-label">Password</span>
+            <input
+              type="password"
+              name="password"
+              required
+              autoComplete="current-password"
+            />
+          </label>
+          {state?.error && <p className="error-note">{state.error}</p>}
+          <button
+            type="submit"
+            className="btn-primary auth-submit"
+            disabled={pending}
+          >
+            {pending ? "Signing in…" : "Sign in"}
+          </button>
+          <p className="auth-switch" style={{ marginTop: 8 }}>
+            <a href="/forgot-password">Forgot password?</a>
+          </p>
+        </form>
 
         <p className="auth-switch">
-          {mode === "login" ? (
-            <>
-              Don&apos;t have an account?{" "}
-              <a
-                onClick={() => setMode("signup")}
-                role="button"
-                style={{ cursor: "pointer" }}
-              >
-                Sign up
-              </a>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
-              <a
-                onClick={() => setMode("login")}
-                role="button"
-                style={{ cursor: "pointer" }}
-              >
-                Sign in
-              </a>
-            </>
-          )}
+          New business? <a href="/get-started">Start an account</a>
         </p>
       </div>
     </div>

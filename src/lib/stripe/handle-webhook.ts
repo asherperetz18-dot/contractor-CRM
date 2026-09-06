@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { stripeClient, type StripeEnv } from "@/lib/stripe-env";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
+import { provisionSignup } from "@/lib/signup/provision";
 
 /**
  * Applies a verified Stripe event to the payment record.
@@ -47,6 +48,40 @@ export async function handleStripeWebhook(
   }
 
   const admin = createAdminClient();
+
+  // A CRM signup, not a contractor collecting from their own customer.
+  // Only the platform endpoint can carry one -- a company's own Stripe
+  // account never sells this -- so companyId being absent is part of the
+  // test rather than an accident. Handled before the portal_payments
+  // paths below because it touches none of the same rows.
+  if (
+    !companyId &&
+    (event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded")
+  ) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.kind === "crm_signup") {
+      // Both events fire for the same bank debit -- once on checkout,
+      // once when it settles -- and Stripe retries on any non-2xx.
+      // provisionSignup is written to be called repeatedly: the unique
+      // stripe_session_id column means one invite and one email.
+      // The session object comes from the event Stripe signed, which is
+      // the same object provisionSignup would otherwise fetch back. Not
+      // passing it meant a round trip per delivery, and a bank debit
+      // delivers at least twice.
+      const result = await provisionSignup(session.id, session);
+
+      // A failure that another attempt could fix -- the mail provider
+      // was down, the database refused a write -- is answered with a 500
+      // so Stripe retries it. Someone has paid and is waiting for this
+      // email; swallowing the error behind a 200 is how they end up with
+      // a charge and no account.
+      if (!result.ok && result.retryable) {
+        return NextResponse.json({ error: result.error }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+  }
 
   const applyToSession = async (sessionId: string, patch: Record<string, unknown>) => {
     let query = admin.from("portal_payments").update(patch).eq("stripe_session_id", sessionId);
