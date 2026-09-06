@@ -44,7 +44,7 @@ alter table profiles
 -- enough that "who did this" should have an answer that isn't "check
 -- everyone's memory" -- unlike is_super_admin, which has never had an
 -- in-app grant path at all and so never needed one.
-create table platform_admin_audit (
+create table if not exists platform_admin_audit (
   id uuid primary key default gen_random_uuid(),
   actor_profile_id uuid references profiles (id) on delete set null,
   target_profile_id uuid references profiles (id) on delete set null,
@@ -52,7 +52,7 @@ create table platform_admin_audit (
   created_at timestamptz not null default now()
 );
 
-create index platform_admin_audit_target_idx on platform_admin_audit (target_profile_id);
+create index if not exists platform_admin_audit_target_idx on platform_admin_audit (target_profile_id);
 
 -- RLS on with no policies: reached only through the service-role client,
 -- from lib/actions/platform-admin.ts, which does its own is_platform_admin
