@@ -100,7 +100,7 @@ function isMissingFunction(error: QueryError | null): boolean {
  * The insert itself, guarded against two calls from the same new number
  * arriving at the same moment.
  *
- * create_lead_for_unknown_caller (migration 0128) takes an advisory lock
+ * create_lead_for_unknown_caller (migration 0129) takes an advisory lock
  * on (company, number), re-reads under it, and only inserts if nobody
  * has the number -- so the loser of the race is handed the winner's
  * contact instead of making a second one. Reading and writing from here
@@ -136,13 +136,17 @@ async function insertUnknownCallerLead(
     return { leadId: row?.lead_id ?? null, created: row?.created === true };
   }
 
-  if (!isMissingFunction(error as QueryError)) return { leadId: null, created: false };
+  // Anything other than "the function is not there" is a real failure,
+  // and it must not silently swallow a new caller: fall through to the
+  // plain insert so the contact is still made, and log what went wrong.
+  if (!isMissingFunction(error as QueryError)) {
+    console.error("[callrail] create_lead_for_unknown_caller failed", error);
+  } else {
+    console.warn(
+      "[callrail] run supabase/migrations/0129_one_contact_per_new_caller.sql in the Supabase SQL editor -- new contacts are unguarded until then"
+    );
+  }
 
-  // Migration 0128 not run yet: fall back to exactly what this did
-  // before, so merging without running the SQL changes nothing.
-  console.warn(
-    "[callrail] run supabase/migrations/0128_one_contact_per_new_caller.sql in the Supabase SQL editor -- new contacts are unguarded until then"
-  );
   const { data: inserted, error: insertError } = await admin
     .from("leads")
     .insert({
