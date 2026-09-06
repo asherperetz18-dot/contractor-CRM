@@ -132,6 +132,16 @@ const LIBRARY: Category[] = [
     name: "Estimates & Money",
     tutorials: [
       {
+        id: "profit-loss",
+        title: "Profit & Loss",
+        kicker: "Deep dive · 2 steps · 2 min",
+        desc: "What the company actually earns — by job, with overhead taken off.",
+        steps: [
+          { img: T("tut-pl"), caption: "Profit & Loss reads the money you already track — payments, job costs, vendor bills — as one statement: income, job costs, gross profit, overhead, net profit. Pick the period, then pick the reading: Cash counts money that actually moved; Accrual counts what was billed and owed, paid or not. The By-job table shows each job's income, costs and margin for the period." },
+          { img: T("tut-pl-overhead"), caption: "Overhead is what gross profit hides: rent, insurance, the truck. Enter those in Bills to Pay with the job left as \"No job — overhead\" and they land here, taking the report past gross to real net profit. Who sees this page is its own switch — Settings › Users & Roles › View Profit & Loss — separate from View Financials, so someone can chase invoices all day without being shown what the company earns." },
+        ],
+      },
+      {
         id: "money-to-collect",
         title: "Money to Collect",
         kicker: "Deep dive · 2 steps · 1.5 min",
