@@ -1,6 +1,12 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/data/types";
+import type { AccountingFlags } from "@/lib/data/accounting-access";
+
+// A roster row: everything Profile carries, plus the two accounting
+// flags. They are not on Profile itself because only this roster and
+// the Users & Roles table read another person's money permissions.
+export type CompanyMember = Profile & AccountingFlags;
 
 type CompanyMemberRow = {
   roles: Profile["roles"];
@@ -8,6 +14,11 @@ type CompanyMemberRow = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // Optional until migration 0126 has run -- see the select below.
+  can_send_estimates?: boolean;
+  // Optional until migration 0127 has run, same reason.
+  can_view_financials?: boolean;
+  can_view_profit_loss?: boolean;
   is_dispatch_supervisor: boolean;
   profiles: {
     id: string;
@@ -23,11 +34,14 @@ type CompanyMemberRow = {
 // company_members row for that company. Replaces querying `profiles`
 // directly for roles/status/can_delete_leads, which are no longer
 // meaningful outside of a specific company.
-export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
+export async function getCompanyMembers(companyId: string): Promise<CompanyMember[]> {
   const supabase = await createClient();
+  // "*" for the member row, same reason as getCurrentProfile: a column
+  // named here before its migration has run would empty the whole
+  // roster, and a missing column reading as undefined is harmless.
   const { data } = await supabase
     .from("company_members")
-    .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, is_dispatch_supervisor, profiles(id, name, email, phone, created_at, is_super_admin)")
+    .select("*, profiles(id, name, email, phone, created_at, is_super_admin)")
     .eq("company_id", companyId);
 
   return ((data ?? []) as unknown as CompanyMemberRow[])
@@ -44,6 +58,13 @@ export async function getCompanyMembers(companyId: string): Promise<Profile[]> {
       can_delete_leads: row.can_delete_leads,
       can_view_estimates: row.can_view_estimates,
       can_create_estimates: row.can_create_estimates,
+      can_send_estimates: row.can_send_estimates !== false,
+      // Default FALSE, unlike send above: an ability nobody had before,
+      // rather than one being taken away. Undefined (0127 not yet run)
+      // reads as off, which costs nobody anything -- Office, Admin and
+      // Bookkeeping hold the money screens by role.
+      can_view_financials: row.can_view_financials === true,
+      can_view_profit_loss: row.can_view_profit_loss === true,
       is_dispatch_supervisor: row.is_dispatch_supervisor === true,
       is_super_admin: row.profiles.is_super_admin === true,
       created_at: row.profiles.created_at,

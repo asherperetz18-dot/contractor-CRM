@@ -13,10 +13,23 @@ import { useEffect, useRef } from "react";
  *
  * The print stylesheet in globals.css is what makes the output a clean
  * document -- without it the app shell clips the page.
+ *
+ * `title` is the file name. Every browser names a saved PDF after
+ * document.title, so a document page passes its number ("EST-1048") and
+ * the dialog suggests EST-1048.pdf instead of Contractor_CRM.pdf. The
+ * page also sets the same title through its metadata; writing it here
+ * too, right before the dialog opens, means the file name never depends
+ * on whether that streamed-in title has landed yet.
  */
-export function PrintButton({ label = "Print / Save as PDF" }: { label?: string }) {
+export function PrintButton({
+  label = "Print / Save as PDF",
+  title,
+}: {
+  label?: string;
+  title?: string;
+}) {
   return (
-    <button className="btn-ghost estdoc-print-btn" onClick={() => window.print()}>
+    <button className="btn-ghost estdoc-print-btn" onClick={() => printPage(title)}>
       {label}
     </button>
   );
@@ -28,7 +41,7 @@ export function PrintButton({ label = "Print / Save as PDF" }: { label?: string 
  * fields. It routes here (the real document) with ?print=1 instead, and
  * this fires the dialog so the rep still only clicks once.
  */
-export function AutoPrint({ enabled }: { enabled: boolean }) {
+export function AutoPrint({ enabled, title }: { enabled: boolean; title?: string }) {
   const fired = useRef(false);
 
   useEffect(() => {
@@ -36,9 +49,14 @@ export function AutoPrint({ enabled }: { enabled: boolean }) {
     fired.current = true;
     // One frame, so the document has painted before the dialog snapshots
     // it -- printing an unpainted page yields a blank sheet.
-    const id = requestAnimationFrame(() => window.print());
+    const id = requestAnimationFrame(() => printPage(title));
     return () => cancelAnimationFrame(id);
-  }, [enabled]);
+  }, [enabled, title]);
 
   return null;
+}
+
+function printPage(title?: string) {
+  if (title) document.title = title;
+  window.print();
 }

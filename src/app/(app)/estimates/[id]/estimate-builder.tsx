@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import {
   centsFromInput,
@@ -26,12 +27,14 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import {
+  applyCompanyTaxRate,
   markEstimateSent,
   saveEstimateDraft,
   sendEstimateToCustomer,
   deleteEstimate,
   voidEstimate,
 } from "@/lib/actions/estimates";
+import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
@@ -113,6 +116,7 @@ export function EstimateBuilder({
   paid,
   lead,
   canEdit,
+  canSend = true,
   canManageCosts,
   canManageBills,
   canVoid,
@@ -126,6 +130,9 @@ export function EstimateBuilder({
   paid: PortalPayment[];
   lead: BuilderLead | null;
   canEdit: boolean;
+  /** The Send Estimates switch. Off = drafts only: Save stays, everything
+   *  that would put the document in front of the customer goes. */
+  canSend?: boolean;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
   /** Filing an UNPAID vendor bill from the job costs panel. */
@@ -329,6 +336,20 @@ export function EstimateBuilder({
     });
   }
 
+  // Puts the company's sales-tax rate on this estimate, then saves the
+  // lines on screen so the stored total is the one the rep is looking at.
+  // The rate is copied onto an estimate when it is created, so one written
+  // before the company set a rate stays at 0% until this is clicked.
+  function applyCompanyRate() {
+    setError(null);
+    startTransition(async () => {
+      const res = await applyCompanyTaxRate(estimate.id);
+      if (res.error) return setError(res.error);
+      const rate = taxRateLabel(res.taxRateBp);
+      save(() => setSaved((s) => (s ? `Sales tax ${rate} applied · ${s}` : `Sales tax ${rate} applied`)));
+    });
+  }
+
   // Texting the portal link is the normal path; emailing it is the
   // alternative for a customer who prefers or only has email; sending both
   // at once covers a customer who checks whichever they see first; marking
@@ -387,10 +408,16 @@ export function EstimateBuilder({
             Print / PDF
           </button>
           {!locked && (
+            <button className="btn-save-red" onClick={() => save()} disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          )}
+          {/* Everything past Save takes the document out of Draft, so it
+              is behind the Send Estimates switch. The server refuses
+              these too; hiding them just stops a rep clicking into an
+              error. */}
+          {!locked && canSend && (
             <>
-              <button className="btn-save-red" onClick={() => save()} disabled={pending}>
-                {pending ? "Saving…" : "Save"}
-              </button>
               <button
                 className="btn-ghost"
                 onClick={() => save(() => send("manual"))}
@@ -537,6 +564,14 @@ export function EstimateBuilder({
           >
             Cancel
           </button>
+        </div>
+      )}
+
+      {!locked && !canSend && (
+        <div className="est-locked-banner">
+          Drafts only: you can build and save this estimate, and preview or print it, but
+          sending it to the customer is done by the office. Ask an Office or Admin user to
+          send it — or to turn on Send Estimates for you in Users &amp; Roles.
         </div>
       )}
 
@@ -1015,9 +1050,27 @@ export function EstimateBuilder({
           <span>Total</span>
           <span className="mono">{moneyCents(totals.totalCents)}</span>
         </div>
+        {/* The rate is frozen onto the estimate when it is created, so an
+            estimate written before the company set one stays at 0% until
+            somebody asks for the company rate here. The old text sent
+            people to "Admin Settings", where no such field existed. */}
         {estimate.tax_rate_bp === 0 && (
           <p className="est-tax-note">
-            No tax rate set. Add one in Admin Settings to tax the lines marked above.
+            No sales tax on this estimate.{" "}
+            {!locked && (
+              <>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={applyCompanyRate}
+                  disabled={pending}
+                >
+                  Use company rate
+                </button>
+                {" · "}
+              </>
+            )}
+            <Link href="/settings/company-profile">Set the rate in Settings › Company Profile</Link>
           </p>
         )}
         {/* The customer sees a blank rather than $0.00, which reads as

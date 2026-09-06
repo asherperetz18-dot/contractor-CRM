@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
+import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { CompletionEditor } from "./completion-editor";
 
@@ -70,6 +70,7 @@ export default async function EstimateDetailPage({
           address: lead?.address ?? null,
         }}
         canEdit={canCreateEstimates(profile)}
+        canSend={canSendEstimates(profile)}
         canDelete={canDeleteLeads(profile)}
       />
     );
@@ -96,6 +97,8 @@ export default async function EstimateDetailPage({
       paid={(paidRows ?? []) as PortalPayment[]}
       lead={lead ?? null}
       canEdit={canCreateEstimates(profile)}
+      // Drafts only when off: the Users & Roles "Send Estimates" switch.
+      canSend={canSendEstimates(profile)}
       // Separate from canEdit on purpose. A bookkeeper records what the
       // job cost without being able to touch the contract it is recorded
       // against -- which is the whole reason the Bookkeeping role exists.

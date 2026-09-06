@@ -15,10 +15,18 @@ import {
   type Profile,
   type RolePageVisibilityRow,
 } from "./data/types";
+import {
+  canViewFinancials,
+  canViewProfitLoss,
+  type AccountingAccess,
+} from "./data/accounting-access";
 
 export function filterNavForProfile(
   nav: NavEntry[],
-  profile: Pick<Profile, "roles" | "can_view_estimates"> | null,
+  // Intersected rather than Picked: the two accounting flags live on the
+  // signed-in Profile (data/profile), deliberately NOT on the platform
+  // Profile in data/types -- see the note on AccountingFlags.
+  profile: (Pick<Profile, "roles" | "can_view_estimates"> & AccountingAccess) | null,
   overrides: RolePageVisibilityRow[]
 ): NavEntry[] {
   function allowed(href?: string): boolean {
@@ -34,6 +42,17 @@ export function filterNavForProfile(
     // blocked page the moment they signed in.
     if (href === "/estimates") {
       return canViewEstimates(profile) && canSeePage(profile, "documents", overrides);
+    }
+    // The Accounting pages work the same way: the person-level switch
+    // (accounting-access) on TOP of role visibility. The pages enforce
+    // it themselves either way -- this only keeps the menu from showing
+    // a link that would land on "you don't have access", and keeps
+    // postLoginPath from picking a blocked page as someone's landing.
+    if (href === "/bills" || href === "/collect" || href === "/payments") {
+      if (!profile || !canViewFinancials(profile)) return false;
+    }
+    if (href === "/profit-loss") {
+      if (!profile || !canViewProfitLoss(profile)) return false;
     }
     const pageKey = pathToPageKey(href);
     if (!pageKey) return true;
@@ -79,6 +98,7 @@ const GROUP_ICONS: Record<string, string> = {
   "Dispatch (Leads Mgmt.)": "▸",
   "Your Sales Center": "☎",
   Production: "▦",
+  Accounting: "▤",
 };
 
 const FALLBACK_ICON = "▪";

@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { snapshotLead, TRASH_RETENTION_DAYS } from "@/lib/lead-trash";
+import { syncSignersWithContact } from "@/lib/signers-sync";
+import type { ContactForSigners } from "@/lib/data/signers-follow-contact";
 import {
   PRE_APPOINTMENT_STAGES,
   canDeleteLeads,
@@ -186,12 +188,26 @@ export async function updateLead(
     .from("leads")
     .update(row)
     .eq("id", id)
-    .select("id");
+    .select(
+      "id, company_id, first_name, last_name, email, phone, " +
+        "second_contact_first_name, second_contact_last_name, second_contact_email, second_contact_phone"
+    )
+    .returns<(ContactForSigners & { id: string; company_id: string })[]>();
 
   if (error) return { error: error.message };
   if (!data || data.length === 0) {
     return { error: "That change couldn't be saved — your role may not have permission to edit this contact." };
   }
+
+  // The name on the card is the name on the signature line. An estimate
+  // copies the client's name onto its customer signer row when it is
+  // created, and until this that copy never moved -- so a contact
+  // renamed after the estimate was written kept the old name under the
+  // customer's signature while the header above it showed the new one.
+  // Unsigned lines on unsigned documents follow the card; anything
+  // already signed is a contract and stays as signed.
+  await syncSignersWithContact(createAdminClient(), data[0]);
+
   if (!opts?.deferRevalidate) revalidatePath("/pipeline");
   return {};
 }

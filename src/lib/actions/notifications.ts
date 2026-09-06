@@ -3,17 +3,20 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
+  canEditDispatch,
   canViewEstimates,
   isAdminRole,
   isFieldRole,
   paidTotalCents,
   type PortalPayment,
 } from "@/lib/data/types";
+import type { PopupKind } from "@/lib/popup-shape";
 
 export type BellItem = {
   /** Stable across recomputes, so the client can key and dedupe. */
   id: string;
-  kind: "message" | "money" | "job";
+  /** Same kinds as the popups, so every switch has a matching tab. */
+  kind: PopupKind;
   icon: string;
   title: string;
   body: string;
@@ -58,8 +61,10 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     profile.roles.includes("Dispatch");
   const seesMoney = canViewEstimates(profile) && (isAdminRole(profile) || profile.roles.includes("Bookkeeping"));
   const seesEstimates = canViewEstimates(profile);
+  const worksLeads = canEditDispatch(profile);
+  const me = profile.id;
 
-  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps] =
+  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts] =
     await Promise.all([
       // Tolerant on purpose: before migration 0115 has run, this errors
       // and the bell simply treats everything as unseen.
@@ -126,6 +131,28 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
         .lt("due_date", today)
         .order("due_date", { ascending: true })
         .limit(50),
+      // New leads, same rule as the popups: RLS already narrows a Sales
+      // rep to their own leads, so this is "every new lead you may see".
+      // A week, not two days -- a lead nobody has called yet is still
+      // worth a look on Monday.
+      worksLeads
+        ? supabase
+            .from("leads")
+            .select("id, first_name, last_name, company_name, project_type, source, created_at, created_by")
+            .eq("company_id", companyId)
+            .gte("created_at", since7d)
+            .order("created_at", { ascending: false })
+            .limit(30)
+        : Promise.resolve({ data: [] }),
+      // Appointments booked FOR you by somebody else.
+      supabase
+        .from("events")
+        .select("id, title, date, time, event_type, lead_id, created_by, created_at")
+        .eq("company_id", companyId)
+        .or(`assigned_to.eq.${me},second_assigned_to.eq.${me}`)
+        .gte("created_at", since7d)
+        .order("created_at", { ascending: false })
+        .limit(20),
     ]);
 
   type Phase = { id: string; estimate_id: string; name: string | null; amount_cents: number; due_date: string; requested_at: string };
@@ -134,13 +161,37 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   type Signed = { id: string; doc_number: string; title: string | null; signed_at: string };
   type Step = { id: string; estimate_id: string; label: string; due_date: string; assigned_to: string | null };
   type Paid = { id: string; estimate_id: string; amount_cents: number; paid_at: string };
+  type Lead = {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    company_name: string | null;
+    project_type: string | null;
+    source: string | null;
+    created_at: string;
+    created_by: string | null;
+  };
+  type Appt = {
+    id: string;
+    title: string | null;
+    date: string;
+    time: string | null;
+    event_type: string;
+    lead_id: string | null;
+    created_by: string | null;
+    created_at: string;
+  };
 
   const phases = (duePhases.data ?? []) as Phase[];
   const paid = (paidRecent.data ?? []) as Paid[];
   const views = (viewsRecent.data ?? []) as View[];
   const signed = (signedRecent.data ?? []) as Signed[];
+  // A lead you entered yourself, or a visit you booked yourself, is not
+  // news to you -- the same rule the popups use.
+  const leads = ((newLeads.data ?? []) as Lead[]).filter((l) => l.created_by !== me).slice(0, 15);
+  const appts = ((newAppts.data ?? []) as Appt[]).filter((a) => a.created_by !== me).slice(0, 10);
 
-  // Names for every document the feed mentions, fetched once.
+  // Names for every document and person the feed mentions, fetched once.
   const estimateIds = [
     ...new Set([
       ...phases.map((p) => p.estimate_id),
@@ -148,15 +199,24 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
       ...views.map((v) => v.estimate_id),
     ]),
   ];
+  const apptLeadIds = [...new Set(appts.map((a) => a.lead_id).filter(Boolean))] as string[];
+  const [docsRes, apptLeadsRes] = await Promise.all([
+    estimateIds.length
+      ? supabase.from("estimates").select("id, doc_number, title").in("id", estimateIds)
+      : Promise.resolve({ data: [] }),
+    apptLeadIds.length
+      ? supabase.from("leads").select("id, first_name, last_name, company_name").in("id", apptLeadIds)
+      : Promise.resolve({ data: [] }),
+  ]);
   const docById = new Map<string, string>();
-  if (estimateIds.length) {
-    const { data: docs } = await supabase
-      .from("estimates")
-      .select("id, doc_number, title")
-      .in("id", estimateIds);
-    for (const d of (docs ?? []) as { id: string; doc_number: string; title: string | null }[]) {
-      docById.set(d.id, d.title ? `${d.doc_number} · ${d.title}` : d.doc_number);
-    }
+  for (const d of (docsRes.data ?? []) as { id: string; doc_number: string; title: string | null }[]) {
+    docById.set(d.id, d.title ? `${d.doc_number} · ${d.title}` : d.doc_number);
+  }
+  const personName = (l: Pick<Lead, "first_name" | "last_name" | "company_name">) =>
+    [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || "";
+  const leadNameById = new Map<string, string>();
+  for (const l of (apptLeadsRes.data ?? []) as Pick<Lead, "id" | "first_name" | "last_name" | "company_name">[]) {
+    leadNameById.set(l.id, personName(l));
   }
 
   // What a phase still waits on: payments that actually settled.
@@ -264,12 +324,41 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     });
   }
 
+  for (const l of leads) {
+    const detail = [l.project_type, l.source ? `via ${l.source}` : null].filter(Boolean).join(" · ");
+    items.push({
+      id: `lead:${l.id}`,
+      kind: "lead",
+      icon: "🆕",
+      title: `New lead: ${personName(l) || "Unnamed contact"}`,
+      body: detail || "Just came in",
+      at: l.created_at,
+      href: `/contacts?openLead=${encodeURIComponent(l.id)}`,
+    });
+  }
+
+  for (const a of appts) {
+    const who = a.lead_id ? leadNameById.get(a.lead_id) : null;
+    const when = `${a.date}${a.time ? ` at ${a.time.slice(0, 5)}` : ""}`;
+    items.push({
+      id: `appt:${a.id}`,
+      kind: "appointment",
+      icon: "📅",
+      title: "Appointment booked for you",
+      body: `${a.title || who || a.event_type} — ${when}`,
+      at: a.created_at,
+      href: `/calendar?openEvent=${encodeURIComponent(a.id)}`,
+    });
+  }
+
   items.sort((a, b) => (a.at < b.at ? 1 : -1));
 
   const parts: string[] = [];
   if ((failedTexts.data ?? []).length) parts.push(`${(failedTexts.data ?? []).length} failed texts`);
   if (overduePhases.length) parts.push(`${overduePhases.length} overdue invoices`);
   if (steps.length) parts.push(`${steps.length} overdue steps`);
+  if (leads.length) parts.push(`${leads.length} new leads`);
+  if (appts.length) parts.push(`${appts.length} appointments booked for you`);
   if (views.length) parts.push(`${views.length} proposal views`);
   if (paid.length) parts.push(`${paid.length} payments in`);
 

@@ -15,6 +15,7 @@ import { sendEmail, escapeHtml } from "@/lib/email-env";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
+  canSendEstimates,
   canDeleteEstimateStatus,
   canDeleteLeads,
   isAdminRole,
@@ -257,6 +258,26 @@ async function requireEstimateEditor(): Promise<
   if (!profile) return { error: "Not signed in." };
   if (!canCreateEstimates(profile))
     return { error: "You don't have permission to create or edit estimates." };
+  return { companyId: profile.company_id, userId: profile.id };
+}
+
+// The same message everywhere a drafts-only person tries to send. Not
+// exported: a "use server" file may only export async functions.
+const SEND_NOT_ALLOWED =
+  "You can save this as a draft, but sending it is turned off for your account — ask the office to send it.";
+
+// An editor who also holds the Send Estimates switch. Guards everything
+// that takes a document out of Draft: texting or emailing it, marking it
+// sent, recording a paper signature. The send itself happens here on the
+// server, so this check -- not the hidden buttons -- is the permission.
+async function requireEstimateSender(): Promise<
+  { error: string } | { companyId: string; userId: string }
+> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canCreateEstimates(profile))
+    return { error: "You don't have permission to create or edit estimates." };
+  if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
   return { companyId: profile.company_id, userId: profile.id };
 }
 
@@ -645,6 +666,82 @@ export async function saveEstimateItems(
   return { totalCents: totals.totalCents, recalled: lock.recalled };
 }
 
+// Copies the company's current sales-tax rate onto one estimate and
+// re-derives its totals.
+//
+// The rate is snapshotted onto each estimate when it is created, so a
+// company that had no rate set (the default) has every existing estimate
+// frozen at 0% -- and setting the rate in Company Profile afterwards
+// changes nothing on them. This is the one deliberate way to bring an
+// estimate up to the company rate; a signed one stays locked as always.
+export async function applyCompanyTaxRate(
+  estimateId: string
+): Promise<{ error?: string; taxRateBp?: number; totalCents?: number; recalled?: boolean }> {
+  const guard = await requireEstimateEditor();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: estimate, error: readError } = await supabase
+    .from("estimates")
+    .select(
+      "id, lead_id, status, version, tax_rate_bp, deposit_percent_bp, deposit_cap_cents, discount_type, discount_value, discount_label"
+    )
+    .eq("id", estimateId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<ItemsEstimateRow>();
+  if (readError) return { error: readError.message };
+  if (!estimate) return { error: "Estimate not found." };
+
+  const { data: settings } = await supabase
+    .from("company_profile")
+    .select("tax_rate_bp")
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{ tax_rate_bp: number }>();
+  const taxRateBp = Number(settings?.tax_rate_bp) || 0;
+  if (taxRateBp <= 0) {
+    return { error: "No sales tax rate set yet. Add one in Settings › Company Profile first." };
+  }
+
+  const lock = await guardEstimateEdit(
+    supabase, estimateId, guard.companyId, estimate.status, estimate.version
+  );
+  if (lock.locked) {
+    return { error: "The customer has signed this estimate. Create a new version to change it." };
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from("estimate_items")
+    .select("quantity, unit_price_cents, taxable")
+    .eq("estimate_id", estimateId)
+    .returns<{ quantity: number; unit_price_cents: number; taxable: boolean }[]>();
+  if (itemsError) return { error: itemsError.message };
+
+  const discount = estimate.discount_type
+    ? { type: estimate.discount_type as "percent" | "amount", value: estimate.discount_value }
+    : null;
+  const totals = computeEstimateTotals(items ?? [], taxRateBp, discount);
+  const { error: updateError } = await supabase
+    .from("estimates")
+    .update({
+      tax_rate_bp: taxRateBp,
+      subtotal_cents: totals.subtotalCents,
+      discount_cents: totals.discountCents,
+      tax_cents: totals.taxCents,
+      total_cents: totals.totalCents,
+      deposit_cents: depositCents(
+        totals.totalCents,
+        estimate.deposit_percent_bp,
+        estimate.deposit_cap_cents
+      ),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimateId);
+  if (updateError) return { error: updateError.message };
+
+  revalidateEstimates(estimateId);
+  return { taxRateBp, totalCents: totals.totalCents, recalled: lock.recalled };
+}
+
 // Marks the estimate as issued and stamps its total onto the lead.
 //
 // This write-back is the point of the whole module: 1,122 of 1,128 open
@@ -652,7 +749,7 @@ export async function saveEstimateItems(
 // rep leaderboard are all computed over almost nothing. Nobody fills in a
 // "value" field; everybody writes an estimate.
 export async function markEstimateSent(estimateId: string): Promise<{ error?: string }> {
-  const guard = await requireEstimateEditor();
+  const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
@@ -904,7 +1001,7 @@ export async function sendEstimateToCustomer(
   /** Set on a "both" send where one of the two channels didn't go out. */
   warning?: string;
 }> {
-  const guard = await requireEstimateEditor();
+  const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
 
   const admin = createAdminClient();
@@ -1535,6 +1632,10 @@ export async function markSignedOnPaper(
   if (!canCreateEstimates(profile)) {
     return { error: "You don't have access to record signatures." };
   }
+  // A paper signature takes the document out of Draft without it ever
+  // being sent -- the one way around "the office sends", so it needs the
+  // same switch.
+  if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
 
   const signerName = input.signerName.trim();
   if (!signerName) return { error: "Enter the name as it was signed." };

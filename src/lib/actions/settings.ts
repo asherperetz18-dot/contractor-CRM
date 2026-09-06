@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, type TimeFormat } from "@/lib/data/types";
+import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
 
 export type CompanyProfileInput = {
@@ -25,6 +26,8 @@ export type CompanyProfileInput = {
   license_number: string;
   license_state: string;
   license_type: string;
+  /** Basis points (950 = 9.50%); the form converts from the percent typed. */
+  tax_rate_bp: number;
   timezone: string;
   time_format: TimeFormat;
 };
@@ -32,6 +35,14 @@ export type CompanyProfileInput = {
 export async function saveCompanyProfile(input: CompanyProfileInput) {
   const companyId = await getCurrentCompanyId();
   if (!companyId) return { error: "Not signed in." };
+
+  // Checked again here, not only on the form: this number lands on every
+  // estimate written from now on, and a bad one is a wrong total on a
+  // document the customer signs.
+  const taxRateBp = Number(input.tax_rate_bp);
+  if (!Number.isInteger(taxRateBp) || taxRateBp < 0 || taxRateBp > MAX_TAX_RATE_BP) {
+    return { error: "Sales tax rate must be a number between 0 and 100, like 9.5." };
+  }
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -53,6 +64,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       license_number: input.license_number || null,
       license_state: input.license_state || null,
       license_type: input.license_type || null,
+      tax_rate_bp: taxRateBp,
       timezone: input.timezone,
       time_format: input.time_format,
     })

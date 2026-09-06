@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
+import { Field } from "@/components/ui/field";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
 import { AddBillModal } from "@/components/bills/add-bill-modal";
 import {
@@ -60,6 +61,8 @@ type DraftBill = {
   amount: string;
   billDate: string;
   dueDate: string;
+  /** When the company plans to pay it -- the same date the row's box sets. */
+  scheduledDate: string;
 };
 
 export function BillsView({
@@ -454,7 +457,9 @@ export function BillsView({
             amount: (editing.amount_cents / 100).toFixed(2),
             billDate: editing.bill_date ?? "",
             dueDate: editing.due_date ?? "",
+            scheduledDate: editing.scheduled_date ?? "",
           }}
+          receipt={editing.receipt_url ? { url: editing.receipt_url, path: editing.receipt_path ?? null } : null}
           vendors={vendors}
           jobLeads={jobLeads}
           busy={busy}
@@ -468,7 +473,7 @@ export function BillsView({
                 amountCents: centsFromInput(d.amount),
                 billDate: d.billDate || null,
                 dueDate: d.dueDate || null,
-                scheduledDate: editing.scheduled_date,
+                scheduledDate: d.scheduledDate || null,
               })
             );
             if (ok) setEditing(null);
@@ -493,9 +498,10 @@ export function BillsView({
   );
 }
 
-function EditBillModal({
+export function EditBillModal({
   title,
   draft: initial,
+  receipt,
   vendors,
   jobLeads,
   busy,
@@ -504,6 +510,8 @@ function EditBillModal({
 }: {
   title: string;
   draft: DraftBill;
+  /** The bill's receipt file, shown for context; attaching lives on the row. */
+  receipt: { url: string; path: string | null } | null;
   vendors: Vendor[];
   jobLeads: Lead[];
   busy: boolean;
@@ -513,69 +521,88 @@ function EditBillModal({
   const [d, setD] = useState(initial);
   const patch = (p: Partial<DraftBill>) => setD((cur) => ({ ...cur, ...p }));
 
+  // Same stacked, labelled layout as the Add bill form. The old one-row
+  // version had no labels and scrolled sideways, so "which date is this"
+  // was a guess.
   return (
-    <Modal title={title} onClose={() => { if (!busy) onClose(); }} wide>
-      <div className="bills-draft-list">
-        <div className="bills-draft-row">
-          <select
-            value={d.vendorId}
-            disabled={busy}
-            onChange={(e) => patch({ vendorId: e.target.value, vendorName: "" })}
-          >
-            <option value="">Vendor not on the list</option>
-            {vendors.map((v) => (
-              <option key={v.id} value={v.id}>
-                {vendorLabel(v)}
-              </option>
-            ))}
-          </select>
+    <Modal title={title} onClose={() => { if (!busy) onClose(); }}>
+      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0 }}>
+        <div className="qr-form">
+          <Field label="Job">
+            <select value={d.leadId} onChange={(e) => patch({ leadId: e.target.value })}>
+              <option value="">No job — overhead</option>
+              {jobLeads.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {leadDisplayName(l)}
+                  {l.address ? ` — ${l.address}` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Vendor">
+            <select
+              value={d.vendorId}
+              onChange={(e) => patch({ vendorId: e.target.value, vendorName: "" })}
+            >
+              <option value="">Not on the list</option>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {vendorLabel(v)}
+                </option>
+              ))}
+            </select>
+          </Field>
           {!d.vendorId && (
-            <input
-              placeholder="Vendor name"
-              value={d.vendorName}
-              disabled={busy}
-              onChange={(e) => patch({ vendorName: e.target.value })}
-            />
+            <Field label="Vendor name">
+              <input
+                placeholder="e.g. Home Depot"
+                value={d.vendorName}
+                onChange={(e) => patch({ vendorName: e.target.value })}
+              />
+            </Field>
           )}
-          <select value={d.leadId} disabled={busy} onChange={(e) => patch({ leadId: e.target.value })}>
-            <option value="">No job (overhead)</option>
-            {jobLeads.map((l) => (
-              <option key={l.id} value={l.id}>
-                {leadDisplayName(l)}
-                {l.address ? ` — ${l.address}` : ""}
-              </option>
-            ))}
-          </select>
-          <input
-            placeholder="Ref / what for"
-            value={d.reference}
-            disabled={busy}
-            onChange={(e) => patch({ reference: e.target.value })}
-          />
-          <input
-            inputMode="decimal"
-            placeholder="0.00"
-            style={{ width: 110 }}
-            value={d.amount}
-            disabled={busy}
-            onChange={(e) => patch({ amount: e.target.value })}
-          />
-          <input
-            type="date"
-            title="Bill date"
-            value={d.billDate}
-            disabled={busy}
-            onChange={(e) => patch({ billDate: e.target.value })}
-          />
-          <input
-            type="date"
-            title="Due date"
-            value={d.dueDate}
-            disabled={busy}
-            onChange={(e) => patch({ dueDate: e.target.value })}
-          />
+          <Field label="What for">
+            <input
+              placeholder="e.g. Architectural plans"
+              value={d.reference}
+              onChange={(e) => patch({ reference: e.target.value })}
+            />
+          </Field>
+          <div className="qr-pair">
+            <Field label="Amount">
+              <input
+                inputMode="decimal"
+                placeholder="0.00"
+                value={d.amount}
+                onChange={(e) => patch({ amount: e.target.value })}
+              />
+            </Field>
+            <Field label="Bill date">
+              <input type="date" value={d.billDate} onChange={(e) => patch({ billDate: e.target.value })} />
+            </Field>
+          </div>
+          <div className="qr-pair">
+            <Field label="Due date">
+              <input type="date" value={d.dueDate} onChange={(e) => patch({ dueDate: e.target.value })} />
+            </Field>
+            <Field label="Planned pay date">
+              <input
+                type="date"
+                value={d.scheduledDate}
+                onChange={(e) => patch({ scheduledDate: e.target.value })}
+              />
+            </Field>
+          </div>
         </div>
-      </div>
+        <div className="bill-file-row">
+          <span className="est-tax-note">Receipt:</span>
+          {receipt ? (
+            <ReceiptThumb url={receipt.url} path={receipt.path} />
+          ) : (
+            <span className="est-tax-note">none — use 📎 Attach on the bill&rsquo;s row</span>
+          )}
+        </div>
+      </fieldset>
       <div className="modal-actions">
         <button type="button" className="btn-ghost" disabled={busy} onClick={onClose}>
           Cancel

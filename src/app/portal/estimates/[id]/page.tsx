@@ -1,6 +1,7 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortalViewer } from "@/lib/portal/session";
+import { getPortalViewer, readPortalSession } from "@/lib/portal/session";
 import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { getParentContract } from "@/lib/actions/change-orders";
@@ -9,6 +10,7 @@ import {
   type DocumentCompany,
 } from "@/components/estimate-document";
 import { PrintButton } from "@/components/print-button";
+import { documentTitle } from "@/lib/tab-title";
 import { markEstimateViewed } from "@/lib/actions/portal-estimates";
 import { PortalEstimateActions } from "./portal-estimate-actions";
 import { DepositPayment } from "./deposit-payment";
@@ -16,7 +18,33 @@ import { PhasePayments } from "./phase-payments";
 import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Your estimate" };
+
+/**
+ * The tab title is the document number -- "EST-1048" -- because that is
+ * what the browser names the file when the customer hits "Save as PDF".
+ * Only for their own document: the lookup is scoped to the signed-in
+ * lead, so a guessed id titles the tab with the generic label and the
+ * page itself sends them home. A light session read, not the full
+ * viewer resolution -- that one refreshes access and stamps last-seen,
+ * and the page already does it once.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const fallback = "Your estimate";
+  const { id } = await params;
+  const session = await readPortalSession();
+  if (!session) return { title: fallback };
+  const { data } = await createAdminClient()
+    .from("estimates")
+    .select("doc_number")
+    .eq("id", id)
+    .eq("lead_id", session.lead_id)
+    .maybeSingle<{ doc_number: string | null }>();
+  return { title: documentTitle(data?.doc_number, fallback) };
+}
 
 export default async function PortalEstimatePage({
   params,
@@ -112,7 +140,7 @@ export default async function PortalEstimatePage({
           their spouse -- so the print control is on their view too, not
           only the office's. */}
       <div className="estdoc-print-bar">
-        <PrintButton label="Print / Save as PDF" />
+        <PrintButton label="Print / Save as PDF" title={documentTitle(estimate.doc_number)} />
       </div>
       <EstimateDocument
         estimate={estimate}

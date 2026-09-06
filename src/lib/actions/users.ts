@@ -298,6 +298,29 @@ async function updateMemberFlag(
 }
 
 /**
+ * Turns "Could not find the 'x' column ... in the schema cache" into the
+ * one sentence that fixes it.
+ *
+ * Every new company_members column has been clicked before its SQL was
+ * run -- 0126 was, twice -- so the raw database complaint is the message
+ * an owner is most likely to meet, and on its own it reads as a broken
+ * switch rather than a missing step.
+ */
+function migrationHint(
+  result: { error?: string },
+  column: string,
+  file: string,
+  switchName: string
+): { error?: string } {
+  if (result.error && /schema cache/i.test(result.error) && result.error.includes(column)) {
+    return {
+      error: `The ${switchName} switch needs a one-time database update first: run supabase/migrations/${file} in the Supabase SQL editor, then try again.`,
+    };
+  }
+  return result;
+}
+
+/**
  * The Dispatch Supervisor flag: a dispatcher who runs the desk.
  *
  * Grants the whole book, entering new leads, adding sources and
@@ -338,6 +361,78 @@ export async function updateCanCreateEstimates(
   return updateMemberFlag(
     userId,
     canCreate ? { can_create_estimates: true, can_view_estimates: true } : { can_create_estimates: false }
+  );
+}
+
+/**
+ * The Send Estimates switch. Off means drafts only: the person keeps
+ * writing estimates and the office sends them. Touches nothing else --
+ * create and view stay exactly as they were, so switching send back on
+ * later restores today's behaviour with one click.
+ */
+export async function updateCanSendEstimates(
+  userId: string,
+  canSend: boolean
+): Promise<{ error?: string }> {
+  // "Could not find the 'can_send_estimates' column ... in the schema
+  // cache" means migration 0126 hasn't been run yet. Said in those words
+  // rather than left as a database message nobody can act on.
+  return migrationHint(
+    await updateMemberFlag(userId, { can_send_estimates: canSend }),
+    "can_send_estimates",
+    "0126_send_estimates.sql",
+    "Send Estimates"
+  );
+}
+
+/**
+ * View Financials: Bills to Pay, Money to Collect, Payments.
+ *
+ * Only ever a grant. Office, Admin and Bookkeeping hold these screens by
+ * role, and the rule in data/accounting-access checks the role before
+ * this flag -- so switching it off cannot take the money away from the
+ * people whose job it is.
+ */
+export async function updateCanViewFinancials(
+  userId: string,
+  canView: boolean
+): Promise<{ error?: string }> {
+  // Taking financials away takes the P&L with it: the report is built
+  // from the very screens they can no longer open, so leaving it behind
+  // would be a permission that contradicts itself.
+  return migrationHint(
+    await updateMemberFlag(
+      userId,
+      canView
+        ? { can_view_financials: true }
+        : { can_view_financials: false, can_view_profit_loss: false }
+    ),
+    "can_view_financials",
+    "0127_accounting_view_permissions.sql",
+    "View Financials"
+  );
+}
+
+/**
+ * View Profit & Loss, on its own so that chasing receivables and reading
+ * company profit stay separate jobs.
+ */
+export async function updateCanViewProfitLoss(
+  userId: string,
+  canView: boolean
+): Promise<{ error?: string }> {
+  // Granting the report implies the numbers under it, mirroring the way
+  // Create Estimates implies View.
+  return migrationHint(
+    await updateMemberFlag(
+      userId,
+      canView
+        ? { can_view_profit_loss: true, can_view_financials: true }
+        : { can_view_profit_loss: false }
+    ),
+    "can_view_profit_loss",
+    "0127_accounting_view_permissions.sql",
+    "View Profit & Loss"
   );
 }
 

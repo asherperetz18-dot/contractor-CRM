@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { canViewFinancials } from "@/lib/data/accounting-access";
 import { selectAll } from "@/lib/data/select-all";
 import {
   collectionsSummary,
@@ -46,6 +47,23 @@ function statusBadge(status: string) {
 export default async function PaymentsPage() {
   const profile = await getCurrentProfile();
   if (!profile) return null;
+
+  // This page had NO permission check until now: every collected payment,
+  // every contract value and every deposit still owed was readable by
+  // anyone who could sign in, including Field crew and Call Center. It
+  // is company-wide money like Bills and Collect, so it takes the same
+  // gate. Unlike those two this genuinely narrows access -- see the PR.
+  if (!canViewFinancials(profile)) {
+    return (
+      <div className="empty-state">
+        <p className="empty-label">You don&apos;t have access to payments</p>
+        <p className="empty-hint">
+          Payments is company-wide money — Bookkeeping, Office and Admin, or anyone
+          switched on under Settings › Users &amp; Roles › View Financials.
+        </p>
+      </div>
+    );
+  }
 
   const supabase = await createClient();
   const env = getStripeEnv();

@@ -8481,6 +8481,24 @@ textarea.est-item-desc:disabled {
   text-decoration: none;
   display: inline-block;
 }
+/* The client chip: rose for the person, since blue is the checklist,
+   amber is money out, purple is photos and teal is documents. */
+.proj-client-chip {
+  border-color: #e6bfcd;
+  background: #fbeff4;
+  color: #a13d64;
+  text-decoration: none;
+  display: inline-block;
+}
+/* The customer's name doubles as the same shortcut: quiet until
+   hovered, so the table stays a table and not a wall of links. */
+.proj-client-name {
+  color: inherit;
+  text-decoration: none;
+}
+.proj-client-name:hover {
+  text-decoration: underline;
+}
 .co-link-list {
   list-style: none;
   margin: 0;

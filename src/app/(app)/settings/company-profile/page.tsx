@@ -13,9 +13,14 @@ export default async function CompanyProfilePage() {
     .eq("company_id", companyId ?? "")
     .single();
 
+  // The sales-tax column (migration 0059) is read here rather than added
+  // to CompanyProfile: like the AI and webhook columns, it is one page's
+  // concern, and the row type stays the shape the rest of the app shares.
+  const taxRateBp = Number((data as { tax_rate_bp?: number } | null)?.tax_rate_bp) || 0;
+
   return (
     <AdminGate>
-      <CompanyProfileForm profile={data as CompanyProfile} />
+      <CompanyProfileForm profile={data as CompanyProfile} taxRateBp={taxRateBp} />
     </AdminGate>
   );
 }

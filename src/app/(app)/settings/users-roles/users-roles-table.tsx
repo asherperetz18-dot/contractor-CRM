@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { APP_ROLES, isSuperAdmin, type AppRole, type Profile } from "@/lib/data/types";
+import {
+  canViewFinancials,
+  FINANCIALS_ALWAYS_ROLES,
+  PROFIT_LOSS_ALWAYS_ROLES,
+  type AccountingFlags,
+} from "@/lib/data/accounting-access";
 import {
   addUserToCompany,
   createUser,
@@ -16,13 +22,23 @@ import {
   updateIsDispatchSupervisor,
   updateCanDeleteLeads,
   updateCanCreateEstimates,
+  updateCanSendEstimates,
   updateCanViewEstimates,
+  updateCanViewFinancials,
+  updateCanViewProfitLoss,
   updateUserProfile,
   updateUserRoles,
 } from "@/lib/actions/users";
 import { ReassignWorkModal, type ReassignMode } from "./reassign-work-modal";
 
 type StatusTab = "Active" | "Archived" | "All";
+
+/**
+ * One row of the roster: Profile plus the two accounting flags, which
+ * live alongside it rather than inside it -- see AccountingFlags in
+ * data/accounting-access. Matches what getCompanyMembers returns.
+ */
+type MemberRow = Profile & AccountingFlags;
 
 const NEW_USER_BLANK = { name: "", email: "", phone: "", password: "" };
 
@@ -72,7 +88,7 @@ export function UsersRolesTable({
   users,
   isAdmin,
 }: {
-  users: Profile[];
+  users: MemberRow[];
   /** Admin role itself. Office may manage people but not mint Admins. */
   isAdmin: boolean;
 }) {
@@ -86,8 +102,16 @@ export function UsersRolesTable({
   const [newUserRoles, setNewUserRoles] = useState<AppRole[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [editingUser, setEditingUser] = useState<Profile | null>(null);
-  const [reassign, setReassign] = useState<{ user: Profile; mode: ReassignMode } | null>(null);
+  // A switch in the table that could not be saved, and whose row it was.
+  // Shown directly under that row: this used to be one note at the top of
+  // the table, which on a long roster sat a screen above the switch that
+  // was clicked -- so a refused change read as a switch that did nothing.
+  // (`error` above only shows inside the Create User dialog.)
+  const [switchError, setSwitchError] = useState<{ userId: string; message: string } | null>(
+    null
+  );
+  const [editingUser, setEditingUser] = useState<MemberRow | null>(null);
+  const [reassign, setReassign] = useState<{ user: MemberRow; mode: ReassignMode } | null>(null);
   const [editForm, setEditForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [editPending, setEditPending] = useState(false);
   const [editError, setEditError] = useState("");
@@ -114,6 +138,20 @@ export function UsersRolesTable({
     startTransition(() => router.refresh());
   }
 
+  /**
+   * Runs one switch's save and reports its outcome under that row.
+   *
+   * Every switch goes through here. A refusal from the server -- a
+   * migration not run yet, a role the caller may not grant, the last
+   * Admin -- is a sentence the person can act on, and it belongs next to
+   * the thing they clicked, not somewhere they have scrolled past.
+   */
+  async function runSwitch(u: MemberRow, save: () => Promise<{ error?: string }>) {
+    const res = await save();
+    setSwitchError(res.error ? { userId: u.id, message: res.error } : null);
+    refresh();
+  }
+
   async function handleCreate() {
     if (!newUser.name.trim() || !newUser.email.trim() || newUser.password.length < 6) {
       setError("Name, email, and a password of at least 6 characters are required.");
@@ -136,13 +174,12 @@ export function UsersRolesTable({
   // Archiving someone who still owns live work strands it exactly as
   // removal does, so the handover prompt runs first either way. Turning
   // an archived user back on has nothing to hand over.
-  async function handleToggleStatus(u: Profile) {
+  async function handleToggleStatus(u: MemberRow) {
     if (u.status === "Active") {
       setReassign({ user: u, mode: "archive" });
       return;
     }
-    await toggleUserStatus(u.id, u.status);
-    refresh();
+    await runSwitch(u, () => toggleUserStatus(u.id, u.status));
   }
 
   async function finishReassign() {
@@ -154,35 +191,42 @@ export function UsersRolesTable({
     refresh();
   }
 
-  async function handleToggleRole(u: Profile, role: AppRole) {
+  async function handleToggleRole(u: MemberRow, role: AppRole) {
     const next = u.roles.includes(role)
       ? u.roles.filter((r) => r !== role)
       : [...u.roles, role];
-    await updateUserRoles(u.id, next);
-    refresh();
+    await runSwitch(u, () => updateUserRoles(u.id, next));
   }
 
-  async function handleToggleDispatchSupervisor(u: Profile) {
-    await updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor);
-    router.refresh();
+  async function handleToggleDispatchSupervisor(u: MemberRow) {
+    await runSwitch(u, () => updateIsDispatchSupervisor(u.id, !u.is_dispatch_supervisor));
   }
 
-  async function handleToggleCanDelete(u: Profile) {
-    await updateCanDeleteLeads(u.id, !u.can_delete_leads);
-    refresh();
+  async function handleToggleCanDelete(u: MemberRow) {
+    await runSwitch(u, () => updateCanDeleteLeads(u.id, !u.can_delete_leads));
   }
 
-  async function handleToggleViewEstimates(u: Profile) {
-    await updateCanViewEstimates(u.id, !u.can_view_estimates);
-    refresh();
+  async function handleToggleViewEstimates(u: MemberRow) {
+    await runSwitch(u, () => updateCanViewEstimates(u.id, !u.can_view_estimates));
   }
 
-  async function handleToggleCreateEstimates(u: Profile) {
-    await updateCanCreateEstimates(u.id, !u.can_create_estimates);
-    refresh();
+  async function handleToggleCreateEstimates(u: MemberRow) {
+    await runSwitch(u, () => updateCanCreateEstimates(u.id, !u.can_create_estimates));
   }
 
-  function openEdit(u: Profile) {
+  async function handleToggleSendEstimates(u: MemberRow) {
+    await runSwitch(u, () => updateCanSendEstimates(u.id, !u.can_send_estimates));
+  }
+
+  async function handleToggleViewFinancials(u: MemberRow) {
+    await runSwitch(u, () => updateCanViewFinancials(u.id, !u.can_view_financials));
+  }
+
+  async function handleToggleViewProfitLoss(u: MemberRow) {
+    await runSwitch(u, () => updateCanViewProfitLoss(u.id, !u.can_view_profit_loss));
+  }
+
+  function openEdit(u: MemberRow) {
     setEditingUser(u);
     setEditForm({ name: u.name ?? "", email: u.email ?? "", phone: u.phone ?? "", password: "" });
     setEditError("");
@@ -244,7 +288,7 @@ export function UsersRolesTable({
     refresh();
   }
 
-  function handleRemoveFromCompany(u: Profile) {
+  function handleRemoveFromCompany(u: MemberRow) {
     setReassign({ user: u, mode: "remove" });
   }
 
@@ -312,8 +356,10 @@ export function UsersRolesTable({
         {hasHiddenColumns && (
           <p className="ur-scroll-hint">
             More columns to the right — <strong>Can Delete Leads</strong>,{" "}
-            <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong> and{" "}
-            <strong>Create Estimates</strong>. Scroll the table sideways to reach them.
+            <strong>Dispatch Supervisor</strong>, <strong>View Estimates</strong>,{" "}
+            <strong>Create Estimates</strong>, <strong>Send Estimates</strong>,{" "}
+            <strong>View Financials</strong> and <strong>View Profit &amp; Loss</strong>.
+            Scroll the table sideways to reach them.
           </p>
         )}
         <div className="ur-table-scroll" ref={tableScrollRef}>
@@ -328,12 +374,16 @@ export function UsersRolesTable({
               <th>Dispatch Supervisor</th>
               <th>View Estimates</th>
               <th>Create Estimates</th>
+              <th>Send Estimates</th>
+              <th>View Financials</th>
+              <th>View Profit &amp; Loss</th>
               <th className="right">Status</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((u) => (
-              <tr key={u.id}>
+              <Fragment key={u.id}>
+              <tr>
                 <td>
                   <div className="ur-name-cell">
                     <span className="ur-avatar">
@@ -524,6 +574,103 @@ export function UsersRolesTable({
                     </button>
                   )}
                 </td>
+                {/* Send Estimates. Office and Admin always send, so they
+                    show as fixed. Anyone who cannot write an estimate has
+                    nothing to send, so the switch only appears once
+                    Create is on (Production always can). Off = drafts
+                    only: they build it, the office sends it. */}
+                <td>
+                  {u.roles.includes("Office") || u.roles.includes("Admin") ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : u.roles.includes("Production") || u.can_create_estimates ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleSendEstimates(u)}
+                      title={
+                        u.can_send_estimates
+                          ? "Turn off sending — this person can only save drafts; the office sends them"
+                          : "Let this person send estimates to customers"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_send_estimates ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone" title="Turn on Create Estimates first">
+                      —
+                    </span>
+                  )}
+                </td>
+                {/* View Financials: Bills to Pay, Money to Collect,
+                    Payments. Office, Admin and Bookkeeping hold these by
+                    role, so they read "Always" rather than showing a
+                    switch that could not take the money away from them.
+                    Everyone else starts OFF -- this one grants. */}
+                <td>
+                  {FINANCIALS_ALWAYS_ROLES.some((role) => u.roles.includes(role)) ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleViewFinancials(u)}
+                      title={
+                        u.can_view_financials
+                          ? "Turn off the money screens — also removes Profit & Loss"
+                          : "Let this person open Bills to Pay, Money to Collect and Payments"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_view_financials ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  )}
+                </td>
+                {/* View Profit & Loss, separate on purpose: chasing
+                    receivables and reading company profit are different
+                    jobs. Only Office and Admin hold it outright --
+                    Bookkeeping runs the money but is not shown profit
+                    until someone says so. The report is built from the
+                    financial screens, so the switch only appears once
+                    those are open. */}
+                <td>
+                  {PROFIT_LOSS_ALWAYS_ROLES.some((role) => u.roles.includes(role)) ? (
+                    <span className="ur-add-phone">Always</span>
+                  ) : canViewFinancials(u) ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      onClick={() => handleToggleViewProfitLoss(u)}
+                      title={
+                        u.can_view_profit_loss
+                          ? "Turn off the Profit & Loss report"
+                          : "Let this person read the Profit & Loss report"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_view_profit_loss ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone" title="Turn on View Financials first">
+                      —
+                    </span>
+                  )}
+                </td>
                 <td className="right">
                   <button
                     className="ur-toggle-btn"
@@ -539,6 +686,23 @@ export function UsersRolesTable({
                   </button>
                 </td>
               </tr>
+              {/* The refusal, directly under the row whose switch was
+                  clicked. Its own row spanning the table so it reads as
+                  belonging to the person above it wherever the table has
+                  been scrolled to. */}
+              {switchError?.userId === u.id && (
+                <tr className="ur-switch-error-row">
+                  {/* Left-aligned explicitly: as the row's last cell it
+                      would otherwise inherit the Status column's right
+                      alignment and hang off the edge. */}
+                  <td colSpan={12} style={{ paddingTop: 0, textAlign: "left" }}>
+                    <p className="error-note" style={{ margin: 0 }} role="alert">
+                      {switchError.message}
+                    </p>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

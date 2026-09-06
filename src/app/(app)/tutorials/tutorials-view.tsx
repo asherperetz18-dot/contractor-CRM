@@ -132,6 +132,16 @@ const LIBRARY: Category[] = [
     name: "Estimates & Money",
     tutorials: [
       {
+        id: "profit-loss",
+        title: "Profit & Loss",
+        kicker: "Deep dive · 2 steps · 2 min",
+        desc: "What the company actually earns — by job, with overhead taken off.",
+        steps: [
+          { img: T("tut-pl"), caption: "Profit & Loss reads the money you already track — payments, job costs, vendor bills — as one statement: income, job costs, gross profit, overhead, net profit. Pick the period, then pick the reading: Cash counts money that actually moved; Accrual counts what was billed and owed, paid or not. The By-job table shows each job's income, costs and margin for the period." },
+          { img: T("tut-pl-overhead"), caption: "Overhead is what gross profit hides: rent, insurance, the truck. Enter those in Bills to Pay with the job left as \"No job — overhead\" and they land here, taking the report past gross to real net profit. Who sees this page is its own switch — Settings › Users & Roles › View Profit & Loss — separate from View Financials, so someone can chase invoices all day without being shown what the company earns." },
+        ],
+      },
+      {
         id: "money-to-collect",
         title: "Money to Collect",
         kicker: "Deep dive · 2 steps · 1.5 min",
@@ -194,7 +204,7 @@ const LIBRARY: Category[] = [
         desc: "Contract, spent, and what's actually left — phase by phase.",
         steps: [
           { img: T("projects"), caption: "Projects ranks sold jobs worst-first by money: contract, collected, owed, spent, and net cash. A job bleeding cash surfaces on its own." },
-          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Bills lists every bill on the job — unpaid on top, paid below — with the receipt showing as a thumbnail, and the eye chips open the contract — or any change order — exactly as the customer sees it." },
+          { img: T("tut-row-receipts"), caption: "The teal chips on each row are shortcuts for Office, Admin and Production: Bills lists every bill on the job — unpaid on top, paid below — with the receipt showing as a thumbnail, and the eye chips open the contract — or any change order — exactly as the customer sees it. The rose Client chip at the end — or a click on the customer's name — jumps to their full client card on Contacts: calls, texts, appointments, files, with a back button straight to Projects." },
           { img: T("tut-permits"), caption: "Permits & contracts opens the job's own paperwork — only files filed under this contract, so a customer with two jobs never mixes their piles. Anything not filed yet waits below with a one-click File under this job, and Remove from job undoes a mistake. Hover any file to peek at it before opening — Drive even previews the first page of a PDF." },
           { img: T("t-job-costs"), caption: "Open the contract and the Job costs panel files every receipt against its phase — so you see which part of the job is winning and which is eating the margin." },
         ],

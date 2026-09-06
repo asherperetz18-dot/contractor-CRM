@@ -260,10 +260,13 @@ export default async function ProjectsPage() {
 
   // Checklists arrived in 0104. Queried separately and tolerantly, so
   // the money view never depends on the newest migration having run.
+  // select * for the same reason vendor_bills uses it above: note
+  // arrives with migration 0128, and naming it would empty the whole
+  // checklist on every job until that has been run.
   const [{ data: checklistRows, error: clErr }, { data: templateRows }] = await Promise.all([
     supabase
       .from("project_checklist_items")
-      .select("id, estimate_id, label, sort_order, due_date, assigned_to, completed_at, completed_by")
+      .select("*")
       .eq("company_id", companyId)
       .order("sort_order", { ascending: true }),
     supabase
@@ -307,6 +310,8 @@ type ChecklistRow = {
   assigned_to: string | null;
   completed_at: string | null;
   completed_by: string | null;
+  /** Free text on the step; the column arrives with migration 0128. */
+  note?: string | null;
 };
 
 /**
@@ -358,9 +363,11 @@ async function CrewProjects({ companyId }: { companyId: string }) {
         .eq("company_id", companyId)
         .range(from, to)
     ),
+    // select * here too -- the crew reads the notes, and no column on
+    // this table is a money column, so * cannot widen what they see.
     admin
       .from("project_checklist_items")
-      .select("id, estimate_id, label, sort_order, due_date, assigned_to, completed_at, completed_by")
+      .select("*")
       .eq("company_id", companyId)
       .order("sort_order", { ascending: true })
       .then((r) => (r.data as ChecklistRow[] | null) ?? []),

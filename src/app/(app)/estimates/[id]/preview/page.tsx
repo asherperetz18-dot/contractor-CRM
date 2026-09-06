@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -13,8 +14,34 @@ import {
   type DocumentCustomer,
 } from "@/components/estimate-document";
 import { AutoPrint, PrintButton } from "@/components/print-button";
+import { documentTitle } from "@/lib/tab-title";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The tab title is the document number -- "EST-1048" -- because that is
+ * what the browser names the file in "Save as PDF". It used to be the
+ * app name, so every saved proposal came down as Contractor_CRM.pdf.
+ * Same company scope as the page itself; a document from another
+ * company gets the generic fallback, just as the page gives it a 404.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const profile = await getCurrentProfile();
+  if (!profile) return {};
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("estimates")
+    .select("doc_number")
+    .eq("id", id)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ doc_number: string | null }>();
+  return { title: documentTitle(data?.doc_number) };
+}
 
 /**
  * "Preview as Customer" -- the rep sees the exact document the homeowner
@@ -42,6 +69,10 @@ export default async function EstimatePreviewPage({
     .eq("company_id", profile.company_id)
     .maybeSingle<Estimate>();
   if (!estimate) notFound();
+  // Written to the tab again right as the print dialog opens, so the
+  // suggested file name is this even if the metadata title is still
+  // streaming in. See PrintButton.
+  const title = documentTitle(estimate.doc_number);
 
   const [{ data: items }, { data: signers }, { data: payments }, { data: paidRows }, { data: company }, { data: lead }] =
     await Promise.all([
@@ -74,10 +105,10 @@ export default async function EstimatePreviewPage({
           <Link className="btn-ghost" href={`/estimates/${id}`}>
             Back to editor
           </Link>
-          <PrintButton />
+          <PrintButton title={title} />
         </div>
       </div>
-      <AutoPrint enabled={print === "1"} />
+      <AutoPrint enabled={print === "1"} title={title} />
       <div className="estdoc-preview-frame">
         <EstimateDocument
           estimate={estimate}

@@ -14,6 +14,14 @@ export type Profile = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // Send Estimates switch -- see canSendEstimates in data/types.
+  can_send_estimates: boolean;
+  // The two Accounting switches -- see canViewFinancials and
+  // canViewProfitLoss in data/accounting-access. Note these default OFF
+  // where can_send_estimates above defaults ON: an ability nobody had
+  // yesterday, rather than one being taken away.
+  can_view_financials: boolean;
+  can_view_profit_loss: boolean;
   // Dispatch Supervisor: runs the desk -- whole book, new leads, new
   // sources, assigns dispatchers. Only meaningful with the Dispatch role.
   is_dispatch_supervisor?: boolean;
@@ -109,9 +117,14 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
 
   const [{ data: identityData }, { data: membershipData }] = await Promise.all([
     supabase.from("profiles").select("name, email, is_super_admin").eq("id", userId).single(),
+    // Every column rather than a list of them. Naming a column that is
+    // not there yet (can_send_estimates before migration 0126 has run)
+    // fails the whole select, and a failed select here signs everyone
+    // out. With "*" a missing column simply reads as undefined, which
+    // the mapping below treats as the column's default.
     supabase
       .from("company_members")
-      .select("roles, status, can_delete_leads, can_view_estimates, can_create_estimates, is_dispatch_supervisor")
+      .select("*")
       .eq("profile_id", userId)
       .eq("company_id", companyId)
       .single(),
@@ -127,6 +140,9 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_delete_leads: boolean;
     can_view_estimates: boolean;
     can_create_estimates: boolean;
+    can_send_estimates?: boolean;
+    can_view_financials?: boolean;
+    can_view_profit_loss?: boolean;
     is_dispatch_supervisor: boolean;
   } | null;
   if (!membership) return null;
@@ -140,6 +156,14 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_delete_leads: membership.can_delete_leads,
     can_view_estimates: membership.can_view_estimates,
     can_create_estimates: membership.can_create_estimates,
+    // Default true, matching the column: only an explicit false restricts.
+    can_send_estimates: membership.can_send_estimates !== false,
+    // Default FALSE, matching columns added in 0127: only an explicit
+    // true grants. Before that migration runs both read as undefined,
+    // and undefined is off -- which costs nobody anything, because the
+    // roles whose job is the money hold it by role in accounting-access.
+    can_view_financials: membership.can_view_financials === true,
+    can_view_profit_loss: membership.can_view_profit_loss === true,
     is_dispatch_supervisor: membership.is_dispatch_supervisor === true,
     is_super_admin: identity?.is_super_admin === true,
     company_id: companyId,

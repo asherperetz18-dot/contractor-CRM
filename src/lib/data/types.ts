@@ -32,6 +32,10 @@ export type Profile = {
   can_delete_leads: boolean;
   can_view_estimates: boolean;
   can_create_estimates: boolean;
+  // Send Estimates: may this person put a document in front of the
+  // customer, or only build drafts for the office to send. On by default
+  // -- the owner switches it off per person in Users & Roles.
+  can_send_estimates: boolean;
   // A dispatcher who runs the desk: sees every lead, enters new ones,
   // adds sources, assigns dispatchers. Only meaningful alongside the
   // Dispatch role; set per member in Users & Roles like the flags above.
@@ -291,6 +295,31 @@ export function canCreateEstimates(
   return profile.can_create_estimates && profile.can_view_estimates;
 }
 
+/**
+ * Who may take a document out of Draft: Save & Email / Text, Mark Sent,
+ * and recording a signature that happened on paper. Everything else --
+ * building it, saving it, previewing and printing it -- stays with
+ * canCreateEstimates.
+ *
+ * Its own switch because "can write it" and "can put it in front of the
+ * customer" are different trusts: a new rep drafts, the office reads it
+ * over and sends. Office and Admin always send (an owner must not be
+ * able to lock themselves out of their own sales); everyone else,
+ * Production included, needs create (the send buttons live in the
+ * editor, so send without create is meaningless) plus the Send switch,
+ * which is on unless the owner turned it off.
+ */
+export function canSendEstimates(
+  profile: Pick<
+    Profile,
+    "roles" | "can_view_estimates" | "can_create_estimates" | "can_send_estimates"
+  > | null
+) {
+  if (!profile) return false;
+  if (profile.roles.includes("Office") || profile.roles.includes("Admin")) return true;
+  return canCreateEstimates(profile) && profile.can_send_estimates;
+}
+
 // Calendar, Schedule and Production: who can book, edit, drag and
 // complete work. Field crews need this alongside Office; Admin is the
 // full-access role. These pages each used to inline "Office || Field",
@@ -362,6 +391,7 @@ export type PageKey =
   | "payments"
   | "bills"
   | "collect"
+  | "profit-loss"
   | "commissions"
   | "sales-commission"
   | "calendar"
@@ -423,14 +453,21 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   },
   { key: "projects", label: "Projects", href: "/projects", group: "Production" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "Production" },
-  { key: "bills", label: "Bills to Pay", href: "/bills", group: "Production" },
-  { key: "collect", label: "Money to Collect", href: "/collect", group: "Production" },
+  // Accounting is the money in one place: what we owe, what we're owed,
+  // what arrived, and what it all nets to. Bills and Collect moved here
+  // from Production and Payments from the top level -- keys unchanged,
+  // so saved Role Visibility overrides and routes are untouched, and
+  // sortNavEntries seats the new group where /payments sat in a menu
+  // somebody already arranged.
+  { key: "bills", label: "Bills to Pay", href: "/bills", group: "Accounting" },
+  { key: "collect", label: "Money to Collect", href: "/collect", group: "Accounting" },
+  { key: "payments", label: "Payments", href: "/payments", group: "Accounting" },
+  { key: "profit-loss", label: "Profit & Loss", href: "/profit-loss", group: "Accounting" },
   // Key stays "documents" so existing role_page_visibility overrides keep
   // pointing at it; only the label and route move. Named "Contracts"
   // rather than "Invoices" because a signed estimate becomes a contract --
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
-  { key: "payments", label: "Payments", href: "/payments", group: "General" },
   // Two separate schemes, two separate screens. The dispatcher earns a
   // percentage of the gross sale for bringing the lead in; the rep earns
   // a share of what the job actually made. One page showing both invites
@@ -508,6 +545,12 @@ const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
   "payments",
   "bills",
   "collect",
+  // Visible to the ROLE so that the View Profit & Loss switch is the
+  // only thing standing between a bookkeeper and the report -- the
+  // switch is that role's designed control (accounting-access), and
+  // requiring a Role Visibility override on top would make flipping it
+  // appear to do nothing. The page still blocks until the switch is on.
+  "profit-loss",
 ];
 
 // Platform default when no explicit override row exists for a role/page --
@@ -544,6 +587,10 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   if (pageKey === "bills" && (role === "Field" || role === "Sales")) return false;
   // Money to Collect is company-wide receivables -- same footing.
   if (pageKey === "collect" && (role === "Field" || role === "Sales")) return false;
+  // The P&L is the most sensitive page of the four: what the company
+  // actually earns. Same default as its siblings; the real permission is
+  // the View Profit & Loss switch, checked by the page itself.
+  if (pageKey === "profit-loss" && (role === "Field" || role === "Sales")) return false;
   // Commission is payroll, so who sees whose matters, and the two schemes
   // are gated separately now that they are separate screens.
   //

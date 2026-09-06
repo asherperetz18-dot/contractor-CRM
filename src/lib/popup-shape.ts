@@ -7,6 +7,20 @@
 /** Which switch in the popup settings turns an item off. */
 export type PopupKind = "message" | "money" | "job" | "lead" | "appointment";
 
+/**
+ * Every kind, with the words people see for it. One list feeds both the
+ * "⚙ Popups" switches and the filter tabs in the bell, so a kind can
+ * never again have a switch but no tab -- which is how "Leads" sat in
+ * the settings while the bell had nowhere to show a lead.
+ */
+export const POPUP_KINDS: { key: PopupKind; label: string; hint: string }[] = [
+  { key: "message", label: "Texts", hint: "New customer texts, and texts that didn't deliver" },
+  { key: "money", label: "Money", hint: "Payments received in the portal" },
+  { key: "job", label: "Jobs", hint: "Signatures, proposal views, job steps assigned to you" },
+  { key: "lead", label: "Leads", hint: "New leads coming in" },
+  { key: "appointment", label: "Appointments", hint: "Appointments booked for you by a teammate" },
+];
+
 export type PopupToast = {
   /** Stable across polls, so the client never toasts one thing twice. */
   id: string;

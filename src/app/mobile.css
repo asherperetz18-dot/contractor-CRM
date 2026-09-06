@@ -1,0 +1,133 @@
+/* Phone and tablet fixes shared by every page (Android Chrome, iOS Safari).
+
+   Loaded from src/app/layout.tsx right after globals.css, so at equal
+   specificity these rules win. Kept out of globals.css on purpose: that
+   file is 177KB and every edit to it has to round-trip through the
+   GitHub connector. Page-specific phone rules still belong in globals.css
+   next to the page they fix; this file is only for things that apply to
+   the whole app shell or to every form. */
+
+/* 1. Browser-bar-safe heights ------------------------------------------
+   On a phone, 100vh is the height with the address bar HIDDEN. With the
+   bar showing (which is most of the time), the bottom of anything sized
+   100vh sits behind it: the last rows of a list, the sidebar's Sign out
+   button, a drawer's footer. dvh is the height that is actually visible
+   and follows the bar as it shows and hides. Browsers without dvh keep
+   the vh values from globals.css. */
+@supports (height: 100dvh) {
+  .app-shell {
+    height: 100dvh;
+  }
+  .modal {
+    max-height: 88dvh;
+  }
+  .modal-drawer {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+  .bell-menu {
+    max-height: 70dvh;
+  }
+}
+@media (max-width: 900px) {
+  @supports (height: 100dvh) {
+    .sidebar {
+      height: 100dvh;
+    }
+  }
+}
+@media (max-width: 700px) {
+  @supports (height: 100dvh) {
+    .quick-create-menu,
+    .company-switcher-menu,
+    .gsearch-panel {
+      max-height: calc(100dvh - var(--topbar-h) - 16px);
+    }
+  }
+}
+
+/* 2. Page gutters --------------------------------------------------------
+   .main kept its desktop 30px / 36px padding at every width. On a 390px
+   phone that is 72px -- almost a fifth of the screen -- spent on empty
+   margin, and every table and form on every page was that much narrower
+   than it had to be. */
+@media (min-width: 701px) and (max-width: 900px) {
+  .main {
+    padding: 22px 20px;
+  }
+}
+@media (max-width: 700px) {
+  .main {
+    padding: 16px 12px 24px;
+  }
+  .modal-backdrop {
+    padding: 10px;
+  }
+}
+
+/* 3. No zoom-on-tap in iOS Safari ----------------------------------------
+   iPhone Safari zooms the whole page in when a field whose text is
+   smaller than 16px gets focus, and does not zoom back out when it
+   loses focus. Almost every input in the CRM is 13px, so every form --
+   new contact, appointment, bill, settings, even the login screen --
+   jumped in and stayed there. 16px is the threshold Safari respects.
+   Touch screens only (pointer: coarse), so desktop keeps the compact
+   13px fields. Checkboxes, radios, sliders and colour pickers draw no
+   text, so they are left alone. */
+@media (max-width: 900px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* 4. Topbar on small phones ----------------------------------------------
+   At 700px the brand text hides, but the company logo could still be
+   140px wide, and an Office admin with every tool switched on has nine
+   controls on the right (help, screen share, dialer, who's online, daily
+   brief, bell, AI, quick create, admin tools). On a 375-430px phone the
+   cluster ran past the right edge and the last buttons were simply off
+   the screen. Shrink the logo, drop it under 430px (the sidebar header
+   shows it anyway), tighten the cluster, and as a last resort let the
+   cluster scroll sideways under a thumb instead of clipping. Every menu
+   the cluster opens is either position: fixed at this width or a modal,
+   so the overflow container cannot clip them. */
+@media (max-width: 700px) {
+  .topbar-logo-img {
+    max-width: 90px;
+    max-height: 24px;
+  }
+  .global-topbar-left {
+    flex: 0 0 auto;
+  }
+  .global-topbar-right {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    /* The count badges hang 4px past the top-right of their buttons;
+       give them that room inside the scroll box so they are not cut. */
+    padding: 5px 5px 5px 0;
+    margin: -5px -5px -5px 0;
+  }
+  .global-topbar-right::-webkit-scrollbar {
+    display: none;
+  }
+  .global-topbar-right > * {
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 430px) {
+  .topbar-logo-img {
+    display: none;
+  }
+  .global-topbar-right {
+    gap: 4px;
+  }
+  .topbar-icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+}
