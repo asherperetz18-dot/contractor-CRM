@@ -30,9 +30,24 @@ export const FINANCIALS_ALWAYS_ROLES: AppRole[] = ["Office", "Admin", "Bookkeepi
 export const PROFIT_LOSS_ALWAYS_ROLES: AppRole[] = ["Office", "Admin"];
 
 /**
- * The part of a member this file reads. Deliberately a loose shape and
- * not Profile itself: the two columns arrive with migration 0127, and
- * until it runs they read as undefined rather than false.
+ * The two columns as they are carried on a roster row.
+ *
+ * Kept here rather than added to Profile in data/types, which is a
+ * 113KB file shared by most of the app: the roster (data/company) and
+ * the Users & Roles table are the only places that need to read a
+ * *another* person's accounting flags, so they intersect this in
+ * instead. getCurrentProfile carries its own copies for the signed-in
+ * user, which is what the server-side gates read.
+ */
+export type AccountingFlags = {
+  can_view_financials: boolean;
+  can_view_profit_loss: boolean;
+};
+
+/**
+ * The part of a member the rules below read. Deliberately a loose shape
+ * and not Profile itself: the two columns arrive with migration 0127,
+ * and until it runs they read as undefined rather than false.
  */
 export type AccountingAccess = {
   roles: AppRole[];
