@@ -131,6 +131,8 @@ export function ScreenShareEngine({
   const [remoteShareBack, setRemoteShareBack] = useState(false);
   // where the user dragged the status pill; null = its default spot
   const [pillPos, setPillPos] = useState<{ x: number; y: number } | null>(null);
+  // same for the corner screen window (only one shows at a time)
+  const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const [error, setError] = useState("");
 
   const supabase = useRef(createBrowserClient());
@@ -148,6 +150,7 @@ export function ScreenShareEngine({
   const shareBackSender = useRef<RTCRtpSender | null>(null);
   const backVideo = useRef<HTMLVideoElement | null>(null);
   const pillDrag = useRef<{ dx: number; dy: number } | null>(null);
+  const panelDrag = useRef<{ dx: number; dy: number } | null>(null);
   const busyRef = useRef(false); // sharer already has a viewer
   // Live mirrors for callbacks that outlive a render (the alert
   // channel below is subscribed once, not per state change).
@@ -198,6 +201,7 @@ export function ScreenShareEngine({
       setWatching(null);
       setInviteeName(null);
       setPillPos(null);
+      setPanelPos(null);
       window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: false } }));
     },
     [broadcast, resetLanes]
@@ -591,6 +595,31 @@ export function ScreenShareEngine({
     }
   }
 
+  // The corner screen window drags the same way the pill does.
+  function panelPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest("button")) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    panelDrag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function panelPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = panelDrag.current;
+    if (!d) return;
+    const w = e.currentTarget.offsetWidth;
+    setPanelPos({
+      x: Math.min(Math.max(e.clientX - d.dx, 8 - w / 2), window.innerWidth - w / 2),
+      y: Math.min(Math.max(e.clientY - d.dy, 0), window.innerHeight - 40),
+    });
+  }
+  function panelPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    panelDrag.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // capture may already be gone
+    }
+  }
+
   return (
     <>
       <audio ref={remoteAudio} autoPlay style={{ display: "none" }} />
@@ -671,22 +700,29 @@ export function ScreenShareEngine({
         </div>
       )}
 
-      {/* The viewer's screen coming back the other way: the sharer
-          watches it in the same full-screen surface the viewer uses.
-          The pill floats above it, so Stop and the toggles stay in
-          reach. Mounted (hidden) while sharing for the same reason as
-          the face bubble. */}
+      {/* The viewer's screen coming back the other way. NEVER
+          full-screen here: this side's screen is being captured, and a
+          captured screen showing a full-screen copy of the other
+          captured screen is the hall-of-mirrors tunnel. A corner
+          window bounds the reflection to one small copy. Mounted
+          (hidden) while sharing so the track has somewhere to land. */}
       {sharing && (
         <div
-          className="ss-viewer"
+          className="ss-screen-panel"
           role="dialog"
           aria-label="Teammate's screen"
-          style={{ display: remoteShareBack ? undefined : "none" }}
+          style={{
+            display: remoteShareBack ? undefined : "none",
+            ...(panelPos ? { left: panelPos.x, top: panelPos.y, bottom: "auto" } : null),
+          }}
+          onPointerDown={panelPointerDown}
+          onPointerMove={panelPointerMove}
+          onPointerUp={panelPointerUp}
+          title="Drag me anywhere"
         >
           <div className="ss-viewer-head">
             <span>
-              <span className="ss-dot" /> Watching <strong>{inviteeName ?? "your teammate"}</strong>&apos;s
-              screen — you&apos;re still sharing yours
+              <span className="ss-dot" /> <strong>{inviteeName ?? "Your teammate"}</strong>&apos;s screen
             </span>
           </div>
           <video ref={backVideo} autoPlay playsInline className="ss-video" />
@@ -741,11 +777,27 @@ export function ScreenShareEngine({
         </div>
       ) : null}
 
+      {/* Full-screen while only watching; the moment this side shares
+          its own screen back, the SAME surface (same video element --
+          a remount would drop the stream) shrinks to a draggable
+          corner window, for the mirror-tunnel reason above. */}
       {watching && (
-        <div className="ss-viewer" role="dialog" aria-label="Screen share">
+        <div
+          className={shareBackOn ? "ss-screen-panel" : "ss-viewer"}
+          role="dialog"
+          aria-label="Screen share"
+          style={
+            shareBackOn && panelPos ? { left: panelPos.x, top: panelPos.y, bottom: "auto" } : undefined
+          }
+          onPointerDown={shareBackOn ? panelPointerDown : undefined}
+          onPointerMove={shareBackOn ? panelPointerMove : undefined}
+          onPointerUp={shareBackOn ? panelPointerUp : undefined}
+          title={shareBackOn ? "Drag me anywhere" : undefined}
+        >
           <div className="ss-viewer-head">
             <span>
               <span className="ss-dot" /> Watching <strong>{watching.sharerName}</strong>&apos;s screen
+              {shareBackOn ? " — sharing yours too" : ""}
             </span>
             <div className="ss-viewer-tools">
               <button className="btn-ghost small" onClick={toggleMic}>
