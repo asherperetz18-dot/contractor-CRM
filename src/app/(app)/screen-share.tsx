@@ -14,7 +14,8 @@ import {
 
 /**
  * Live screen help between teammates: one shares, one watches, both
- * talk. WebRTC peer-to-peer; the handshake rides a Supabase Realtime
+ * talk -- and either can turn a camera on to be seen in a corner
+ * bubble. WebRTC peer-to-peer; the handshake rides a Supabase Realtime
  * channel named by the session's random token, and Twilio's TURN
  * relays cover the networks where peer-to-peer can't punch through.
  *
@@ -30,6 +31,7 @@ type Signal =
   | { kind: "offer"; sdp: RTCSessionDescriptionInit }
   | { kind: "answer"; sdp: RTCSessionDescriptionInit }
   | { kind: "ice"; from: "sharer" | "viewer"; candidate: RTCIceCandidateInit }
+  | { kind: "cam"; from: "sharer" | "viewer"; on: boolean }
   | { kind: "busy" }
   | { kind: "end" };
 
@@ -118,6 +120,9 @@ export function ScreenShareEngine({
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [watching, setWatching] = useState<ActiveShare | null>(null);
   const [micOn, setMicOn] = useState(true);
+  // cameras: off until somebody turns theirs on, each side separately
+  const [camOn, setCamOn] = useState(false);
+  const [remoteCamOn, setRemoteCamOn] = useState(false);
   const [error, setError] = useState("");
 
   const supabase = useRef(createBrowserClient());
@@ -128,6 +133,9 @@ export function ScreenShareEngine({
   const micStream = useRef<MediaStream | null>(null);
   const remoteAudio = useRef<HTMLAudioElement | null>(null);
   const remoteVideo = useRef<HTMLVideoElement | null>(null);
+  const camStream = useRef<MediaStream | null>(null);
+  const camSender = useRef<RTCRtpSender | null>(null);
+  const camVideo = useRef<HTMLVideoElement | null>(null);
   const busyRef = useRef(false); // sharer already has a viewer
   // Live mirrors for callbacks that outlive a render (the alert
   // channel below is subscribed once, not per state change).
@@ -140,9 +148,20 @@ export function ScreenShareEngine({
     channel.current?.send({ type: "broadcast", event: "signal", payload });
   }, []);
 
+  // Cameras live and die with one peer connection: a viewer leaving
+  // (or the whole session ending) puts both faces back to off.
+  const resetCam = useCallback(() => {
+    camStream.current?.getTracks().forEach((t) => t.stop());
+    camStream.current = null;
+    camSender.current = null;
+    setCamOn(false);
+    setRemoteCamOn(false);
+  }, []);
+
   const teardown = useCallback(
     (notify: boolean) => {
       if (notify) broadcast({ kind: "end" });
+      resetCam();
       pc.current?.close();
       pc.current = null;
       screenStream.current?.getTracks().forEach((t) => t.stop());
@@ -162,7 +181,7 @@ export function ScreenShareEngine({
       setInviteeName(null);
       window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: false } }));
     },
-    [broadcast]
+    [broadcast, resetCam]
   );
 
   const newPeer = useCallback(async () => {
@@ -173,10 +192,11 @@ export function ScreenShareEngine({
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
         setViewerHere(false);
         busyRef.current = false;
+        resetCam();
       }
     };
     return peer;
-  }, []);
+  }, [resetCam]);
 
   // ── sharer ──────────────────────────────────────────────────────
   const startSharing = useCallback(async (invitedTo: string | null, inviteeLabel: string | null) => {
@@ -212,8 +232,19 @@ export function ScreenShareEngine({
             const p = await newPeer();
             screen.getTracks().forEach((t) => p.addTrack(t, screen));
             mic?.getTracks().forEach((t) => p.addTrack(t, mic));
+            // A camera lane is negotiated up front, empty, for BOTH
+            // directions: turning a face on later is replaceTrack, no
+            // SDP round-trip. The screen m-line sits before it, so the
+            // two videos are told apart by position, not track ids.
+            camSender.current = p.addTransceiver("video", { direction: "sendrecv" }).sender;
             p.ontrack = (e) => {
-              if (remoteAudio.current) {
+              if (e.track.kind === "video") {
+                // the only video a sharer receives is the viewer's face
+                if (camVideo.current) {
+                  camVideo.current.srcObject = new MediaStream([e.track]);
+                  void camVideo.current.play().catch(() => {});
+                }
+              } else if (remoteAudio.current) {
                 remoteAudio.current.srcObject = e.streams[0];
                 void remoteAudio.current.play().catch(() => {});
               }
@@ -229,11 +260,14 @@ export function ScreenShareEngine({
             setViewerHere(true);
           } else if (sig.kind === "ice" && sig.from === "viewer" && peer) {
             await peer.addIceCandidate(sig.candidate);
+          } else if (sig.kind === "cam" && sig.from === "viewer") {
+            setRemoteCamOn(sig.on);
           } else if (sig.kind === "end") {
             pc.current?.close();
             pc.current = null;
             busyRef.current = false;
             setViewerHere(false);
+            resetCam();
           }
         } catch {
           // a malformed signal must not take down the session
@@ -258,7 +292,7 @@ export function ScreenShareEngine({
     } catch {
       // user cancelled the picker
     }
-  }, [broadcast, newPeer, teardown, selfName]);
+  }, [broadcast, newPeer, teardown, resetCam, selfName]);
 
   // ── viewer ──────────────────────────────────────────────────────
   const startWatching = useCallback(
@@ -276,9 +310,19 @@ export function ScreenShareEngine({
       const peer = await newPeer();
       mic?.getTracks().forEach((t) => peer.addTrack(t, mic));
       peer.ontrack = (e) => {
-        if (e.track.kind === "video" && remoteVideo.current) {
-          remoteVideo.current.srcObject = e.streams[0];
-          void remoteVideo.current.play().catch(() => {});
+        if (e.track.kind === "video") {
+          // Two video lanes arrive in the offer's order -- screen
+          // first, camera second. Position tells them apart.
+          const vids = peer.getTransceivers().filter((t) => t.receiver.track.kind === "video");
+          if (vids.length > 1 && e.transceiver === vids[1]) {
+            if (camVideo.current) {
+              camVideo.current.srcObject = new MediaStream([e.track]);
+              void camVideo.current.play().catch(() => {});
+            }
+          } else if (remoteVideo.current) {
+            remoteVideo.current.srcObject = e.streams[0];
+            void remoteVideo.current.play().catch(() => {});
+          }
         }
         if (e.track.kind === "audio" && remoteAudio.current) {
           remoteAudio.current.srcObject = e.streams[0];
@@ -296,11 +340,21 @@ export function ScreenShareEngine({
         try {
           if (sig.kind === "offer") {
             await peer.setRemoteDescription(sig.sdp);
+            // claim the camera lane the sharer negotiated (the second
+            // video m-line) so this side can send a face on it too
+            const vids = peer.getTransceivers().filter((t) => t.receiver.track.kind === "video");
+            const camTx = vids[1];
+            if (camTx) {
+              camTx.direction = "sendrecv";
+              camSender.current = camTx.sender;
+            }
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
             broadcast({ kind: "answer", sdp: answer });
           } else if (sig.kind === "ice" && sig.from === "sharer") {
             await peer.addIceCandidate(sig.candidate);
+          } else if (sig.kind === "cam" && sig.from === "sharer") {
+            setRemoteCamOn(sig.on);
           } else if (sig.kind === "busy") {
             setError(`${share.sharerName} already has a viewer in this session.`);
             teardown(false);
@@ -407,9 +461,41 @@ export function ScreenShareEngine({
     });
   }
 
+  /** Off by default: the browser's own camera permission plus this
+   * toggle are the only ways a face goes out -- same consent shape as
+   * the screen picker. */
+  async function toggleCam() {
+    const sender = camSender.current;
+    if (!sender) return;
+    const role: "sharer" | "viewer" = sharing ? "sharer" : "viewer";
+    if (camOn) {
+      camStream.current?.getTracks().forEach((t) => t.stop());
+      camStream.current = null;
+      void sender.replaceTrack(null).catch(() => {});
+      setCamOn(false);
+      broadcast({ kind: "cam", from: role, on: false });
+    } else {
+      try {
+        const cam = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 } },
+        });
+        if (camSender.current !== sender) {
+          // the session moved on while the permission prompt was open
+          cam.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        camStream.current = cam;
+        await sender.replaceTrack(cam.getVideoTracks()[0] ?? null);
+        setCamOn(true);
+        broadcast({ kind: "cam", from: role, on: true });
+      } catch {
+        // permission denied -- the toggle simply stays off
+      }
+    }
+  }
+
   return (
     <>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <audio ref={remoteAudio} autoPlay style={{ display: "none" }} />
 
       {picker && !sharing && !watching && (
@@ -460,9 +546,24 @@ export function ScreenShareEngine({
           <button className="btn-ghost small" onClick={toggleMic}>
             {micOn ? "🎙 Mic on" : "🔇 Mic off"}
           </button>
+          {viewerHere && (
+            <button className="btn-ghost small" onClick={() => void toggleCam()}>
+              {camOn ? "📷 Cam on" : "📷 Cam off"}
+            </button>
+          )}
           <button className="btn-primary small" onClick={() => teardown(true)}>
             Stop
           </button>
+        </div>
+      )}
+
+      {/* The viewer's face, floated over the app while sharing. The
+          element stays mounted (hidden) so an arriving track always
+          has somewhere to land. */}
+      {sharing && (
+        <div className="ss-cam-bubble" style={{ display: remoteCamOn ? undefined : "none" }}>
+          <video ref={camVideo} autoPlay playsInline muted />
+          <span className="ss-cam-name">{inviteeName ?? "Teammate"}</span>
         </div>
       )}
 
@@ -524,6 +625,9 @@ export function ScreenShareEngine({
               <button className="btn-ghost small" onClick={toggleMic}>
                 {micOn ? "🎙 Mic on" : "🔇 Mic off"}
               </button>
+              <button className="btn-ghost small" onClick={() => void toggleCam()}>
+                {camOn ? "📷 Cam on" : "📷 Cam off"}
+              </button>
               <button
                 className="btn-primary small"
                 onClick={() => {
@@ -535,8 +639,12 @@ export function ScreenShareEngine({
               </button>
             </div>
           </div>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video ref={remoteVideo} autoPlay playsInline className="ss-video" />
+          {/* the sharer's face over their shared screen */}
+          <div className="ss-cam-bubble" style={{ display: remoteCamOn ? undefined : "none" }}>
+            <video ref={camVideo} autoPlay playsInline muted />
+            <span className="ss-cam-name">{watching.sharerName}</span>
+          </div>
         </div>
       )}
 
