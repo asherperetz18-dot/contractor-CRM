@@ -37,7 +37,7 @@ const LIBRARY: Category[] = [
         desc: "One place for everything that needs you: failed texts, overdue invoices, proposal views, overdue steps.",
         steps: [
           { img: T("tut-bell"), caption: "The bell in the topbar counts what's new since you last looked. Open it and the Needs Attention line sums up the day — then every item below links straight to the thing itself: a text that never delivered, an invoice 30 days overdue, a customer who just opened your proposal." },
-          { img: T("tut-bell-money"), caption: "The tabs split the feed — Messages, Money, Jobs. The bell computes everything live from your real data, so it can never show a stale count. Mark all read clears the badge; new events light it up again." },
+          { img: T("tut-bell-money"), caption: "The tabs split the feed — Messages, Money, Jobs. The bell computes everything live from your real data, so it can never show a stale count. Mark all read clears the badge; new events light it up again. And the bell knows whose bell it is: a sales rep sees proposal views and signatures for their own customers only, while Office, Admin, Bookkeeping and Production keep the company-wide feed." },
         ],
       },
       {
