@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useTransition } from "react";
+import React, { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { mapsUrl, moneyCents, projectTriageOrder, type ProjectRollup } from "@/lib/data/types";
@@ -68,6 +68,64 @@ const STATUS_TAG: Record<ProjectStatus, string | null> = {
   cancelled: "Cancelled",
 };
 
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  in_progress: "In progress",
+  on_hold: "On hold",
+  complete: "Complete",
+  cancelled: "Cancelled",
+};
+
+// Optional table columns a user can turn on -- the core money columns
+// (Sold/Collected/Owed/Spent/Net cash) stay fixed since they're the
+// whole point of this page, but who cares about Rep vs. Signed date vs.
+// Change order count differs per person, so those are opt-in rather
+// than cluttering the table for everyone by default.
+type OptionalColumnKey = "rep" | "status" | "signedDate" | "changeOrders";
+const OPTIONAL_COLUMNS: { key: OptionalColumnKey; label: string }[] = [
+  { key: "rep", label: "Rep" },
+  { key: "status", label: "Status" },
+  { key: "signedDate", label: "Signed date" },
+  { key: "changeOrders", label: "Change orders" },
+];
+const COLUMNS_STORAGE_KEY = "projects-visible-columns";
+
+// useSyncExternalStore rather than a lazy useState initializer: reading
+// localStorage during the client's first render (but not the server's)
+// is exactly what a lazy initializer would do, and it reliably threw a
+// "Hydration failed because the server rendered HTML didn't match the
+// client" error here -- confirmed in the browser console. This hook
+// exists precisely for "a browser-only value that must render the same
+// on the server's first pass, then sync to the real value right after":
+// getServerSnapshot supplies the SSR-safe default, and our own writes
+// notify the listener set so toggling reflects immediately.
+const columnListeners = new Set<() => void>();
+
+function getVisibleColumnsSnapshot(): string {
+  try {
+    return window.localStorage.getItem(COLUMNS_STORAGE_KEY) ?? "[]";
+  } catch {
+    return "[]";
+  }
+}
+
+function getServerColumnsSnapshot(): string {
+  return "[]";
+}
+
+function subscribeColumns(callback: () => void): () => void {
+  columnListeners.add(callback);
+  return () => columnListeners.delete(callback);
+}
+
+function writeVisibleColumns(next: Set<OptionalColumnKey>) {
+  try {
+    window.localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+  } catch {
+    // Best-effort persistence only -- the toggle still works this visit.
+  }
+  columnListeners.forEach((cb) => cb());
+}
+
 /**
  * Sold jobs, worst first.
  *
@@ -126,6 +184,26 @@ export function ProjectsView({
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
   const [documentsFor, setDocumentsFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
+  const visibleColumnsRaw = useSyncExternalStore(
+    subscribeColumns,
+    getVisibleColumnsSnapshot,
+    getServerColumnsSnapshot
+  );
+  const visibleColumns = useMemo(() => {
+    try {
+      return new Set(JSON.parse(visibleColumnsRaw) as OptionalColumnKey[]);
+    } catch {
+      return new Set<OptionalColumnKey>();
+    }
+  }, [visibleColumnsRaw]);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+
+  function toggleColumn(key: OptionalColumnKey) {
+    const next = new Set(visibleColumns);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    writeVisibleColumns(next);
+  }
 
   const itemsByEstimate = useMemo(() => {
     const map = new Map<string, ChecklistItemRow[]>();
@@ -463,6 +541,59 @@ export function ProjectsView({
               />
             </>
           )}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setColumnsOpen((v) => !v)}
+            >
+              Columns{visibleColumns.size > 0 ? ` (${visibleColumns.size})` : ""}
+            </button>
+            {columnsOpen && (
+              <>
+                {/* Click-away layer: any click outside the panel closes it. */}
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 10 }}
+                  onClick={() => setColumnsOpen(false)}
+                />
+                <div
+                  className="dash-panel"
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "100%",
+                    marginTop: 4,
+                    zIndex: 11,
+                    minWidth: 180,
+                    padding: 12,
+                  }}
+                >
+                  <div className="est-tax-note" style={{ marginBottom: 8 }}>
+                    Show extra columns
+                  </div>
+                  {OPTIONAL_COLUMNS.map((col) => (
+                    <label
+                      key={col.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "4px 0",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumns.has(col.key)}
+                        onChange={() => toggleColumn(col.key)}
+                      />
+                      {col.label}
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -479,6 +610,10 @@ export function ProjectsView({
               <tr>
                 <th>Job</th>
                 <th>Customer</th>
+                {visibleColumns.has("rep") && <th>Rep</th>}
+                {visibleColumns.has("status") && <th>Status</th>}
+                {visibleColumns.has("signedDate") && <th>Signed</th>}
+                {visibleColumns.has("changeOrders") && <th className="right">Change orders</th>}
                 <th className="right">Sold</th>
                 <th className="right">Collected</th>
                 <th className="right">Owed</th>
@@ -668,6 +803,22 @@ export function ProjectsView({
                       </div>
                     )}
                   </td>
+                  {visibleColumns.has("rep") && <td>{p.repName || "—"}</td>}
+                  {visibleColumns.has("status") && <td>{STATUS_LABEL[p.status]}</td>}
+                  {visibleColumns.has("signedDate") && (
+                    <td>
+                      {p.signedAt
+                        ? new Date(p.signedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </td>
+                  )}
+                  {visibleColumns.has("changeOrders") && (
+                    <td className="right mono">{p.changeOrderCount}</td>
+                  )}
                   <td className="right mono">{moneyCents(p.rollup.soldCents)}</td>
                   <td className="right mono">
                     {moneyCents(p.rollup.collectedCents)}
@@ -701,7 +852,7 @@ export function ProjectsView({
                 </tr>
                 {openChecklist === p.estimateId && (
                   <tr className="proj-checklist-row">
-                    <td colSpan={7}>
+                    <td colSpan={7 + visibleColumns.size}>
                       <ProjectChecklist
                         estimateId={p.estimateId}
                         items={items}
