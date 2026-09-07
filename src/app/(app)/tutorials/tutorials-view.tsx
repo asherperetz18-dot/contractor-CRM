@@ -97,7 +97,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("t-share-pill"), caption: "Tap the 🖥 button in the top bar and pick who should watch — one teammate by name, or anyone on the team. Your browser then asks exactly what to share — whole screen or one window — and a red pill shows you're live." },
           { img: T("tut-share-invite"), caption: "The teammate you picked gets a pop-up that moment — with a chime: Alex wants to share their screen with you. One tap on Join and they're in — and nobody else in the company even sees the session. Pick 'anyone' instead and the whole team gets the old open banner." },
-          { img: T("t-share-viewer"), caption: "The viewer sees your screen live and you talk to each other through your microphones, like a phone call with eyes. Want real face time? Either of you can tap 📷 Cam on and your camera appears in a small bubble on the other person's screen — cameras always start off, and each of you controls only your own. Either side can mute or leave; Stop ends it for everyone." },
+          { img: T("t-share-viewer"), caption: "The viewer sees your screen live and you talk to each other through your microphones, like a phone call with eyes. Want real face time? Either of you can tap 📷 Cam on and your camera appears in a small bubble on the other person's screen — cameras always start off, and each of you controls only your own. It works both ways too: the viewer can tap Share mine too and now each of you is watching the other's screen at the same time. And if the sharing bar is ever in your way, just drag it — it moves anywhere. Either side can mute or leave; Stop ends it for everyone." },
         ],
       },
     ],
