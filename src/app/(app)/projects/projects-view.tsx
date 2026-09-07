@@ -36,6 +36,30 @@ export type ProjectCard = {
 };
 
 type Filter = "All" | "InProgress" | "OnHold" | "Complete" | "Cancelled" | "Bleeding" | "Owed";
+type DateRange = "any" | "week" | "month" | "year" | "custom";
+
+/** [start, end] ms bounds for "signed on" a job falls in, or null for no
+ *  date filter at all. Custom leaves either side open when blank, so
+ *  "from" alone means "since then" and "to" alone means "up to then". */
+function dateRangeBounds(
+  range: DateRange,
+  customFrom: string,
+  customTo: string
+): [number, number] | null {
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  if (range === "week") return [now - 7 * DAY, now];
+  if (range === "month") return [now - 30 * DAY, now];
+  if (range === "year") return [now - 365 * DAY, now];
+  if (range === "custom") {
+    const from = customFrom ? new Date(customFrom).getTime() : -Infinity;
+    // Include the entire "to" day, not just its midnight instant.
+    const to = customTo ? new Date(customTo).getTime() + DAY - 1 : Infinity;
+    if (from === -Infinity && to === Infinity) return null;
+    return [from, to];
+  }
+  return null;
+}
 
 const STATUS_TAG: Record<ProjectStatus, string | null> = {
   in_progress: null, // the normal case earns no badge
@@ -87,6 +111,11 @@ export function ProjectsView({
 }) {
   const [filter, setFilter] = useState<Filter>("All");
   const [search, setSearch] = useState("");
+  const [clientFilter, setClientFilter] = useState("");
+  const [repFilter, setRepFilter] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>("any");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // Which job the bill modal opens on: a lead id from a row's chip,
@@ -140,19 +169,44 @@ export function ProjectsView({
                 ? cancelled
                 : sorted;
 
-  // Quick search on top of whichever chip is selected -- the chip counts
-  // above stay put (they answer "how many are in this bucket"), search
-  // just narrows what's visible within it.
+  // Client/rep dropdown options come from every project, not just the
+  // currently selected chip -- so picking "Cancelled" doesn't also empty
+  // out the rep list and make it look like that rep has nothing at all.
+  const clientOptions = useMemo(
+    () => [...new Set(projects.map((p) => p.customer))].sort((a, b) => a.localeCompare(b)),
+    [projects]
+  );
+  const repOptions = useMemo(
+    () =>
+      [...new Set(projects.map((p) => p.repName).filter((r): r is string => !!r))].sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [projects]
+  );
+
+  // Quick search plus the structured filters, all stacked on top of
+  // whichever status chip is selected -- the chip counts above stay put
+  // (they answer "how many are in this bucket"), these just narrow what's
+  // visible within it.
   const q = search.trim().toLowerCase();
-  const searched = q
-    ? shown.filter((p) =>
-        [p.title, p.docNumber, p.customer, p.address, p.repName]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(q)
-      )
-    : shown;
+  const dateBounds = dateRangeBounds(dateRange, customFrom, customTo);
+  const searched = shown.filter((p) => {
+    if (clientFilter && p.customer !== clientFilter) return false;
+    if (repFilter && p.repName !== repFilter) return false;
+    if (dateBounds) {
+      if (!p.signedAt) return false;
+      const signedMs = new Date(p.signedAt).getTime();
+      if (signedMs < dateBounds[0] || signedMs > dateBounds[1]) return false;
+    }
+    if (q) {
+      const haystack = [p.title, p.docNumber, p.customer, p.address, p.repName]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    return true;
+  });
 
   // The money cards follow the selected chip: pick "Complete" and the
   // figures speak for finished work; pick "Cancelled" and Sold becomes
@@ -347,18 +401,76 @@ export function ProjectsView({
             </button>
           ))}
         </div>
-        <input
-          className="ur-search"
-          style={{ maxWidth: 280 }}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search rep, client, or address…"
-        />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            className="ur-search"
+            style={{ maxWidth: 200 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search rep, client, or address…"
+          />
+          <select
+            className="ur-company-filter"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+          >
+            <option value="">All clients</option>
+            {clientOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ur-company-filter"
+            value={repFilter}
+            onChange={(e) => setRepFilter(e.target.value)}
+          >
+            <option value="">All reps</option>
+            {repOptions.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
+          <select
+            className="ur-company-filter"
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value as DateRange)}
+          >
+            <option value="any">Any date</option>
+            <option value="week">Last 7 days</option>
+            <option value="month">Last 30 days</option>
+            <option value="year">Last 12 months</option>
+            <option value="custom">Custom range…</option>
+          </select>
+          {dateRange === "custom" && (
+            <>
+              <input
+                type="date"
+                className="ur-company-filter"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-label="Signed from"
+              />
+              <span className="est-tax-note">to</span>
+              <input
+                type="date"
+                className="ur-company-filter"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-label="Signed to"
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {searched.length === 0 ? (
         <p className="empty-hint">
-          {q ? "No jobs match that search." : "Nothing here — which is the good outcome."}
+          {q || clientFilter || repFilter || dateRange !== "any"
+            ? "No jobs match those filters."
+            : "Nothing here — which is the good outcome."}
         </p>
       ) : (
         <div className="table-scroll">
