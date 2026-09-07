@@ -471,6 +471,7 @@ export function ScreenShareEngine({
         // and impossible to miss.
         <Modal
           title="Screen share invite"
+          noBackdropClose
           onClose={() => {
             setDismissed(offer.id);
             setOffer(null);
