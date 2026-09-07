@@ -8144,6 +8144,34 @@ textarea.est-item-desc:disabled {
   object-fit: contain;
   background: #000;
 }
+/* The face bubble: one teammate's camera in the corner, floating over
+   the app (sharer) or over the watched screen (viewer). */
+.ss-cam-bubble {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 120;
+  width: 200px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #10161d;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.ss-cam-bubble video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #000;
+}
+.ss-cam-name {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  color: #fff;
+  font-size: 12px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
 
 /* Checklist steps: the plan columns (due date, owner) and the
    overdue alarm. */
