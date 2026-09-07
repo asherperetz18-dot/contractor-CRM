@@ -9,6 +9,7 @@ export function Modal({
   wide,
   xwide,
   drawer,
+  noBackdropClose,
 }: {
   title: string;
   onClose: () => void;
@@ -18,6 +19,11 @@ export function Modal({
   /** Full-height panel docked to the right edge, so what's behind stays
    *  readable — review flows peek at a record and move on. */
   drawer?: boolean;
+  /** A click on the dark backdrop normally closes the modal. For a
+   *  prompt that must be answered on purpose (an incoming invite), set
+   *  this so only the ✕ or an explicit button dismisses it — a stray
+   *  click on the page behind shouldn't eat the question. */
+  noBackdropClose?: boolean;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -36,7 +42,7 @@ export function Modal({
   return (
     <div
       className={"modal-backdrop" + (drawer ? " modal-backdrop-drawer" : "")}
-      onClick={onClose}
+      onClick={noBackdropClose ? undefined : onClose}
       // Wheel over the dark ring scrolls the card anyway: when a modal
       // is open, the card is the only thing scrolling means.
       onWheel={(e) => {
