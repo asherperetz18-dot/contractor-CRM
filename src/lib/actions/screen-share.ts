@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { isStrictAdmin } from "@/lib/data/types";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 
 export type ActiveShare = {
@@ -119,7 +119,7 @@ export async function requestScreenShare(targetId: string): Promise<{
 }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only admins can request a teammate's screen." };
+  if (!isStrictAdmin(profile)) return { error: "Only admins can request a teammate's screen." };
   if (targetId === profile.id) return { error: "That's you." };
 
   const admin = createAdminClient();

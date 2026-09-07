@@ -140,7 +140,7 @@ export default async function AppLayout({
                   ❓
                 </Link>
                 <ScreenShareButton />
-                {isAdminRole(profile) && <RequestScreenButton />}
+                {isStrictAdmin(profile) && <RequestScreenButton />}
                 <DialerButton />
                 {canEditDispatch(profile) && <DuplicateContactsButton />}
                 {isStrictAdmin(profile) && (
@@ -171,7 +171,7 @@ export default async function AppLayout({
           selfId={profile.id}
           selfName={profile.name || profile.email || "A teammate"}
           companyId={profile.company_id}
-          isAdmin={isAdminRole(profile)}
+          isAdmin={isStrictAdmin(profile)}
         />
         {/* The popup watcher: corner toast + ding, sidebar badge,
             tab-title flash -- for everything that just happened, on
