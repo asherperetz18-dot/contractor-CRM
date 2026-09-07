@@ -8164,6 +8164,39 @@ textarea.est-item-desc:disabled {
   object-fit: contain;
   background: #000;
 }
+/* The corner screen window: how an incoming screen renders whenever
+   THIS side's screen is also being captured. Full-screen would put a
+   captured screen inside a captured screen -- the endless-mirror
+   tunnel -- so the reflection is bounded to one small draggable copy
+   instead. */
+.ss-screen-panel {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  z-index: 118;
+  width: min(560px, 48vw);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0d131b;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ss-screen-panel:active {
+  cursor: grabbing;
+}
+.ss-screen-panel .ss-viewer-head {
+  padding: 7px 10px;
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.ss-screen-panel .ss-video {
+  flex: none;
+  aspect-ratio: 16 / 9;
+}
 /* The face bubble: one teammate's camera in the corner, floating over
    the app (sharer) or over the watched screen (viewer). */
 .ss-cam-bubble {
