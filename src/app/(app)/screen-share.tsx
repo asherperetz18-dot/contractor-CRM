@@ -8,6 +8,7 @@ import {
   getActiveShares,
   getIceServers,
   getShareTargets,
+  requestScreenShare,
   startScreenShare,
   type ActiveShare,
 } from "@/lib/actions/screen-share";
@@ -80,6 +81,36 @@ export function ScreenShareButton() {
   );
 }
 
+/** Admin-only topbar trigger: ask a teammate to show THEIR screen.
+ * Rendered only for admins in the layout; the server action rejects
+ * the ask from anyone else, so the browser console can't route around
+ * it either. */
+export function RequestScreenButton() {
+  return (
+    <button
+      type="button"
+      className="icon-btn topbar-icon-btn"
+      title="Ask a teammate to show you their screen"
+      aria-label="Request a teammate's screen"
+      onClick={() => window.dispatchEvent(new CustomEvent("crm:screenshare-request"))}
+    >
+      {/* A monitor with an eye: "let me see yours", the mirror image of
+          the share button's outgoing arrow. */}
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+        <rect x="2" y="4" width="20" height="13" rx="2" fill="#e3edf9" stroke="#2b5c9e" strokeWidth="1.8" />
+        <path d="M8.5 21h7M12 17.2V21" stroke="#2b5c9e" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="12" cy="10.5" r="1.7" fill="#2b5c9e" />
+        <path
+          d="M7.5 10.5C8.8 8.4 10.3 7.5 12 7.5s3.2.9 4.5 3c-1.3 2.1-2.8 3-4.5 3s-3.2-.9-4.5-3Z"
+          stroke="#2b5c9e"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 type Channel = ReturnType<ReturnType<typeof createBrowserClient>["channel"]>;
 
 /** Short, quiet chimes. The person they're aimed at is usually looking
@@ -118,17 +149,29 @@ export function ScreenShareEngine({
   selfId,
   selfName,
   companyId,
+  isAdmin = false,
 }: {
   selfId: string;
   selfName: string;
   companyId: string;
+  /** Admins can ask a teammate to show their screen (the request flow);
+   *  everyone can share their own. */
+  isAdmin?: boolean;
 }) {
   // sharer state
   const [sharing, setSharing] = useState(false);
   const [viewerHere, setViewerHere] = useState(false);
   const [inviteeName, setInviteeName] = useState<string | null>(null);
-  // "who should watch?" picker, opened by the topbar button
-  const [picker, setPicker] = useState<{ targets: { id: string; name: string }[] | null } | null>(null);
+  // The picker, opened by a topbar button. mode "share" = "who should
+  // watch my screen?"; mode "request" = "whose screen do I want to see?"
+  const [picker, setPicker] = useState<{
+    targets: { id: string; name: string }[] | null;
+    mode: "share" | "request";
+  } | null>(null);
+  // admin waiting on a teammate to answer a screen request
+  const [requesting, setRequesting] = useState<{ id: string; name: string } | null>(null);
+  // teammate's incoming "show me your screen" popup
+  const [incomingRequest, setIncomingRequest] = useState<{ fromId: string; fromName: string } | null>(null);
   // viewer state
   const [offer, setOffer] = useState<ActiveShare | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -169,6 +212,9 @@ export function ScreenShareEngine({
   const dismissedRef = useRef<string | null>(null);
   const dingedRef = useRef<string | null>(null);
   const alertChannel = useRef<Channel | null>(null);
+  // the teammate an admin is waiting on; when that person's share
+  // appears, the admin joins it without a prompt (they asked for it)
+  const awaitingFromRef = useRef<string | null>(null);
 
   const broadcast = useCallback((payload: Signal) => {
     channel.current?.send({ type: "broadcast", event: "signal", payload });
@@ -213,6 +259,9 @@ export function ScreenShareEngine({
       setInviteeName(null);
       setPillPos(null);
       setPanelPos(null);
+      setRequesting(null);
+      setIncomingRequest(null);
+      awaitingFromRef.current = null;
       window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: false } }));
     },
     [broadcast, resetLanes]
@@ -431,21 +480,77 @@ export function ScreenShareEngine({
     [broadcast, newPeer, teardown]
   );
 
+  // ── admin: request a teammate's screen ──────────────────────────
+  // The ask itself carries no pixels: it just pings the teammate, whose
+  // "Share now" starts the session aimed back here. awaitingFromRef
+  // arms the auto-join for when that session appears.
+  const requestScreen = useCallback(
+    async (targetId: string, targetName: string) => {
+      setError("");
+      const res = await requestScreenShare(targetId);
+      if (res.error || !res.ok) return setError(res.error ?? "Couldn't send the request.");
+      awaitingFromRef.current = targetId;
+      setRequesting({ id: targetId, name: targetName });
+      alertChannel.current?.send({
+        type: "broadcast",
+        event: "request",
+        payload: { fromId: selfId, fromName: selfName, to: targetId },
+      });
+    },
+    [selfId, selfName]
+  );
+
+  const cancelRequest = useCallback(() => {
+    const target = awaitingFromRef.current;
+    awaitingFromRef.current = null;
+    setRequesting(null);
+    if (target) {
+      alertChannel.current?.send({ type: "broadcast", event: "request-cancel", payload: { to: target } });
+    }
+  }, []);
+
+  const declineRequest = useCallback(() => {
+    setIncomingRequest((req) => {
+      if (req) {
+        alertChannel.current?.send({
+          type: "broadcast",
+          event: "request-declined",
+          payload: { to: req.fromId, fromName: selfName },
+        });
+      }
+      return null;
+    });
+  }, [selfName]);
+
   // toggle from the topbar button: sharing stops; otherwise ask WHO
   // should watch before anything leaves this machine.
   useEffect(() => {
     const onToggle = () => {
       if (sharing) teardown(true);
       else if (!watching) {
-        setPicker({ targets: null });
+        setPicker({ targets: null, mode: "share" });
         void getShareTargets().then((res) => {
-          setPicker((p) => (p ? { targets: res.targets ?? [] } : p));
+          setPicker((p) => (p ? { ...p, targets: res.targets ?? [] } : p));
         });
       }
     };
     window.addEventListener("crm:screenshare-toggle", onToggle);
     return () => window.removeEventListener("crm:screenshare-toggle", onToggle);
   }, [sharing, watching, teardown]);
+
+  // admin-only: open the picker in "whose screen do I want?" mode
+  useEffect(() => {
+    if (!isAdmin) return;
+    const onRequest = () => {
+      if (sharing || watching || requesting) return;
+      setPicker({ targets: null, mode: "request" });
+      void getShareTargets().then((res) => {
+        setPicker((p) => (p ? { ...p, targets: res.targets ?? [] } : p));
+      });
+    };
+    window.addEventListener("crm:screenshare-request", onRequest);
+    return () => window.removeEventListener("crm:screenshare-request", onRequest);
+  }, [isAdmin, sharing, watching, requesting]);
 
   // Mirrors for the once-subscribed alert channel below.
   useEffect(() => {
@@ -463,6 +568,15 @@ export function ScreenShareEngine({
     // shares aimed at somebody else.
     const mine = res.shares.find((s) => s.sharerId !== selfId && s.invitedTo === selfId);
     const open = res.shares.find((s) => s.sharerId !== selfId && !s.invitedTo);
+    // If I asked this exact person to show me their screen, joining is
+    // what I already decided -- skip the "Join?" prompt entirely.
+    if (mine && awaitingFromRef.current && mine.sharerId === awaitingFromRef.current) {
+      awaitingFromRef.current = null;
+      setRequesting(null);
+      setOffer(null);
+      void startWatching(mine);
+      return;
+    }
     const pick = mine ?? open ?? null;
     setOffer(pick && pick.id !== dismissedRef.current ? pick : null);
     // The chime rings once per targeted session, not once per poll.
@@ -470,7 +584,7 @@ export function ScreenShareEngine({
       dingedRef.current = mine.id;
       ding();
     }
-  }, [selfId]);
+  }, [selfId, startWatching]);
 
   // discovery poll for the viewer banner
   useEffect(() => {
@@ -490,6 +604,32 @@ export function ScreenShareEngine({
       if (p.invitedTo && p.invitedTo !== selfId) return;
       void refreshOffers();
     });
+    // An admin asked to see this person's screen. Same knock-and-chime
+    // as an invite, but the button starts THEIR share aimed at the
+    // admin. If they're already in a session, auto-decline so the admin
+    // isn't left waiting on a busy line.
+    ch.on("broadcast", { event: "request" }, ({ payload }) => {
+      const p = payload as { fromId: string; fromName: string; to: string };
+      if (p.to !== selfId) return;
+      if (activeRef.current) {
+        ch.send({ type: "broadcast", event: "request-declined", payload: { to: p.fromId, fromName: selfName } });
+        return;
+      }
+      setIncomingRequest({ fromId: p.fromId, fromName: p.fromName });
+      ding();
+    });
+    ch.on("broadcast", { event: "request-cancel" }, ({ payload }) => {
+      const p = payload as { to: string };
+      if (p.to !== selfId) return;
+      setIncomingRequest(null);
+    });
+    ch.on("broadcast", { event: "request-declined" }, ({ payload }) => {
+      const p = payload as { to: string; fromName: string };
+      if (p.to !== selfId) return;
+      awaitingFromRef.current = null;
+      setRequesting(null);
+      setError(`${p.fromName} isn't available to share right now.`);
+    });
     ch.subscribe();
     alertChannel.current = ch;
     const client = supabase.current;
@@ -497,7 +637,7 @@ export function ScreenShareEngine({
       void client.removeChannel(ch);
       alertChannel.current = null;
     };
-  }, [companyId, selfId, refreshOffers]);
+  }, [companyId, selfId, selfName, refreshOffers]);
 
   // closing the tab must not leave a ghost "live" session behind
   useEffect(() => {
@@ -646,7 +786,7 @@ export function ScreenShareEngine({
     <>
       <audio ref={remoteAudio} autoPlay style={{ display: "none" }} />
 
-      {picker && !sharing && !watching && (
+      {picker && picker.mode === "share" && !sharing && !watching && (
         <Modal title="Share your screen" onClose={() => setPicker(null)}>
           <p className="module-sub" style={{ marginTop: 0 }}>
             Who should watch? A teammate you pick gets pinged right away — and nobody else
@@ -681,6 +821,72 @@ export function ScreenShareEngine({
               ))}
             </div>
           )}
+        </Modal>
+      )}
+
+      {picker && picker.mode === "request" && !sharing && !watching && !requesting && (
+        <Modal title="See a teammate's screen" onClose={() => setPicker(null)}>
+          <p className="module-sub" style={{ marginTop: 0 }}>
+            Whose screen do you want to see? They get a pop-up and one tap on{" "}
+            <strong>Share now</strong> shows you their screen — you don&apos;t wait for anything else.
+          </p>
+          {picker.targets === null ? (
+            <p className="empty-hint">Loading your team…</p>
+          ) : picker.targets.length === 0 ? (
+            <p className="empty-hint">No teammates to ask.</p>
+          ) : (
+            <div className="ss-picker-list">
+              {picker.targets.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setPicker(null);
+                    void requestScreen(t.id, t.name);
+                  }}
+                >
+                  👤 {t.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Admin waiting on an answer to a screen request. */}
+      {requesting && !sharing && !watching && (
+        <div className="ss-pill">
+          <span className="ss-dot" />
+          Waiting for {requesting.name} to share their screen…
+          <button className="btn-ghost small" onClick={cancelRequest}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* The teammate's "show me your screen" knock -- like the invite,
+          answered on purpose, not dismissed by a stray click. */}
+      {incomingRequest && !sharing && !watching && (
+        <Modal title="Screen view request" noBackdropClose onClose={declineRequest}>
+          <p style={{ marginTop: 0 }}>
+            👁 <strong>{incomingRequest.fromName}</strong> is asking to see your screen.
+          </p>
+          <div className="modal-actions">
+            <button className="btn-ghost" onClick={declineRequest}>
+              Not now
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                const req = incomingRequest;
+                setIncomingRequest(null);
+                void startSharing(req.fromId, req.fromName);
+              }}
+            >
+              Share now
+            </button>
+          </div>
         </Modal>
       )}
 

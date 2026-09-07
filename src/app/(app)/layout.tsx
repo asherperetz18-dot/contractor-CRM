@@ -29,7 +29,7 @@ import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
 import { PopupAlerts } from "./popup-alerts";
 import { PageGate } from "./page-gate";
-import { ScreenShareButton, ScreenShareEngine } from "./screen-share";
+import { RequestScreenButton, ScreenShareButton, ScreenShareEngine } from "./screen-share";
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
 import { NotificationBell } from "./notification-bell";
@@ -140,6 +140,7 @@ export default async function AppLayout({
                   ❓
                 </Link>
                 <ScreenShareButton />
+                {isAdminRole(profile) && <RequestScreenButton />}
                 <DialerButton />
                 {canEditDispatch(profile) && <DuplicateContactsButton />}
                 {isStrictAdmin(profile) && (
@@ -170,6 +171,7 @@ export default async function AppLayout({
           selfId={profile.id}
           selfName={profile.name || profile.email || "A teammate"}
           companyId={profile.company_id}
+          isAdmin={isAdminRole(profile)}
         />
         {/* The popup watcher: corner toast + ding, sidebar badge,
             tab-title flash -- for everything that just happened, on
