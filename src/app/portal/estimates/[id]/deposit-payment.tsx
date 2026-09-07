@@ -43,6 +43,18 @@ export function DepositPayment({
     );
   }
 
+  // This client pays through the contractor's own invoicing (e.g.
+  // QuickBooks), so the portal says so once, plainly, instead of
+  // offering a second competing way to pay the same money.
+  if (state.invoicedSeparately) {
+    return (
+      <div className="portal-card estdoc-result">
+        <strong>Payments for this project are invoiced separately.</strong> Your contractor
+        sends the invoice — nothing is paid on this page.
+      </div>
+    );
+  }
+
   // Nothing due yet, or the contractor has not connected a payment
   // account. Either way the customer is shown nothing rather than a
   // button that cannot work.

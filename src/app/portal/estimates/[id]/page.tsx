@@ -162,7 +162,10 @@ export default async function PortalEstimatePage({
       />
       {/* Progress payments sit below the deposit: the deposit comes first
           in time, so it comes first on the page. */}
-      <PhasePayments phases={await getPortalPhases(id)} />
+      <PhasePayments
+        phases={await getPortalPhases(id)}
+        invoicedSeparately={viewer.lead.portal_payments_disabled === true}
+      />
       <PortalEstimateActions
         estimateId={id}
         status={estimate.status}

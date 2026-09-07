@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   canDeleteLeads,
+  canManageBills,
   isStrictAdmin,
   canEditDispatch,
   type CalendarRow,
@@ -94,6 +95,7 @@ export default async function ContactsPage() {
       canWrite={canWrite}
       canDelete={canDelete}
       isAdmin={isAdmin}
+      canManageMoney={canManageBills(profile)}
       estimateIndex={estimateIndex}
       dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
     />

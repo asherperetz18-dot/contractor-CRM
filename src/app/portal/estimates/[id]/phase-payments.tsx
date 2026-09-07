@@ -20,7 +20,16 @@ function dueLabel(due: string | null) {
  * row is either something to pay now or a receipt for something already
  * paid -- there is no "coming later" noise to read past.
  */
-export function PhasePayments({ phases }: { phases: PortalPhase[] }) {
+export function PhasePayments({
+  phases,
+  invoicedSeparately,
+}: {
+  phases: PortalPhase[];
+  /** This client is billed outside the CRM: amounts and paid receipts
+   *  stay, Pay buttons don't. The one explanatory line lives on the
+   *  deposit card above, so it is said once, not per phase. */
+  invoicedSeparately?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -75,6 +84,8 @@ export function PhasePayments({ phases }: { phases: PortalPhase[] }) {
                   <span className="est-badge est-badge-signed">Paid</span>
                 ) : p.state === "clearing" ? (
                   <span className="est-badge est-badge-sent">Clearing</span>
+                ) : invoicedSeparately ? (
+                  <span className="est-badge est-badge-sent">Invoiced separately</span>
                 ) : (
                   <button
                     className="btn-primary"
@@ -90,7 +101,7 @@ export function PhasePayments({ phases }: { phases: PortalPhase[] }) {
         })}
       </div>
 
-      {owing.length > 0 && (
+      {owing.length > 0 && !invoicedSeparately && (
         <p className="est-tax-note">
           Payment is handled by Stripe on their secure page. Your card details are never seen or
           stored by {`your contractor's`} system.

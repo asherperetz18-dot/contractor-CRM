@@ -32,8 +32,24 @@ export type DepositState = {
   paid: boolean;
   paidAt: string | null;
   configured: boolean;
+  /** This client is billed outside the CRM (e.g. QuickBooks): show the
+   *  one "invoiced separately" line instead of any pay button. */
+  invoicedSeparately?: boolean;
   reason?: string;
 };
+
+/**
+ * The per-client switch (client card > Online payments, migration 0133).
+ * Read off the viewer's own lead row -- getPortalViewer selects the
+ * whole row, so on a database where the column doesn't exist yet this
+ * reads undefined, and undefined means payments stay ON.
+ */
+function paysOutsidePortal(lead: { portal_payments_disabled?: boolean }): boolean {
+  return lead.portal_payments_disabled === true;
+}
+
+const INVOICED_SEPARATELY_ERROR =
+  "Payments for this project are invoiced separately — please use the invoice your contractor sent you.";
 
 /**
  * What the portal should show for the deposit.
@@ -76,6 +92,13 @@ export async function getDepositState(estimateId: string): Promise<DepositState>
     .eq("status", "succeeded")
     .maybeSingle<{ id: string; paid_at: string | null }>();
   if (paid) return { ...none, paid: true, paidAt: paid.paid_at };
+
+  // After the paid check on purpose: a deposit that DID settle through
+  // the portal stays visible as paid even once the client is switched
+  // to outside invoicing.
+  if (paysOutsidePortal(viewer.lead)) {
+    return { ...none, invoicedSeparately: true };
+  }
 
   // A deposit is due on signing, so there is nothing to collect before
   // the customer has actually committed.
@@ -195,6 +218,9 @@ export async function startPhaseCheckout(
       due_date: string | null;
     }>();
   if (!phase) return { error: "That payment isn't available." };
+  // The server refuses, not just the page: a tab opened before the
+  // client was switched to outside invoicing still holds a Pay button.
+  if (paysOutsidePortal(viewer.lead)) return { error: INVOICED_SEPARATELY_ERROR };
   // Unbilled means the contractor has not asked for it yet.
   if (!phase.requested_at) return { error: "That payment isn't due yet." };
   if (phase.amount_cents <= 0) return { error: "There's nothing to pay on this phase." };
@@ -301,6 +327,8 @@ export async function startDepositCheckout(
   if (!estimate || estimate.lead_id !== viewer.lead.id) {
     return { error: "That estimate isn't available." };
   }
+  // Same server-side refusal as the phase checkout -- see there.
+  if (paysOutsidePortal(viewer.lead)) return { error: INVOICED_SEPARATELY_ERROR };
   if (estimate.status !== "Signed") {
     return { error: "The deposit is due once the estimate is signed." };
   }
