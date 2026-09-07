@@ -14,10 +14,12 @@ import {
 
 /**
  * Live screen help between teammates: one shares, one watches, both
- * talk -- and either can turn a camera on to be seen in a corner
- * bubble. WebRTC peer-to-peer; the handshake rides a Supabase Realtime
- * channel named by the session's random token, and Twilio's TURN
- * relays cover the networks where peer-to-peer can't punch through.
+ * talk -- and it can go both ways: either can turn a camera on to be
+ * seen in a corner bubble, and the viewer can share their own screen
+ * back so each side watches the other's. WebRTC peer-to-peer; the
+ * handshake rides a Supabase Realtime channel named by the session's
+ * random token, and Twilio's TURN relays cover the networks where
+ * peer-to-peer can't punch through.
  *
  * Consent is structural, not policy: the browser's own picker is the
  * only way a screen leaves a machine, and the sharer's Stop -- ours or
@@ -32,6 +34,7 @@ type Signal =
   | { kind: "answer"; sdp: RTCSessionDescriptionInit }
   | { kind: "ice"; from: "sharer" | "viewer"; candidate: RTCIceCandidateInit }
   | { kind: "cam"; from: "sharer" | "viewer"; on: boolean }
+  | { kind: "share-back"; on: boolean }
   | { kind: "busy" }
   | { kind: "end" };
 
@@ -123,6 +126,11 @@ export function ScreenShareEngine({
   // cameras: off until somebody turns theirs on, each side separately
   const [camOn, setCamOn] = useState(false);
   const [remoteCamOn, setRemoteCamOn] = useState(false);
+  // the viewer sharing their own screen back at the sharer
+  const [shareBackOn, setShareBackOn] = useState(false);
+  const [remoteShareBack, setRemoteShareBack] = useState(false);
+  // where the user dragged the status pill; null = its default spot
+  const [pillPos, setPillPos] = useState<{ x: number; y: number } | null>(null);
   const [error, setError] = useState("");
 
   const supabase = useRef(createBrowserClient());
@@ -136,6 +144,10 @@ export function ScreenShareEngine({
   const camStream = useRef<MediaStream | null>(null);
   const camSender = useRef<RTCRtpSender | null>(null);
   const camVideo = useRef<HTMLVideoElement | null>(null);
+  const shareBackStream = useRef<MediaStream | null>(null);
+  const shareBackSender = useRef<RTCRtpSender | null>(null);
+  const backVideo = useRef<HTMLVideoElement | null>(null);
+  const pillDrag = useRef<{ dx: number; dy: number } | null>(null);
   const busyRef = useRef(false); // sharer already has a viewer
   // Live mirrors for callbacks that outlive a render (the alert
   // channel below is subscribed once, not per state change).
@@ -148,20 +160,26 @@ export function ScreenShareEngine({
     channel.current?.send({ type: "broadcast", event: "signal", payload });
   }, []);
 
-  // Cameras live and die with one peer connection: a viewer leaving
-  // (or the whole session ending) puts both faces back to off.
-  const resetCam = useCallback(() => {
+  // The optional lanes (faces, the viewer's screen-back) live and die
+  // with one peer connection: a viewer leaving, or the whole session
+  // ending, puts them all back to off.
+  const resetLanes = useCallback(() => {
     camStream.current?.getTracks().forEach((t) => t.stop());
     camStream.current = null;
     camSender.current = null;
+    shareBackStream.current?.getTracks().forEach((t) => t.stop());
+    shareBackStream.current = null;
+    shareBackSender.current = null;
     setCamOn(false);
     setRemoteCamOn(false);
+    setShareBackOn(false);
+    setRemoteShareBack(false);
   }, []);
 
   const teardown = useCallback(
     (notify: boolean) => {
       if (notify) broadcast({ kind: "end" });
-      resetCam();
+      resetLanes();
       pc.current?.close();
       pc.current = null;
       screenStream.current?.getTracks().forEach((t) => t.stop());
@@ -179,9 +197,10 @@ export function ScreenShareEngine({
       setViewerHere(false);
       setWatching(null);
       setInviteeName(null);
+      setPillPos(null);
       window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: false } }));
     },
-    [broadcast, resetCam]
+    [broadcast, resetLanes]
   );
 
   const newPeer = useCallback(async () => {
@@ -192,11 +211,11 @@ export function ScreenShareEngine({
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
         setViewerHere(false);
         busyRef.current = false;
-        resetCam();
+        resetLanes();
       }
     };
     return peer;
-  }, [resetCam]);
+  }, [resetLanes]);
 
   // ── sharer ──────────────────────────────────────────────────────
   const startSharing = useCallback(async (invitedTo: string | null, inviteeLabel: string | null) => {
@@ -232,17 +251,21 @@ export function ScreenShareEngine({
             const p = await newPeer();
             screen.getTracks().forEach((t) => p.addTrack(t, screen));
             mic?.getTracks().forEach((t) => p.addTrack(t, mic));
-            // A camera lane is negotiated up front, empty, for BOTH
-            // directions: turning a face on later is replaceTrack, no
-            // SDP round-trip. The screen m-line sits before it, so the
-            // two videos are told apart by position, not track ids.
+            // Two extra video lanes are negotiated up front, empty:
+            // one for faces, one for the viewer's screen coming back.
+            // Turning either on later is replaceTrack, no SDP
+            // round-trip. M-line order is the contract both ends read:
+            // screen first, camera second, screen-back third.
             camSender.current = p.addTransceiver("video", { direction: "sendrecv" }).sender;
+            p.addTransceiver("video", { direction: "sendrecv" });
             p.ontrack = (e) => {
               if (e.track.kind === "video") {
-                // the only video a sharer receives is the viewer's face
-                if (camVideo.current) {
-                  camVideo.current.srcObject = new MediaStream([e.track]);
-                  void camVideo.current.play().catch(() => {});
+                const vids = p.getTransceivers().filter((t) => t.receiver.track.kind === "video");
+                // lane 3 is the viewer's screen; lane 2 their face
+                const el = e.transceiver === vids[2] ? backVideo.current : camVideo.current;
+                if (el) {
+                  el.srcObject = new MediaStream([e.track]);
+                  void el.play().catch(() => {});
                 }
               } else if (remoteAudio.current) {
                 remoteAudio.current.srcObject = e.streams[0];
@@ -262,12 +285,14 @@ export function ScreenShareEngine({
             await peer.addIceCandidate(sig.candidate);
           } else if (sig.kind === "cam" && sig.from === "viewer") {
             setRemoteCamOn(sig.on);
+          } else if (sig.kind === "share-back") {
+            setRemoteShareBack(sig.on);
           } else if (sig.kind === "end") {
             pc.current?.close();
             pc.current = null;
             busyRef.current = false;
             setViewerHere(false);
-            resetCam();
+            resetLanes();
           }
         } catch {
           // a malformed signal must not take down the session
@@ -292,7 +317,7 @@ export function ScreenShareEngine({
     } catch {
       // user cancelled the picker
     }
-  }, [broadcast, newPeer, teardown, resetCam, selfName]);
+  }, [broadcast, newPeer, teardown, resetLanes, selfName]);
 
   // ── viewer ──────────────────────────────────────────────────────
   const startWatching = useCallback(
@@ -311,15 +336,16 @@ export function ScreenShareEngine({
       mic?.getTracks().forEach((t) => peer.addTrack(t, mic));
       peer.ontrack = (e) => {
         if (e.track.kind === "video") {
-          // Two video lanes arrive in the offer's order -- screen
-          // first, camera second. Position tells them apart.
+          // Video lanes arrive in the offer's order -- screen first,
+          // camera second, screen-back third. Position tells them
+          // apart; the third lane only carries video AWAY from here.
           const vids = peer.getTransceivers().filter((t) => t.receiver.track.kind === "video");
-          if (vids.length > 1 && e.transceiver === vids[1]) {
+          if (e.transceiver === vids[1]) {
             if (camVideo.current) {
               camVideo.current.srcObject = new MediaStream([e.track]);
               void camVideo.current.play().catch(() => {});
             }
-          } else if (remoteVideo.current) {
+          } else if (e.transceiver === vids[0] && remoteVideo.current) {
             remoteVideo.current.srcObject = e.streams[0];
             void remoteVideo.current.play().catch(() => {});
           }
@@ -340,13 +366,19 @@ export function ScreenShareEngine({
         try {
           if (sig.kind === "offer") {
             await peer.setRemoteDescription(sig.sdp);
-            // claim the camera lane the sharer negotiated (the second
-            // video m-line) so this side can send a face on it too
+            // claim the lanes the sharer negotiated: the second video
+            // m-line carries this side's face, the third this side's
+            // own screen going back
             const vids = peer.getTransceivers().filter((t) => t.receiver.track.kind === "video");
             const camTx = vids[1];
             if (camTx) {
               camTx.direction = "sendrecv";
               camSender.current = camTx.sender;
+            }
+            const backTx = vids[2];
+            if (backTx) {
+              backTx.direction = "sendrecv";
+              shareBackSender.current = backTx.sender;
             }
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
@@ -494,6 +526,71 @@ export function ScreenShareEngine({
     }
   }
 
+  const stopShareBack = useCallback(
+    (announce: boolean) => {
+      shareBackStream.current?.getTracks().forEach((t) => t.stop());
+      shareBackStream.current = null;
+      void shareBackSender.current?.replaceTrack(null).catch(() => {});
+      setShareBackOn(false);
+      if (announce) broadcast({ kind: "share-back", on: false });
+    },
+    [broadcast]
+  );
+
+  /** The viewer sharing their own screen back at the sharer -- the
+   * same browser picker, the same consent shape, riding the third
+   * video lane of the connection that already exists. */
+  async function toggleShareBack() {
+    const sender = shareBackSender.current;
+    if (!sender) return;
+    if (shareBackOn) {
+      stopShareBack(true);
+    } else {
+      try {
+        const scr = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        if (shareBackSender.current !== sender) {
+          // the session moved on while the picker was open
+          scr.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        shareBackStream.current = scr;
+        await sender.replaceTrack(scr.getVideoTracks()[0] ?? null);
+        // the browser's own Stop-sharing button must turn this off too
+        scr.getVideoTracks()[0]?.addEventListener("ended", () => stopShareBack(true));
+        setShareBackOn(true);
+        broadcast({ kind: "share-back", on: true });
+      } catch {
+        // user cancelled the picker
+      }
+    }
+  }
+
+  // The status pill is draggable: it must never be the thing standing
+  // between the sharer and the corner of their own screen.
+  function pillPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest("button")) return; // buttons still click
+    const r = e.currentTarget.getBoundingClientRect();
+    pillDrag.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function pillPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = pillDrag.current;
+    if (!d) return;
+    const w = e.currentTarget.offsetWidth;
+    setPillPos({
+      x: Math.min(Math.max(e.clientX - d.dx, 8 - w / 2), window.innerWidth - w / 2),
+      y: Math.min(Math.max(e.clientY - d.dy, 0), window.innerHeight - 40),
+    });
+  }
+  function pillPointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    pillDrag.current = null;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // capture may already be gone
+    }
+  }
+
   return (
     <>
       <audio ref={remoteAudio} autoPlay style={{ display: "none" }} />
@@ -537,7 +634,14 @@ export function ScreenShareEngine({
       )}
 
       {sharing && (
-        <div className="ss-pill">
+        <div
+          className="ss-pill"
+          style={pillPos ? { left: pillPos.x, top: pillPos.y, transform: "none" } : undefined}
+          onPointerDown={pillPointerDown}
+          onPointerMove={pillPointerMove}
+          onPointerUp={pillPointerUp}
+          title="Drag me anywhere"
+        >
           <span className="ss-dot" />
           Sharing your screen
           {viewerHere
@@ -564,6 +668,28 @@ export function ScreenShareEngine({
         <div className="ss-cam-bubble" style={{ display: remoteCamOn ? undefined : "none" }}>
           <video ref={camVideo} autoPlay playsInline muted />
           <span className="ss-cam-name">{inviteeName ?? "Teammate"}</span>
+        </div>
+      )}
+
+      {/* The viewer's screen coming back the other way: the sharer
+          watches it in the same full-screen surface the viewer uses.
+          The pill floats above it, so Stop and the toggles stay in
+          reach. Mounted (hidden) while sharing for the same reason as
+          the face bubble. */}
+      {sharing && (
+        <div
+          className="ss-viewer"
+          role="dialog"
+          aria-label="Teammate's screen"
+          style={{ display: remoteShareBack ? undefined : "none" }}
+        >
+          <div className="ss-viewer-head">
+            <span>
+              <span className="ss-dot" /> Watching <strong>{inviteeName ?? "your teammate"}</strong>&apos;s
+              screen — you&apos;re still sharing yours
+            </span>
+          </div>
+          <video ref={backVideo} autoPlay playsInline className="ss-video" />
         </div>
       )}
 
@@ -627,6 +753,9 @@ export function ScreenShareEngine({
               </button>
               <button className="btn-ghost small" onClick={() => void toggleCam()}>
                 {camOn ? "📷 Cam on" : "📷 Cam off"}
+              </button>
+              <button className="btn-ghost small" onClick={() => void toggleShareBack()}>
+                {shareBackOn ? "🖥 Stop my screen" : "🖥 Share mine too"}
               </button>
               <button
                 className="btn-primary small"

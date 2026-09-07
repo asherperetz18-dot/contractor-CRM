@@ -8113,6 +8113,26 @@ textarea.est-item-desc:disabled {
 .ss-pill .icon-btn {
   color: #fff;
 }
+/* The pill is draggable (never let it block what it narrates) and
+   floats above the watching overlay so Stop stays reachable while a
+   screen comes back the other way. Its ghost buttons need light ink:
+   the app-wide .btn-ghost is dark ink for light backgrounds and turns
+   invisible on the pill's navy. */
+.ss-pill {
+  z-index: 130;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ss-pill:active {
+  cursor: grabbing;
+}
+.ss-pill .btn-ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+  margin-left: 0;
+}
 .ss-viewer {
   position: fixed;
   inset: 0;
