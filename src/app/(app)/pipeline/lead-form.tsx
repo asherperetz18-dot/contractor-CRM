@@ -48,6 +48,7 @@ import {
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import {
   createPortalLinkForStaff,
+  setPortalPaymentsDisabled,
   renewPortalAccess,
   sendPortalLink,
 } from "@/lib/actions/portal";
@@ -113,6 +114,7 @@ export function LeadForm({
   readOnly,
   canDelete,
   isAdmin,
+  canManageMoney,
   estimateIndex,
   dispatcherPicker,
   onCancel,
@@ -132,6 +134,8 @@ export function LeadForm({
   canDelete?: boolean;
   /** Admin role only -- gates the who-opened-this trail. */
   isAdmin?: boolean;
+  /** canManageBills at the page: shows the Online-payments switch. */
+  canManageMoney?: boolean;
   /** Every estimate in the company, grouped by lead. Loaded with the
    *  page so the estimate chip is there on the first frame. */
   estimateIndex?: LeadEstimateIndex;
@@ -160,6 +164,11 @@ export function LeadForm({
   const skipNextAutosave = useRef(true);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
+  // Client card > Online payments (migration 0133). Off = invoiced
+  // outside the CRM; the portal shows no pay buttons for this client.
+  const [portalPayOff, setPortalPayOff] = useState(lead?.portal_payments_disabled === true);
+  const [portalPayPending, setPortalPayPending] = useState(false);
+  const [portalPayError, setPortalPayError] = useState("");
   const [refundRequestedAt, setRefundRequestedAt] = useState<string | null>(
     lead?.refund_requested_at ?? null
   );
@@ -719,6 +728,41 @@ export function LeadForm({
             )}
           </div>
         )}
+
+        {/* How this client pays. OFF is for customers invoiced from
+            QuickBooks: their portal keeps documents and signing but
+            shows "invoiced separately" where the pay buttons were --
+            one live way to pay, never two. Money roles only. */}
+        {lead && canManageMoney && (
+          <div className="portal-status-row">
+            <span className="portal-status-label">Online payments</span>
+            {portalPayOff ? (
+              <span className="portal-status-bad">
+                Off — this client is invoiced outside the CRM (e.g. QuickBooks)
+              </span>
+            ) : (
+              <span className="portal-status-ok">✓ On — can pay in the portal</span>
+            )}
+            <button
+              type="button"
+              className="btn-ghost small"
+              disabled={portalPayPending}
+              onClick={async () => {
+                const next = !portalPayOff;
+                setPortalPayPending(true);
+                setPortalPayError("");
+                const res = await setPortalPaymentsDisabled(lead.id, next);
+                setPortalPayPending(false);
+                if (res.error) return setPortalPayError(res.error);
+                setPortalPayOff(next);
+                router.refresh();
+              }}
+            >
+              {portalPayPending ? "Saving…" : portalPayOff ? "Turn on" : "Turn off"}
+            </button>
+          </div>
+        )}
+        {portalPayError && <p className="error-note">{portalPayError}</p>}
 
         {hasSecondContact ? (
           <div className="second-contact-block">

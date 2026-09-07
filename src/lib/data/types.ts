@@ -1338,6 +1338,11 @@ export type Lead = {
   // When this customer's client-portal access lapses. Null means never
   // granted. Renewable by office staff.
   portal_access_expires_at: string | null;
+  /** Client card > Online payments switched off: the portal shows this
+   *  client no pay buttons -- they are invoiced elsewhere (QuickBooks).
+   *  Optional because the column arrives with migration 0133; undefined
+   *  reads as false, i.e. payments on. */
+  portal_payments_disabled?: boolean;
   company_name: string | null;
   first_name: string | null;
   last_name: string | null;

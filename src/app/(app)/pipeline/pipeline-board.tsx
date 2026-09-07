@@ -229,6 +229,7 @@ export function PipelineBoard({
   canCreateLeads,
   canDelete,
   isAdmin,
+  canManageMoney,
   estimateIndex,
   dispatcherPicker,
 }: {
@@ -249,6 +250,7 @@ export function PipelineBoard({
   canCreateLeads: boolean;
   canDelete: boolean;
   isAdmin: boolean;
+  canManageMoney?: boolean;
   estimateIndex: LeadEstimateIndex;
   dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
@@ -973,6 +975,7 @@ export function PipelineBoard({
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
+          canManageMoney={canManageMoney}
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
           onCancel={() => setEditing(null)}

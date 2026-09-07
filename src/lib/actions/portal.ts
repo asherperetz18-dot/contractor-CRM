@@ -19,7 +19,7 @@ import {
   LOGIN_TOKEN_TTL_DAYS,
 } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canEditDispatch, isAdminRole } from "@/lib/data/types";
+import { canEditDispatch, canManageBills, isAdminRole } from "@/lib/data/types";
 import { leadDisplayName, type Lead } from "@/lib/data/types";
 
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -475,4 +475,54 @@ export async function createPortalLinkForStaff(
     url: `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`,
     expiresInDays: LOGIN_TOKEN_TTL_DAYS,
   };
+}
+
+/**
+ * Client card > Online payments: whether this customer's portal offers
+ * the Stripe pay buttons at all.
+ *
+ * OFF is for clients invoiced outside the CRM (QuickBooks): their
+ * portal keeps documents, signing and the phase schedule, but every pay
+ * button becomes "invoiced separately" and the checkout actions refuse
+ * server-side. Money-workflow decision, so it sits with the money
+ * roles (canManageBills), not with whoever can edit a phone number.
+ * Admin client behind that gate: Bookkeeping holds no leads-table
+ * write under RLS, and this must not silently no-op for exactly the
+ * role most likely to flip it -- the requestPhaseNow lesson.
+ */
+export async function setPortalPaymentsDisabled(
+  leadId: string,
+  disabled: boolean
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin can change how a client pays." };
+  }
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("leads")
+    .update({ portal_payments_disabled: disabled })
+    .eq("id", leadId)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) {
+    // The column arrives with migration 0133; before it runs, say which
+    // file to paste instead of quoting a schema cache.
+    if (/schema cache/i.test(error.message) && /portal_payments_disabled/.test(error.message)) {
+      return {
+        error:
+          "This switch needs a one-time database update first: run " +
+          "supabase/migrations/0133_lead_portal_payments_disabled.sql in the Supabase SQL " +
+          "editor, then try again.",
+      };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "Contact not found." };
+
+  revalidatePath("/pipeline");
+  revalidatePath("/contacts");
+  return {};
 }

@@ -90,6 +90,7 @@ export function ContactsTable({
   canWrite,
   canDelete,
   isAdmin,
+  canManageMoney,
   estimateIndex,
   dispatcherPicker,
 }: {
@@ -105,6 +106,7 @@ export function ContactsTable({
   canWrite: boolean;
   canDelete: boolean;
   isAdmin: boolean;
+  canManageMoney?: boolean;
   estimateIndex: LeadEstimateIndex;
   dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
@@ -432,6 +434,7 @@ export function ContactsTable({
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
+          canManageMoney={canManageMoney}
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
           onCancel={closeLead}

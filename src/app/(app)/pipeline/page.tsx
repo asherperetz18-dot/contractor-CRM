@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   canDeleteLeads,
+  canManageBills,
   isStrictAdmin,
   canCreateLeads,
   canEditDispatch,
@@ -98,6 +99,7 @@ export default async function PipelinePage() {
       canCreateLeads={canCreateLeads(profile)}
       canDelete={canDelete}
       isAdmin={isAdmin}
+      canManageMoney={canManageBills(profile)}
       estimateIndex={estimateIndex}
       dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
     />

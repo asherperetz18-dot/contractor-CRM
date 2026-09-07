@@ -179,7 +179,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("estimates"), caption: "Estimates & Contracts lists every document. Open one, or start fresh from a lead's card." },
           { img: T("t-estimate-builder"), caption: "The builder holds the scope, line items, photos and discounts. The customer-facing document builds itself as you type." },
-          { img: T("t-estimate-payments"), caption: "Set the payment schedule by phases, then send — the co-owner on the client card gets the email too. Each owner signs from their phone, and with joint owners the document stays pending until every signature is in. Then the estimate becomes the contract." },
+          { img: T("t-estimate-payments"), caption: "Set the payment schedule by phases, then send — the co-owner on the client card gets the email too. Each owner signs from their phone, and with joint owners the document stays pending until every signature is in. Then the estimate becomes the contract. Billing this customer from QuickBooks instead? Flip Online payments off on their client card — their portal keeps documents and signing, but shows 'invoiced separately' where the Pay buttons were." },
         ],
       },
       {
