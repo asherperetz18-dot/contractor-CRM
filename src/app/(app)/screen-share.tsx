@@ -82,26 +82,37 @@ export function ScreenShareButton() {
 
 type Channel = ReturnType<ReturnType<typeof createBrowserClient>["channel"]>;
 
-/** A short, quiet chime for a direct invite. Autoplay policy may mute
- * it on a page with no interaction yet -- the popup still shows. */
-function ding() {
+/** Short, quiet chimes. The person they're aimed at is usually looking
+ * at a different window entirely -- sound is the only channel that
+ * still reaches them. Autoplay policy may mute one on a page with no
+ * interaction yet; every chime has a visual twin, so silence is safe. */
+function chime(notes: number[]) {
   try {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.5);
-    osc.onended = () => void ctx.close().catch(() => {});
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      const t0 = ctx.currentTime + i * 0.17;
+      gain.gain.setValueAtTime(0.08, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+      osc.start(t0);
+      osc.stop(t0 + 0.45);
+    });
+    window.setTimeout(() => void ctx.close().catch(() => {}), notes.length * 170 + 600);
   } catch {
-    // silence is acceptable; the visual invite carries the message
+    // silence is acceptable; the visual state carries the message
   }
 }
+/** a direct invite landed */
+const ding = () => chime([880]);
+/** rising: they answered -- your screen has an audience now */
+const dingAnswered = () => chime([523.25, 783.99]);
+/** falling: they left -- you're sharing to nobody, consider Stop */
+const dingLeft = () => chime([659.25, 392]);
 
 export function ScreenShareEngine({
   selfId,
@@ -213,6 +224,11 @@ export function ScreenShareEngine({
     pc.current = peer;
     peer.onconnectionstatechange = () => {
       if (["failed", "closed", "disconnected"].includes(peer.connectionState)) {
+        // busyRef is only ever true on the sharer: a drop with no
+        // goodbye (closed laptop, dead wifi) still rings the
+        // you're-alone-now tone there, and stays silent for a viewer
+        // who is looking at the failure anyway
+        if (busyRef.current) dingLeft();
         setViewerHere(false);
         busyRef.current = false;
         resetLanes();
@@ -285,6 +301,9 @@ export function ScreenShareEngine({
           } else if (sig.kind === "answer" && peer) {
             await peer.setRemoteDescription(sig.sdp);
             setViewerHere(true);
+            // the "they picked up" ring: the sharer started this call
+            // minutes ago and is deep in some other window by now
+            dingAnswered();
           } else if (sig.kind === "ice" && sig.from === "viewer" && peer) {
             await peer.addIceCandidate(sig.candidate);
           } else if (sig.kind === "cam" && sig.from === "viewer") {
@@ -297,6 +316,9 @@ export function ScreenShareEngine({
             busyRef.current = false;
             setViewerHere(false);
             resetLanes();
+            // they hung up but this screen is STILL being shared --
+            // the falling tone is the nudge to come back and Stop
+            dingLeft();
           }
         } catch {
           // a malformed signal must not take down the session
