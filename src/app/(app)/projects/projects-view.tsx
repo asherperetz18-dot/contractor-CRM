@@ -86,6 +86,7 @@ export function ProjectsView({
   memberNames: Record<string, string>;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
+  const [search, setSearch] = useState("");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // Which job the bill modal opens on: a lead id from a row's chip,
@@ -138,6 +139,20 @@ export function ProjectsView({
               : filter === "Cancelled"
                 ? cancelled
                 : sorted;
+
+  // Quick search on top of whichever chip is selected -- the chip counts
+  // above stay put (they answer "how many are in this bucket"), search
+  // just narrows what's visible within it.
+  const q = search.trim().toLowerCase();
+  const searched = q
+    ? shown.filter((p) =>
+        [p.title, p.docNumber, p.customer, p.address, p.repName]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(q)
+      )
+    : shown;
 
   // The money cards follow the selected chip: pick "Complete" and the
   // figures speak for finished work; pick "Cancelled" and Sold becomes
@@ -303,37 +318,48 @@ export function ProjectsView({
         </p>
       )}
 
-      <div className="chip-row">
-        {(
-          [
-            ["All", `All ${active.length}`, "", active.length],
-            ["InProgress", `In progress ${inProgress.length}`, "prog", inProgress.length],
-            ["OnHold", `On hold ${onHold.length}`, "hold", onHold.length],
-            ["Complete", `Complete ${complete.length}`, "done", complete.length],
-            ["Cancelled", `Cancelled ${cancelled.length}`, "dead", cancelled.length],
-            ["Bleeding", `Negative net cash ${bleeding.length}`, "bleed", bleeding.length],
-            ["Owed", `Owed money ${owed.length}`, "owed", owed.length],
-          ] as [Filter, string, string, number][]
-        ).map(([f, label, tone, count]) => (
-          <button
-            key={f}
-            // An empty chip stays uncoloured -- colour is a signal that
-            // there is something behind the button, so "Cancelled 10"
-            // reads louder than "On hold 0" instead of equally loud.
-            className={
-              "chip" +
-              (tone && count > 0 ? ` chip-c-${tone}` : "") +
-              (filter === f ? " chip-sel" : "")
-            }
-            onClick={() => setFilter(f)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="chip-row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div className="chip-row" style={{ margin: 0 }}>
+          {(
+            [
+              ["All", `All ${active.length}`, "", active.length],
+              ["InProgress", `In progress ${inProgress.length}`, "prog", inProgress.length],
+              ["OnHold", `On hold ${onHold.length}`, "hold", onHold.length],
+              ["Complete", `Complete ${complete.length}`, "done", complete.length],
+              ["Cancelled", `Cancelled ${cancelled.length}`, "dead", cancelled.length],
+              ["Bleeding", `Negative net cash ${bleeding.length}`, "bleed", bleeding.length],
+              ["Owed", `Owed money ${owed.length}`, "owed", owed.length],
+            ] as [Filter, string, string, number][]
+          ).map(([f, label, tone, count]) => (
+            <button
+              key={f}
+              // An empty chip stays uncoloured -- colour is a signal that
+              // there is something behind the button, so "Cancelled 10"
+              // reads louder than "On hold 0" instead of equally loud.
+              className={
+                "chip" +
+                (tone && count > 0 ? ` chip-c-${tone}` : "") +
+                (filter === f ? " chip-sel" : "")
+              }
+              onClick={() => setFilter(f)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <input
+          className="ur-search"
+          style={{ maxWidth: 280 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search rep, client, or address…"
+        />
       </div>
 
-      {shown.length === 0 ? (
-        <p className="empty-hint">Nothing here — which is the good outcome.</p>
+      {searched.length === 0 ? (
+        <p className="empty-hint">
+          {q ? "No jobs match that search." : "Nothing here — which is the good outcome."}
+        </p>
       ) : (
         <div className="table-scroll">
           <table className="data-table">
@@ -349,7 +375,7 @@ export function ProjectsView({
               </tr>
             </thead>
             <tbody>
-              {shown.map((p) => {
+              {searched.map((p) => {
                 const items = itemsByEstimate.get(p.estimateId) ?? [];
                 const doneCount = items.filter((i) => i.completed_at).length;
                 return (
