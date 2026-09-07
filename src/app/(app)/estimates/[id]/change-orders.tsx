@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { moneyCents } from "@/lib/data/types";
 import {
@@ -63,6 +63,12 @@ export function ChangeOrders({
     .filter((o) => o.status === "Signed")
     .reduce((sum, o) => sum + o.total_cents, 0);
 
+  // Split into two sections rather than one table with a status badge
+  // per row -- what's actually committed money vs. what's still just a
+  // proposal used to take reading every row's badge to tell apart.
+  const signedOrders = orders.filter((o) => o.status === "Signed");
+  const pendingOrders = orders.filter((o) => o.status !== "Signed");
+
   return (
     <section className="est-pay" style={{ marginTop: 18 }}>
       <div className="module-toolbar" style={{ marginBottom: 10 }}>
@@ -115,42 +121,21 @@ export function ChangeOrders({
         </p>
       ) : (
         <>
-          <table className="data-table est-pay-table">
-            <thead>
-              <tr>
-                <th>Change order</th>
-                <th>Status</th>
-                <th className="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr
-                  key={o.id}
-                  className="est-row"
-                  onClick={() => router.push(`/estimates/${o.id}`)}
-                  role="link"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") router.push(`/estimates/${o.id}`);
-                  }}
-                >
-                  <td>
-                    <span className="mono">{o.doc_number}</span>
-                    <div className="est-tax-note">{o.title}</div>
-                  </td>
-                  <td data-label="Status">
-                    <span className={"est-badge est-badge-" + o.status.toLowerCase()}>
-                      {o.status}
-                    </span>
-                  </td>
-                  <td className="right mono" data-label="Amount">
-                    {moneyCents(o.total_cents)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {signedOrders.length > 0 && (
+            <ChangeOrderTable
+              title="Signed"
+              orders={signedOrders}
+              onOpen={(id) => router.push(`/estimates/${id}`)}
+            />
+          )}
+          {pendingOrders.length > 0 && (
+            <ChangeOrderTable
+              title="Pending / not yet signed"
+              orders={pendingOrders}
+              onOpen={(id) => router.push(`/estimates/${id}`)}
+              style={signedOrders.length > 0 ? { marginTop: 16 } : undefined}
+            />
+          )}
 
           {/* Shown as an addition, never as a rewritten contract total.
               What the customer signed still says what it said. */}
@@ -164,5 +149,61 @@ export function ChangeOrders({
         </>
       )}
     </section>
+  );
+}
+
+function ChangeOrderTable({
+  title,
+  orders,
+  onOpen,
+  style,
+}: {
+  title: string;
+  orders: ChangeOrderRow[];
+  onOpen: (id: string) => void;
+  style?: CSSProperties;
+}) {
+  return (
+    <div style={style}>
+      <div className="est-tax-note" style={{ marginBottom: 6 }}>
+        {title}
+      </div>
+      <table className="data-table est-pay-table">
+        <thead>
+          <tr>
+            <th>Change order</th>
+            <th>Status</th>
+            <th className="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.map((o) => (
+            <tr
+              key={o.id}
+              className="est-row"
+              onClick={() => onOpen(o.id)}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onOpen(o.id);
+              }}
+            >
+              <td>
+                <span className="mono">{o.doc_number}</span>
+                <div className="est-tax-note">{o.title}</div>
+              </td>
+              <td data-label="Status">
+                <span className={"est-badge est-badge-" + o.status.toLowerCase()}>
+                  {o.status}
+                </span>
+              </td>
+              <td className="right mono" data-label="Amount">
+                {moneyCents(o.total_cents)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
