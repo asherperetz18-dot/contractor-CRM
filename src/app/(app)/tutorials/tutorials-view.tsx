@@ -92,11 +92,12 @@ const LIBRARY: Category[] = [
       {
         id: "screen-share",
         title: "Share your screen with a teammate",
-        kicker: "Quick how-to · 3 steps · 1 min",
+        kicker: "Quick how-to · 4 steps · 2 min",
         desc: "Show your screen and talk it through — office to field, live.",
         steps: [
           { img: T("t-share-pill"), caption: "Tap the 🖥 button in the top bar and pick who should watch — one teammate by name, or anyone on the team. Your browser then asks exactly what to share — whole screen or one window — and a red pill shows you're live." },
           { img: T("tut-share-invite"), caption: "The teammate you picked gets a pop-up that moment — with a chime: Alex wants to share their screen with you. One tap on Join and they're in — and nobody else in the company even sees the session. Pick 'anyone' instead and the whole team gets the old open banner." },
+          { img: T("t-share-pill"), caption: "Other way around: if you're an Admin, you get a second 👁 button — 'Ask a teammate to show you their screen.' Pick the person and they get a pop-up: Alex is asking to see your screen, with one Share now button. The moment they tap it and choose a screen, you're watching — no Join step, no waiting on your end. (For their privacy, the browser still makes them pick the screen themselves; nobody's screen is ever grabbed without that one tap.)" },
           { img: T("t-share-viewer"), caption: "The viewer sees your screen live and you talk to each other through your microphones, like a phone call with eyes. Want real face time? Either of you can tap 📷 Cam on and your camera appears in a small bubble on the other person's screen — cameras always start off, and each of you controls only your own. It works both ways too: the viewer can tap Share mine too and now each of you is watching the other's screen at the same time — while your own screen is being shared, the other person's screen sits in a small corner window (that's what stops the endless mirror-in-a-mirror effect), and you can drag that window anywhere. The sharing bar drags too if it's ever in your way. And you can start a share and go do something else: a rising chime rings the moment your teammate joins, and a falling one if they leave while you're still sharing — so you never sit there sharing to nobody without knowing. Either side can mute or leave; Stop ends it for everyone." },
         ],
       },

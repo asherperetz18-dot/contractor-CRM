@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { isStrictAdmin } from "@/lib/data/types";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 
 export type ActiveShare = {
@@ -100,6 +101,38 @@ export async function getShareTargets(): Promise<{
     .map((p) => ({ id: p.id, name: p.name || p.email || "Teammate" }))
     .sort((a, b) => a.name.localeCompare(b.name)));
   return { targets };
+}
+
+/**
+ * An admin asking a teammate to show THEIR screen -- the reverse of an
+ * invite. The browser still forces that teammate to click its own
+ * picker before any pixels leave their machine (no web app can skip
+ * that), so this call only authorizes the *ask*: admin-only, and the
+ * target must be an active member of this company. The teammate's
+ * "Share now" is what actually starts the session, aimed back at the
+ * admin, who then joins it automatically.
+ */
+export async function requestScreenShare(targetId: string): Promise<{
+  error?: string;
+  ok?: boolean;
+  fromName?: string;
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isStrictAdmin(profile)) return { error: "Only admins can request a teammate's screen." };
+  if (targetId === profile.id) return { error: "That's you." };
+
+  const admin = createAdminClient();
+  const { data: member } = await admin
+    .from("company_members")
+    .select("profile_id")
+    .eq("profile_id", targetId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "Active")
+    .maybeSingle();
+  if (!member) return { error: "That teammate isn't on this company." };
+
+  return { ok: true, fromName: profile.name || profile.email || "An admin" };
 }
 
 export async function endScreenShare(id: string): Promise<{ error?: string }> {
