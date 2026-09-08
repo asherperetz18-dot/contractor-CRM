@@ -3932,6 +3932,101 @@ tr.row-link:hover {
   opacity: 1;
 }
 
+/* Lead Files panel: image thumbnails on file rows, and the
+   click-or-drop upload zone with its in-flight preview strip. */
+.lead-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.lead-file-thumb {
+  display: block;
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: #fff;
+  flex: none;
+}
+.file-dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: #faf8f3;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+.file-dropzone:hover {
+  border-color: var(--blueprint);
+  color: var(--blueprint);
+}
+.file-dropzone.drag-over {
+  border-color: var(--blueprint);
+  background: #eaf1f7;
+  color: var(--blueprint);
+}
+.upload-queue {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.upload-queue-item {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+.upload-queue-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.upload-queue-item.waiting,
+.upload-queue-item.uploading {
+  opacity: 0.55;
+}
+.upload-queue-item.failed {
+  border-color: var(--danger);
+}
+.upload-queue-doc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 20px;
+}
+.upload-queue-state {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--success);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+.upload-queue-item.failed .upload-queue-state {
+  color: var(--danger);
+}
+.upload-queue-state:empty {
+  display: none;
+}
+
 /* ── Client Portal ─────────────────────────────────────────────────────
    Customer-facing surface (/portal). Deliberately plainer and roomier
    than the staff CRM: one column, large touch targets, no dense tables,
