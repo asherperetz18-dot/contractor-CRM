@@ -242,6 +242,20 @@ export function ProjectsView({
   const inProgress = sorted.filter((p) => p.status === "in_progress");
   const onHold = sorted.filter((p) => p.status === "on_hold");
   const complete = sorted.filter((p) => p.status === "complete");
+
+  // Signed this calendar month, from every active job regardless of the
+  // selected chip -- "New this month" should read the same whether you're
+  // looking at All or just Complete, so it never looks like business
+  // slowed down just because you clicked a filter. Cancelled contracts
+  // don't count as new business, same scope "active" uses everywhere else
+  // on this page.
+  const now = new Date();
+  const newThisMonth = active.filter((p) => {
+    if (!p.signedAt) return false;
+    const d = new Date(p.signedAt);
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }).length;
+
   const shown =
     filter === "Bleeding"
       ? bleeding
@@ -411,7 +425,7 @@ export function ProjectsView({
         </Modal>
       )}
 
-      <div className="stat-grid stat-grid-5">
+      <div className="stat-grid stat-grid-6">
         <div className="stat-card">
           <div className="stat-value mono">{moneyCents(totals.sold)}</div>
           <div className="stat-label">Sold</div>
@@ -434,6 +448,10 @@ export function ProjectsView({
         <div className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}>
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-value mono">{newThisMonth}</div>
+          <div className="stat-label">New this month</div>
         </div>
       </div>
 
