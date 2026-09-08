@@ -265,6 +265,30 @@ export async function deleteFieldOption(
   return {};
 }
 
+/**
+ * Scopes the rain-forecast alert to the project types it's actually
+ * relevant for (roofing, pool work, exterior paint, ...) -- without this,
+ * every appointment would qualify and the alert would fire constantly.
+ */
+export async function setProjectTypeWeatherSensitive(
+  id: string,
+  value: boolean
+): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("project_types")
+    .update({ weather_sensitive: value })
+    .eq("id", id)
+    .eq("company_id", guard.companyId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/settings/project-types");
+  return {};
+}
+
 export async function reorderFieldOptions(
   table: OptionTable,
   orderedIds: string[]

@@ -22,6 +22,7 @@ export default async function ProjectTypesPage() {
         description="Manage the list of project types available when creating or editing a lead"
         itemLabel="Project Type"
         rows={(rows as ProjectTypeRow[]) ?? []}
+        showWeatherSensitive
       />
       <MergeValues table="project_types" itemLabel="Project type" />
     </AdminGate>

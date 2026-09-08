@@ -9,6 +9,7 @@ import {
   deleteFieldOption,
   renameFieldOption,
   reorderFieldOptions,
+  setProjectTypeWeatherSensitive,
   type OptionTable,
 } from "@/lib/actions/lead-field-options";
 import type { LeadSourceRow, ProjectTypeRow } from "@/lib/data/types";
@@ -21,12 +22,15 @@ export function FieldOptionsTable({
   description,
   itemLabel,
   rows,
+  showWeatherSensitive,
 }: {
   table: OptionTable;
   title: string;
   description: string;
   itemLabel: string;
   rows: Row[];
+  /** Project types only: scopes the rain-forecast alert to relevant work. */
+  showWeatherSensitive?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -38,6 +42,15 @@ export function FieldOptionsTable({
   const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+
+  async function handleToggleWeatherSensitive(id: string, value: boolean) {
+    const result = await setProjectTypeWeatherSensitive(id, value);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    refresh();
+  }
 
   function refresh() {
     startTransition(() => router.refresh());
@@ -141,6 +154,7 @@ export function FieldOptionsTable({
             <th></th>
             <th>#</th>
             <th>{itemLabel}</th>
+            {showWeatherSensitive && <th>Rain alerts</th>}
             <th className="right">Actions</th>
           </tr>
         </thead>
@@ -192,6 +206,18 @@ export function FieldOptionsTable({
                   r.name
                 )}
               </td>
+              {showWeatherSensitive && (
+                <td>
+                  <label className="est-record-check">
+                    <input
+                      type="checkbox"
+                      checked={(r as ProjectTypeRow).weather_sensitive}
+                      onChange={(e) => handleToggleWeatherSensitive(r.id, e.target.checked)}
+                    />
+                    Warn about rain
+                  </label>
+                </td>
+              )}
               <td className="right">
                 {renamingId !== r.id && (
                   <>
