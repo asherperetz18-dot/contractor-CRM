@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { checkRainNow } from "@/lib/actions/rain-check";
-import { mapsUrl, moneyCents, projectTriageOrder, rainAlertLabel, type ProjectRollup } from "@/lib/data/types";
+import { mapsUrl, moneyCents, projectTriageOrder, rainPopTier, type ProjectRollup } from "@/lib/data/types";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
@@ -752,9 +752,12 @@ export function ProjectsView({
               {searched.map((p) => {
                 const items = itemsByEstimate.get(p.estimateId) ?? [];
                 const doneCount = items.filter((i) => i.completed_at).length;
-                // Only a running job warns -- a finished or held one has no
-                // crew on site, and its stored reading may be stale anyway.
-                const rain = p.status === "in_progress" ? rainAlertLabel(p.rainAlertPop) : null;
+                // Only a running job shows weather -- a finished or held one
+                // has no crew on site, and its stored reading may be stale
+                // anyway. Every reading shows, even a low one: "☔ 20%" on a
+                // calm blue chip is information, the amber/red tiers alert.
+                const rainPop = p.status === "in_progress" ? p.rainAlertPop : null;
+                const rainTier = rainPopTier(rainPop);
                 return (
                 <React.Fragment key={p.estimateId}>
                 <tr>
@@ -762,9 +765,13 @@ export function ProjectsView({
                     <Link href={`/estimates/${p.estimateId}`} className="ur-name">
                       {p.title || "Untitled job"}
                     </Link>
-                    {rain && (
-                      <span className={"proj-tag proj-tag-rain-" + rain.tier} style={{ marginLeft: 6 }}>
-                        ☔ {rain.label}
+                    {rainPop !== null && rainTier && (
+                      <span
+                        className={"proj-tag proj-tag-rain-" + rainTier}
+                        style={{ marginLeft: 6 }}
+                        title="Chance of rain at this job site in the next 48 hours"
+                      >
+                        ☔ {Math.round(rainPop)}%
                       </span>
                     )}
                     <div className="est-tax-note">

@@ -7725,6 +7725,13 @@ textarea.est-item-desc:disabled {
   background: rgba(220, 38, 38, 0.1);
   border-color: rgba(220, 38, 38, 0.3);
 }
+/* Sub-threshold reading: information, not an alert -- calm blue so a 20%
+   sprinkle never reads with the urgency of a 70% storm. */
+.proj-tag-rain-low {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.25);
+}
 
 /* Coloured filter chips on Projects. Each status chip wears its row
    tag's colour as a tint; the selected chip fills solid. .chip-sel is
