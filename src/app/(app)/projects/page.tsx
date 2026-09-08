@@ -236,6 +236,8 @@ export default async function ProjectsPage() {
       address: (contract as { job_address?: string | null }).job_address ?? lead?.address ?? null,
       repName: lead?.assigned_to ? (repById.get(lead.assigned_to) ?? null) : null,
       signedAt: contract.signed_at ?? null,
+      startDate: contract.start_date ?? null,
+      completionDate: contract.completion_date ?? null,
       changeOrderCount: signedChangeOrders.length,
       rollup,
       // Same rule as costs: a bill filed to one of this contract's

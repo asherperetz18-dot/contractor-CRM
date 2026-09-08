@@ -25,6 +25,8 @@ export type ProjectCard = {
   address: string | null;
   repName: string | null;
   signedAt: string | null;
+  startDate: string | null;
+  completionDate: string | null;
   changeOrderCount: number;
   /** The contract's child documents, for the client-view shortcuts. */
   changeOrders: { id: string; docNumber: string; title: string | null }[];
@@ -80,11 +82,19 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 // whole point of this page, but who cares about Rep vs. Signed date vs.
 // Change order count differs per person, so those are opt-in rather
 // than cluttering the table for everyone by default.
-type OptionalColumnKey = "rep" | "status" | "signedDate" | "changeOrders";
+type OptionalColumnKey =
+  | "rep"
+  | "status"
+  | "signedDate"
+  | "startDate"
+  | "completionDate"
+  | "changeOrders";
 const OPTIONAL_COLUMNS: { key: OptionalColumnKey; label: string }[] = [
   { key: "rep", label: "Rep" },
   { key: "status", label: "Status" },
   { key: "signedDate", label: "Signed date" },
+  { key: "startDate", label: "Start date" },
+  { key: "completionDate", label: "Completion date" },
   { key: "changeOrders", label: "Change orders" },
 ];
 const COLUMNS_STORAGE_KEY = "projects-visible-columns";
@@ -613,6 +623,8 @@ export function ProjectsView({
                 {visibleColumns.has("rep") && <th>Rep</th>}
                 {visibleColumns.has("status") && <th>Status</th>}
                 {visibleColumns.has("signedDate") && <th>Signed</th>}
+                {visibleColumns.has("startDate") && <th>Start date</th>}
+                {visibleColumns.has("completionDate") && <th>Completion date</th>}
                 {visibleColumns.has("changeOrders") && <th className="right">Change orders</th>}
                 <th className="right">Sold</th>
                 <th className="right">Collected</th>
@@ -809,6 +821,28 @@ export function ProjectsView({
                     <td>
                       {p.signedAt
                         ? new Date(p.signedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </td>
+                  )}
+                  {visibleColumns.has("startDate") && (
+                    <td>
+                      {p.startDate
+                        ? new Date(p.startDate).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "—"}
+                    </td>
+                  )}
+                  {visibleColumns.has("completionDate") && (
+                    <td>
+                      {p.completionDate
+                        ? new Date(p.completionDate).toLocaleDateString("en-US", {
                             month: "short",
                             day: "numeric",
                             year: "numeric",
