@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { searchDirectory, type DirectoryHit } from "@/lib/actions/search";
+import { searchEverything } from "@/lib/actions/search";
+import type { GlobalSearchGroup } from "@/lib/data/global-search";
 
 export function GlobalSearch() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<DirectoryHit[]>([]);
+  const [groups, setGroups] = useState<GlobalSearchGroup[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -29,29 +30,31 @@ export function GlobalSearch() {
     if (q.length < 2) {
       setLoading(false);
       setSearched(false);
-      setResults([]);
+      setGroups([]);
       return;
     }
 
     setLoading(true);
     const requestId = ++requestIdRef.current;
     debounceRef.current = setTimeout(() => {
-      searchDirectory(q).then((hits) => {
+      searchEverything(q).then((found) => {
         if (requestIdRef.current !== requestId) return;
-        setResults(hits);
+        setGroups(found);
         setLoading(false);
         setSearched(true);
       });
     }, 300);
   }
 
-  function openResult(id: string) {
+  function openResult(href: string) {
     setOpen(false);
     setQuery("");
-    setResults([]);
+    setGroups([]);
     setSearched(false);
-    router.push(`/contacts?openLead=${id}`);
+    router.push(href);
   }
+
+  const empty = groups.length === 0;
 
   return (
     <div className="gsearch-wrap">
@@ -71,24 +74,27 @@ export function GlobalSearch() {
           <div className="gsearch-panel">
             {loading ? (
               <div className="gsearch-empty">Searching…</div>
-            ) : results.length === 0 && searched ? (
+            ) : empty && searched ? (
               <div className="gsearch-empty">
-                No matches for name, phone, or address.
+                No matches across contacts, estimates, appointments, or bills.
               </div>
             ) : (
-              results.map((r) => (
-                <div
-                  key={r.id}
-                  className="gsearch-item"
-                  onClick={() => openResult(r.id)}
-                >
-                  <div className="gsearch-item-main">
-                    <div className="gsearch-item-name">{r.name}</div>
-                    <div className="gsearch-item-sub">
-                      {[r.phone, r.address].filter(Boolean).join(" · ") || "—"}
+              groups.map((g) => (
+                <div key={g.label} className="gsearch-group">
+                  <div className="gsearch-group-label">{g.label}</div>
+                  {g.hits.map((r) => (
+                    <div
+                      key={r.id}
+                      className="gsearch-item"
+                      onClick={() => openResult(r.href)}
+                    >
+                      <div className="gsearch-item-main">
+                        <div className="gsearch-item-name">{r.name}</div>
+                        <div className="gsearch-item-sub">{r.sub || "—"}</div>
+                      </div>
+                      {r.badge && <Badge color={r.color}>{r.badge}</Badge>}
                     </div>
-                  </div>
-                  <Badge color={r.color}>{r.stage}</Badge>
+                  ))}
                 </div>
               ))
             )}
