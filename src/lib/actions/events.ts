@@ -101,6 +101,11 @@ function rescheduleResets(
     result_reminder_sent_at: null,
     followup_flagged_at: null,
     followup_moved_at: null,
+    // A rain check made for the old date/time no longer means anything
+    // once the appointment moves -- clear it so the rain-alerts cron
+    // reconsiders the new slot instead of treating it as already warned.
+    rain_alert_sent_at: null,
+    rain_alert_pop: null,
   };
 }
 
