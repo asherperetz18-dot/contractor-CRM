@@ -11,7 +11,18 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
-import { bookAppointmentForLead } from "@/lib/actions/leads";
+import { bookAppointmentForLead, quickUpdateLead } from "@/lib/actions/leads";
+import { addLeadNote } from "@/lib/actions/lead-notes";
+
+/** The lead fields the mid-call edit panel can change. */
+type QuickEditFields = {
+  company_name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  address: string;
+  project_type: string;
+};
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -66,8 +77,58 @@ export function DialSession({
    */
   const [autoDial, setAutoDial] = useState(true);
   const [countdown, setCountdown] = useState<number | null>(null);
+  /**
+   * Notes typed while the client is talking. They save onto the lead's
+   * activity timeline the moment an outcome is recorded (or on Skip),
+   * so the rep never has to open the lead card mid-call. A ref shadows
+   * the state for the same reason chosenRef exists: the flush can fire
+   * from the call-logged event listener, which closes over stale state.
+   */
+  const [note, setNote] = useState("");
+  const noteRef = useRef("");
+  /**
+   * Local echo of quick-edit saves. The leads array is a prop snapshot,
+   * so without this the header would keep showing the old name after a
+   * correction until the page reloads.
+   */
+  const [patch, setPatch] = useState<Partial<Lead>>({});
+  const [editOpen, setEditOpen] = useState(false);
+  const [edit, setEdit] = useState<QuickEditFields>({
+    company_name: "",
+    first_name: "",
+    last_name: "",
+    email: "",
+    address: "",
+    project_type: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSaved, setEditSaved] = useState(false);
 
   const lead = leads[index];
+  /** The lead as the rep last saved it, for everything the header shows. */
+  const shown = lead ? { ...lead, ...patch } : lead;
+
+  // A new contact means fresh per-lead state: seed the edit panel from
+  // the card and drop anything left over from the previous call. Done
+  // during render (the sanctioned adjust-state-on-prop-change pattern)
+  // rather than in an effect, so the old lead's values never paint.
+  const [seededLeadId, setSeededLeadId] = useState<string | null>(null);
+  if (lead && lead.id !== seededLeadId) {
+    setSeededLeadId(lead.id);
+    setNote("");
+    noteRef.current = "";
+    setPatch({});
+    setEditOpen(false);
+    setEditSaved(false);
+    setEdit({
+      company_name: lead.company_name ?? "",
+      first_name: lead.first_name ?? "",
+      last_name: lead.last_name ?? "",
+      email: lead.email ?? "",
+      address: lead.address ?? "",
+      project_type: lead.project_type ?? "",
+    });
+  }
 
   useEffect(() => {
     if (countdown === null) return;
@@ -111,7 +172,55 @@ export function DialSession({
 
   function handleClose() {
     if (!ended && !confirm("End this dialing session?")) return;
+    // Best effort: a note typed and then abandoned by closing the whole
+    // session still deserves to land on the lead.
+    const leftover = noteRef.current.trim();
+    if (leftover && lead) void addLeadNote(lead.id, `📞 ${leftover}`);
     onClose();
+  }
+
+  /**
+   * Saves the call note to the lead's timeline. Returns false (and shows
+   * the error, keeping the text in the box) when the save is refused, so
+   * callers don't advance past a note that was never written.
+   */
+  async function flushNote(): Promise<boolean> {
+    const trimmed = noteRef.current.trim();
+    if (!trimmed || !lead) return true;
+    const result = await addLeadNote(lead.id, `📞 ${trimmed}`);
+    if (result?.error) {
+      setError(result.error);
+      return false;
+    }
+    setNote("");
+    noteRef.current = "";
+    return true;
+  }
+
+  async function saveContactInfo() {
+    if (!lead) return;
+    const base = { ...lead, ...patch };
+    const changed: Partial<QuickEditFields> = {};
+    (Object.keys(edit) as (keyof QuickEditFields)[]).forEach((k) => {
+      if (edit[k].trim() !== ((base[k] as string | null) ?? "")) changed[k] = edit[k];
+    });
+    if (Object.keys(changed).length === 0) {
+      setEditSaved(true);
+      return;
+    }
+    setEditSaving(true);
+    setError("");
+    const result = await quickUpdateLead(lead.id, changed);
+    setEditSaving(false);
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+    const applied = Object.fromEntries(
+      Object.entries(changed).map(([k, v]) => [k, (v ?? "").trim() || null])
+    ) as Partial<Lead>;
+    setPatch((p) => ({ ...p, ...applied }));
+    setEditSaved(true);
   }
 
   function placeCall() {
@@ -152,6 +261,9 @@ export function DialSession({
       setError(result.error);
       return;
     }
+    // The note rides out with the outcome. A refused note stops the
+    // advance so the text stays in the box instead of vanishing.
+    if (!(await flushNote())) return;
     // An outcome that schedules an appointment should end with one on
     // the calendar. The stage has already moved; leaving without the
     // booking is what puts "Appointment Scheduled" leads on the board
@@ -272,14 +384,14 @@ export function DialSession({
       <div className="dial-session-progress">
         Contact {index + 1} of {leads.length}
       </div>
-      <div className="dial-session-name">{leadDisplayName(lead)}</div>
+      <div className="dial-session-name">{leadDisplayName(shown)}</div>
       <div className="dial-session-phone mono">{lead.phone}</div>
 
-      {lead.address && (
+      {shown.address && (
         <p className="hint-note" style={{ marginTop: -8 }}>
           📍{" "}
-          <a href={mapsUrl(lead.address)} target="_blank" rel="noopener noreferrer">
-            {lead.address}
+          <a href={mapsUrl(shown.address)} target="_blank" rel="noopener noreferrer">
+            {shown.address}
           </a>
         </p>
       )}
@@ -309,6 +421,95 @@ export function DialSession({
         <p className="hint-note" style={{ textAlign: "center", marginBottom: 16 }}>
           Call logged — choose an outcome below.
         </p>
+      )}
+
+      <Field label="Call notes">
+        <textarea
+          rows={3}
+          placeholder="Type what the client says — it saves to the contact with the outcome."
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+            noteRef.current = e.target.value;
+          }}
+        />
+      </Field>
+
+      <button
+        type="button"
+        className="btn-ghost dial-edit-toggle"
+        onClick={() => setEditOpen((o) => !o)}
+      >
+        {editOpen ? "▾ Hide contact info" : "✎ Edit contact info"}
+      </button>
+      {editOpen && (
+        <div className="dial-edit-panel">
+          {shown.contact_type === "Company" && (
+            <Field label="Company name">
+              <input
+                value={edit.company_name}
+                onChange={(e) => {
+                  setEditSaved(false);
+                  setEdit((f) => ({ ...f, company_name: e.target.value }));
+                }}
+              />
+            </Field>
+          )}
+          <div className="dial-edit-grid">
+            <Field label="First name">
+              <input
+                value={edit.first_name}
+                onChange={(e) => {
+                  setEditSaved(false);
+                  setEdit((f) => ({ ...f, first_name: e.target.value }));
+                }}
+              />
+            </Field>
+            <Field label="Last name">
+              <input
+                value={edit.last_name}
+                onChange={(e) => {
+                  setEditSaved(false);
+                  setEdit((f) => ({ ...f, last_name: e.target.value }));
+                }}
+              />
+            </Field>
+          </div>
+          <Field label="Email">
+            <input
+              type="email"
+              value={edit.email}
+              onChange={(e) => {
+                setEditSaved(false);
+                setEdit((f) => ({ ...f, email: e.target.value }));
+              }}
+            />
+          </Field>
+          <Field label="Address">
+            <input
+              value={edit.address}
+              onChange={(e) => {
+                setEditSaved(false);
+                setEdit((f) => ({ ...f, address: e.target.value }));
+              }}
+            />
+          </Field>
+          <Field label="Project type">
+            <input
+              value={edit.project_type}
+              onChange={(e) => {
+                setEditSaved(false);
+                setEdit((f) => ({ ...f, project_type: e.target.value }));
+              }}
+            />
+          </Field>
+          <div className="dial-edit-actions">
+            {editSaved && <span className="hint-note">Saved ✓</span>}
+            <button className="btn-primary" onClick={saveContactInfo} disabled={editSaving}>
+              {editSaving ? "Saving…" : "Save contact info"}
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="dial-session-disposition-grid">
@@ -361,7 +562,15 @@ export function DialSession({
         <button className="btn-ghost" onClick={handleClose}>
           End Session
         </button>
-        <button className="btn-ghost" onClick={() => advance(false)}>
+        <button
+          className="btn-ghost"
+          onClick={async () => {
+            // A note typed on a skipped contact still saves -- Skip is
+            // how a rep leaves a "call back Tuesday" without an outcome.
+            if (!(await flushNote())) return;
+            advance(false);
+          }}
+        >
           Skip →
         </button>
       </div>
