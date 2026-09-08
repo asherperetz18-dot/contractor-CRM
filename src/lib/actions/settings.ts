@@ -126,6 +126,7 @@ export async function saveAiAnalysisSettings(input: {
   model: string;
   positiveSignals: string;
   negativeSignals: string;
+  callNotesEnabled: boolean;
 }): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -142,6 +143,7 @@ export async function saveAiAnalysisSettings(input: {
       ai_analysis_model: model,
       ai_analysis_positive_signals: input.positiveSignals.trim() || null,
       ai_analysis_negative_signals: input.negativeSignals.trim() || null,
+      ai_call_notes_enabled: input.callNotesEnabled,
     })
     .eq("company_id", profile.company_id)
     .select("company_id");
