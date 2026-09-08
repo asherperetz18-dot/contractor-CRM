@@ -435,6 +435,13 @@ export function CalendarBoard({
         .join("") || "?"
     );
   }
+  // Both reps on a visit get an avatar on the chip; de-duped in case the
+  // same person is somehow picked twice, skipping ids with no known name.
+  function chipReps(ev: Event): string[] {
+    return [...new Set([ev.assigned_to, ev.second_assigned_to])].filter(
+      (id): id is string => !!id && !!repName(id)
+    );
+  }
 
   function renderGrid(cells: Cell[], gridClassName: string, maxPerCell: number, roomy = false) {
     return (
@@ -527,15 +534,16 @@ export function CalendarBoard({
                       </span>
                     )}
                     <span className="mono cal-event-time">{formatClock(ev.time, timeFormat)}</span>{" "}
-                    {ev.assigned_to && repName(ev.assigned_to) && (
+                    {chipReps(ev).map((repId) => (
                       <span
+                        key={repId}
                         className="cal-rep-avatar"
-                        style={{ background: repColor(ev.assigned_to) }}
-                        title={repName(ev.assigned_to) ?? undefined}
+                        style={{ background: repColor(repId) }}
+                        title={repName(repId) ?? undefined}
                       >
-                        {repInitials(repName(ev.assigned_to)!)}
+                        {repInitials(repName(repId)!)}
                       </span>
-                    )}
+                    ))}
                     <span className="cal-ev-client">{clientName ?? ev.title}</span>
                     {roomy && titleAddsInfo(ev, clientName) && (
                       <span className="cal-ev-sub">{ev.title}</span>

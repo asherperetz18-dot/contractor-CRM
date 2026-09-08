@@ -2493,6 +2493,12 @@ tr.row-link:hover {
   vertical-align: -3px;
   flex: none;
 }
+/* The second rep's avatar tucks under the first so a two-rep visit
+   doesn't push the client's name off a narrow chip. */
+.cal-rep-avatar + .cal-rep-avatar {
+  margin-left: -9px;
+  box-shadow: 0 0 0 1.5px #fff;
+}
 .cal-confirm-row {
   display: flex;
   gap: 4px;
