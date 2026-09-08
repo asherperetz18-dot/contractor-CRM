@@ -994,6 +994,7 @@ export type ProjectTypeRow = {
   name: string;
   sort_order: number;
   created_at: string;
+  weather_sensitive: boolean;
 };
 
 export type LeadSourceRow = {
