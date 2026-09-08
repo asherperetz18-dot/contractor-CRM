@@ -121,7 +121,14 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const me = profile.id;
   const since = eventsSince;
 
-  const [texts, failedTexts, paid, signed, viewed, newLeads, newAppts, newSteps] =
+  // Office/Admin/Dispatch see every rain alert company-wide -- they're
+  // the ones who call to reschedule -- while everyone else only sees
+  // alerts on appointments actually assigned to them, same scope as
+  // "booked for you" above.
+  const seesAllWeather =
+    isAdminRole(profile) || profile.roles.includes("Office") || profile.roles.includes("Dispatch");
+
+  const [texts, failedTexts, paid, signed, viewed, newLeads, newAppts, newSteps, newRain] =
     await Promise.all([
       textsPromise,
       staffsPhones
@@ -205,6 +212,16 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
         .gt("created_at", since)
         .order("created_at", { ascending: false })
         .limit(PER_KIND),
+      // The rain-alerts cron sets rain_alert_sent_at once, the first time
+      // an appointment crosses the threshold -- so this never re-pops on
+      // every later poll while the forecast stays bad.
+      supabase
+        .from("events")
+        .select("id, title, date, time, event_type, lead_id, assigned_to, second_assigned_to, rain_alert_sent_at")
+        .eq("company_id", companyId)
+        .gt("rain_alert_sent_at", since)
+        .order("rain_alert_sent_at", { ascending: false })
+        .limit(PER_KIND),
     ]);
 
   type Sms = { id: string; to_number: string; delivery_error: string | null; created_at: string; lead_id: string | null };
@@ -234,6 +251,17 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
     created_at: string;
   };
   type Step = { id: string; estimate_id: string; label: string; due_date: string | null; assigned_to: string | null; created_at: string };
+  type Rain = {
+    id: string;
+    title: string | null;
+    date: string;
+    time: string | null;
+    event_type: string;
+    lead_id: string | null;
+    assigned_to: string | null;
+    second_assigned_to: string | null;
+    rain_alert_sent_at: string | null;
+  };
 
   const failed = (failedTexts.data ?? []) as Sms[];
   const payments = (paid.data ?? []) as Paid[];
@@ -243,6 +271,9 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const leads = ((newLeads.data ?? []) as Lead[]).filter((l) => l.created_by !== me);
   const appts = ((newAppts.data ?? []) as Appt[]).filter((a) => a.created_by !== me);
   const steps = (newSteps.data ?? []) as Step[];
+  const rainAlerts = ((newRain.data ?? []) as Rain[]).filter(
+    (r) => seesAllWeather || r.assigned_to === me || r.second_assigned_to === me
+  );
 
   // Names for the documents and people the popups mention, fetched once.
   const estimateIds = [
@@ -252,7 +283,9 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
       ...steps.map((s) => s.estimate_id),
     ]),
   ];
-  const leadIds = [...new Set(appts.map((a) => a.lead_id).filter(Boolean))] as string[];
+  const leadIds = [
+    ...new Set([...appts.map((a) => a.lead_id), ...rainAlerts.map((r) => r.lead_id)].filter(Boolean)),
+  ] as string[];
 
   const [docsRes, leadNamesRes] = await Promise.all([
     estimateIds.length
@@ -369,6 +402,23 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
       at: s.created_at,
       href: "/projects",
       sticky: false,
+    });
+  }
+
+  for (const r of rainAlerts) {
+    const who = r.lead_id ? leadNameById.get(r.lead_id) : null;
+    const when = `${r.date}${r.time ? ` at ${r.time.slice(0, 5)}` : ""}`;
+    events.push({
+      id: `weather:${r.id}`,
+      kind: "weather",
+      icon: "☔",
+      title: "Rain in the forecast",
+      body: `${r.title || who || r.event_type} — ${when}`,
+      at: r.rain_alert_sent_at as string,
+      href: "/schedule",
+      // Stays up until dismissed, same as a signature or a payment --
+      // this is the rare, worth-acting-on kind of alert, not routine noise.
+      sticky: true,
     });
   }
 

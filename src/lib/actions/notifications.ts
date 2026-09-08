@@ -60,6 +60,10 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     isAdminRole(profile) ||
     profile.roles.includes("Office") ||
     profile.roles.includes("Dispatch");
+  // Same scope as the popup: office-side roles see every rain alert
+  // company-wide (they're the ones who call to reschedule), everyone
+  // else only their own assigned appointments.
+  const seesAllWeather = staffsPhones;
   const seesMoney = canViewEstimates(profile) && (isAdminRole(profile) || profile.roles.includes("Bookkeeping"));
   const seesEstimates = canViewEstimates(profile);
   const worksLeads = canEditDispatch(profile);
@@ -68,7 +72,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   // note on seesOnlyOwnDocuments for why, and which roles stay wide.
   const ownDocsOnly = seesOnlyOwnDocuments(profile);
 
-  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts] =
+  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts, rainAlerts] =
     await Promise.all([
       // Tolerant on purpose: before migration 0115 has run, this errors
       // and the bell simply treats everything as unseen.
@@ -170,6 +174,14 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
         .gte("created_at", since7d)
         .order("created_at", { ascending: false })
         .limit(20),
+      supabase
+        .from("events")
+        .select("id, title, date, time, event_type, lead_id, assigned_to, second_assigned_to, rain_alert_sent_at")
+        .eq("company_id", companyId)
+        .not("rain_alert_sent_at", "is", null)
+        .gte("rain_alert_sent_at", since7d)
+        .order("rain_alert_sent_at", { ascending: false })
+        .limit(20),
     ]);
 
   type Phase = { id: string; estimate_id: string; name: string | null; amount_cents: number; due_date: string; requested_at: string };
@@ -198,6 +210,17 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     created_by: string | null;
     created_at: string;
   };
+  type Rain = {
+    id: string;
+    title: string | null;
+    date: string;
+    time: string | null;
+    event_type: string;
+    lead_id: string | null;
+    assigned_to: string | null;
+    second_assigned_to: string | null;
+    rain_alert_sent_at: string | null;
+  };
 
   const phases = (duePhases.data ?? []) as Phase[];
   const paid = (paidRecent.data ?? []) as Paid[];
@@ -207,6 +230,9 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   // news to you -- the same rule the popups use.
   const leads = ((newLeads.data ?? []) as Lead[]).filter((l) => l.created_by !== me).slice(0, 15);
   const appts = ((newAppts.data ?? []) as Appt[]).filter((a) => a.created_by !== me).slice(0, 10);
+  const rain = ((rainAlerts.data ?? []) as Rain[]).filter(
+    (r) => seesAllWeather || r.assigned_to === me || r.second_assigned_to === me
+  );
 
   // Names for every document and person the feed mentions, fetched once.
   const estimateIds = [
@@ -216,7 +242,9 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
       ...views.map((v) => v.estimate_id),
     ]),
   ];
-  const apptLeadIds = [...new Set(appts.map((a) => a.lead_id).filter(Boolean))] as string[];
+  const apptLeadIds = [
+    ...new Set([...appts.map((a) => a.lead_id), ...rain.map((r) => r.lead_id)].filter(Boolean)),
+  ] as string[];
   const [docsRes, apptLeadsRes] = await Promise.all([
     estimateIds.length
       ? supabase.from("estimates").select("id, doc_number, title").in("id", estimateIds)
@@ -368,6 +396,20 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     });
   }
 
+  for (const r of rain) {
+    const who = r.lead_id ? leadNameById.get(r.lead_id) : null;
+    const when = `${r.date}${r.time ? ` at ${r.time.slice(0, 5)}` : ""}`;
+    items.push({
+      id: `weather:${r.id}`,
+      kind: "weather",
+      icon: "☔",
+      title: "Rain in the forecast",
+      body: `${r.title || who || r.event_type} — ${when}`,
+      at: r.rain_alert_sent_at as string,
+      href: "/schedule",
+    });
+  }
+
   items.sort((a, b) => (a.at < b.at ? 1 : -1));
 
   const parts: string[] = [];
@@ -378,6 +420,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   if (appts.length) parts.push(`${appts.length} appointments booked for you`);
   if (views.length) parts.push(`${views.length} proposal views`);
   if (paid.length) parts.push(`${paid.length} payments in`);
+  if (rain.length) parts.push(`${rain.length} rain alerts`);
 
   return {
     data: {

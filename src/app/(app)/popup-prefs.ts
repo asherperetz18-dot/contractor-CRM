@@ -28,6 +28,7 @@ const DEFAULTS: PopupPrefs = {
   job: true,
   lead: true,
   appointment: true,
+  weather: true,
   sound: true,
 };
 

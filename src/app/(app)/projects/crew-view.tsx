@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { mapsUrl } from "@/lib/data/types";
+import { mapsUrl, rainAlertLabel } from "@/lib/data/types";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
@@ -14,6 +14,8 @@ export type CrewJob = {
   customer: string;
   address: string | null;
   status: "in_progress" | "on_hold" | "complete";
+  /** Highest rain-alerts cron reading among this job's upcoming appointments. */
+  rainAlertPop: number | null;
 };
 
 /**
@@ -55,12 +57,16 @@ export function CrewProjectsView({
   const card = (j: CrewJob) => {
     const items = itemsByEstimate.get(j.estimateId) ?? [];
     const doneCount = items.filter((i) => i.completed_at).length;
+    const rain = rainAlertLabel(j.rainAlertPop);
     return (
       <div key={j.estimateId} className="crew-card">
         <div className="crew-card-head">
           <span className="ur-name">{j.title || "Untitled job"}</span>
           {j.status === "on_hold" && <span className="proj-tag proj-tag-on_hold">On hold</span>}
           {j.status === "complete" && <span className="proj-tag proj-tag-complete">Complete</span>}
+          {rain && (
+            <span className={"proj-tag proj-tag-rain-" + rain.tier}>☔ {rain.label}</span>
+          )}
         </div>
         <div className="est-tax-note">
           {j.docNumber} · {j.customer}

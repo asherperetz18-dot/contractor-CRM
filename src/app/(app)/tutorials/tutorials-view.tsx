@@ -231,6 +231,18 @@ const LIBRARY: Category[] = [
           { img: T("tut-crew-receipt"), caption: "+ Bill on a job row opens with that job already picked: snap the receipt at the counter, amount, save. It files against the job's costs, and the form stays open for the next one in the stack." },
         ],
       },
+      {
+        id: "rain-alerts",
+        title: "Rain alerts for outdoor jobs",
+        kicker: "Quick how-to · 4 steps · 2 min",
+        desc: "A heads-up before the crew drives out to a roof, a pour, or a paint job the weather is about to ruin.",
+        steps: [
+          { img: T("tut-rain-settings"), caption: "Settings → Project Types has a Rain Alerts column. Check Warn about rain on whichever project types are actually outdoor-sensitive — roofing, pool work, exterior paint, concrete. Nothing fires for a project type left unchecked, so a kitchen remodel never gets a weather warning." },
+          { img: T("tut-rain-schedule"), caption: "A few times a day the CRM checks the real forecast for every upcoming appointment on a flagged project type. Once the chance of rain crosses 50%, a badge appears right on the Schedule and Calendar rows — amber for Rain possible, red for Rain likely — so it's visible the moment you're looking at the day." },
+          { img: T("tut-rain-toast"), caption: "The first time an appointment crosses that threshold, everyone who'd want to know — the office and whoever's assigned to the job — gets a one-time pop-up and a bell alert, same as a signature or a payment. It only fires once per appointment; the badge itself keeps updating live as the forecast changes." },
+          { img: T("tut-rain-crew"), caption: "The same warning follows the job onto the crew's own Projects page, right on the job card — so whoever's about to drive out to a roof tear-off sees it before they load the truck, even if Schedule isn't in their nav at all." },
+        ],
+      },
     ],
   },
   {

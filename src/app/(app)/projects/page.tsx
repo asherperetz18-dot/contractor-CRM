@@ -346,7 +346,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
     project_on_hold: boolean | null;
   };
 
-  const [estimates, leads, checklistRows, reps] = await Promise.all([
+  const [estimates, leads, checklistRows, reps, rainEvents] = await Promise.all([
     selectAll<SlimEstimate>((from, to) =>
       admin
         .from("estimates")
@@ -374,7 +374,29 @@ async function CrewProjects({ companyId }: { companyId: string }) {
     selectAll<{ id: string; name: string | null }>((from, to) =>
       admin.from("profiles").select("id, name").in("id", memberIds).range(from, to)
     ),
+    // Only appointments still ahead of today -- a rain check made for a
+    // visit that already happened is not a warning anymore.
+    selectAll<{ lead_id: string | null; rain_alert_pop: number | null }>((from, to) =>
+      admin
+        .from("events")
+        .select("lead_id, rain_alert_pop")
+        .eq("company_id", companyId)
+        .in("status", ["New", "Confirmed"])
+        .not("lead_id", "is", null)
+        .not("rain_alert_pop", "is", null)
+        .gte("date", new Date().toISOString().slice(0, 10))
+        .range(from, to)
+    ),
   ]);
+
+  // Highest reading per lead -- a job with several upcoming visits shows
+  // its worst one, the same way the office rollup surfaces the worst job.
+  const rainPopByLead = new Map<string, number>();
+  for (const e of rainEvents) {
+    if (!e.lead_id || e.rain_alert_pop === null) continue;
+    const current = rainPopByLead.get(e.lead_id) ?? 0;
+    if (e.rain_alert_pop > current) rainPopByLead.set(e.lead_id, e.rain_alert_pop);
+  }
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
 
@@ -409,6 +431,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
           : completionSigned || contract.completed_on
             ? ("complete" as const)
             : ("in_progress" as const),
+        rainAlertPop: rainPopByLead.get(contract.lead_id) ?? null,
       };
     })
     .sort((a, b) => a.customer.localeCompare(b.customer));

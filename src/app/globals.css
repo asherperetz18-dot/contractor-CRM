@@ -772,6 +772,24 @@ body {
   font-size: 10.5px;
   font-weight: 600;
 }
+/* Rain-forecast alert (rain-alerts cron writes rain_alert_pop). Amber at
+   50%+, red at 70%+ -- same two-tier convention as the pipeline's
+   attention/urgent digest, so a light chance and a real storm don't
+   read the same. */
+.rain-badge {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #fff;
+}
+.rain-badge-possible {
+  background: #c0730f;
+}
+.rain-badge-likely {
+  background: var(--danger);
+}
 /* Date the lead came in, on the card so its age is readable without
    opening it. Quieter than the value/rep row above it. */
 .lead-card-date,
@@ -2494,6 +2512,13 @@ tr.row-link:hover {
 .cal-confirm-on {
   background: #2f855a;
   color: #fff;
+}
+/* Compact rain indicator for the month/week grid, where a full text
+   badge would bury the title (30px chip). The possible/likely tier
+   still reaches the reader via the title tooltip. */
+.cal-ev-rain {
+  margin-right: 3px;
+  font-size: 11px;
 }
 /* Week columns are wide enough for the card to breathe: let the title
    wrap and the confirmation row sit beneath it. */
@@ -7631,6 +7656,16 @@ textarea.est-item-desc:disabled {
   border-color: rgba(22, 163, 74, 0.35);
 }
 .proj-tag-cancelled {
+  color: var(--danger);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.3);
+}
+.proj-tag-rain-possible {
+  color: #b45309;
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.35);
+}
+.proj-tag-rain-likely {
   color: var(--danger);
   background: rgba(220, 38, 38, 0.1);
   border-color: rgba(220, 38, 38, 0.3);
