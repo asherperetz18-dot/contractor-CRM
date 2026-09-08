@@ -4629,6 +4629,11 @@ a.portal-header-stars:hover {
 .proj-checklist-tools input {
   flex: 1;
   min-width: 160px;
+  padding: 5px 9px;
+  border: 1px solid var(--rule, #d8d3c8);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
 }
 
 /* The analyzer's readout on the contact card. Temperature reads at a
