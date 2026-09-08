@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   formatTimeRange,
   leadDisplayName,
+  leadPhotoThumbUrl,
   mapsUrl,
   type Event,
   type Lead,
@@ -27,6 +28,9 @@ type PortalFile = {
   content_type: string | null;
   created_at: string;
   uploaded_by: string | null;
+  /** Drive file id when storage_provider is google_drive; see leadPhotoThumbUrl. */
+  file_path?: string | null;
+  storage_provider?: string | null;
 };
 
 export type PortalDoc = {
@@ -520,13 +524,19 @@ export function PortalHome({
                         {isImage ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
-                            src={f.file_url!}
+                            // A file kept in Google Drive has a URL that
+                            // is a viewer page, not an image --
+                            // leadPhotoThumbUrl swaps it for Drive's real
+                            // thumbnail image. The onError fallback stays
+                            // for files that are genuinely gone.
+                            src={leadPhotoThumbUrl({
+                              file_url: f.file_url!,
+                              file_path: f.file_path,
+                              storage_provider: f.storage_provider,
+                            })}
                             alt={f.file_name}
                             loading="lazy"
-                            // A file kept in Google Drive has a URL that
-                            // is a viewer page, not an image. Rather than
-                            // guess from the provider, let it fail once
-                            // and fall back to the icon.
+                            referrerPolicy="no-referrer"
                             onError={() =>
                               setBrokenThumbs((prev) => new Set(prev).add(f.id))
                             }

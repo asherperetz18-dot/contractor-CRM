@@ -25,6 +25,9 @@ type PortalFile = {
   content_type: string | null;
   created_at: string;
   uploaded_by: string | null;
+  /** Drive file id when storage_provider is google_drive; see leadPhotoThumbUrl. */
+  file_path: string | null;
+  storage_provider: string | null;
 };
 
 export default async function PortalHomePage() {
@@ -50,7 +53,9 @@ export default async function PortalHomePage() {
       .order("time", { ascending: true }),
     admin
       .from("lead_files")
-      .select("id, file_name, file_url, content_type, created_at, uploaded_by")
+      .select(
+        "id, file_name, file_url, content_type, created_at, uploaded_by, file_path, storage_provider"
+      )
       .eq("lead_id", viewer.lead.id)
       .order("created_at", { ascending: false }),
     admin
