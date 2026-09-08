@@ -3814,6 +3814,28 @@ tr.row-link:hover {
   align-items: center;
   gap: 10px;
 }
+.dial-edit-toggle {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.dial-edit-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px 2px;
+  margin-bottom: 14px;
+}
+.dial-edit-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+.dial-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 12px;
+}
 
 .quick-text-wrap {
   position: relative;

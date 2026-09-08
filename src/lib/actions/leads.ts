@@ -213,6 +213,53 @@ export async function updateLead(
 }
 
 /**
+ * Writes only the fields it is given. The Power Dialer's mid-call edit
+ * panel uses this: updateLead writes the whole card, so calling it with
+ * just the handful of fields the rep corrected on the phone would blank
+ * every field the dialer doesn't show.
+ */
+export async function quickUpdateLead(
+  id: string,
+  fields: Partial<
+    Record<
+      "company_name" | "first_name" | "last_name" | "email" | "address" | "project_type",
+      string
+    >
+  >
+) {
+  const row: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    row[key] = (value ?? "").trim() || null;
+  }
+  if (Object.keys(row).length === 0) return {};
+
+  const supabase = await createClient();
+  // Same trap as updateLead: an update RLS refuses matches zero rows
+  // without an error, so ask for the row back to tell "saved" apart
+  // from "silently thrown away".
+  const { data, error } = await supabase
+    .from("leads")
+    .update(row)
+    .eq("id", id)
+    .select(
+      "id, company_id, first_name, last_name, email, phone, " +
+        "second_contact_first_name, second_contact_last_name, second_contact_email, second_contact_phone"
+    )
+    .returns<(ContactForSigners & { id: string; company_id: string })[]>();
+
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) {
+    return { error: "That change couldn't be saved — your role may not have permission to edit this contact." };
+  }
+
+  // The name on the card is the name on the signature line (see updateLead).
+  await syncSignersWithContact(createAdminClient(), data[0]);
+
+  revalidatePath("/pipeline");
+  return {};
+}
+
+/**
  * Deletes a contact -- into the trash, not into nothing.
  *
  * The delete stays a hard delete with its cascades, but the moment
