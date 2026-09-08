@@ -1,11 +1,15 @@
 import { AdminGate } from "@/components/admin-gate";
 import { getSalesCommissionDefaults } from "@/lib/actions/rep-commission";
+import { getCloserDefault } from "@/lib/actions/closer-defaults";
 import { SalesDefaultsForm } from "./defaults-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function SalesCommissionSettingsPage() {
-  const defaults = await getSalesCommissionDefaults();
+  const [defaults, closer] = await Promise.all([
+    getSalesCommissionDefaults(),
+    getCloserDefault(),
+  ]);
   return (
     <AdminGate>
       <div className="module-toolbar">
@@ -19,6 +23,7 @@ export default async function SalesCommissionSettingsPage() {
       <SalesDefaultsForm
         initialCommissionBp={defaults.sales_commission_bp}
         initialLeadCostBp={defaults.sales_lead_cost_bp}
+        initialCloserBp={closer.default_closer_bp}
       />
     </AdminGate>
   );
