@@ -185,7 +185,26 @@ export function ProjectsView({
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [pendingHold, setPendingHold] = useState<string | null>(null);
-  const [openChecklist, setOpenChecklist] = useState<string | null>(null);
+  // Jobs with a step past its due date and not checked off. Same
+  // overdue test the checklist rows use, so the chip and the row never
+  // disagree. UTC date on both server and client, so the seeded state
+  // below hydrates identically.
+  const overdueEstimates = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const late = new Set<string>();
+    for (const item of checklistItems) {
+      if (item.due_date && !item.completed_at && item.due_date < today) {
+        late.add(item.estimate_id);
+      }
+    }
+    return late;
+  }, [checklistItems]);
+  // Overdue jobs land with their checklist already open -- late work
+  // should not hide behind a chip. Collapsing is one click and lasts
+  // for the visit; still overdue tomorrow means open again tomorrow.
+  const [openChecklists, setOpenChecklists] = useState<Set<string>>(
+    () => new Set(overdueEstimates)
+  );
   // Which job the bill modal opens on: a lead id from a row's chip,
   // "any" from the page-level button, null when closed.
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
@@ -695,12 +714,18 @@ export function ProjectsView({
                               "proj-check-chip" +
                               (items.length > 0 && doneCount === items.length
                                 ? " proj-check-chip-done"
+                                : "") +
+                              (overdueEstimates.has(p.estimateId)
+                                ? " proj-check-chip-overdue"
                                 : "")
                             }
                             onClick={() =>
-                              setOpenChecklist(
-                                openChecklist === p.estimateId ? null : p.estimateId
-                              )
+                              setOpenChecklists((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(p.estimateId)) next.delete(p.estimateId);
+                                else next.add(p.estimateId);
+                                return next;
+                              })
                             }
                           >
                             ☑ {items.length > 0 ? `${doneCount}/${items.length}` : "Checklist"}
@@ -921,7 +946,7 @@ export function ProjectsView({
                     )}
                   </td>
                 </tr>
-                {openChecklist === p.estimateId && (
+                {openChecklists.has(p.estimateId) && (
                   <tr className="proj-checklist-row">
                     <td colSpan={7 + visibleColumns.size}>
                       <ProjectChecklist
