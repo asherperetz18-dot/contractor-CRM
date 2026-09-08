@@ -215,6 +215,14 @@ export function ScreenShareEngine({
   // the teammate an admin is waiting on; when that person's share
   // appears, the admin joins it without a prompt (they asked for it)
   const awaitingFromRef = useRef<string | null>(null);
+  // A request is a broadcast, not a DB row, so a single send is lost if
+  // the teammate's tab happened to be between pages or asleep. These
+  // re-send it on a beat and give up after a while instead of hanging.
+  const requestRetry = useRef<ReturnType<typeof setInterval> | null>(null);
+  const requestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // which asker we've already chimed for, so the re-sent pings don't
+  // ring the teammate's popup over and over
+  const requestDinged = useRef<string | null>(null);
 
   const broadcast = useCallback((payload: Signal) => {
     channel.current?.send({ type: "broadcast", event: "signal", payload });
@@ -262,6 +270,11 @@ export function ScreenShareEngine({
       setRequesting(null);
       setIncomingRequest(null);
       awaitingFromRef.current = null;
+      requestDinged.current = null;
+      if (requestRetry.current) clearInterval(requestRetry.current);
+      if (requestTimeout.current) clearTimeout(requestTimeout.current);
+      requestRetry.current = null;
+      requestTimeout.current = null;
       window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: false } }));
     },
     [broadcast, resetLanes]
@@ -481,9 +494,19 @@ export function ScreenShareEngine({
   );
 
   // ── admin: request a teammate's screen ──────────────────────────
+  const clearRequestTimers = useCallback(() => {
+    if (requestRetry.current) clearInterval(requestRetry.current);
+    if (requestTimeout.current) clearTimeout(requestTimeout.current);
+    requestRetry.current = null;
+    requestTimeout.current = null;
+  }, []);
+
   // The ask itself carries no pixels: it just pings the teammate, whose
   // "Share now" starts the session aimed back here. awaitingFromRef
-  // arms the auto-join for when that session appears.
+  // arms the auto-join for when that session appears. The ping is a
+  // broadcast (no DB row), so we re-send it every few seconds until
+  // they answer -- catching a tab that was mid-navigation or asleep the
+  // instant we first sent -- and give up after 40s rather than hang.
   const requestScreen = useCallback(
     async (targetId: string, targetName: string) => {
       setError("");
@@ -491,25 +514,38 @@ export function ScreenShareEngine({
       if (res.error || !res.ok) return setError(res.error ?? "Couldn't send the request.");
       awaitingFromRef.current = targetId;
       setRequesting({ id: targetId, name: targetName });
-      alertChannel.current?.send({
-        type: "broadcast",
-        event: "request",
-        payload: { fromId: selfId, fromName: selfName, to: targetId },
-      });
+      clearRequestTimers();
+      const ping = () =>
+        alertChannel.current?.send({
+          type: "broadcast",
+          event: "request",
+          payload: { fromId: selfId, fromName: selfName, to: targetId },
+        });
+      ping();
+      requestRetry.current = setInterval(ping, 3000);
+      requestTimeout.current = setTimeout(() => {
+        clearRequestTimers();
+        awaitingFromRef.current = null;
+        setRequesting(null);
+        alertChannel.current?.send({ type: "broadcast", event: "request-cancel", payload: { to: targetId } });
+        setError(`${targetName} didn't answer. Make sure their CRM is open, then try again.`);
+      }, 40_000);
     },
-    [selfId, selfName]
+    [selfId, selfName, clearRequestTimers]
   );
 
   const cancelRequest = useCallback(() => {
     const target = awaitingFromRef.current;
+    clearRequestTimers();
     awaitingFromRef.current = null;
     setRequesting(null);
     if (target) {
       alertChannel.current?.send({ type: "broadcast", event: "request-cancel", payload: { to: target } });
     }
-  }, []);
+  }, [clearRequestTimers]);
 
   const declineRequest = useCallback(() => {
+    requestDinged.current = null;
     setIncomingRequest((req) => {
       if (req) {
         alertChannel.current?.send({
@@ -571,6 +607,7 @@ export function ScreenShareEngine({
     // If I asked this exact person to show me their screen, joining is
     // what I already decided -- skip the "Join?" prompt entirely.
     if (mine && awaitingFromRef.current && mine.sharerId === awaitingFromRef.current) {
+      clearRequestTimers();
       awaitingFromRef.current = null;
       setRequesting(null);
       setOffer(null);
@@ -584,7 +621,7 @@ export function ScreenShareEngine({
       dingedRef.current = mine.id;
       ding();
     }
-  }, [selfId, startWatching]);
+  }, [selfId, startWatching, clearRequestTimers]);
 
   // discovery poll for the viewer banner
   useEffect(() => {
@@ -616,16 +653,22 @@ export function ScreenShareEngine({
         return;
       }
       setIncomingRequest({ fromId: p.fromId, fromName: p.fromName });
-      ding();
+      // ring only the first ping of a given ask, not each re-send
+      if (requestDinged.current !== p.fromId) {
+        requestDinged.current = p.fromId;
+        ding();
+      }
     });
     ch.on("broadcast", { event: "request-cancel" }, ({ payload }) => {
       const p = payload as { to: string };
       if (p.to !== selfId) return;
+      requestDinged.current = null;
       setIncomingRequest(null);
     });
     ch.on("broadcast", { event: "request-declined" }, ({ payload }) => {
       const p = payload as { to: string; fromName: string };
       if (p.to !== selfId) return;
+      clearRequestTimers();
       awaitingFromRef.current = null;
       setRequesting(null);
       setError(`${p.fromName} isn't available to share right now.`);
@@ -637,7 +680,7 @@ export function ScreenShareEngine({
       void client.removeChannel(ch);
       alertChannel.current = null;
     };
-  }, [companyId, selfId, selfName, refreshOffers]);
+  }, [companyId, selfId, selfName, refreshOffers, clearRequestTimers]);
 
   // closing the tab must not leave a ghost "live" session behind
   useEffect(() => {
@@ -880,6 +923,7 @@ export function ScreenShareEngine({
               className="btn-primary"
               onClick={() => {
                 const req = incomingRequest;
+                requestDinged.current = null;
                 setIncomingRequest(null);
                 void startSharing(req.fromId, req.fromName);
               }}
