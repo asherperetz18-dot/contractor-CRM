@@ -7,6 +7,7 @@ import {
   EVENT_STATUS_COLOR,
   appointmentResultOverdue,
   formatTimeRange,
+  rainAlertLabel,
   stageColor,
   type CalendarRow,
   type LinkedEstimate,
@@ -208,7 +209,9 @@ export function ScheduleList({
         </div>
       ) : (
         <div className="schedule-list">
-          {sorted.map((ev) => (
+          {sorted.map((ev) => {
+            const rain = rainAlertLabel(ev.rain_alert_pop);
+            return (
             <div className="schedule-row" key={ev.id} onClick={() => setEditing(ev)}>
               <div className="schedule-date">
                 <span className="mono schedule-date-num">{formatEventDate(ev.date)}</span>
@@ -225,13 +228,17 @@ export function ScheduleList({
                   {appointmentResultOverdue(ev, openedAtMs) && (
                     <span className="stale-tag">● no result yet</span>
                   )}
+                  {rain && (
+                    <span className={"rain-badge rain-badge-" + rain.tier}>☔ {rain.label}</span>
+                  )}
                   {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
                   {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                   {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

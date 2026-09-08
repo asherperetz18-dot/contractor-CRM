@@ -5,7 +5,7 @@
  */
 
 /** Which switch in the popup settings turns an item off. */
-export type PopupKind = "message" | "money" | "job" | "lead" | "appointment";
+export type PopupKind = "message" | "money" | "job" | "lead" | "appointment" | "weather";
 
 /**
  * Every kind, with the words people see for it. One list feeds both the
@@ -19,6 +19,7 @@ export const POPUP_KINDS: { key: PopupKind; label: string; hint: string }[] = [
   { key: "job", label: "Jobs", hint: "Signatures, proposal views, job steps assigned to you" },
   { key: "lead", label: "Leads", hint: "New leads coming in" },
   { key: "appointment", label: "Appointments", hint: "Appointments booked for you by a teammate" },
+  { key: "weather", label: "Rain alerts", hint: "An outdoor appointment now has rain in the forecast" },
 ];
 
 export type PopupToast = {
@@ -43,6 +44,7 @@ export const GROUP_LABEL: Record<PopupKind, { plural: string; href: string }> = 
   job: { plural: "job updates", href: "/estimates" },
   lead: { plural: "new leads", href: "/contacts" },
   appointment: { plural: "appointments booked for you", href: "/calendar" },
+  weather: { plural: "rain alerts", href: "/schedule" },
 };
 
 /**

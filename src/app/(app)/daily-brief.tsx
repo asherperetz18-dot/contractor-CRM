@@ -135,6 +135,12 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
           many: "refund requests open 30+ days",
           href: "/lead-refunds",
         },
+        {
+          n: a.rainRisk,
+          one: "outdoor appointment this week has rain in the forecast",
+          many: "outdoor appointments this week have rain in the forecast",
+          href: "/schedule",
+        },
       ].filter((x) => x.n > 0)
     : [];
 

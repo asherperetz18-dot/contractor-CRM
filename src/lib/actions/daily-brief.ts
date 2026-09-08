@@ -40,6 +40,7 @@ export type BriefAttention = {
   refundsOutstanding: number;
   staleRefunds: number;
   coldLeads: number;
+  rainRisk: number;
 };
 
 export type DailyBrief = {
@@ -75,6 +76,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const companyId = profile.company_id;
   const todayISO = new Date().toISOString().slice(0, 10);
   const in2Days = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
   const [
     { data: company },
@@ -100,7 +102,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     ),
     supabase
       .from("events")
-      .select("id, created_at, date, status, assigned_to, customer_confirmed")
+      .select("id, created_at, date, status, assigned_to, customer_confirmed, rain_alert_pop")
       .eq("company_id", companyId),
     supabase
       .from("call_logs")
@@ -123,6 +125,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   }[];
   const eventRows = (events ?? []) as {
     created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
+    rain_alert_pop: number | null;
   }[];
   const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
   const textRows = (texts ?? []) as { created_at: string; direction: string }[];
@@ -179,6 +182,16 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     ).length,
     coldLeads: leadRows.filter(
       (l) => l.stage !== "Won" && l.stage !== "Lost" && l.stage !== "DNC" && !l.has_appt
+    ).length,
+    // Outdoor-sensitive appointments this week the rain-alerts cron has
+    // flagged (50%+ chance of rain) -- the office's cue to call and
+    // reschedule before the crew shows up to a wash-out.
+    rainRisk: eventRows.filter(
+      (e) =>
+        e.date >= todayISO &&
+        e.date <= in7Days &&
+        e.status !== "Cancelled" &&
+        (e.rain_alert_pop ?? 0) >= 50
     ).length,
   };
 

@@ -8,6 +8,7 @@ const ALL_ON: Record<PopupKind, boolean> = {
   job: true,
   lead: true,
   appointment: true,
+  weather: true,
 };
 
 function item(kind: PopupKind, n: number, sticky = false): PopupToast {

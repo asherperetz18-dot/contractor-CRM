@@ -1088,7 +1088,21 @@ export type Event = {
   notes_updated_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Live recompute from the rain-alerts cron -- clears itself if the forecast improves. */
+  rain_alert_pop: number | null;
+  /** Set once, the first time `rain_alert_pop` crosses the alert threshold. */
+  rain_alert_sent_at: string | null;
 };
+
+/**
+ * "Rain possible" at 50%+, "Rain likely" at 70%+ -- the same two-tier
+ * urgency split the pipeline's attention digest already uses (amber vs
+ * red), so a light chance and a real storm don't read the same.
+ */
+export function rainAlertLabel(pop: number | null): { label: string; tier: "possible" | "likely" } | null {
+  if (pop === null || pop < 50) return null;
+  return pop >= 70 ? { label: "Rain likely", tier: "likely" } : { label: "Rain possible", tier: "possible" };
+}
 
 // An appointment that still reads "New" or "Confirmed" after it has been
 // and gone never had its outcome recorded. Keeping this as the one

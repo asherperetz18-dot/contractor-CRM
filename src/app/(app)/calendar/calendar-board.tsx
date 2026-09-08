@@ -10,6 +10,7 @@ import {
   formatClock,
   formatTimeRange,
   leadDisplayName,
+  rainAlertLabel,
   stageColor,
   type CalendarRow,
   type LinkedEstimate,
@@ -520,6 +521,11 @@ export function CalendarBoard({
                         kind of visit it is and whether the customer has
                         confirmed. */}
                     <span className="cal-ev-dot" />
+                    {rainAlertLabel(ev.rain_alert_pop) && (
+                      <span className="cal-ev-rain" title={rainAlertLabel(ev.rain_alert_pop)!.label}>
+                        ☔
+                      </span>
+                    )}
                     <span className="mono cal-event-time">{formatClock(ev.time, timeFormat)}</span>{" "}
                     {ev.assigned_to && repName(ev.assigned_to) && (
                       <span
@@ -578,6 +584,7 @@ export function CalendarBoard({
       <div className="schedule-list">
         {list.map((ev) => {
           const clientName = clientNameFor(ev);
+          const rain = rainAlertLabel(ev.rain_alert_pop);
           return (
           <div
             className={"schedule-row cal-ev-" + eventVisualState(ev)}
@@ -605,6 +612,9 @@ export function CalendarBoard({
                 >
                   CUST {ev.customer_confirmed ? "✓" : "·"}
                 </span>
+                {rain && (
+                  <span className={"rain-badge rain-badge-" + rain.tier}>☔ {rain.label}</span>
+                )}
                 {repName(ev.assigned_to) && <span>👷 {repName(ev.assigned_to)}</span>}
                 {repName(ev.second_assigned_to) && <span>👷 {repName(ev.second_assigned_to)}</span>}
                 {jobName(ev.job_id) && <span>{jobName(ev.job_id)}</span>}
