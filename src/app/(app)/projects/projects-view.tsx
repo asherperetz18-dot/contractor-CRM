@@ -291,6 +291,12 @@ export function ProjectsView({
   // (they answer "how many are in this bucket"), these just narrow what's
   // visible within it.
   const q = search.trim().toLowerCase();
+  // Strips $, commas, periods and spaces, so "57600", "57,600" and
+  // "$576" all normalize to a plain digit string that can be matched
+  // straight against a cents integer's own digits (e.g. a $57,600.00
+  // figure is soldCents=5760000, and "5760000".includes("57600") is
+  // true) -- no currency formatting needed on either side.
+  const qDigits = q.replace(/[^0-9]/g, "");
   const dateBounds = dateRangeBounds(dateRange, customFrom, customTo);
   const searched = shown.filter((p) => {
     if (clientFilter && p.customer !== clientFilter) return false;
@@ -305,7 +311,20 @@ export function ProjectsView({
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      if (!haystack.includes(q)) return false;
+      const textMatch = haystack.includes(q);
+      // A bare digit or two over-matches (almost every project has a
+      // "1" somewhere), so amount matching only kicks in past that.
+      const amountMatch =
+        qDigits.length >= 2 &&
+        [
+          p.rollup.soldCents,
+          p.rollup.collectedCents,
+          p.rollup.receivableCents,
+          p.rollup.costCents,
+          p.rollup.netCashCents,
+          p.unpaidBillsCents,
+        ].some((cents) => String(Math.abs(cents)).includes(qDigits));
+      if (!textMatch && !amountMatch) return false;
     }
     return true;
   });
@@ -513,7 +532,7 @@ export function ProjectsView({
             style={{ maxWidth: 200 }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search rep, client, or address…"
+            placeholder="Search rep, client, address, or amount…"
           />
           <select
             className="ur-company-filter"
