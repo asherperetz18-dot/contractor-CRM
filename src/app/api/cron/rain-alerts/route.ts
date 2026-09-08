@@ -23,21 +23,30 @@ type EventRow = {
   rain_alert_sent_at: string | null;
 };
 
-async function processCompany(
-  admin: ReturnType<typeof createAdminClient>,
-  userAgent: string,
-  company: Pick<CompanyProfile, "company_id" | "timezone">
-): Promise<{ checked: number; updated: number }> {
-  const { data: sensitiveTypes } = await admin
-    .from("project_types")
-    .select("name")
-    .eq("company_id", company.company_id)
-    .eq("weather_sensitive", true);
-  const sensitiveNames = new Set(((sensitiveTypes ?? []) as { name: string }[]).map((t) => t.name));
-  if (sensitiveNames.size === 0) return { checked: 0, updated: 0 };
+type LeadRow = { id: string; project_type: string | null; address: string | null };
 
-  const ianaZone = TIMEZONE_IANA[company.timezone] ?? "America/Los_Angeles";
-  const nowNaive = nowInZone(ianaZone);
+type ProjectRow = {
+  id: string;
+  lead_id: string;
+  status: string;
+  kind: string | null;
+  parent_estimate_id: string | null;
+  completed_on: string | null;
+  project_on_hold: boolean | null;
+  job_address: string | null;
+  rain_alert_sent_at: string | null;
+};
+
+type PassResult = { checked: number; updated: number };
+
+async function checkAppointments(
+  admin: ReturnType<typeof createAdminClient>,
+  provider: NwsProvider,
+  companyId: string,
+  ianaZone: string,
+  nowNaive: Date,
+  sensitiveNames: Set<string>
+): Promise<PassResult> {
   const todayDate = nowNaive.toISOString().slice(0, 10);
   const windowEnd = new Date(nowNaive.getTime() + LOOKAHEAD_HOURS * 3600000);
   const windowEndDate = windowEnd.toISOString().slice(0, 10);
@@ -45,7 +54,7 @@ async function processCompany(
   const { data: candidates } = await admin
     .from("events")
     .select("id, date, time, end_time, status, lead_id, rain_alert_sent_at")
-    .eq("company_id", company.company_id)
+    .eq("company_id", companyId)
     .in("status", ["New", "Confirmed"])
     .not("lead_id", "is", null)
     .gte("date", todayDate)
@@ -64,18 +73,13 @@ async function processCompany(
     admin
       .from("estimates")
       .select("lead_id, job_address")
-      .eq("company_id", company.company_id)
+      .eq("company_id", companyId)
       .eq("kind", "contract")
       .eq("status", "Signed")
       .in("lead_id", leadIds)
       .not("job_address", "is", null),
   ]);
-  const leadById = new Map(
-    ((leads ?? []) as { id: string; project_type: string | null; address: string | null }[]).map((l) => [
-      l.id,
-      l,
-    ])
-  );
+  const leadById = new Map(((leads ?? []) as LeadRow[]).map((l) => [l.id, l]));
   // The winning address per lead: the signed contract's job-site override,
   // if it has one, otherwise the lead's own address. Several leads can
   // share a contract-less state, so this only overrides where a value
@@ -86,7 +90,6 @@ async function processCompany(
       .map((c) => [c.lead_id, c.job_address as string])
   );
 
-  const provider = new NwsProvider(userAgent, admin);
   let updated = 0;
   for (const row of rows) {
     const lead = leadById.get(row.lead_id!);
@@ -123,6 +126,119 @@ async function processCompany(
   return { checked: rows.length, updated };
 }
 
+/**
+ * Rain on the job itself, not just on appointments: an active outdoor
+ * project has crew on site whether or not anything is on the calendar, so
+ * each in-progress, weather-sensitive project's site gets its own 48h
+ * check. Same window, same threshold, same column pair -- written to the
+ * contract row instead of an event row.
+ */
+async function checkProjects(
+  admin: ReturnType<typeof createAdminClient>,
+  provider: NwsProvider,
+  companyId: string,
+  ianaZone: string,
+  nowNaive: Date,
+  sensitiveNames: Set<string>
+): Promise<PassResult> {
+  // rain_alert_* arrive with migration 0139; before it has run this select
+  // errors, data stays null, and the pass quietly no-ops -- the events
+  // pass above is never held hostage by the newest migration.
+  const { data: docs } = await admin
+    .from("estimates")
+    .select(
+      "id, lead_id, status, kind, parent_estimate_id, completed_on, project_on_hold, job_address, rain_alert_sent_at"
+    )
+    .eq("company_id", companyId);
+  const all = (docs ?? []) as ProjectRow[];
+
+  // Active projects, by the same rules the Projects page derives status
+  // with: signed contracts that aren't completed, on hold, or closed out
+  // by a signed completion certificate.
+  const completionSigned = new Set(
+    all
+      .filter((d) => (d.kind ?? "") === "completion" && d.status === "Signed" && d.parent_estimate_id)
+      .map((d) => d.parent_estimate_id as string)
+  );
+  const active = all.filter(
+    (d) =>
+      (d.kind ?? "contract") === "contract" &&
+      d.status === "Signed" &&
+      !d.completed_on &&
+      !d.project_on_hold &&
+      !completionSigned.has(d.id)
+  );
+  if (active.length === 0) return { checked: 0, updated: 0 };
+
+  const leadIds = [...new Set(active.map((d) => d.lead_id))];
+  const { data: leads } = await admin
+    .from("leads")
+    .select("id, project_type, address")
+    .in("id", leadIds);
+  const leadById = new Map(((leads ?? []) as LeadRow[]).map((l) => [l.id, l]));
+
+  const fromIso = naiveZonedToUtc(nowNaive, ianaZone).toISOString();
+  const toIso = naiveZonedToUtc(
+    new Date(nowNaive.getTime() + LOOKAHEAD_HOURS * 3600000),
+    ianaZone
+  ).toISOString();
+
+  let checked = 0;
+  let updated = 0;
+  for (const project of active) {
+    const lead = leadById.get(project.lead_id);
+    if (!lead || !lead.project_type || !sensitiveNames.has(lead.project_type)) continue;
+
+    const address = project.job_address ?? lead.address;
+    if (!address) continue;
+
+    checked += 1;
+    const { pop } = await provider.maxRainProbability(address, fromIso, toIso);
+    if (pop === null) continue;
+
+    const patch: { rain_alert_pop: number; rain_alert_sent_at?: string } = {
+      rain_alert_pop: Math.round(pop),
+    };
+    if (pop >= RAIN_THRESHOLD_POP && !project.rain_alert_sent_at) {
+      patch.rain_alert_sent_at = new Date().toISOString();
+    }
+    await admin.from("estimates").update(patch).eq("id", project.id);
+    updated += 1;
+  }
+
+  return { checked, updated };
+}
+
+async function processCompany(
+  admin: ReturnType<typeof createAdminClient>,
+  userAgent: string,
+  company: Pick<CompanyProfile, "company_id" | "timezone">
+): Promise<{ events: PassResult; projects: PassResult }> {
+  const none = { events: { checked: 0, updated: 0 }, projects: { checked: 0, updated: 0 } };
+
+  const { data: sensitiveTypes } = await admin
+    .from("project_types")
+    .select("name")
+    .eq("company_id", company.company_id)
+    .eq("weather_sensitive", true);
+  const sensitiveNames = new Set(((sensitiveTypes ?? []) as { name: string }[]).map((t) => t.name));
+  if (sensitiveNames.size === 0) return none;
+
+  const ianaZone = TIMEZONE_IANA[company.timezone] ?? "America/Los_Angeles";
+  const nowNaive = nowInZone(ianaZone);
+  // One provider for both passes, so an appointment and a project at the
+  // same gridpoint share a single NWS forecast fetch.
+  const provider = new NwsProvider(userAgent, admin);
+
+  const events = await checkAppointments(
+    admin, provider, company.company_id, ianaZone, nowNaive, sensitiveNames
+  );
+  const projects = await checkProjects(
+    admin, provider, company.company_id, ianaZone, nowNaive, sensitiveNames
+  );
+  return { events, projects };
+}
+
 export async function POST(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
@@ -144,11 +260,21 @@ export async function POST(req: NextRequest) {
 
   let checked = 0;
   let updated = 0;
+  let projectsChecked = 0;
+  let projectsUpdated = 0;
   for (const company of companyRows) {
     const result = await processCompany(admin, userAgent, company);
-    checked += result.checked;
-    updated += result.updated;
+    checked += result.events.checked;
+    updated += result.events.updated;
+    projectsChecked += result.projects.checked;
+    projectsUpdated += result.projects.updated;
   }
 
-  return NextResponse.json({ companies: companyRows.length, checked, updated });
+  return NextResponse.json({
+    companies: companyRows.length,
+    checked,
+    updated,
+    projectsChecked,
+    projectsUpdated,
+  });
 }

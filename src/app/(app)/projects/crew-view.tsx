@@ -14,7 +14,8 @@ export type CrewJob = {
   customer: string;
   address: string | null;
   status: "in_progress" | "on_hold" | "complete";
-  /** Highest rain-alerts cron reading among this job's upcoming appointments. */
+  /** Worst rain-alerts cron reading between the job site's own 48h check
+   *  and any upcoming appointment on the job. */
   rainAlertPop: number | null;
 };
 

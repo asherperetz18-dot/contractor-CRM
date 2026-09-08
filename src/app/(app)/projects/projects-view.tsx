@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { setProjectHold } from "@/lib/actions/estimates";
-import { mapsUrl, moneyCents, projectTriageOrder, type ProjectRollup } from "@/lib/data/types";
+import { mapsUrl, moneyCents, projectTriageOrder, rainAlertLabel, type ProjectRollup } from "@/lib/data/types";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
@@ -35,6 +35,8 @@ export type ProjectCard = {
    *  money hasn't left -- but shown beside it so an open bill is never
    *  invisible on the job. */
   unpaidBillsCents: number;
+  /** The rain-alerts cron's 48h reading for this job's site. */
+  rainAlertPop: number | null;
 };
 
 type Filter = "All" | "InProgress" | "OnHold" | "Complete" | "Cancelled" | "Bleeding" | "Owed";
@@ -693,6 +695,9 @@ export function ProjectsView({
               {searched.map((p) => {
                 const items = itemsByEstimate.get(p.estimateId) ?? [];
                 const doneCount = items.filter((i) => i.completed_at).length;
+                // Only a running job warns -- a finished or held one has no
+                // crew on site, and its stored reading may be stale anyway.
+                const rain = p.status === "in_progress" ? rainAlertLabel(p.rainAlertPop) : null;
                 return (
                 <React.Fragment key={p.estimateId}>
                 <tr>
@@ -700,6 +705,11 @@ export function ProjectsView({
                     <Link href={`/estimates/${p.estimateId}`} className="ur-name">
                       {p.title || "Untitled job"}
                     </Link>
+                    {rain && (
+                      <span className={"proj-tag proj-tag-rain-" + rain.tier} style={{ marginLeft: 6 }}>
+                        ☔ {rain.label}
+                      </span>
+                    )}
                     <div className="est-tax-note">
                       {p.docNumber}
                       {p.changeOrderCount > 0 &&
