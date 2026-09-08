@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
 import { getWeatherUserAgent } from "@/lib/weather-env";
 import { NwsProvider } from "@/lib/weather-provider";
-import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
+import { naiveZonedToUtc, nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, type CompanyProfile } from "@/lib/data/types";
 
 // How far ahead an appointment has to be before it's worth checking --
@@ -100,7 +100,14 @@ async function processCompany(
       ? parseNaiveDateTime(row.date, row.end_time)
       : new Date(new Date(row.date + "T00:00:00Z").getTime() + 86400000);
 
-    const { pop } = await provider.maxRainProbability(address, start.toISOString(), end.toISOString());
+    // start/end are naive local wall-clock values; NWS periods carry real
+    // UTC offsets, so convert before comparing -- naive-as-UTC would shift
+    // the checked window a whole UTC offset (7-8h for LA) too early.
+    const { pop } = await provider.maxRainProbability(
+      address,
+      naiveZonedToUtc(start, ianaZone).toISOString(),
+      naiveZonedToUtc(end, ianaZone).toISOString()
+    );
     if (pop === null) continue;
 
     const patch: { rain_alert_pop: number; rain_alert_sent_at?: string } = {

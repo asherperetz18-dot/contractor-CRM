@@ -11,7 +11,9 @@ export function parseNaiveDateTime(date: string, time: string | null): Date {
   return new Date(`${date}T${hhmm}:00Z`);
 }
 
-export function nowInZone(ianaZone: string): Date {
+// The zone's wall clock at `instant`, in the same naive-as-UTC encoding
+// parseNaiveDateTime uses.
+function wallClockAsUtc(instant: Date, ianaZone: string): Date {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: ianaZone,
     year: "numeric",
@@ -21,7 +23,7 @@ export function nowInZone(ianaZone: string): Date {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
-  }).formatToParts(new Date());
+  }).formatToParts(instant);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
   return new Date(
     Date.UTC(
@@ -33,4 +35,23 @@ export function nowInZone(ianaZone: string): Date {
       Number(get("second"))
     )
   );
+}
+
+export function nowInZone(ianaZone: string): Date {
+  return wallClockAsUtc(new Date(), ianaZone);
+}
+
+// The real UTC instant at which `ianaZone`'s wall clock reads `naive` (a
+// naive-as-UTC Date, e.g. from parseNaiveDateTime). Needed whenever a
+// stored local time has to be compared against genuinely zoned timestamps
+// (like NWS forecast periods) -- naive-vs-real comparisons are silently off
+// by the whole UTC offset. Guess-and-correct twice so a naive time sitting
+// right on a DST transition still lands on the offset actually in force.
+export function naiveZonedToUtc(naive: Date, ianaZone: string): Date {
+  let utcMs = naive.getTime();
+  for (let i = 0; i < 2; i++) {
+    const wall = wallClockAsUtc(new Date(utcMs), ianaZone);
+    utcMs += naive.getTime() - wall.getTime();
+  }
+  return new Date(utcMs);
 }
