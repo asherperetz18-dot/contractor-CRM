@@ -1104,6 +1104,16 @@ export function rainAlertLabel(pop: number | null): { label: string; tier: "poss
   return pop >= 70 ? { label: "Rain likely", tier: "likely" } : { label: "Rain possible", tier: "possible" };
 }
 
+/**
+ * Tier for ANY stored chance-of-rain reading, including sub-threshold
+ * ones: "low" is information (a calm blue chip on the project row),
+ * never an alert -- only "possible"/"likely" pop, badge and warn.
+ */
+export function rainPopTier(pop: number | null): "low" | "possible" | "likely" | null {
+  if (pop === null) return null;
+  return pop >= 70 ? "likely" : pop >= 50 ? "possible" : "low";
+}
+
 // An appointment that still reads "New" or "Confirmed" after it has been
 // and gone never had its outcome recorded. Keeping this as the one
 // definition of "has a result" -- rather than a separate result column
