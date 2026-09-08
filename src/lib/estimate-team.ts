@@ -12,6 +12,27 @@ import type { DocumentTeam } from "@/components/estimate-document";
  * still name the same people in both places. What it returns is
  * deliberately tiny: a rep's display name and a dispatcher's first name,
  * nothing that could not already be said out loud on the phone.
+ *
+ * ── Whose name the customer sees ────────────────────────────────────
+ *
+ * The person who sat at their table. Where a lead has a closer, that is
+ * the closer; otherwise it is the assigned rep, who was the one there.
+ *
+ * This is the customer's view only. Who the document is *counted* for --
+ * the rep report, the office list, who gets the "just signed" mail --
+ * still resolves from assigned_to and is untouched here. Those answer a
+ * different question: whose job is this. This answers who did the
+ * customer meet, and the honest answer to that is the name that should
+ * be on the paper they read.
+ *
+ * ── Freezing ────────────────────────────────────────────────────────
+ *
+ * A signed or void document must never change under the customer, so it
+ * stops following the lead. effectiveEstimateRepId already draws that
+ * line for the rep, and the closer follows the same one: once signed,
+ * the name comes from the contract's own sales team (sales_rep_2, filled
+ * at signature by migration 0135), never from a lead that somebody may
+ * reassign next month.
  */
 export async function getEstimateTeam(
   estimateId: string,
@@ -26,21 +47,48 @@ export async function getEstimateTeam(
     ? (
         await admin
           .from("leads")
-          .select("dispatcher_id, assigned_to")
+          .select("dispatcher_id, assigned_to, closer_id")
           .eq("id", leadId)
-          .maybeSingle<{ dispatcher_id: string | null; assigned_to: string | null }>()
+          .maybeSingle<{
+            dispatcher_id: string | null;
+            assigned_to: string | null;
+            closer_id: string | null;
+          }>()
       ).data ?? null
     : null;
   const dispatcherId = lead?.dispatcher_id ?? null;
 
-  // Whose name the customer sees. The rule lives in
-  // effectiveEstimateRepId so the office list and this copy of the
-  // document cannot answer the question differently.
-  const repId = effectiveEstimateRepId({
+  const frozen = status === "Signed" || status === "Void";
+
+  // The closer, from whichever source is allowed to speak. Frozen
+  // documents read the contract's own second seat; live ones follow the
+  // lead, exactly as the rep name already does.
+  let closerId: string | null = null;
+  if (frozen) {
+    const { data: contract } = await admin
+      .from("estimates")
+      .select("sales_rep_2")
+      .eq("id", estimateId)
+      .maybeSingle<{ sales_rep_2: string | null }>();
+    closerId = contract?.sales_rep_2 ?? null;
+  } else {
+    closerId = lead?.closer_id ?? null;
+  }
+
+  // Whose name the customer sees when nobody closed for them. The rule
+  // lives in effectiveEstimateRepId so the office list and this copy of
+  // the document cannot answer the question differently.
+  const assignedRepId = effectiveEstimateRepId({
     status: status ?? "",
     estimateAssignedTo: assignedTo,
     leadAssignedTo: lead?.assigned_to,
   });
+
+  // The closer sat with them; the assigned rep did when there was no
+  // closer. Only ever one name on the document either way -- a customer
+  // reading two salespeople would reasonably wonder which of them to
+  // ring.
+  const repId = closerId ?? assignedRepId;
 
   const ids = [repId, dispatcherId].filter(Boolean) as string[];
   if (ids.length === 0) return null;
