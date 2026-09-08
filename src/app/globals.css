@@ -4574,6 +4574,15 @@ a.portal-header-stars:hover {
   background: #e8f5ee;
   color: #2f855a;
 }
+/* A step past its due date turns the chip red so a collapsed row still
+   confesses. Wins over -done (later rule) though the two can't really
+   coexist: a completed step is never overdue. */
+.proj-check-chip-overdue {
+  border-color: #e2b4ae;
+  background: #fdeeec;
+  color: #c0392b;
+  font-weight: 600;
+}
 /* The receipt chip shares the pill shape but not the color: blue is
    the checklist, amber is money going out. */
 .proj-receipt-chip {
