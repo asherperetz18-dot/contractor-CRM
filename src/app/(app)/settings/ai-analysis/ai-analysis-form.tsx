@@ -25,6 +25,7 @@ export function AiAnalysisForm({
     ai_analysis_model: string;
     ai_analysis_positive_signals: string | null;
     ai_analysis_negative_signals: string | null;
+    ai_call_notes_enabled: boolean;
   };
   configured: boolean;
 }) {
@@ -34,6 +35,7 @@ export function AiAnalysisForm({
   const [model, setModel] = useState(settings.ai_analysis_model || "claude-opus-5");
   const [positive, setPositive] = useState(settings.ai_analysis_positive_signals ?? "");
   const [negative, setNegative] = useState(settings.ai_analysis_negative_signals ?? "");
+  const [callNotes, setCallNotes] = useState(settings.ai_call_notes_enabled);
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -46,6 +48,7 @@ export function AiAnalysisForm({
       model,
       positiveSignals: positive,
       negativeSignals: negative,
+      callNotesEnabled: callNotes,
     });
     setPending(false);
     if (result?.error) {
@@ -143,6 +146,38 @@ export function AiAnalysisForm({
         </Field>
         <p className="cp-hint">
           One per line — what a dead deal sounds like. Blank uses the built-in list.
+        </p>
+
+        {error && <p className="error-note">{error}</p>}
+        <div className="modal-actions">
+          <span className="hint-note">{saved ? "✓ Saved" : ""}</span>
+          <button type="button" className="btn-primary" onClick={save} disabled={pending}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="cp-card">
+        <div className="cp-card-head">📞 AI Call Notes</div>
+
+        <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={callNotes}
+            onChange={(e) => {
+              setCallNotes(e.target.checked);
+              setSaved(false);
+            }}
+          />
+          <span>Write AI notes after recorded calls</span>
+        </label>
+        <p className="cp-hint">
+          When a recorded call ends, the recording is transcribed and the AI writes what was
+          said onto the contact&apos;s timeline — project details, budget, objections, and the
+          agreed next step — as if the rep had typed it. Notes appear a minute or two after
+          hang-up. Calls under 20 seconds are skipped. Transcription runs on your own Twilio
+          account (roughly a few cents per call) and uses the model selected above; the
+          recording notice callers already hear covers it.
         </p>
 
         {error && <p className="error-note">{error}</p>}
