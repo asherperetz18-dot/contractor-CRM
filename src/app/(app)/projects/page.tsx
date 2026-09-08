@@ -236,6 +236,9 @@ export default async function ProjectsPage() {
       address: (contract as { job_address?: string | null }).job_address ?? lead?.address ?? null,
       repName: lead?.assigned_to ? (repById.get(lead.assigned_to) ?? null) : null,
       signedAt: contract.signed_at ?? null,
+      // Written by the rain-alerts cron's projects pass; the column
+      // arrives with migration 0139, so read it tolerantly until then.
+      rainAlertPop: (contract as { rain_alert_pop?: number | null }).rain_alert_pop ?? null,
       startDate: contract.start_date ?? null,
       completionDate: contract.completion_date ?? null,
       changeOrderCount: signedChangeOrders.length,
@@ -400,6 +403,21 @@ async function CrewProjects({ companyId }: { companyId: string }) {
     if (e.rain_alert_pop > current) rainPopByLead.set(e.lead_id, e.rain_alert_pop);
   }
 
+  // The project's own site reading (rain-alerts cron, migration 0139).
+  // A separate, deliberately fragile query: before the migration runs it
+  // errors, comes back empty, and the crew page carries on with the
+  // appointment-based readings alone -- unlike the main estimates select
+  // above, which must never name a column newer than what's deployed.
+  const rainPopByEstimate = new Map<string, number>();
+  const { data: projectRain } = await admin
+    .from("estimates")
+    .select("id, rain_alert_pop")
+    .eq("company_id", companyId)
+    .not("rain_alert_pop", "is", null);
+  for (const r of (projectRain ?? []) as { id: string; rain_alert_pop: number | null }[]) {
+    if (r.rain_alert_pop !== null) rainPopByEstimate.set(r.id, r.rain_alert_pop);
+  }
+
   const leadById = new Map(leads.map((l) => [l.id, l]));
 
   // Same project derivation the full page uses, minus everything the
@@ -418,6 +436,10 @@ async function CrewProjects({ companyId }: { companyId: string }) {
           e.status === "Signed"
       );
       const lead = leadById.get(contract.lead_id) ?? null;
+      // Worst of the two readings: the job site's own 48h check and any
+      // upcoming appointment's.
+      const evPop = rainPopByLead.get(contract.lead_id);
+      const sitePop = rainPopByEstimate.get(contract.id);
       return {
         estimateId: contract.id,
         docNumber: contract.doc_number,
@@ -433,7 +455,10 @@ async function CrewProjects({ companyId }: { companyId: string }) {
           : completionSigned || contract.completed_on
             ? ("complete" as const)
             : ("in_progress" as const),
-        rainAlertPop: rainPopByLead.get(contract.lead_id) ?? null,
+        rainAlertPop:
+          evPop === undefined && sitePop === undefined
+            ? null
+            : Math.max(evPop ?? 0, sitePop ?? 0),
       };
     })
     .sort((a, b) => a.customer.localeCompare(b.customer));
