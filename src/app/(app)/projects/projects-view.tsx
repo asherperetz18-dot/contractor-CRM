@@ -2,7 +2,9 @@
 
 import React, { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { setProjectHold } from "@/lib/actions/estimates";
+import { checkRainNow } from "@/lib/actions/rain-check";
 import { mapsUrl, moneyCents, projectTriageOrder, rainAlertLabel, type ProjectRollup } from "@/lib/data/types";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
@@ -160,6 +162,7 @@ export function ProjectsView({
   canEditChecklist,
   canRemoveChecklist,
   memberNames,
+  canCheckRain,
 }: {
   projects: ProjectCard[];
   canManage: boolean;
@@ -178,6 +181,8 @@ export function ProjectsView({
   canEditChecklist: boolean;
   canRemoveChecklist: boolean;
   memberNames: Record<string, string>;
+  /** Office/Admin: may run the on-demand rain check. */
+  canCheckRain: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>("All");
   const [search, setSearch] = useState("");
@@ -215,6 +220,10 @@ export function ProjectsView({
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
   const [documentsFor, setDocumentsFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
+  const router = useRouter();
+  // The on-demand rain check: same passes as the cron, this company only.
+  const [rainChecking, setRainChecking] = useState(false);
+  const [rainResult, setRainResult] = useState<string | null>(null);
   const visibleColumnsRaw = useSyncExternalStore(
     subscribeColumns,
     getVisibleColumnsSnapshot,
@@ -228,6 +237,37 @@ export function ProjectsView({
     }
   }, [visibleColumnsRaw]);
   const [columnsOpen, setColumnsOpen] = useState(false);
+
+  async function runRainCheck() {
+    setRainChecking(true);
+    setRainResult(null);
+    try {
+      const r = await checkRainNow();
+      if (r.error) {
+        setRainResult(r.error);
+        return;
+      }
+      const sites = r.projectsChecked ?? 0;
+      const appts = r.appointmentsChecked ?? 0;
+      if (sites + appts === 0) {
+        setRainResult("Nothing to check — no active outdoor jobs or upcoming appointments.");
+      } else {
+        const parts = [];
+        if (sites) parts.push(`${sites} job site${sites === 1 ? "" : "s"}`);
+        if (appts) parts.push(`${appts} appointment${appts === 1 ? "" : "s"}`);
+        setRainResult(
+          `Checked ${parts.join(" + ")} just now — highest rain chance ${
+            r.worstPop === null || r.worstPop === undefined ? "unknown" : `${Math.round(r.worstPop)}%`
+          }`
+        );
+      }
+      // Badges read the columns the check just wrote; refetch so they
+      // update without a manual reload.
+      router.refresh();
+    } finally {
+      setRainChecking(false);
+    }
+  }
 
   function toggleColumn(key: OptionalColumnKey) {
     const next = new Set(visibleColumns);
@@ -609,6 +649,17 @@ export function ProjectsView({
               />
             </>
           )}
+          {canCheckRain && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={runRainCheck}
+              disabled={rainChecking}
+              title="Re-check the 48h rain forecast for every active outdoor job and upcoming appointment"
+            >
+              {rainChecking ? "Checking rain…" : "☔ Check rain now"}
+            </button>
+          )}
           <div style={{ position: "relative" }}>
             <button
               type="button"
@@ -664,6 +715,12 @@ export function ProjectsView({
           </div>
         </div>
       </div>
+
+      {rainResult && (
+        <p className="est-tax-note" style={{ margin: "4px 0 0" }}>
+          ☔ {rainResult}
+        </p>
+      )}
 
       {searched.length === 0 ? (
         <p className="empty-hint">

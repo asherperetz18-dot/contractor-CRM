@@ -302,6 +302,7 @@ export default async function ProjectsPage() {
       canEditChecklist={canEditChecklists(profile)}
       canRemoveChecklist={isAdminRole(profile)}
       memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
+      canCheckRain={isAdminRole(profile)}
     />
   );
 }
