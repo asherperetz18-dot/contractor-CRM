@@ -1,5 +1,6 @@
 import "server-only";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
+import { signatureEvidenceLine } from "@/lib/portal/signature-evidence";
 import { groupIncludedItems } from "@/components/estimate-document";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 import {
@@ -487,12 +488,16 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
         color: LINE,
       });
       w.y -= 8;
+      const evidence = signatureEvidenceLine(s);
       w.text(
         `${s.name} - ${s.party === "company" ? "Contractor" : "Customer"}${
           s.signed_at ? ` - signed ${new Date(s.signed_at).toLocaleDateString("en-US")}` : ""
         }`,
-        { size: 9, color: MUTED, gapAfter: 8 }
+        { size: 9, color: MUTED, gapAfter: evidence ? 2 : 8 }
       );
+      if (evidence) {
+        w.text(evidence, { size: 8, color: MUTED, gapAfter: 8 });
+      }
     }
   }
 

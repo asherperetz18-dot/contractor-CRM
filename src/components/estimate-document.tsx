@@ -20,6 +20,7 @@ import {
   leadPhotoThumbUrl,
 } from "@/lib/data/types";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
+import { signatureEvidenceLine } from "@/lib/portal/signature-evidence";
 
 export type DocumentCompany = {
   name: string | null;
@@ -637,7 +638,9 @@ export function EstimateDocument({
             Signatures ({sig.signed} of {sig.total})
           </div>
           <div className="estdoc-signer-grid">
-            {signers.map((s) => (
+            {signers.map((s) => {
+              const evidence = signatureEvidenceLine(s);
+              return (
               <div key={s.id} className="estdoc-signer">
                 <div className="estdoc-signer-line">
                   {s.signature_image ? (
@@ -660,8 +663,10 @@ export function EstimateDocument({
                     ? ` · signed ${new Date(s.signed_at).toLocaleDateString("en-US")}`
                     : ""}
                 </div>
+                {evidence && <div className="estdoc-muted">{evidence}</div>}
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
