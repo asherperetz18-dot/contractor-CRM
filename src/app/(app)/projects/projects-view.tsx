@@ -170,7 +170,12 @@ export function ProjectsView({
   /** Office/Admin: may run the on-demand rain check. */
   canCheckRain: boolean;
 }) {
-  const [filter, setFilter] = useState<Filter>("All");
+  // The page opens on the jobs being worked right now; "All" is one click
+  // away. Falls back to "All" when nothing is in progress, so the first
+  // screen is never empty.
+  const [filter, setFilter] = useState<Filter>(() =>
+    projects.some((p) => p.status === "in_progress") ? "InProgress" : "All",
+  );
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [repFilter, setRepFilter] = useState("");
