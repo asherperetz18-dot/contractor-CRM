@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Field } from "@/components/ui/field";
-import type { Profile } from "@/lib/data/types";
-import { setLeadCloser } from "@/lib/actions/closer";
+import {
+  getLeadCloserContext,
+  setLeadCloser,
+  type CloserContext,
+} from "@/lib/actions/closer";
 
 /**
  * The closer on a contact: who ran the appointment and wrote the
@@ -15,79 +17,87 @@ import { setLeadCloser } from "@/lib/actions/closer";
  * take?" needs answering there and then -- the same reason the
  * dispatcher picker commits on its own.
  *
- * The assigned rep is left out of the list: they are already on this
- * contact, and offering them as their own second chair reads as a way to
- * give themselves an extra share.
+ * Fetches its own context. It is rendered from beside the dispatcher
+ * rather than from the contact form, so the lead's id is all it is
+ * given.
  */
 export function CloserPicker({
   leadId,
-  currentCloserId,
-  assignedRepId,
-  reps,
   readOnly,
 }: {
   leadId: string;
-  currentCloserId: string | null;
-  assignedRepId: string | null;
-  reps: Profile[];
   readOnly?: boolean;
 }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
-  const [closerId, setCloserId] = useState(currentCloserId ?? "");
-  const [pending, setPending] = useState(false);
+  const [ctx, setCtx] = useState<CloserContext | null>(null);
+  const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
 
-  const options = reps.filter((r) => r.id !== assignedRepId);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const context = await getLeadCloserContext(leadId);
+      if (cancelled || !context) return;
+      setCtx(context);
+      setValue(context.closerId ?? "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
-  async function handleChange(next: string) {
-    const previous = closerId;
-    setCloserId(next);
-    setPending(true);
+  // Nothing at all until the answer is known. A box that appears empty
+  // and then fills itself reads, for the second it is wrong, as "no
+  // closer on this job".
+  if (!ctx) return null;
+
+  function commit(next: string) {
+    const previous = value;
+    setValue(next);
     setError("");
-    setSaved(false);
-
-    const result = await setLeadCloser(leadId, next || null);
-    setPending(false);
-
-    if (result?.error) {
-      // Put the dropdown back to what is actually stored. Leaving the
-      // new name sitting there under an error message is how somebody
-      // walks away believing a closer was assigned when none was.
-      setCloserId(previous);
-      setError(result.error);
-      return;
-    }
-
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-    startTransition(() => router.refresh());
+    startTransition(async () => {
+      const res = await setLeadCloser(leadId, next || null);
+      if (res?.error) {
+        // Put the dropdown back to what is actually stored. Leaving the
+        // new name sitting there under an error message is how somebody
+        // walks away believing a closer was assigned when none was.
+        setValue(previous);
+        return setError(res.error);
+      }
+      router.refresh();
+    });
   }
 
+  const locked = readOnly || !ctx.canEdit;
+
   return (
-    <Field label="Closer">
+    <div className="field">
+      <span className="field-label">Closer</span>
       <select
-        value={closerId}
-        disabled={readOnly || pending}
-        onChange={(e) => handleChange(e.target.value)}
+        value={value}
+        disabled={pending || locked}
+        onChange={(e) => commit(e.target.value)}
       >
         <option value="">No closer</option>
-        {options.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name || r.email}
+        {ctx.options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
           </option>
         ))}
       </select>
-      {pending && <p className="hint-note">Saving…</p>}
-      {saved && !pending && <span className="cp-saved">✓ Saved</span>}
-      {error && <p className="error-note">{error}</p>}
-      {!error && !pending && !closerId && (
-        <p className="hint-note">
+
+      {pending && <p className="est-tax-note">Saving…</p>}
+      {!pending && !error && !value && (
+        <p className="est-tax-note">
           The second chair on this job. They get access to this contact and can write its
           estimates.
         </p>
       )}
-    </Field>
+      {!pending && !error && !!value && locked && (
+        <p className="est-tax-note">Only the office or the assigned rep can change this.</p>
+      )}
+      {error && <p className="error-note">{error}</p>}
+    </div>
   );
 }

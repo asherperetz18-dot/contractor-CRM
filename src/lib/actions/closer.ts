@@ -5,14 +5,67 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
 
+export type CloserOption = { id: string; name: string };
+
+export type CloserContext = {
+  closerId: string | null;
+  assignedRepId: string | null;
+  canEdit: boolean;
+  options: CloserOption[];
+};
+
+/**
+ * Everything the closer picker needs, fetched for itself.
+ *
+ * Self-loading rather than handed down as props, because the picker is
+ * rendered from beside the dispatcher rather than from the contact form,
+ * and the dispatcher only knows the lead's id. One round trip on open.
+ */
+export async function getLeadCloserContext(leadId: string): Promise<CloserContext | null> {
+  const profile = await getCurrentProfile();
+  if (!profile) return null;
+
+  const supabase = await createClient();
+
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, assigned_to, closer_id")
+    .eq("id", leadId)
+    .maybeSingle<{ id: string; assigned_to: string | null; closer_id: string | null }>();
+  if (!lead) return null;
+
+  const { data: people } = await supabase
+    .from("profiles")
+    .select("id, name, email")
+    .eq("company_id", profile.company_id)
+    .order("name")
+    .returns<{ id: string; name: string | null; email: string | null }[]>();
+
+  // Everyone in the company, not a filter on role. A dropdown that is
+  // mistakenly empty is unusable and gives no clue why; one that is
+  // longer than it needs to be is merely untidy. Where the role names
+  // are known for certain this can be narrowed.
+  const options = (people ?? [])
+    .filter((p) => p.id !== lead.assigned_to)
+    .map((p) => ({ id: p.id, name: p.name || p.email || "Unknown" }));
+
+  // Matches the rule enforced in setLeadCloser. Sent to the client only
+  // so the control can be disabled rather than failing on click -- the
+  // server still decides.
+  const canEdit =
+    isAdminRole(profile) || lead.assigned_to === profile.id || !lead.closer_id;
+
+  return {
+    closerId: lead.closer_id,
+    assignedRepId: lead.assigned_to,
+    canEdit,
+    options,
+  };
+}
+
 /**
  * Names the closer on a lead: the person who runs the appointment and
  * writes the estimate, alongside the rep who owns the contact.
- *
- * Its own action rather than a field on the lead form, for the same
- * reason the dispatcher has one: this is not a detail of the contact
- * being typed up, it is handing someone access and a share. It happens
- * on its own, immediately, and it is recorded on the timeline.
  *
  * Who may set it:
  *
@@ -101,5 +154,6 @@ export async function setLeadCloser(
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
+  revalidatePath("/calendar");
   return {};
 }
