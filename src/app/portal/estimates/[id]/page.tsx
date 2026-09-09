@@ -154,6 +154,15 @@ export default async function PortalEstimatePage({
         customer={viewer.lead}
         team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
         parent={await getParentContract(estimate.parent_estimate_id)}
+        // Live tick boxes only while the document can still change --
+        // once it is signed, declined, cancelled or expired the choices
+        // on it are a record, not an offer.
+        optionalsInteractive={
+          !isExpired &&
+          estimate.status !== "Signed" &&
+          estimate.status !== "Declined" &&
+          estimate.status !== "Void"
+        }
       />
       <DepositPayment
         estimateId={id}
