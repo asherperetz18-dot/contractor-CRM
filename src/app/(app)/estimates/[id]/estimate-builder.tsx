@@ -795,7 +795,7 @@ export function EstimateBuilder({
                     title="Drag to reorder"
                     aria-hidden="true"
                   >
-                    ⠹
+                    ⠿
                   </span>
                 )}
               </td>
