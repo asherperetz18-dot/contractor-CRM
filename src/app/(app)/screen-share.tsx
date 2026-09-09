@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -29,6 +29,27 @@ import {
 
 const POLL_MS = 20_000;
 
+/** iOS (every iPhone/iPad browser, Safari and Chrome alike) blocks a web
+ * page from capturing the screen -- Apple's rule, not ours, and not
+ * something code can route around. Feature-detect getDisplayMedia rather
+ * than sniff the user agent, so this lights up on its own the day Apple
+ * relents. Watching a teammate's screen, the mic, and the camera all
+ * work regardless -- only *sharing your own screen* is affected. */
+function canShareScreen(): boolean {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+}
+const NO_SHARE_MSG =
+  "Screen sharing isn't available on iPhone or iPad — but you can still watch a teammate's screen and talk.";
+
+// Read the capability at render without a set-state-in-effect: the
+// server (and first hydration paint) assume yes, then the client's real
+// value takes over -- identical to how the columns feature dodges a
+// hydration mismatch. Never changes after load, so it never re-fires.
+const emptySubscribe = () => () => {};
+function useCanShareScreen(): boolean {
+  return useSyncExternalStore(emptySubscribe, canShareScreen, () => true);
+}
+
 type Signal =
   | { kind: "viewer-hello" }
   | { kind: "offer"; sdp: RTCSessionDescriptionInit }
@@ -42,6 +63,7 @@ type Signal =
 /** The topbar trigger, mirroring the dialer button's event contract. */
 export function ScreenShareButton() {
   const [live, setLive] = useState(false);
+  const canShare = useCanShareScreen();
   useEffect(() => {
     const onState = (e: Event) =>
       setLive(!!(e as CustomEvent<{ live: boolean }>).detail?.live);
@@ -51,8 +73,18 @@ export function ScreenShareButton() {
   return (
     <button
       type="button"
-      className={"icon-btn topbar-icon-btn" + (live ? " topbar-dialer-active" : "")}
-      title={live ? "Sharing your screen — click to stop" : "Share my screen with a teammate"}
+      className={
+        "icon-btn topbar-icon-btn" +
+        (live ? " topbar-dialer-active" : "") +
+        (canShare ? "" : " topbar-icon-muted")
+      }
+      title={
+        !canShare
+          ? NO_SHARE_MSG
+          : live
+          ? "Sharing your screen — click to stop"
+          : "Share my screen with a teammate"
+      }
       aria-label="Share my screen"
       onClick={() => window.dispatchEvent(new CustomEvent("crm:screenshare-toggle"))}
     >
@@ -177,6 +209,8 @@ export function ScreenShareEngine({
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [watching, setWatching] = useState<ActiveShare | null>(null);
   const [micOn, setMicOn] = useState(true);
+  // whether THIS device can capture its own screen (see canShareScreen)
+  const canShare = useCanShareScreen();
   // cameras: off until somebody turns theirs on, each side separately
   const [camOn, setCamOn] = useState(false);
   const [remoteCamOn, setRemoteCamOn] = useState(false);
@@ -302,6 +336,10 @@ export function ScreenShareEngine({
   // ── sharer ──────────────────────────────────────────────────────
   const startSharing = useCallback(async (invitedTo: string | null, inviteeLabel: string | null) => {
     setError("");
+    // Guard the capture call itself: without this, iOS throws a
+    // TypeError that the catch below swallows as "user cancelled",
+    // leaving the tapper with no idea why nothing happened.
+    if (!canShareScreen()) return setError(NO_SHARE_MSG);
     try {
       const screen = await navigator.mediaDevices.getDisplayMedia({ video: true });
       let mic: MediaStream | null = null;
@@ -563,6 +601,7 @@ export function ScreenShareEngine({
   useEffect(() => {
     const onToggle = () => {
       if (sharing) teardown(true);
+      else if (!canShareScreen()) setError(NO_SHARE_MSG);
       else if (!watching) {
         setPicker({ targets: null, mode: "share" });
         void getShareTargets().then((res) => {
@@ -648,6 +687,17 @@ export function ScreenShareEngine({
     ch.on("broadcast", { event: "request" }, ({ payload }) => {
       const p = payload as { fromId: string; fromName: string; to: string };
       if (p.to !== selfId) return;
+      // This device can't capture its screen (iPhone/iPad) -- decline
+      // right away with the reason, so the admin learns instead of
+      // waiting out the 40s timeout on a request that can never succeed.
+      if (!canShareScreen()) {
+        ch.send({
+          type: "broadcast",
+          event: "request-declined",
+          payload: { to: p.fromId, fromName: selfName, reason: "on an iPhone or iPad, which can't share its screen" },
+        });
+        return;
+      }
       if (activeRef.current) {
         ch.send({ type: "broadcast", event: "request-declined", payload: { to: p.fromId, fromName: selfName } });
         return;
@@ -666,12 +716,16 @@ export function ScreenShareEngine({
       setIncomingRequest(null);
     });
     ch.on("broadcast", { event: "request-declined" }, ({ payload }) => {
-      const p = payload as { to: string; fromName: string };
+      const p = payload as { to: string; fromName: string; reason?: string };
       if (p.to !== selfId) return;
       clearRequestTimers();
       awaitingFromRef.current = null;
       setRequesting(null);
-      setError(`${p.fromName} isn't available to share right now.`);
+      setError(
+        p.reason
+          ? `${p.fromName} is ${p.reason}.`
+          : `${p.fromName} isn't available to share right now.`
+      );
     });
     ch.subscribe();
     alertChannel.current = ch;
@@ -755,6 +809,7 @@ export function ScreenShareEngine({
     if (shareBackOn) {
       stopShareBack(true);
     } else {
+      if (!canShareScreen()) return setError(NO_SHARE_MSG);
       try {
         const scr = await navigator.mediaDevices.getDisplayMedia({ video: true });
         if (shareBackSender.current !== sender) {
@@ -1078,9 +1133,14 @@ export function ScreenShareEngine({
               <button className="btn-ghost small" onClick={() => void toggleCam()}>
                 {camOn ? "📷 Cam on" : "📷 Cam off"}
               </button>
-              <button className="btn-ghost small" onClick={() => void toggleShareBack()}>
-                {shareBackOn ? "🖥 Stop my screen" : "🖥 Share mine too"}
-              </button>
+              {/* Sharing your screen back needs screen capture, which
+                  iPhone/iPad can't do -- hide it there rather than offer
+                  a button that only errors. */}
+              {canShare && (
+                <button className="btn-ghost small" onClick={() => void toggleShareBack()}>
+                  {shareBackOn ? "🖥 Stop my screen" : "🖥 Share mine too"}
+                </button>
+              )}
               <button
                 className="btn-primary small"
                 onClick={() => {
