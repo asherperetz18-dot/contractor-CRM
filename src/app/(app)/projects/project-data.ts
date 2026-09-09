@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import {
   computeProjectRollup,
+  phaseReceivableCents,
   billRemainingCents,
   type Estimate,
   type EstimatePayment,
@@ -160,14 +161,12 @@ export async function buildProjectCards(
       .filter((e) => !e.estimate_payment_id || !phaseById.has(e.estimate_payment_id))
       .reduce((s, e) => s + e.amount_cents, 0);
 
+    const docPayments = paid.filter((p) => docIds.has(p.estimate_id));
     const rollup = computeProjectRollup({
       contractTotalCents: contract.total_cents,
       signedChangeOrderCents: signedChangeOrders.reduce((s, e) => s + e.total_cents, 0),
-      payments: paid.filter((p) => docIds.has(p.estimate_id)),
-      // Billed means the phase was actually requested from the customer.
-      billedCents: ownPhases
-        .filter((p) => p.requested_at)
-        .reduce((s, p) => s + p.amount_cents, 0),
+      payments: docPayments,
+      receivableCents: phaseReceivableCents(ownPhases, docPayments),
       filedCostCents,
       unfiledCostCents,
       ownsUnfiledCosts: (contractsPerLead.get(contract.lead_id) ?? 1) === 1,
