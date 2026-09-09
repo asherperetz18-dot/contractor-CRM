@@ -6479,6 +6479,20 @@ a.portal-header-stars:hover {
   a[href]::after {
     content: "";
   }
+
+  /* The projects report: a job's heading and its money block stay with
+     each other, but the section as a whole may flow across pages -- a
+     job with many steps runs longer than a sheet, and break-inside:
+     avoid on something page-sized strands an empty page (same lesson as
+     line items above). */
+  .report-job .estdoc-terms-head {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .report-job .estdoc-totals {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 /* Cost and margin: rep-facing only. Tinted so it reads as a different
