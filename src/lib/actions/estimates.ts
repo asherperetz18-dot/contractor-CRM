@@ -251,6 +251,8 @@ export type ItemInput = {
   taxable: boolean;
   cost_cents?: number | null;
   group_id?: string | null;
+  /** Offered as an add-on the customer ticks in the portal. */
+  is_optional?: boolean;
 };
 
 async function requireEstimateEditor(): Promise<
@@ -595,6 +597,13 @@ export async function saveEstimateItems(
     taxable: item.taxable,
     cost_cents: item.cost_cents ?? null,
     group_id: item.group_id ?? null,
+    is_optional: item.is_optional ?? false,
+    // An office save rewrites the offer, so the customer's earlier tick
+    // is cleared rather than carried onto numbers they never saw -- the
+    // same reasoning as recalling a sent document deletes its signature.
+    // The totals below assume exactly this, so the stored choice and the
+    // stored money can never disagree.
+    optional_selected: false,
   });
 
   // Two statements, not one per line. This looped an awaited write per
@@ -713,9 +722,19 @@ export async function applyCompanyTaxRate(
 
   const { data: items, error: itemsError } = await supabase
     .from("estimate_items")
-    .select("quantity, unit_price_cents, taxable")
+    // The optional columns come along so an un-ticked add-on stays out
+    // of the re-derived totals, exactly as it is everywhere else.
+    .select("quantity, unit_price_cents, taxable, is_optional, optional_selected")
     .eq("estimate_id", estimateId)
-    .returns<{ quantity: number; unit_price_cents: number; taxable: boolean }[]>();
+    .returns<
+      {
+        quantity: number;
+        unit_price_cents: number;
+        taxable: boolean;
+        is_optional: boolean;
+        optional_selected: boolean;
+      }[]
+    >();
   if (itemsError) return { error: itemsError.message };
 
   const discount = estimate.discount_type
