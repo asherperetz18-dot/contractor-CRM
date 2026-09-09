@@ -623,6 +623,12 @@ body {
   line-height: 1;
   text-decoration: none;
 }
+/* A topbar chip for something this device can't do (e.g. Share screen
+   on iPhone/iPad): dimmed so it reads as unavailable, but still tappable
+   so the tap can explain why. */
+.topbar-icon-muted {
+  opacity: 0.4;
+}
 
 .company-switcher-btn {
   width: auto;
