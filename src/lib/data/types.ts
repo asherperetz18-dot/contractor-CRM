@@ -1540,7 +1540,7 @@ export function money(n: number | string) {
   });
 }
 
-// ── Estimates ──────────────────────────────────────────────────────
+// ── Estimates ────────────────────────────────────────────────────────
 
 export type EstimateStatus =
   | "Draft"
@@ -2184,7 +2184,7 @@ export type EstimatePayment = {
   cancelled_at?: string | null;
 };
 
-// ── Job costs ────────────────────────────────────────────────────────────
+// ── Job costs ────────────────────────────────────────────────────────
 
 /**
  * Money actually spent on a job.
@@ -2230,7 +2230,7 @@ export type JobExpenseInput = {
   spentOn: string;
 };
 
-// ── Vendors ──────────────────────────────────────────────────────────────
+// ── Vendors ──────────────────────────────────────────────────────────
 
 /**
  * A supplier or subcontractor, as a record rather than a spelling.
@@ -2325,7 +2325,7 @@ export function expensesByPhase(expenses: JobExpense[]): Map<string | null, JobE
   return map;
 }
 
-// ── Projects ───────────────────────────────────────────────────────────
+// ── Projects ─────────────────────────────────────────────────────────
 
 /**
  * A sold job: one signed contract, its change orders, and the money.
