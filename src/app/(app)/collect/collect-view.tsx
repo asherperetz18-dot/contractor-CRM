@@ -423,10 +423,13 @@ function ClientPicker({
   const wrap = useRef<HTMLDivElement>(null);
 
   // Keep the box showing the chosen name when the value changes from
-  // outside (Clear button, back/forward, a pasted link).
-  useEffect(() => {
+  // outside (Clear button, back/forward, a pasted link). Adjusted during
+  // render, not in an effect, so the stale text never paints.
+  const [shownFor, setShownFor] = useState(selected?.name ?? "");
+  if ((selected?.name ?? "") !== shownFor) {
+    setShownFor(selected?.name ?? "");
     setText(selected?.name ?? "");
-  }, [selected?.name]);
+  }
 
   useEffect(() => {
     if (!open) return;

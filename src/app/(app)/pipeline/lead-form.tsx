@@ -218,7 +218,6 @@ export function LeadForm({
       cancelled = true;
       clearTimeout(t);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead, form.phone, form.email]);
 
   // "now" is captured once at mount -- reading the clock during render
