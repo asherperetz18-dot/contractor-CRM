@@ -12,6 +12,12 @@ import { JobPhotos } from "./job-photos";
 import { JobReceipts } from "./job-receipts";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
+import {
+  dateRangeBounds,
+  matchesProjectFilters,
+  type ProjectChip,
+  type ProjectDateRange,
+} from "./project-filters";
 
 export type { ChecklistItemRow } from "./project-checklist";
 
@@ -41,31 +47,11 @@ export type ProjectCard = {
   rainAlertPop: number | null;
 };
 
-type Filter = "All" | "InProgress" | "OnHold" | "Complete" | "Cancelled" | "Bleeding" | "Owed";
-type DateRange = "any" | "week" | "month" | "year" | "custom";
-
-/** [start, end] ms bounds for "signed on" a job falls in, or null for no
- *  date filter at all. Custom leaves either side open when blank, so
- *  "from" alone means "since then" and "to" alone means "up to then". */
-function dateRangeBounds(
-  range: DateRange,
-  customFrom: string,
-  customTo: string
-): [number, number] | null {
-  const now = Date.now();
-  const DAY = 24 * 60 * 60 * 1000;
-  if (range === "week") return [now - 7 * DAY, now];
-  if (range === "month") return [now - 30 * DAY, now];
-  if (range === "year") return [now - 365 * DAY, now];
-  if (range === "custom") {
-    const from = customFrom ? new Date(customFrom).getTime() : -Infinity;
-    // Include the entire "to" day, not just its midnight instant.
-    const to = customTo ? new Date(customTo).getTime() + DAY - 1 : Infinity;
-    if (from === -Infinity && to === Infinity) return null;
-    return [from, to];
-  }
-  return null;
-}
+// The filter semantics live in project-filters.ts, shared with the
+// printable report so paper and screen can never disagree about which
+// jobs a set of filters means.
+type Filter = ProjectChip;
+type DateRange = ProjectDateRange;
 
 const STATUS_TAG: Record<ProjectStatus, string | null> = {
   in_progress: null, // the normal case earns no badge
@@ -352,43 +338,29 @@ export function ProjectsView({
   // (they answer "how many are in this bucket"), these just narrow what's
   // visible within it.
   const q = search.trim().toLowerCase();
-  // Strips $, commas, periods and spaces, so "57600", "57,600" and
-  // "$576" all normalize to a plain digit string that can be matched
-  // straight against a cents integer's own digits (e.g. a $57,600.00
-  // figure is soldCents=5760000, and "5760000".includes("57600") is
-  // true) -- no currency formatting needed on either side.
-  const qDigits = q.replace(/[^0-9]/g, "");
   const dateBounds = dateRangeBounds(dateRange, customFrom, customTo);
-  const searched = shown.filter((p) => {
-    if (clientFilter && p.customer !== clientFilter) return false;
-    if (repFilter && p.repName !== repFilter) return false;
-    if (dateBounds) {
-      if (!p.signedAt) return false;
-      const signedMs = new Date(p.signedAt).getTime();
-      if (signedMs < dateBounds[0] || signedMs > dateBounds[1]) return false;
-    }
-    if (q) {
-      const haystack = [p.title, p.docNumber, p.customer, p.address, p.repName]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      const textMatch = haystack.includes(q);
-      // A bare digit or two over-matches (almost every project has a
-      // "1" somewhere), so amount matching only kicks in past that.
-      const amountMatch =
-        qDigits.length >= 2 &&
-        [
-          p.rollup.soldCents,
-          p.rollup.collectedCents,
-          p.rollup.receivableCents,
-          p.rollup.costCents,
-          p.rollup.netCashCents,
-          p.unpaidBillsCents,
-        ].some((cents) => String(Math.abs(cents)).includes(qDigits));
-      if (!textMatch && !amountMatch) return false;
-    }
-    return true;
-  });
+  const searched = shown.filter((p) =>
+    matchesProjectFilters(p, {
+      search,
+      client: clientFilter,
+      rep: repFilter,
+      bounds: dateBounds,
+    })
+  );
+
+  // The printable report carries the current filters in its URL, so the
+  // sheet that comes out of the printer is the list on the screen -- not
+  // a fresh unfiltered one the reader has to notice is different.
+  const reportParams = new URLSearchParams();
+  if (filter !== "All") reportParams.set("status", filter);
+  if (search.trim()) reportParams.set("q", search.trim());
+  if (clientFilter) reportParams.set("client", clientFilter);
+  if (repFilter) reportParams.set("rep", repFilter);
+  if (dateRange !== "any") reportParams.set("range", dateRange);
+  if (dateRange === "custom" && customFrom) reportParams.set("from", customFrom);
+  if (dateRange === "custom" && customTo) reportParams.set("to", customTo);
+  const reportQs = reportParams.toString();
+  const reportHref = "/projects/report" + (reportQs ? `?${reportQs}` : "");
 
   // The money cards follow the selected chip: pick "Complete" and the
   // figures speak for finished work; pick "Cancelled" and Sold becomes
@@ -649,6 +621,9 @@ export function ProjectsView({
               />
             </>
           )}
+          <Link className="btn-ghost" href={reportHref} title="A printable report of the jobs currently shown, with the same filters applied">
+            🖨 Print report
+          </Link>
           {canCheckRain && (
             <button
               type="button"
@@ -900,6 +875,16 @@ export function ProjectsView({
                         href={`/contacts?openLead=${p.leadId}&from=/projects`}
                       >
                         👤 Client
+                      </Link>
+                      {" · "}
+                      {/* One job on paper: contract and change orders,
+                          payment schedule, money and steps -- with a
+                          client-safe copy a click away on that page. */}
+                      <Link
+                        className="proj-check-chip proj-doc-chip"
+                        href={`/projects/${p.estimateId}/report`}
+                      >
+                        🖨 Report
                       </Link>
                     </div>
                     {(STATUS_TAG[p.status] ||
