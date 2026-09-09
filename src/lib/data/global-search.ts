@@ -6,6 +6,7 @@ import {
   type Estimate,
   type Event,
   type Lead,
+  type LeadNote,
   type PipelineStageRow,
   type VendorBill,
 } from "./types.ts";
@@ -48,6 +49,7 @@ export type SearchableBill = Pick<
   VendorBill,
   "id" | "vendor_name" | "reference" | "amount_cents" | "due_date" | "notes" | "voided_at"
 >;
+export type SearchableNote = Pick<LeadNote, "id" | "lead_id" | "body" | "created_at">;
 
 const PER_GROUP = 5;
 
@@ -83,6 +85,17 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// A note can run to paragraphs (AI call notes do); show the part around
+// the match, not the first line of a note whose hit is buried mid-body.
+function noteSnippet(body: string, q: string): string {
+  const text = body.replace(/\s+/g, " ").trim();
+  const at = text.toLowerCase().indexOf(q);
+  if (at < 0) return text.slice(0, 80);
+  const start = Math.max(0, at - 24);
+  const end = Math.min(text.length, at + q.length + 56);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
+
 export function buildSearchGroups(
   query: string,
   input: {
@@ -91,6 +104,7 @@ export function buildSearchGroups(
     estimates: SearchableEstimate[];
     events: SearchableEvent[];
     bills: SearchableBill[];
+    notes: SearchableNote[];
   }
 ): GlobalSearchGroup[] {
   const q = query.trim().toLowerCase();
@@ -171,6 +185,25 @@ export function buildSearchGroups(
       };
     });
 
+  // Body text only, on purpose: a client's name already surfaces the
+  // contact itself, so matching notes by client too would just repeat
+  // every contact hit. A note whose lead this person cannot see (or that
+  // lost its lead) has nowhere to link and no name to show -- skip it.
+  const noteHits: GlobalHit[] = input.notes
+    .filter((n) => n.body.toLowerCase().includes(q) && !!leadById.get(n.lead_id))
+    .slice(0, PER_GROUP)
+    .map((n) => {
+      const client = leadById.get(n.lead_id)!;
+      return {
+        id: n.id,
+        name: leadDisplayName(client),
+        sub: [noteSnippet(n.body, q), shortDate(n.created_at.slice(0, 10))].join(" · "),
+        badge: "Note",
+        color: NEUTRAL,
+        href: `/contacts?openLead=${n.lead_id}`,
+      };
+    });
+
   const billHits: GlobalHit[] = input.bills
     .filter((b) =>
       `${b.vendor_name ?? ""} ${b.reference ?? ""} ${b.notes ?? ""}`.toLowerCase().includes(q)
@@ -191,6 +224,7 @@ export function buildSearchGroups(
     { label: "Contacts", hits: contactHits },
     { label: "Estimates & contracts", hits: docHits },
     { label: "Appointments", hits: eventHits },
+    { label: "Notes", hits: noteHits },
     { label: "Bills", hits: billHits },
   ].filter((g) => g.hits.length > 0);
 }

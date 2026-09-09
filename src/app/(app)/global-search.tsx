@@ -76,7 +76,7 @@ export function GlobalSearch() {
               <div className="gsearch-empty">Searching…</div>
             ) : empty && searched ? (
               <div className="gsearch-empty">
-                No matches across contacts, estimates, appointments, or bills.
+                No matches across contacts, estimates, appointments, notes, or bills.
               </div>
             ) : (
               groups.map((g) => (

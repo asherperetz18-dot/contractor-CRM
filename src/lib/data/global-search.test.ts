@@ -6,6 +6,7 @@ import {
   type SearchableEstimate,
   type SearchableEvent,
   type SearchableLead,
+  type SearchableNote,
 } from "./global-search.ts";
 
 /**
@@ -72,6 +73,16 @@ function bill(over: Partial<SearchableBill> = {}): SearchableBill {
   };
 }
 
+function note(over: Partial<SearchableNote> = {}): SearchableNote {
+  return {
+    id: "note-1",
+    lead_id: "lead-1",
+    body: "📞 Customer asked to move the tile delivery to Friday morning",
+    created_at: "2026-09-05T18:22:00Z",
+    ...over,
+  };
+}
+
 const stages = [{ name: "Sold", color: "#16a34a" }];
 
 function run(q: string, input: Partial<Parameters<typeof buildSearchGroups>[1]> = {}) {
@@ -81,6 +92,7 @@ function run(q: string, input: Partial<Parameters<typeof buildSearchGroups>[1]> 
     estimates: [estimate()],
     events: [event()],
     bills: [bill()],
+    notes: [note()],
     ...input,
   });
 }
@@ -152,4 +164,34 @@ test("a one-character query returns nothing rather than everything", () => {
 test("an estimate whose lead is gone still matches on its own text", () => {
   const groups = run("pool", { leads: [] });
   assert.equal(group(groups, "Estimates & contracts")?.hits.length, 1);
+});
+
+test("a word inside a note finds it, named after the client, opening their card", () => {
+  const hit = group(run("tile delivery"), "Notes")?.hits[0];
+  assert.ok(hit);
+  assert.equal(hit.name, "Nuha Ibrahim");
+  assert.equal(hit.href, "/contacts?openLead=lead-1");
+  assert.equal(hit.badge, "Note");
+  assert.ok(hit.sub?.includes("tile delivery"));
+});
+
+test("a note is matched by its body only, not by the client's name", () => {
+  // Searching the client already surfaces the contact; repeating every
+  // note of theirs would bury the other groups.
+  assert.equal(group(run("nuha"), "Notes"), undefined);
+});
+
+test("a long note shows the text around the match, not its first line", () => {
+  const long = note({
+    body: `🤖 AI call notes ${"x".repeat(200)} promised a callback tomorrow ${"y".repeat(200)}`,
+  });
+  const hit = group(run("callback", { notes: [long] }), "Notes")?.hits[0];
+  assert.ok(hit);
+  assert.ok(hit.sub?.includes("promised a callback tomorrow"));
+  assert.ok(hit.sub!.length < 160);
+});
+
+test("a note whose lead is not visible is dropped rather than unlinkable", () => {
+  const groups = run("tile delivery", { leads: [] });
+  assert.equal(group(groups, "Notes"), undefined);
 });
