@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { safeInternalPath } from "@/lib/safe-path";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import type { Estimate, EstimateSigner } from "@/lib/data/types";
 import { saveCompletionDetails } from "@/lib/actions/completion";
@@ -42,6 +43,9 @@ export function CompletionEditor({
   canDelete: boolean;
 }) {
   const router = useRouter();
+  // Same ?from contract as the estimate builder: arriving from a contact
+  // card means Back should reopen that card, not the estimates list.
+  const returnTo = safeInternalPath(useSearchParams().get("from"));
   const [completedOn, setCompletedOn] = useState(estimate.completed_on ?? "");
   const [paperDialog, setPaperDialog] = useState(false);
   const [notes, setNotes] = useState(estimate.completion_notes ?? "");
@@ -91,8 +95,11 @@ export function CompletionEditor({
           </p>
         </div>
         <div className="est-header-actions">
-          <button className="btn-ghost" onClick={() => router.push("/estimates")}>
-            Back
+          <button
+            className="btn-ghost"
+            onClick={() => router.push(returnTo ?? "/estimates")}
+          >
+            {returnTo ? "← Back to contact" : "Back"}
           </button>
           <button
             className="btn-ghost"

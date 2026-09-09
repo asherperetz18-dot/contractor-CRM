@@ -865,7 +865,8 @@ export function LeadForm({
               </button>
             ))}
             {/* Not a tab: it leaves the modal for the estimate itself
-                rather than switching the pane below. */}
+                rather than switching the pane below. The estimate's Back
+                button brings the reader back to this card. */}
             <LeadEstimateButton
               leadId={lead.id}
               estimates={estimateIndex?.byLead[lead.id]?.estimates ?? []}

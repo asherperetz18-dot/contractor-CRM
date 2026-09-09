@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { moneyCents } from "@/lib/data/types";
 import {
   openOrCreateEstimateForLead,
@@ -38,9 +38,15 @@ export function LeadEstimateButton({
   canCreate: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [listOpen, setListOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Same round trip the Appointments tab makes: the estimate page's Back
+  // button returns here and reopens this card (Contacts reads openLead;
+  // elsewhere the param is ignored and you just land back on the page).
+  const backQuery = `?from=${encodeURIComponent(`${pathname}?openLead=${leadId}`)}`;
 
   // No estimate access at all: nothing to say, and saying it on every
   // contact would just be noise for a role that never touches paperwork.
@@ -75,7 +81,7 @@ export function LeadEstimateButton({
     startTransition(async () => {
       const res = await openOrCreateEstimateForLead(leadId);
       if (res.error) return setError(res.error);
-      if (res.id) router.push(`/estimates/${res.id}`);
+      if (res.id) router.push(`/estimates/${res.id}${backQuery}`);
     });
   }
 
@@ -112,7 +118,7 @@ export function LeadEstimateButton({
               key={e.id}
               type="button"
               className="lead-est-item"
-              onClick={() => router.push(`/estimates/${e.id}`)}
+              onClick={() => router.push(`/estimates/${e.id}${backQuery}`)}
             >
               <span className="mono">{e.doc_number}</span>
               <span className="lead-est-title">{e.title || "Untitled"}</span>
@@ -129,7 +135,7 @@ export function LeadEstimateButton({
                 startTransition(async () => {
                   const res = await openOrCreateEstimateForLead(leadId);
                   if (res.error) return setError(res.error);
-                  if (res.id) router.push(`/estimates/${res.id}`);
+                  if (res.id) router.push(`/estimates/${res.id}${backQuery}`);
                 });
               }}
             >
