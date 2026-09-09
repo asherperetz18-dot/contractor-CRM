@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { safeInternalPath } from "@/lib/safe-path";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import {
   centsFromInput,
@@ -146,6 +147,9 @@ export function EstimateBuilder({
   customerViews?: string[];
 }) {
   const router = useRouter();
+  // Where the reader came from -- the contact card's Estimates chip sends
+  // a ?from so Back returns to the card instead of the estimates list.
+  const returnTo = safeInternalPath(useSearchParams().get("from"));
   const [rows, setRows] = useState<Row[]>(items.length ? items.map(toRow) : [blankRow()]);
   const [paperDialog, setPaperDialog] = useState(false);
   const [title, setTitle] = useState(estimate.title);
@@ -390,8 +394,11 @@ export function EstimateBuilder({
           </p>
         </div>
         <div className="est-header-actions">
-          <button className="btn-ghost" onClick={() => router.push("/estimates")}>
-            Back
+          <button
+            className="btn-ghost"
+            onClick={() => router.push(returnTo ?? "/estimates")}
+          >
+            {returnTo ? "← Back to contact" : "Back"}
           </button>
           <button
             className="btn-ghost"
