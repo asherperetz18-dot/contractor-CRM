@@ -1730,7 +1730,11 @@ export type EstimateSigner = {
   signature_name: string | null;
   /** A hand-drawn signature, as a base64 PNG data URL. Null for a typed-only signature. */
   signature_image: string | null;
-  signature_type: "typed" | "drawn";
+  signature_type: "typed" | "drawn" | "paper";
+  /** E-signature evidence, captured server-side at signing. Null on paper
+   *  signatures and rows signed before capture existed. */
+  signature_ip: string | null;
+  signature_user_agent: string | null;
 };
 
 export type Estimate = {

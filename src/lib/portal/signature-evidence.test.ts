@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveClientIp, collectSignatureEvidence } from "./signature-evidence.ts";
+import {
+  resolveClientIp,
+  collectSignatureEvidence,
+  signatureEvidenceLine,
+} from "./signature-evidence.ts";
 
 function headersFrom(entries: Record<string, string>): Headers {
   return new Headers(entries);
@@ -67,4 +71,71 @@ test("collectSignatureEvidence uses the same IP resolution as resolveClientIp", 
   });
   const evidence = collectSignatureEvidence(head, "2026-08-12T00:00:00.000Z");
   assert.equal(evidence.ip, "203.0.113.5");
+});
+
+test("signatureEvidenceLine shows the UTC timestamp and the IP together", () => {
+  const line = signatureEvidenceLine({
+    signed_at: "2026-08-28T21:41:07.000Z",
+    signature_ip: "203.0.113.5",
+    signature_type: "drawn",
+  });
+  assert.equal(line, "Signed Aug 28, 2026, 9:41 PM UTC · IP 203.0.113.5");
+});
+
+test("signatureEvidenceLine keeps the timestamp when no IP was recorded", () => {
+  const line = signatureEvidenceLine({
+    signed_at: "2026-08-28T21:41:07.000Z",
+    signature_ip: null,
+    signature_type: "typed",
+  });
+  assert.equal(line, "Signed Aug 28, 2026, 9:41 PM UTC");
+});
+
+test("signatureEvidenceLine converts 12-hour edge cases correctly", () => {
+  assert.equal(
+    signatureEvidenceLine({
+      signed_at: "2026-08-28T00:05:00.000Z",
+      signature_ip: null,
+      signature_type: "typed",
+    }),
+    "Signed Aug 28, 2026, 12:05 AM UTC"
+  );
+  assert.equal(
+    signatureEvidenceLine({
+      signed_at: "2026-08-28T12:00:00.000Z",
+      signature_ip: null,
+      signature_type: "typed",
+    }),
+    "Signed Aug 28, 2026, 12:00 PM UTC"
+  );
+});
+
+test("signatureEvidenceLine shows nothing for an unsigned line", () => {
+  const line = signatureEvidenceLine({
+    signed_at: null,
+    signature_ip: null,
+    signature_type: "typed",
+  });
+  assert.equal(line, null);
+});
+
+test("signatureEvidenceLine shows nothing for a paper signature", () => {
+  // A paper signer's signed_at is a hand-entered date, not a captured
+  // instant, and there is no IP -- printing "12:00 AM UTC" would present
+  // fabricated precision as evidence.
+  const line = signatureEvidenceLine({
+    signed_at: "2026-08-28T00:00:00.000Z",
+    signature_ip: null,
+    signature_type: "paper",
+  });
+  assert.equal(line, null);
+});
+
+test("signatureEvidenceLine shows nothing for an unparseable timestamp", () => {
+  const line = signatureEvidenceLine({
+    signed_at: "not-a-date",
+    signature_ip: "203.0.113.5",
+    signature_type: "typed",
+  });
+  assert.equal(line, null);
 });

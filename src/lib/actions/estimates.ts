@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
@@ -1204,6 +1206,9 @@ export async function sendEstimateToCustomer(
   // time means the customer sees a document the contractor has stood
   // behind, not a blank pair of signature lines.
   if (sender) {
+    // Same evidence the customer's signature carries -- the contractor
+    // signs from this very request, so record where and when from it.
+    const evidence = collectSignatureEvidence(await headers(), now);
     await admin.from("estimate_signers").insert({
       company_id: guard.companyId,
       estimate_id: estimateId,
@@ -1213,6 +1218,8 @@ export async function sendEstimateToCustomer(
       sort_order: -1,
       signed_at: now,
       signature_name: sender.name || sender.email,
+      signature_ip: evidence.ip,
+      signature_user_agent: evidence.userAgent,
     });
   }
 

@@ -50,3 +50,37 @@ export function collectSignatureEvidence(head: Headers, signedAt: string): Signa
     signedAt,
   };
 }
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The evidence line printed under a signature on the document and its PDF:
+ * "Signed Aug 28, 2026, 9:41 PM UTC · IP 203.0.113.5".
+ *
+ * Formatted by hand rather than with toLocaleString because the document
+ * renders on the server: an ICU upgrade changing the separator (newer ICU
+ * puts a narrow no-break space before AM/PM) must not silently reword what
+ * is presented as signing evidence. UTC, labelled, for the same reason --
+ * the server has no idea what timezone the signer was in, and an
+ * unlabelled local-looking time on a contract invites disputes about
+ * which clock it was.
+ *
+ * Null when there is nothing honest to show: an unsigned line, or a paper
+ * signature, whose signed_at is a hand-entered date (no captured instant,
+ * no IP) -- printing "12:00 AM UTC" there would be fabricated precision.
+ */
+export function signatureEvidenceLine(signer: {
+  signed_at: string | null;
+  signature_ip: string | null;
+  signature_type?: "typed" | "drawn" | "paper";
+}): string | null {
+  if (!signer.signed_at || signer.signature_type === "paper") return null;
+  const d = new Date(signer.signed_at);
+  if (isNaN(d.getTime())) return null;
+  const h = d.getUTCHours();
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const period = h >= 12 ? "PM" : "AM";
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  const when = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}, ${h12}:${mm} ${period} UTC`;
+  return `Signed ${when}${signer.signature_ip ? ` · IP ${signer.signature_ip}` : ""}`;
+}
