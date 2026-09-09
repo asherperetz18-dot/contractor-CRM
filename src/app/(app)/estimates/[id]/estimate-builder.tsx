@@ -72,6 +72,9 @@ type Row = {
   unitCost: string;
   unitPrice: string;
   taxable: boolean;
+  // Offered as an add-on: priced on the document, in the totals only
+  // once the customer ticks it in the portal.
+  optional: boolean;
 };
 
 let rowSeq = 0;
@@ -88,6 +91,7 @@ function blankRow(): Row {
     unitCost: "",
     unitPrice: "0.00",
     taxable: false,
+    optional: false,
   };
 }
 
@@ -106,6 +110,7 @@ function toRow(item: EstimateItem): Row {
     unitCost: item.cost_cents === null ? "" : centsToInput(item.cost_cents),
     unitPrice: centsToInput(item.unit_price_cents),
     taxable: item.taxable,
+    optional: item.is_optional ?? false,
   };
 }
 
@@ -210,6 +215,10 @@ export function EstimateBuilder({
     taxable: r.taxable,
     // Blank means unknown, which is not the same as zero.
     cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
+    // In the totals only once the customer ticks it, and a save resets
+    // any earlier tick -- so the total shown here is the un-ticked one,
+    // which is exactly what saving will store.
+    is_optional: r.optional,
   }));
   // The discount exactly as it will be saved, so the live total below
   // matches the stored one to the cent.
@@ -229,6 +238,9 @@ export function EstimateBuilder({
   const sectionSubtotals = new Map<string, number>();
   for (const r of rows) {
     if (!r.groupId) continue;
+    // Matches the customer's copy, where an un-ticked option is out of
+    // the section subtotal too.
+    if (r.optional) continue;
     const cents = lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice));
     sectionSubtotals.set(r.groupId, (sectionSubtotals.get(r.groupId) ?? 0) + cents);
   }
@@ -240,7 +252,9 @@ export function EstimateBuilder({
   useEffect(() => {
     reloadGroups();
   }, [reloadGroups]);
-  const margin = estimateMargin(parsed);
+  // Optional lines sit out of the margin the same way they sit out of
+  // the total: revenue the customer has not agreed to is not revenue.
+  const margin = estimateMargin(parsed.filter((p) => !p.is_optional));
   const costsEntered = parsed.some((p) => p.cost_cents !== null);
   // Named rows only: a blank starter row is not an unpriced line item.
   const unpricedLines = rows.filter(
@@ -319,6 +333,7 @@ export function EstimateBuilder({
           unit_price_cents: centsFromInput(r.unitPrice),
           taxable: r.taxable,
           cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
+          is_optional: r.optional,
         })),
         discountForTotals
           ? { ...discountForTotals, label: discountLabel.trim() || null }
@@ -814,6 +829,18 @@ export function EstimateBuilder({
                     ⤢
                   </button>
                 </div>
+                <label
+                  className="est-optional-toggle"
+                  title="Mark as Optional — the customer decides in their portal whether to add it, and the total follows their choice."
+                >
+                  <input
+                    type="checkbox"
+                    checked={r.optional}
+                    disabled={locked}
+                    onChange={(e) => patch(r.key, { optional: e.target.checked })}
+                  />
+                  Optional — customer chooses
+                </label>
               </td>
               {/* data-label feeds the phone layout, where the header row is
                   hidden and each cell has to name itself. */}
@@ -1084,6 +1111,15 @@ export function EstimateBuilder({
             "included". On a signed contract that is a commitment to do
             the work at no charge, so the rep is told the count here
             rather than discovering it in a dispute. */}
+        {/* The rep should not wonder why the total is less than the
+            column above it: optional lines wait for the customer. */}
+        {rows.some((r) => r.optional && r.name.trim()) && (
+          <p className="est-tax-note">
+            Optional lines are not in this total. Each one is added the moment the customer
+            ticks it in their portal, and the total, tax and deposit follow. Saving clears any
+            tick they made earlier — they choose again on the version you send.
+          </p>
+        )}
         {unpricedLines > 0 && (
           <p className="est-unpriced-note">
             {unpricedLines} line{unpricedLines === 1 ? "" : "s"} ha

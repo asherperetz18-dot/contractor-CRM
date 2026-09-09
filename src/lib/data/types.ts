@@ -1699,7 +1699,10 @@ export function groupEstimateItems(
 }
 
 function sumLines(items: EstimateItem[]): number {
-  return items.reduce((sum, i) => sum + (i.line_total_cents || 0), 0);
+  return items.reduce(
+    (sum, i) => sum + (itemInTotals(i) ? i.line_total_cents || 0 : 0),
+    0
+  );
 }
 
 export type EstimateItem = {
@@ -1716,7 +1719,28 @@ export type EstimateItem = {
   cost_cents: number | null;
   /** The section this line sits in. Null renders exactly as before. */
   group_id?: string | null;
+  /** Offered as an add-on: priced on the document, but only in the
+   *  totals once the customer ticks it in the portal. Optional because
+   *  the columns arrive with migration 0142; undefined reads as an
+   *  ordinary line. */
+  is_optional?: boolean;
+  /** The customer's current choice on an optional line. Meaningless
+   *  when is_optional is false. */
+  optional_selected?: boolean;
 };
+
+/**
+ * Whether a line counts toward the money on the document.
+ *
+ * Every ordinary line does. An optional line counts only once the
+ * customer has ticked it -- until then it is an offer sitting on the
+ * page, not work anybody agreed to pay for.
+ */
+export function itemInTotals(
+  item: Pick<EstimateItem, "is_optional" | "optional_selected">
+): boolean {
+  return !item.is_optional || !!item.optional_selected;
+}
 
 export type EstimateSigner = {
   id: string;
@@ -1892,13 +1916,20 @@ export type EstimateDiscount = {
 // generally is not, so a discount has to shave both fairly rather than
 // quietly taxing the customer on money they are not paying.
 export function computeEstimateTotals(
-  items: Pick<EstimateItem, "quantity" | "unit_price_cents" | "taxable">[],
+  items: Pick<
+    EstimateItem,
+    "quantity" | "unit_price_cents" | "taxable" | "is_optional" | "optional_selected"
+  >[],
   taxRateBp: number,
   discount?: EstimateDiscount
 ): { subtotalCents: number; discountCents: number; taxCents: number; totalCents: number } {
   let subtotalCents = 0;
   let taxableCents = 0;
   for (const item of items) {
+    // An optional line the customer has not added is priced on the page
+    // but not in the money -- not the subtotal, so not the tax and not
+    // the deposit the total feeds either.
+    if (!itemInTotals(item)) continue;
     const line = lineTotalCents(item.quantity, item.unit_price_cents);
     subtotalCents += line;
     if (item.taxable) taxableCents += line;

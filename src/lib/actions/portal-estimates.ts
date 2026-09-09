@@ -6,7 +6,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
-import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
+import {
+  computeEstimateTotals,
+  depositCents,
+  type EstimateItem,
+  type EstimateSigner,
+  type EstimateStatus,
+} from "@/lib/data/types";
 
 type EstimateRow = {
   id: string;
@@ -20,6 +26,11 @@ type EstimateRow = {
   doc_number: string;
   title: string | null;
   assigned_to: string | null;
+  tax_rate_bp: number;
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
+  discount_type: string | null;
+  discount_value: number;
 };
 
 // The rep notification and every post-signature side effect now live in
@@ -44,7 +55,7 @@ async function loadForViewer(
   const { data } = await admin
     .from("estimates")
     .select(
-      "id, lead_id, company_id, status, total_cents, expires_at, kind, parent_estimate_id, doc_number, title, assigned_to"
+      "id, lead_id, company_id, status, total_cents, expires_at, kind, parent_estimate_id, doc_number, title, assigned_to, tax_rate_bp, deposit_percent_bp, deposit_cap_cents, discount_type, discount_value"
     )
     .eq("id", estimateId)
     .maybeSingle<EstimateRow>();
@@ -109,6 +120,91 @@ export async function markEstimateViewed(estimateId: string): Promise<void> {
     .from("estimates")
     .update({ status: "Viewed" as EstimateStatus, viewed_at: new Date().toISOString() })
     .eq("id", estimateId);
+}
+
+/**
+ * The customer adding or removing an optional line from the portal.
+ *
+ * The browser only says which box was ticked; the money is re-derived
+ * here from what is stored, with the same computeEstimateTotals the
+ * office save uses, so the number on their screen is the number that
+ * gets signed. The deposit moves with the total for the same reason it
+ * does when the office edits a line -- a deposit computed from the old
+ * total is wrong money, and on a big job possibly over the legal cap.
+ */
+export async function setOptionalItemAsCustomer(
+  estimateId: string,
+  itemId: string,
+  selected: boolean
+): Promise<{ error?: string }> {
+  const loaded = await loadForViewer(estimateId);
+  if ("error" in loaded) return loaded;
+  const { estimate } = loaded;
+
+  if (estimate.status === "Signed") {
+    return { error: "This document is already signed, so its options are locked in." };
+  }
+  if (estimate.status === "Declined") return { error: "This estimate was declined." };
+  if (estimate.status === "Void") {
+    return { error: "This document was cancelled. Ask your contractor for an updated one." };
+  }
+  if (expired(estimate)) {
+    return { error: "This estimate has expired. Ask your contractor for an updated one." };
+  }
+
+  const admin = createAdminClient();
+  // Scoped to lines actually offered as optional: a guessed id on an
+  // ordinary line must not quietly turn it into one the customer can
+  // take out of their own contract.
+  const { data: updated, error } = await admin
+    .from("estimate_items")
+    .update({ optional_selected: selected, updated_at: new Date().toISOString() })
+    .eq("id", itemId)
+    .eq("estimate_id", estimateId)
+    .eq("is_optional", true)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!updated?.length) return { error: "That option isn't available any more." };
+
+  const { data: items, error: itemsError } = await admin
+    .from("estimate_items")
+    .select("quantity, unit_price_cents, taxable, is_optional, optional_selected")
+    .eq("estimate_id", estimateId)
+    .returns<
+      Pick<
+        EstimateItem,
+        "quantity" | "unit_price_cents" | "taxable" | "is_optional" | "optional_selected"
+      >[]
+    >();
+  if (itemsError) return { error: itemsError.message };
+
+  const totals = computeEstimateTotals(
+    items ?? [],
+    estimate.tax_rate_bp,
+    estimate.discount_type
+      ? { type: estimate.discount_type as "percent" | "amount", value: estimate.discount_value }
+      : null
+  );
+  const { error: totalsError } = await admin
+    .from("estimates")
+    .update({
+      subtotal_cents: totals.subtotalCents,
+      discount_cents: totals.discountCents,
+      tax_cents: totals.taxCents,
+      total_cents: totals.totalCents,
+      deposit_cents: depositCents(
+        totals.totalCents,
+        estimate.deposit_percent_bp,
+        estimate.deposit_cap_cents
+      ),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", estimateId);
+  if (totalsError) return { error: totalsError.message };
+
+  // The staff list shows the total, and it just changed.
+  revalidatePath("/estimates");
+  return {};
 }
 
 export type CustomerSignature =

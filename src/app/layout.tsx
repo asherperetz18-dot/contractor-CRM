@@ -4,6 +4,8 @@ import "./globals.css";
 // Phone/tablet fixes for the whole shell -- must come after globals.css
 // so its rules win at equal specificity. See the header of mobile.css.
 import "./mobile.css";
+// Optional line items -- see the header of optional-items.css.
+import "./optional-items.css";
 
 /**
  * The fonts are in the repo, not fetched from Google at build time.
