@@ -3,11 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
+import { getPortalViewer } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
-import { sendEmail } from "@/lib/email-env";
-import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateSigner, EstimateStatus } from "@/lib/data/types";
 
 type EstimateRow = {

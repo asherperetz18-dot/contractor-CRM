@@ -2,10 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import {
-  type Lead,
-  type Vendor,
-} from "@/lib/data/types";
+import { type Lead } from "@/lib/data/types";
 import type { VendorBillRow as VendorBill, VendorBillPaymentRow } from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { BillsView } from "./bills-view";
