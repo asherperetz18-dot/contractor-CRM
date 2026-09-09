@@ -15,6 +15,19 @@ export type CloserContext = {
 };
 
 /**
+ * Roles that can sit an appointment and close it.
+ *
+ * Sales is the obvious one. Office and Admin are here because in a small
+ * company the owner runs appointments too, and leaving them out means
+ * the person most likely to close a difficult job cannot be recorded as
+ * having closed it.
+ *
+ * Field, Production and Bookkeeping are deliberately absent: this list
+ * hands someone a share of a colleague's commission.
+ */
+const CLOSER_ROLES = ["Sales", "Office", "Admin"];
+
+/**
  * Everything the closer picker needs, fetched for itself.
  *
  * Self-loading rather than handed down as props, because the picker is
@@ -49,23 +62,19 @@ export async function getLeadCloserContext(leadId: string): Promise<CloserContex
       }[]
     >();
 
-  // Salespeople only. A closer sits the appointment and writes the
-  // estimate, which is the sales job -- and the list is a list of people
-  // about to be given a share of somebody's commission, so it should not
-  // offer the bookkeeper.
-  //
   // Active only, matching every other assignment dropdown: somebody who
-  // has left should not be handed a new job.
+  // has left should not be handed a new job. The lead's own rep is left
+  // out -- they are already on this contact, and offering them as their
+  // own second chair is a way to take an extra share.
   const active = (people ?? []).filter(
     (p) => p.status === "Active" && p.id !== lead.assigned_to
   );
-  const sales = active.filter((p) => p.role === "Sales");
+  const eligible = active.filter((p) => p.role && CLOSER_ROLES.includes(p.role));
 
-  // If nobody carries the Sales role, fall back to everyone active
-  // rather than rendering an empty box. An empty dropdown gives no clue
-  // what is wrong, and the honest failure here is a list that is too
-  // long, not one that cannot be used at all.
-  const chosen = sales.length > 0 ? sales : active;
+  // If the role names ever drift from this list, fall back to everyone
+  // active rather than rendering an empty box. An empty dropdown gives
+  // no clue what is wrong; a list that is too long is at least usable.
+  const chosen = eligible.length > 0 ? eligible : active;
 
   const options = chosen.map((p) => ({
     id: p.id,
