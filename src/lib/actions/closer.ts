@@ -36,18 +36,41 @@ export async function getLeadCloserContext(leadId: string): Promise<CloserContex
 
   const { data: people } = await supabase
     .from("profiles")
-    .select("id, name, email")
+    .select("id, name, email, role, status")
     .eq("company_id", profile.company_id)
     .order("name")
-    .returns<{ id: string; name: string | null; email: string | null }[]>();
+    .returns<
+      {
+        id: string;
+        name: string | null;
+        email: string | null;
+        role: string | null;
+        status: string | null;
+      }[]
+    >();
 
-  // Everyone in the company, not a filter on role. A dropdown that is
-  // mistakenly empty is unusable and gives no clue why; one that is
-  // longer than it needs to be is merely untidy. Where the role names
-  // are known for certain this can be narrowed.
-  const options = (people ?? [])
-    .filter((p) => p.id !== lead.assigned_to)
-    .map((p) => ({ id: p.id, name: p.name || p.email || "Unknown" }));
+  // Salespeople only. A closer sits the appointment and writes the
+  // estimate, which is the sales job -- and the list is a list of people
+  // about to be given a share of somebody's commission, so it should not
+  // offer the bookkeeper.
+  //
+  // Active only, matching every other assignment dropdown: somebody who
+  // has left should not be handed a new job.
+  const active = (people ?? []).filter(
+    (p) => p.status === "Active" && p.id !== lead.assigned_to
+  );
+  const sales = active.filter((p) => p.role === "Sales");
+
+  // If nobody carries the Sales role, fall back to everyone active
+  // rather than rendering an empty box. An empty dropdown gives no clue
+  // what is wrong, and the honest failure here is a list that is too
+  // long, not one that cannot be used at all.
+  const chosen = sales.length > 0 ? sales : active;
+
+  const options = chosen.map((p) => ({
+    id: p.id,
+    name: p.name || p.email || "Unknown",
+  }));
 
   // Matches the rule enforced in setLeadCloser. Sent to the client only
   // so the control can be disabled rather than failing on click -- the
