@@ -2306,7 +2306,9 @@ export type ProjectRollup = {
   soldCents: number;
   /** Money received and settled. Pending ACH has not arrived. */
   collectedCents: number;
-  /** Billed but not yet collected. */
+  /** Billed and still unpaid, phase by phase. A payment only settles the
+   *  phase it was filed against -- a deposit does not quietly pay down an
+   *  invoice it was never for. */
   receivableCents: number;
   costCents: number;
   /** Collected less spent. The figure that says whether a job is bleeding. */
@@ -2318,12 +2320,48 @@ export type ProjectRollup = {
   collectedPct: number | null;
 };
 
+/**
+ * What a project's billed phases are still waiting on.
+ *
+ * Phase by phase, exactly the arithmetic the Money to Collect page runs:
+ * a billed phase's remainder is its amount less the settled payments
+ * FILED TO THAT PHASE. The rollup used to say billed − collected, which
+ * let any money at all pay down any invoice -- a $1,000 deposit landed
+ * and a $4,500 rough-in invoice read as $3,500 owed, while Collect
+ * correctly still showed $4,500. Deposits carry no phase id on purpose,
+ * so under this rule they never touch an invoice.
+ */
+export function phaseReceivableCents(
+  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at">[],
+  payments: Pick<PortalPayment, "estimate_payment_id" | "status" | "amount_cents">[]
+): number {
+  const paidByPhase = new Map<string, number>();
+  for (const p of payments) {
+    if (!p.estimate_payment_id || p.status !== "succeeded") continue;
+    paidByPhase.set(
+      p.estimate_payment_id,
+      (paidByPhase.get(p.estimate_payment_id) ?? 0) + (p.amount_cents || 0)
+    );
+  }
+  let owed = 0;
+  for (const ph of phases) {
+    if (!ph.requested_at) continue;
+    // Per phase, clamped per phase: an overpaid invoice does not lend
+    // its surplus to a different unpaid one, same as Collect.
+    owed += Math.max(0, (ph.amount_cents || 0) - (paidByPhase.get(ph.id) ?? 0));
+  }
+  return owed;
+}
+
 export function computeProjectRollup(input: {
   contractTotalCents: number;
   signedChangeOrderCents: number;
   /** Settled payments against the contract and its change orders. */
   payments: Pick<PortalPayment, "status" | "amount_cents">[];
-  billedCents: number;
+  /** Billed and unpaid, from phaseReceivableCents -- computed there, not
+   *  here, because it needs the phase-by-phase payment filing that this
+   *  function's flat inputs cannot see. */
+  receivableCents: number;
   /** Costs filed to a phase of this contract or its change orders. */
   filedCostCents: number;
   /** Costs on the lead that no phase claims. */
@@ -2339,7 +2377,7 @@ export function computeProjectRollup(input: {
   return {
     soldCents,
     collectedCents,
-    receivableCents: Math.max(0, input.billedCents - collectedCents),
+    receivableCents: Math.max(0, input.receivableCents),
     costCents,
     netCashCents: collectedCents - costCents,
     unattributedCostCents: unattributed,

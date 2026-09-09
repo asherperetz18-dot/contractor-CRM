@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import {
   canViewEstimates,
   computeProjectRollup,
+  phaseReceivableCents,
   billRemainingCents,
   moneyCents,
   paidTotalCents,
@@ -249,7 +250,7 @@ export default async function ProjectReportPage({
     contractTotalCents: contract.total_cents,
     signedChangeOrderCents: signedChangeOrders.reduce((s, e) => s + e.total_cents, 0),
     payments: paid,
-    billedCents: phases.filter((p) => p.requested_at).reduce((s, p) => s + p.amount_cents, 0),
+    receivableCents: phaseReceivableCents(phases, paid),
     filedCostCents: filedExpenses.reduce((s, e) => s + e.amount_cents, 0),
     unfiledCostCents: unfiledExpenses.reduce((s, e) => s + e.amount_cents, 0),
     ownsUnfiledCosts: soleContract,
