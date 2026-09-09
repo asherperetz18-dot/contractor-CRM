@@ -3,7 +3,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import { selectAll } from "@/lib/data/select-all";
 import { canViewEstimates, type PipelineStageRow } from "@/lib/data/types";
 import {
   buildSearchGroups,
@@ -12,83 +11,75 @@ import {
   type SearchableEstimate,
   type SearchableEvent,
   type SearchableLead,
+  type SearchableNote,
 } from "@/lib/data/global-search";
 
 /**
  * The topbar's "Search for Anything". One query, matched against every
  * kind of record the person is allowed to see -- contacts, estimates and
- * contracts, appointments, vendor bills -- returned in labelled groups.
+ * contracts, appointments, notes, vendor bills -- returned in labelled
+ * groups.
+ *
+ * The matching happens inside Postgres (the global_search function,
+ * migration 0140): one round trip in, only matching rows out. It used to
+ * happen here instead, by downloading EVERY row of every searched table
+ * in 1000-row pages -- 6,500+ contacts alone -- which made each search
+ * take seconds.
  *
  * Access mirrors the pages the hits link to: estimates only for people
  * canViewEstimates lets in, bills only for canViewFinancials -- a search
  * result naming a contract to someone barred from the estimates page
- * would itself be the leak. Matching and hit shaping live in
- * lib/data/global-search so the rules are pinned by tests.
+ * would itself be the leak. The SQL function is SECURITY INVOKER, so the
+ * caller's own RLS applies to every table it reads as a backstop. Hit
+ * shaping and the final matching rules live in lib/data/global-search so
+ * they stay pinned by tests.
  */
+
+type GlobalSearchPayload = {
+  leads: SearchableLead[];
+  context_leads: SearchableLead[];
+  estimates: SearchableEstimate[];
+  events: SearchableEvent[];
+  bills: SearchableBill[];
+  notes: SearchableNote[];
+  stages: Pick<PipelineStageRow, "name" | "color">[];
+};
+
 export async function searchEverything(query: string): Promise<GlobalSearchGroup[]> {
   const q = query.trim();
   if (q.length < 2) return [];
 
   const profile = await getCurrentProfile();
   if (!profile) return [];
-  const companyId = profile.company_id;
 
   const supabase = await createClient();
+  const { data, error } = await supabase.rpc("global_search", {
+    p_company: profile.company_id,
+    p_query: q,
+    p_include_docs: canViewEstimates(profile),
+    p_include_bills: canViewFinancials(profile),
+  });
+  if (error || !data) {
+    console.error("global_search failed", error);
+    return [];
+  }
+  const found = data as GlobalSearchPayload;
 
-  const showDocs = canViewEstimates(profile);
-  const showBills = canViewFinancials(profile);
-
-  // Paged. A plain select stops at PostgREST's 1000-row ceiling with no
-  // error, so search was reading the 1000 newest contacts and quietly
-  // ignoring the other 506 -- a third of the database that could not be
-  // found by name, phone or address no matter what you typed.
-  const [leads, { data: stages }, estimates, events, bills] = await Promise.all([
-    selectAll<SearchableLead>((from, to) =>
-      supabase
-        .from("leads")
-        .select(
-          "id, contact_type, company_name, first_name, last_name, phone, email, address, stage"
-        )
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .range(from, to)
-    ),
-    supabase.from("pipeline_stages").select("name, color").eq("company_id", companyId),
-    showDocs
-      ? selectAll<SearchableEstimate>((from, to) =>
-          supabase
-            .from("estimates")
-            .select("id, lead_id, doc_number, title, status, kind, job_address, total_cents")
-            .eq("company_id", companyId)
-            .order("created_at", { ascending: false })
-            .range(from, to)
-        )
-      : Promise.resolve([]),
-    selectAll<SearchableEvent>((from, to) =>
-      supabase
-        .from("events")
-        .select("id, title, date, time, event_type, status, lead_id, notes")
-        .eq("company_id", companyId)
-        .order("date", { ascending: false })
-        .range(from, to)
-    ),
-    showBills
-      ? selectAll<SearchableBill>((from, to) =>
-          supabase
-            .from("vendor_bills")
-            .select("id, vendor_name, reference, amount_cents, due_date, notes, voided_at")
-            .eq("company_id", companyId)
-            .order("created_at", { ascending: false })
-            .range(from, to)
-        )
-      : Promise.resolve([]),
-  ]);
+  // context_leads are the clients of matched documents/appointments/
+  // notes, fetched so those hits can show the client's name even when
+  // the lead itself was not a contact match. Matched leads first, so
+  // contact results keep their newest-first order.
+  const leadById = new Map(found.leads.map((l) => [l.id, l] as const));
+  for (const l of found.context_leads) {
+    if (!leadById.has(l.id)) leadById.set(l.id, l);
+  }
 
   return buildSearchGroups(q, {
-    leads,
-    stages: (stages as Pick<PipelineStageRow, "name" | "color">[]) ?? [],
-    estimates,
-    events,
-    bills,
+    leads: [...leadById.values()],
+    stages: found.stages,
+    estimates: found.estimates,
+    events: found.events,
+    bills: found.bills,
+    notes: found.notes,
   });
 }
