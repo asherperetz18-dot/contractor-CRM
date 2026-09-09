@@ -120,7 +120,11 @@ export function buildSearchGroups(
 
   const contactHits: GlobalHit[] = input.leads
     .filter((l) => {
-      const textMatch = `${leadDisplayName(l)} ${l.phone ?? ""} ${l.address ?? ""} ${l.email ?? ""}`
+      // Joined like SQL's concat_ws: empty fields dropped, single spaces,
+      // so a query spanning two fields matches here iff it matched there.
+      const textMatch = [leadDisplayName(l), l.phone, l.address, l.email]
+        .filter(Boolean)
+        .join(" ")
         .toLowerCase()
         .includes(q);
       const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
@@ -141,7 +145,9 @@ export function buildSearchGroups(
   const docHits: GlobalHit[] = input.estimates
     .filter((e) => {
       const client = e.lead_id ? leadById.get(e.lead_id) : undefined;
-      return `${e.doc_number} ${e.title ?? ""} ${e.job_address ?? ""} ${client ? leadDisplayName(client) : ""}`
+      return [e.doc_number, e.title, e.job_address, client ? leadDisplayName(client) : null]
+        .filter(Boolean)
+        .join(" ")
         .toLowerCase()
         .includes(q);
     })
@@ -165,7 +171,9 @@ export function buildSearchGroups(
   const eventHits: GlobalHit[] = input.events
     .filter((ev) => {
       const client = ev.lead_id ? leadById.get(ev.lead_id) : undefined;
-      return `${ev.title ?? ""} ${ev.event_type} ${ev.notes ?? ""} ${client ? leadDisplayName(client) : ""}`
+      return [ev.title, ev.event_type, ev.notes, client ? leadDisplayName(client) : null]
+        .filter(Boolean)
+        .join(" ")
         .toLowerCase()
         .includes(q);
     })
@@ -206,7 +214,7 @@ export function buildSearchGroups(
 
   const billHits: GlobalHit[] = input.bills
     .filter((b) =>
-      `${b.vendor_name ?? ""} ${b.reference ?? ""} ${b.notes ?? ""}`.toLowerCase().includes(q)
+      [b.vendor_name, b.reference, b.notes].filter(Boolean).join(" ").toLowerCase().includes(q)
     )
     .slice(0, PER_GROUP)
     .map((b) => ({

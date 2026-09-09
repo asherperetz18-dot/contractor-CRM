@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { selectAll } from "@/lib/data/select-all";
 import {
   canViewEstimates,
   computeProjectRollup,
@@ -176,7 +177,7 @@ export default async function ProjectReportPage({
     { data: paidRaw },
     { data: expensesRaw },
     { data: billsRaw },
-    { data: billPaymentsRaw },
+    billPaymentsRaw,
     { data: repProfile },
   ] = await Promise.all([
     supabase
@@ -197,10 +198,15 @@ export default async function ProjectReportPage({
       .eq("company_id", companyId)
       .eq("lead_id", contract.lead_id)
       .is("voided_at", null),
-    supabase
-      .from("vendor_bill_payments")
-      .select("bill_id, amount_cents")
-      .eq("company_id", companyId),
+    // Company-wide, so it must page: a bare select silently stops at
+    // 1000 rows and the report would overstate what's owed to vendors.
+    selectAll<{ bill_id: string; amount_cents: number }>((from, to) =>
+      supabase
+        .from("vendor_bill_payments")
+        .select("bill_id, amount_cents")
+        .eq("company_id", companyId)
+        .range(from, to)
+    ),
     lead?.assigned_to
       ? supabase.from("profiles").select("name").eq("id", lead.assigned_to).maybeSingle()
       : Promise.resolve({ data: null }),
@@ -263,7 +269,7 @@ export default async function ProjectReportPage({
   );
 
   const paymentsByBill = new Map<string, { amount_cents: number }[]>();
-  for (const p of (billPaymentsRaw as { bill_id: string; amount_cents: number }[] | null) ?? []) {
+  for (const p of billPaymentsRaw) {
     const list = paymentsByBill.get(p.bill_id) ?? [];
     list.push(p);
     paymentsByBill.set(p.bill_id, list);

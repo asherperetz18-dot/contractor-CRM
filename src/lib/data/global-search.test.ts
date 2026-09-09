@@ -195,3 +195,11 @@ test("a note whose lead is not visible is dropped rather than unlinkable", () =>
   const groups = run("tile delivery", { leads: [] });
   assert.equal(group(groups, "Notes"), undefined);
 });
+
+test("a search spanning two fields still matches when a field between them is empty", () => {
+  // SQL builds its haystack with concat_ws, which skips NULL fields; the
+  // re-filter here must join the same way, or a query that straddles two
+  // fields ("ibrahim 5420") dies on the double space a null phone leaves.
+  const groups = run("ibrahim 5420", { leads: [lead({ phone: null })] });
+  assert.equal(group(groups, "Contacts")?.hits[0].name, "Nuha Ibrahim");
+});
