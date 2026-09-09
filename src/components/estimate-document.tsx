@@ -9,6 +9,7 @@ import {
   attachmentIsImage,
   signatureProgress,
   isPricelessKind,
+  itemInTotals,
   photosByItem,
   type Estimate,
   type EstimateItem,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/data/types";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 import { signatureEvidenceLine } from "@/lib/portal/signature-evidence";
+import { OptionalItemCheckbox } from "@/components/optional-item-checkbox";
 
 export type DocumentCompany = {
   name: string | null;
@@ -166,6 +168,7 @@ export function EstimateDocument({
   customer,
   team,
   parent,
+  optionalsInteractive = false,
 }: {
   estimate: Estimate;
   items: EstimateItem[];
@@ -182,6 +185,9 @@ export function EstimateDocument({
   team?: DocumentTeam | null;
   /** The contract this amends, when the document is a change order. */
   parent?: { doc_number: string; total_cents: number; signed_at: string | null } | null;
+  /** True only in the portal, on a document the customer can still act
+   *  on. Everywhere else the optional tick boxes render read-only. */
+  optionalsInteractive?: boolean;
 }) {
   const sig = signatureProgress(signers);
   const isChangeOrder = estimate.kind === "change_order";
@@ -214,7 +220,7 @@ export function EstimateDocument({
   };
   const sectionTotal = (groupId: string) =>
     items
-      .filter((i) => i.group_id === groupId)
+      .filter((i) => i.group_id === groupId && itemInTotals(i))
       .reduce((sum, i) => sum + (i.line_total_cents || 0), 0);
 
   const byItem = photosByItem(photos);
@@ -371,9 +377,19 @@ export function EstimateDocument({
                     </td>
                   </tr>
                 )}
-                <tr>
+                {/* An un-ticked optional line stays visible but dimmed:
+                    the offer belongs on the page, the money does not. */}
+                <tr className={item.is_optional && !itemInTotals(item) ? "estdoc-optional-off" : undefined}>
                   <td>
                     <div className="estdoc-strong">{item.name}</div>
+                    {item.is_optional && (
+                      <OptionalItemCheckbox
+                        estimateId={estimate.id}
+                        itemId={item.id}
+                        selected={!!item.optional_selected}
+                        interactive={optionalsInteractive}
+                      />
+                    )}
                     {item.description && <div className="estdoc-muted">{item.description}</div>}
                     {included.length > 0 && (
                       <div className="estdoc-includes">

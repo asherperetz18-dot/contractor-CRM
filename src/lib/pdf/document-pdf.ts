@@ -353,8 +353,17 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
         showMeasures && measured
           ? `  (${g.parent.quantity} ${g.parent.unit ?? ""} @ ${moneyCents(g.parent.unit_price_cents)})`
           : "";
+      // Said in words rather than styling: the PDF is the record copy,
+      // and a reader adding the amount column by hand must see why an
+      // un-ticked option is not in the subtotal below. Plain hyphens --
+      // WinAnsi has no dashes.
+      const optionalTag = g.parent.is_optional
+        ? g.parent.optional_selected
+          ? "  [Optional - added]"
+          : "  [Optional - not included]"
+        : "";
       w.row(
-        g.parent.name + qtyLabel,
+        g.parent.name + qtyLabel + optionalTag,
         g.parent.line_total_cents ? moneyCents(g.parent.line_total_cents) : "",
         { font: w.bold, size: 10 }
       );
