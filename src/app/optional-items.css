@@ -1,0 +1,61 @@
+/* Optional add-on lines, on the customer's document and in the builder.
+   Its own sheet, like mobile.css: globals.css is large enough that every
+   sync of it risks clobbering someone else's edit, and these rules are
+   one self-contained feature. Loaded after globals.css from layout.tsx
+   so it wins ties on specificity. */
+
+/* The offer stays on the page at full detail; only the money treatment
+   says whether it is in the total. */
+.estdoc-optional {
+  margin: 4px 0 2px;
+}
+.estdoc-optional-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.estdoc-optional-box input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #2f855a;
+  cursor: pointer;
+}
+.estdoc-optional-box input[type="checkbox"]:disabled {
+  cursor: default;
+}
+.estdoc-optional-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8a6400;
+  background: #fdf3d8;
+  border: 1px solid #e8d9a8;
+  border-radius: 4px;
+  padding: 0 5px;
+}
+.estdoc-optional-error {
+  font-size: 12px;
+  color: #b03030;
+  margin-top: 2px;
+}
+/* Un-ticked option: dimmed, not hidden -- the customer is being asked. */
+.estdoc-optional-off td {
+  opacity: 0.62;
+}
+
+/* The builder's own toggle, under the scope box on each line. */
+.est-optional-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.est-optional-toggle input[type="checkbox"] {
+  accent-color: #2f855a;
+}
