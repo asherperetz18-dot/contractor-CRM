@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { centsFromInput, moneyCents, vendorLabel, type Vendor } from "@/lib/data/types";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { useFileDrop } from "@/components/uploads/file-drop";
 import "@/components/ui/receipt-thumb.css";
 
 export type BillJobOption = { leadId: string; label: string };
@@ -110,6 +111,10 @@ export function AddBillModal({
   const [dueDate, setDueDate] = useState("");
   const [paid, setPaid] = useState(canBills ? (defaultPaid ?? true) : true);
   const [file, setFile] = useState<File | null>(null);
+  // The emailed PDF or receipt photo can be dragged straight onto the row.
+  const { dragOver: receiptDragOver, dropProps: receiptDropProps } = useFileDrop((files) =>
+    setFile(files[0])
+  );
   const fileInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [savedNote, setSavedNote] = useState("");
@@ -370,7 +375,10 @@ export function AddBillModal({
           )}
         </div>
 
-        <div className="bill-file-row">
+        <div
+          className={`bill-file-row panel-drop${receiptDragOver ? " drag-over" : ""}`}
+          {...receiptDropProps}
+        >
           {/* No capture attribute: phones that honor it jump straight
               into the camera with no way back to the file picker, and
               the vendor's emailed PDF is half the point. */}
@@ -382,7 +390,12 @@ export function AddBillModal({
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <button type="button" className="btn-ghost small" onClick={() => fileInput.current?.click()}>
-            📷 {file ? "Change the receipt" : "Snap or attach the receipt"}
+            📷{" "}
+            {receiptDragOver
+              ? "Drop the receipt"
+              : file
+                ? "Change the receipt"
+                : "Snap, attach or drop the receipt"}
           </button>
           {file && filePreview && (
             // eslint-disable-next-line @next/next/no-img-element

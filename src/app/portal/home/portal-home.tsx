@@ -1,7 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { downscaleImage } from "@/lib/images/downscale";
+import {
+  UploadQueueStrip,
+  useFileDrop,
+  useUploadQueue,
+} from "@/components/uploads/file-drop";
 import {
   formatTimeRange,
   leadDisplayName,
@@ -155,7 +161,6 @@ export function PortalHome({
   const [rescheduleNote, setRescheduleNote] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [sending, setSending] = useState(false);
-  const [uploading, setUploading] = useState(false);
   // Thumbnails that failed to load, so each one falls back to an icon
   // once rather than retrying on every render.
   const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set());
@@ -215,21 +220,31 @@ export function PortalHome({
     router.refresh();
   }
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    setError("");
+  const uploadOne = useCallback(async (original: File) => {
+    // Shrunk in the browser first: this goes through a server action,
+    // which Vercel caps at ~4.5MB — a raw phone photo would 413.
+    const file = await downscaleImage(original);
     const fd = new FormData();
     fd.append("file", file);
     const result = await portalUploadFile(fd);
-    setUploading(false);
-    e.target.value = "";
-    if (result?.error) {
-      setError(result.error);
-      return;
-    }
+    return result?.error ?? null;
+  }, []);
+  const { queue, pending: uploading, errors, progressLabel, start } = useUploadQueue(uploadOne);
+  const { dragOver, dropProps } = useFileDrop(
+    (files) => void startUpload(files),
+    uploading
+  );
+
+  async function startUpload(files: File[]) {
+    setError("");
+    await start(files);
     router.refresh();
+  }
+
+  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length) void startUpload(files);
   }
 
   return (
@@ -488,15 +503,31 @@ export function PortalHome({
         {tab === "Photos" && (
           <section className="portal-card">
             <h2 className="portal-card-title">Photos &amp; documents</h2>
-            <label className="portal-upload">
+            <label
+              className={`portal-upload${dragOver ? " drag-over" : ""}`}
+              {...dropProps}
+            >
               <input
                 type="file"
                 accept="image/*,application/pdf"
+                multiple
                 onChange={handleUpload}
                 disabled={uploading}
               />
-              <span>{uploading ? "Uploading…" : "＋ Add a photo or document"}</span>
+              <span>
+                {uploading
+                  ? (progressLabel ?? "Uploading…")
+                  : dragOver
+                    ? "Drop to upload"
+                    : "＋ Add photos or documents — or drag & drop"}
+              </span>
+              <UploadQueueStrip queue={queue} />
             </label>
+            {errors.map((msg) => (
+              <p key={msg} className="error-note">
+                {msg}
+              </p>
+            ))}
 
             {files.length === 0 ? (
               <p className="portal-empty">Nothing shared yet.</p>

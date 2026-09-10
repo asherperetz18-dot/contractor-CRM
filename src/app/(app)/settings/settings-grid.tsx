@@ -10,6 +10,7 @@ import {
   type SettingsCardDef,
 } from "@/lib/data/settings-catalog";
 import { removeLogo, uploadLogo } from "@/lib/actions/settings";
+import { useFileDrop } from "@/components/uploads/file-drop";
 
 export function SettingsGrid({
   logoUrl,
@@ -48,8 +49,7 @@ export function SettingsGrid({
     setActiveCard(card);
   }
 
-  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function pickLogo(file: File | undefined) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setLogoError("Please choose an image file.");
@@ -63,6 +63,16 @@ export function SettingsGrid({
     setLogoFile(file);
     setLogoPreview(URL.createObjectURL(file));
   }
+
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    pickLogo(e.target.files?.[0]);
+  }
+
+  // The logo can be dragged straight onto the preview box.
+  const { dragOver: logoDragOver, dropProps: logoDropProps } = useFileDrop(
+    (files) => pickLogo(files[0]),
+    pending
+  );
 
   async function saveLogo() {
     if (!logoFile) return;
@@ -181,12 +191,17 @@ export function SettingsGrid({
             Upload your company logo — it&apos;ll appear in the sidebar across the
             app.
           </p>
-          <div className="logo-preview-wrap">
+          <div
+            className={`logo-preview-wrap panel-drop${logoDragOver ? " drag-over" : ""}`}
+            {...logoDropProps}
+          >
             {logoPreview ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoPreview} alt="Company logo preview" className="logo-preview-img" />
             ) : (
-              <div className="logo-preview-empty">No logo uploaded</div>
+              <div className="logo-preview-empty">
+                {logoDragOver ? "Drop the logo here" : "No logo uploaded — drag & drop one here"}
+              </div>
             )}
           </div>
           <input

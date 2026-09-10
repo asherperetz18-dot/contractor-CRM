@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { downscaleImage } from "@/lib/images/downscale";
-import { createLeadFileUploadUrl, recordLeadFile } from "@/lib/actions/lead-files";
-import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { attachmentIsImage } from "@/lib/data/types";
+import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
+import {
+  UploadQueueStrip,
+  useFileDrop,
+  useUploadQueue,
+} from "@/components/uploads/file-drop";
 import {
   attachEstimatePhoto,
   detachEstimatePhoto,
@@ -77,6 +80,37 @@ export function PhotosPanel({
   const [reloadKey, setReloadKey] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  /**
+   * Uploads to the job, then attaches. Two steps on purpose: a photo
+   * taken for a proposal is a job photo, and burying it inside one
+   * document would hide it from the contact it belongs to. The freshly
+   * attached set is refetched per file, so a batch attaches each photo
+   * to this document exactly once.
+   */
+  const uploadOne = useCallback(
+    async (chosen: File) => {
+      const up = await uploadLeadFileDirect(leadId, chosen);
+      if (up.error) return up.error;
+      const [res, lib] = await Promise.all([getEstimatePhotos(estimateId), getLeadPhotos(leadId)]);
+      const attached = new Set((res.photos ?? []).map((p) => p.lead_file_id));
+      const newest = (lib.photos ?? []).find((p) => !attached.has(p.id));
+      if (!newest) return "uploaded, but it couldn't be attached — try picking it";
+      const att = await attachEstimatePhoto({ estimateId, leadFileId: newest.id });
+      if (att.error) return att.error;
+      setReloadKey((k) => k + 1);
+      return null;
+    },
+    [leadId, estimateId]
+  );
+  const {
+    queue,
+    pending: uploading,
+    errors: uploadErrors,
+    progressLabel,
+    start,
+  } = useUploadQueue(uploadOne);
+  const { dragOver, dropProps } = useFileDrop((f) => void start(f), locked || uploading);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -108,63 +142,10 @@ export function PhotosPanel({
     });
   }
 
-  /**
-   * Uploads to the job, then attaches. Two steps on purpose: a photo
-   * taken for a proposal is a job photo, and burying it inside one
-   * document would hide it from the contact it belongs to.
-   */
-  function uploadAndAttach(chosen: File) {
-    setError("");
-    startTransition(async () => {
-      // Shrunk in the browser first. A phone photo is 3-12MB, and ten of
-      // them is a proposal a homeowner on mobile data closes before it
-      // loads. A PDF is passed through untouched -- downscaleImage only
-      // touches jpeg/png/webp and returns everything else as it came.
-      const file = await downscaleImage(chosen);
-
-      // Straight to storage rather than through a server action. A set of
-      // plans is routinely bigger than the ~4.5MB body Vercel will accept,
-      // and that limit rejects the request before any of our own checks
-      // get a say.
-      const signed = await createLeadFileUploadUrl(leadId, file.name, file.size);
-      if (signed.error || !signed.path || !signed.token) {
-        return setError(signed.error ?? "Could not start that upload.");
-      }
-      const storage = createBrowserClient();
-      const { error: uploadError } = await storage.storage
-        .from("lead-files")
-        .uploadToSignedUrl(signed.path, signed.token, file, {
-          contentType: file.type || undefined,
-        });
-      if (uploadError) {
-        return setError(
-          /exceeded the maximum allowed size/i.test(uploadError.message)
-            ? "That file is larger than the storage limit on this project."
-            : uploadError.message
-        );
-      }
-      const up = await recordLeadFile(
-        leadId,
-        signed.path,
-        file.name,
-        file.size,
-        file.type || null
-      );
-      if (up.error) return setError(up.error);
-
-      const lib = await getLeadPhotos(leadId);
-      const newest = (lib.photos ?? []).find((p) => !attachedIds.has(p.id));
-      if (!newest) return setError("Uploaded, but it couldn't be attached — try picking it.");
-      const res = await attachEstimatePhoto({ estimateId, leadFileId: newest.id });
-      if (res.error) return setError(res.error);
-      setReloadKey((k) => k + 1);
-    });
-  }
-
   const noun = kind === "change_order" ? "change order" : "estimate";
 
   return (
-    <section className="est-pay">
+    <section className={`est-pay panel-drop${dragOver ? " drag-over" : ""}`} {...dropProps}>
       <div className="est-pay-head">
         <div>
           <h2 className="est-pay-title">Photos &amp; documents</h2>
@@ -188,24 +169,39 @@ export function PhotosPanel({
             <button
               className="btn-ghost"
               onClick={() => fileInput.current?.click()}
-              disabled={pending}
+              disabled={pending || uploading}
             >
-              {pending ? "Working…" : "Upload file"}
+              {uploading
+                ? (progressLabel ?? "Uploading…")
+                : pending
+                  ? "Working…"
+                  : "Upload files — or drag & drop"}
             </button>
             <input
               ref={fileInput}
               type="file"
               accept="image/*,application/pdf,.pdf"
+              multiple
               hidden
               onChange={(e) => {
-                const f = e.target.files?.[0];
+                const files = Array.from(e.target.files ?? []);
                 e.target.value = "";
-                if (f) uploadAndAttach(f);
+                if (files.length) {
+                  setError("");
+                  void start(files);
+                }
               }}
             />
           </div>
         )}
       </div>
+
+      <UploadQueueStrip queue={queue} />
+      {uploadErrors.map((msg) => (
+        <p key={msg} className="error-note">
+          {msg}
+        </p>
+      ))}
 
       {locked && photos.length > 0 && (
         <p className="hint-note">

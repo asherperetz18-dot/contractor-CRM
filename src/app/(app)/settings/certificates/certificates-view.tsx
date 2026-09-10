@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useFileDrop } from "@/components/uploads/file-drop";
 import {
   deleteCompanyDocument,
   getCompanyDocuments,
@@ -28,6 +29,15 @@ export function CertificatesView() {
   const [pending, startTransition] = useTransition();
   const [reloadKey, setReloadKey] = useState(0);
   const formRef = useRef<HTMLFormElement | null>(null);
+  // The certificate can be dragged onto the form, and a picked image
+  // shows a thumbnail before Upload is pressed.
+  const [file, setFile] = useState<File | null>(null);
+  const { dragOver, dropProps } = useFileDrop((files) => setFile(files[0]), pending);
+  const filePreview = useMemo(
+    () => (file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null),
+    [file]
+  );
+  useEffect(() => () => { if (filePreview) URL.revokeObjectURL(filePreview); }, [filePreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,11 +55,15 @@ export function CertificatesView() {
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    // A dropped file never touches the <input>, so the state copy is
+    // the truth for both paths.
+    if (file) form.set("file", file);
     setError("");
     startTransition(async () => {
       const res = await uploadCompanyDocument(form);
       if (res.error) return setError(res.error);
       formRef.current?.reset();
+      setFile(null);
       setReloadKey((k) => k + 1);
     });
   }
@@ -96,9 +110,29 @@ export function CertificatesView() {
             <span className="field-label">Expires</span>
             <input type="date" name="expires_on" disabled={pending} />
           </label>
-          <label className="field">
-            <span className="field-label">File * (PDF or image, up to 15MB)</span>
-            <input type="file" name="file" accept="application/pdf,image/*" disabled={pending} />
+          <label
+            className={`field panel-drop${dragOver ? " drag-over" : ""}`}
+            {...dropProps}
+          >
+            <span className="field-label">
+              File * (PDF or image, up to 15MB{dragOver ? " — drop it here" : " — or drag & drop"})
+            </span>
+            <input
+              type="file"
+              name="file"
+              accept="application/pdf,image/*"
+              disabled={pending}
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+            {file && (
+              <span className="est-tax-note" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {filePreview && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img className="lead-file-thumb" src={filePreview} alt="Certificate preview" />
+                )}
+                {file.name}
+              </span>
+            )}
           </label>
         </div>
         <label className="est-record-check">
