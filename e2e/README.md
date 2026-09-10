@@ -45,12 +45,20 @@ short of the confirming action — see the comments in
   expected values are in the file itself; see `docs/DECISIONS.md` #011
   for why they're shaped the way they are (staged CSP rollout, narrowed
   HSTS).
-- **`public-smoke.spec.ts`** — browser-based: navigates every page
-  reachable without logging in, asserts zero unexpected console errors
-  and zero CSP violations — except the one documented, expected gap on
-  the two statically-prerendered pages (`/login`, `/forgot-password`),
-  which can't receive a per-request nonce and so report (not block) a
-  `script-src` violation until they're forced dynamic or carved out.
+- **`public-smoke.spec.ts`** — browser-based: navigates every public
+  page, asserts zero unexpected console errors and zero *non*-script-src
+  CSP violations (a real domain/compatibility signal). `script-src-elem`
+  violations are reported, not hard-asserted either way, because — a
+  real finding from running this against production, not the original
+  assumption — **every** public page in this app's actual Vercel
+  production deployment renders with zero `<script>` tags carrying a
+  nonce, not only the two statically-prerendered ones originally
+  documented. Root cause: an upstream, closed-as-not-planned Next.js bug
+  (vercel/next.js#96063) where Turbopack + Vercel's `output: 'standalone'`
+  production packaging drops nonce injection entirely. A local
+  `next start` doesn't hit this (dynamic pages get their nonce
+  correctly there), which is why it wasn't caught until run against real
+  production. Full record: `docs/DECISIONS.md` #011.
 - **`authenticated-smoke.spec.ts`** — everything that needs a real
   logged-in session: dashboard/nav, the reply inbox (Supabase realtime),
   CSV import and file-upload UI reachability, a Drive-backed lead photo,
