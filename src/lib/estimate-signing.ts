@@ -138,6 +138,43 @@ export async function finalizeSignedEstimate(
     revalidatePath(`/estimates/${estimate.parent_estimate_id}`);
     revalidatePath("/payments");
   } else {
+    // A revision replaces the contract it supersedes at this moment --
+    // not when it was drafted, because until the customer signed the new
+    // version the old one was still the agreement. Voided rather than
+    // deleted, same as a manual cancellation: the version everyone signed
+    // stays readable, marked, with the reason pointing at what replaced
+    // it -- and it stops counting towards any total, so the job is never
+    // worth v4 plus v5 at once.
+    const { data: rev } = await admin
+      .from("estimates")
+      .select("supersedes_id, version")
+      .eq("id", estimate.id)
+      .maybeSingle<{ supersedes_id: string | null; version: number }>();
+    if (rev?.supersedes_id) {
+      const { data: old } = await admin
+        .from("estimates")
+        .update({
+          status: "Void" as EstimateStatus,
+          voided_at: now,
+          void_reason: `Superseded by ${estimate.doc_number} v${rev.version}`,
+        })
+        .eq("id", rev.supersedes_id)
+        .neq("status", "Void")
+        .select("id");
+      if (old?.length) {
+        // The same rule as a manual void: phases never billed stop being
+        // receivables; anything already requested or paid stays on the
+        // old version's record, where the money actually moved.
+        await admin
+          .from("estimate_payments")
+          .update({ cancelled_at: now })
+          .eq("estimate_id", rev.supersedes_id)
+          .is("requested_at", null)
+          .is("cancelled_at", null);
+        revalidatePath(`/estimates/${rev.supersedes_id}`);
+      }
+    }
+
     // Won work outranks a merely sent estimate as the lead's value.
     // Not for a change order: the lead's value is what the job sold
     // for, and overwriting it with the extra alone would report a
