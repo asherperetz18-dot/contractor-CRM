@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, type TimeFormat } from "@/lib/data/types";
+import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
 
@@ -26,6 +27,8 @@ export type CompanyProfileInput = {
   license_number: string;
   license_state: string;
   license_type: string;
+  /** Company tax id (EIN or similar); free text, blank clears it. */
+  tax_id: string;
   /** Basis points (950 = 9.50%); the form converts from the percent typed. */
   tax_rate_bp: number;
   timezone: string;
@@ -64,6 +67,7 @@ export async function saveCompanyProfile(input: CompanyProfileInput) {
       license_number: input.license_number || null,
       license_state: input.license_state || null,
       license_type: input.license_type || null,
+      tax_id: normalizeTaxId(input.tax_id),
       tax_rate_bp: taxRateBp,
       timezone: input.timezone,
       time_format: input.time_format,

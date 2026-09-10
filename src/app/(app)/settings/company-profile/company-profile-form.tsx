@@ -56,6 +56,7 @@ function toInput(p: CompanyProfile | null): CompanyProfileInput {
     license_number: p?.license_number ?? "",
     license_state: p?.license_state ?? "",
     license_type: p?.license_type ?? "",
+    tax_id: p?.tax_id ?? "",
     // Replaced with the typed rate on save; see taxRateInput below.
     tax_rate_bp: 0,
     timezone: p?.timezone ?? "Pacific",
@@ -277,6 +278,16 @@ export function CompanyProfileForm({
           />
         </Field>
         <p className="cp-hint">Type of license held by the company</p>
+        <Field label="Company Tax ID #">
+          <input
+            value={form.tax_id}
+            onChange={(e) => set("tax_id", e.target.value)}
+            placeholder="12-3456789"
+          />
+        </Field>
+        <p className="cp-hint">
+          Tax identification number (EIN or similar). Any format works.
+        </p>
 
         <div className="cp-divider" />
         <div className="cp-tz-head">

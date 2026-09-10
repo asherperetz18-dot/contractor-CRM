@@ -705,6 +705,8 @@ export type CompanyProfile = {
   license_number: string | null;
   license_state: string | null;
   license_type: string | null;
+  /** Company tax id (EIN or similar), free text — formats vary. */
+  tax_id: string | null;
   timezone: string;
   logo_url: string | null;
   call_script: string | null;
