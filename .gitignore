@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# Playwright production-smoke suite (e2e/) output -- generated per run,
+# never a fixture or config file worth committing.
+/test-results/
+/playwright-report/
+/e2e/results.json
+
 # next.js
 /.next/
 /out/
