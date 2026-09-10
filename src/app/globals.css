@@ -5578,14 +5578,31 @@ a.portal-header-stars:hover {
   font-size: 12px;
   color: var(--ink-soft);
 }
-.est-funnel-card:nth-child(2) .est-funnel-value {
+/* The value's color says what the money means, not where the card sits
+   -- the cards are draggable, so nth-child would repaint them by
+   position. Amber is money waiting for a signature (proposals and
+   pending change orders alike), green is signed, red is lost, and grey
+   is cancelled or not-counting. Drafts and Attached stay ink: one is
+   still being written, the other is a mix of every state. */
+.est-funnel-card-sent .est-funnel-value,
+.est-funnel-card-co_pending .est-funnel-value {
   color: #a97a00;
 }
-.est-funnel-card:nth-child(3) .est-funnel-value {
+.est-funnel-card-signed .est-funnel-value {
   color: #1a7f45;
 }
-.est-funnel-card:nth-child(4) .est-funnel-value {
+.est-funnel-card-declined .est-funnel-value {
+  color: var(--danger);
+}
+.est-funnel-card-void .est-funnel-value {
   color: var(--ink-soft);
+}
+.est-funnel-dragging {
+  opacity: 0.45;
+}
+.est-funnel-dragover {
+  border-style: dashed;
+  border-color: var(--safety);
 }
 
 .est-row {
