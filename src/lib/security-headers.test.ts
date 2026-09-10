@@ -82,6 +82,16 @@ test("locks down the directives that never need a runtime allowlist", () => {
   assert.match(csp, /frame-ancestors 'none'/);
 });
 
+test("never includes upgrade-insecure-requests -- meaningless in a Report-Only policy, and Chromium logs a console error for it on every page load", () => {
+  // Regression guard for a real console error found via
+  // e2e/public-smoke.spec.ts against production: "The Content Security
+  // Policy directive 'upgrade-insecure-requests' is ignored when
+  // delivered in a report-only policy." It stays in the *enforcing*
+  // CSP (next.config.ts), where it actually takes effect.
+  const csp = reportOnlyCsp(NONCE);
+  assert.doesNotMatch(csp, /upgrade-insecure-requests/);
+});
+
 test("'unsafe-eval' appears only in development, never in a production policy", () => {
   // NODE_ENV is typed read-only (it's meant to be set once by the
   // runtime, not toggled at test time) -- go through the plain index

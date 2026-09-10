@@ -85,7 +85,14 @@ export function reportOnlyCsp(nonce: string): string {
     `base-uri 'self'`,
     `form-action 'self'`,
     `frame-ancestors 'none'`,
-    `upgrade-insecure-requests`,
+    // upgrade-insecure-requests deliberately left out here: it has no
+    // meaning in a Report-Only policy (there's no "violation" to
+    // report -- a request either gets upgraded or it doesn't), and
+    // Chromium logs a console error on every single page load saying
+    // exactly that ("... is ignored when delivered in a report-only
+    // policy") -- found via this repo's own e2e/public-smoke.spec.ts
+    // console-error capture against real production. It stays in the
+    // *enforcing* CSP (next.config.ts), where it actually takes effect.
   ];
 
   return directives.join("; ");
