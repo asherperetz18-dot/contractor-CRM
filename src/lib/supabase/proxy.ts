@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSigningKeys } from "@/lib/supabase/jwks";
+import { reportOnlyCsp } from "@/lib/security-headers";
 
 // /portal is the customer-facing Client Portal. It runs on its own
 // magic-link session (see lib/portal/session.ts), not Supabase Auth, so it
@@ -20,12 +21,27 @@ const PUBLIC_PATHS = [
 ];
 
 export async function updateSession(request: NextRequest) {
+  // One nonce per request, threaded onto both the outgoing request (so
+  // Next's own SSR picks it up and stamps it onto framework/page
+  // scripts -- see get-script-nonce-from-header.js) and the response
+  // (so the browser actually receives the header). Report-Only for now
+  // -- see src/lib/security-headers.ts for why -- so nothing here can
+  // block a real request; flip to a real `Content-Security-Policy`
+  // header (same value) once that file's rollout checklist is clear.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = reportOnlyCsp(nonce);
+
   // Rebuilt fresh each time (not snapshotted once) so it always reflects
   // request.cookies.set() calls made by the Supabase setAll callback below.
   function buildResponse() {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-pathname", request.nextUrl.pathname);
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    requestHeaders.set("x-nonce", nonce);
+    requestHeaders.set("content-security-policy-report-only", csp);
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    res.headers.set("x-nonce", nonce);
+    res.headers.set("content-security-policy-report-only", csp);
+    return res;
   }
 
   let response = buildResponse();
