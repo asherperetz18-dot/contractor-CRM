@@ -18,7 +18,7 @@ const GROUPS = [
   {
     label: "Estimates & Invoices",
     items: [
-      { label: "New Estimate", href: "/documents?new=1&type=Estimate" },
+      { label: "New Estimate", href: "/estimates?new=1" },
       { label: "New Invoice", href: "/documents?new=1&type=Invoice" },
     ],
   },
