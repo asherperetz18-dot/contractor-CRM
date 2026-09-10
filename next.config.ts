@@ -18,11 +18,31 @@ const SECURITY_HEADERS = [
   // link, or Stripe Checkout's back button) still get the origin, just
   // not the full path/query -- same-origin navigations are unaffected.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // 2 years + preload, matching Vercel's all-HTTPS-already hosting --
-  // this app has never been served over plain HTTP.
+  // Deliberately narrower than the usual "2 years + includeSubDomains +
+  // preload" recipe. This app itself has never been served over plain
+  // HTTP (Vercel), so the bare header is genuinely zero-risk -- but
+  // includeSubDomains and preload are claims about infrastructure this
+  // repo has no visibility into at all: there is no domain or subdomain
+  // configuration committed anywhere (no vercel.json domains, no custom-
+  // domain reference in any doc), so whether every subdomain under the
+  // production apex is HTTPS-only can't be verified from here, and a
+  // wrong "yes" is expensive to undo. includeSubDomains would apply this
+  // policy to every subdomain, breaking any of them served over plain
+  // HTTP or without a valid cert. preload is worse: once a domain is
+  // accepted into Chromium's preload list, every major browser refuses
+  // plain HTTP to it before ever making a request -- permanently, until
+  // the site owner explicitly requests removal and every existing
+  // browser install eventually updates, typically months. Six months
+  // (15552000s) still gives a real HSTS guarantee -- once a browser has
+  // seen this header, it upgrades every following visit to HTTPS for
+  // that period even if a future request somehow arrived over HTTP.
+  // Escalate deliberately, in order, once each step is actually true:
+  // confirm every subdomain in active use is HTTPS-only -> add
+  // includeSubDomains -> run it for a while -> only then consider
+  // submitting to hstspreload.org.
   {
     key: "Strict-Transport-Security",
-    value: "max-age=63072000; includeSubDomains; preload",
+    value: "max-age=15552000",
   },
   // camera/microphone/display-capture stay on (self only): the in-app
   // Voice dialer needs microphone, screen-share needs all three. Every
