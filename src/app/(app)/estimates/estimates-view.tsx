@@ -15,6 +15,7 @@ import {
 } from "@/lib/data/types";
 import { isPendingChangeOrder } from "@/lib/data/pending-change-orders";
 import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funnel-order";
+import { saveFunnelOrder } from "@/lib/actions/funnel-order";
 import { useFunnelOrder } from "./funnel-order-prefs";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { FilterSelect } from "@/components/filter-select";
@@ -108,6 +109,7 @@ export function EstimatesView({
   reps,
   canCreate,
   viewsByEstimate,
+  savedCardOrder,
 }: {
   estimates: Estimate[];
   signers: EstimateSigner[];
@@ -116,6 +118,9 @@ export function EstimatesView({
   canCreate: boolean;
   /** Customer portal opens per document: count and most recent. */
   viewsByEstimate: Record<string, { count: number; last: string }>;
+  /** The card order saved on this person's profile. Null = never
+   *  arranged there; the browser's own saved order applies instead. */
+  savedCardOrder: string[] | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -146,18 +151,29 @@ export function EstimatesView({
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
 
-  // The saved drag order arrives through the store after hydration; the
-  // server renders the default order, since it cannot know what this
-  // browser saved. Merged against this view's own card list on the way
-  // in, so every card renders even if the two lists ever drift.
-  const [cardOrder, setCardOrder] = useFunnelOrder();
-  const displayOrder = mergeSavedOrder(DEFAULT_ORDER, cardOrder);
+  // Two saved orders, account first: the profile's (server-rendered, so
+  // it follows the login to any device) and this browser's localStorage
+  // (arrives through the store after hydration -- also the fallback for
+  // anyone who arranged their cards before the profile column existed).
+  // Merged against this view's own card list on the way in, so every
+  // card renders even if the saved lists ever drift.
+  const [accountOrder, setAccountOrder] = useState<string[] | null>(savedCardOrder);
+  const [browserOrder, setBrowserOrder] = useFunnelOrder();
+  const displayOrder = mergeSavedOrder(DEFAULT_ORDER, accountOrder ?? browserOrder);
   const [draggedCard, setDraggedCard] = useState<Bucket | null>(null);
   const [dragOverCard, setDragOverCard] = useState<Bucket | null>(null);
 
   function dropCard(onto: Bucket) {
     if (!draggedCard) return;
-    setCardOrder(mergeSavedOrder(DEFAULT_ORDER, moveBefore(displayOrder, draggedCard, onto)));
+    const next = mergeSavedOrder(DEFAULT_ORDER, moveBefore(displayOrder, draggedCard, onto));
+    // Applied locally at once, kept in the browser too (instant on the
+    // next load, and still there before migration 0145 has run), and
+    // saved to the profile so every device follows. A failed save is
+    // deliberately quiet: the order on screen is already right, and the
+    // browser copy still holds it.
+    setAccountOrder(next);
+    setBrowserOrder(next);
+    void saveFunnelOrder(next);
   }
 
   // Both filters clear when the card changes. Their options are drawn

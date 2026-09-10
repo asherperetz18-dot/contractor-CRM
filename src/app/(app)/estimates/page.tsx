@@ -83,6 +83,7 @@ export default async function EstimatesPage() {
       reps={reps}
       viewsByEstimate={viewsByEstimate}
       canCreate={canCreateEstimates(profile)}
+      savedCardOrder={profile.estimate_funnel_order ?? null}
     />
   );
 }

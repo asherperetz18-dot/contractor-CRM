@@ -1,0 +1,13 @@
+-- The person's dragged order of the Estimates funnel cards, so the
+-- arrangement follows the login instead of living in one browser's
+-- localStorage.
+--
+-- On profiles rather than company_members: the order is a personal
+-- habit, not a role -- the same hands arrange the same screen whichever
+-- company they are looking at. Written by its owner through the
+-- existing profiles_update_self policy; readable like the rest of
+-- profiles, which costs nothing (it is a list of card names).
+--
+-- Null means "never arranged" -- the app falls back to the browser's
+-- saved order, then the default.
+alter table profiles add column if not exists estimate_funnel_order text[];
