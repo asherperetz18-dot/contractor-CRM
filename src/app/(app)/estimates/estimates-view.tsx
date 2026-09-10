@@ -14,6 +14,8 @@ import {
   type EstimateStatus,
 } from "@/lib/data/types";
 import { isPendingChangeOrder } from "@/lib/data/pending-change-orders";
+import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funnel-order";
+import { useFunnelOrder } from "./funnel-order-prefs";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { FilterSelect } from "@/components/filter-select";
 
@@ -40,7 +42,9 @@ export type EstimateRep = { id: string; name: string | null; email: string | nul
 // twice. Kept visible rather than merely filtered out, because an unsent
 // change order is extra work nobody has agreed to yet, and hiding it is
 // how it gets built anyway.
-type Bucket = "drafts" | "sent" | "signed" | "declined" | "void" | "changes" | "co_pending";
+// Tied to the canonical card list so a card added there cannot be
+// forgotten here, and vice versa -- the compiler objects.
+type Bucket = FunnelCardKey;
 
 const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateStatus[] }[] = [
   { key: "drafts", label: "Drafts", hint: "not sent yet", statuses: ["Draft"] },
@@ -69,6 +73,8 @@ const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateSta
   // statuses, which are listed for the shape of the row.
   { key: "co_pending", label: "Change Orders", hint: "pending", statuses: ["Draft", "Sent", "Viewed"] },
 ];
+
+const DEFAULT_ORDER = BUCKETS.map((b) => b.key);
 
 function initials(name: string) {
   return (
@@ -139,6 +145,20 @@ export function EstimatesView({
   }, [searchParams, router]);
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+
+  // The saved drag order arrives through the store after hydration; the
+  // server renders the default order, since it cannot know what this
+  // browser saved. Merged against this view's own card list on the way
+  // in, so every card renders even if the two lists ever drift.
+  const [cardOrder, setCardOrder] = useFunnelOrder();
+  const displayOrder = mergeSavedOrder(DEFAULT_ORDER, cardOrder);
+  const [draggedCard, setDraggedCard] = useState<Bucket | null>(null);
+  const [dragOverCard, setDragOverCard] = useState<Bucket | null>(null);
+
+  function dropCard(onto: Bucket) {
+    if (!draggedCard) return;
+    setCardOrder(mergeSavedOrder(DEFAULT_ORDER, moveBefore(displayOrder, draggedCard, onto)));
+  }
 
   // Both filters clear when the card changes. Their options are drawn
   // from the current bucket, so a rep carried across to a card they have
@@ -268,21 +288,47 @@ export function EstimatesView({
         )}
       </div>
 
+      {/* Cards in whatever order this browser dragged them into. The
+          value's color travels with the card (a class per key, not
+          nth-child), so Contracts stays green wherever it is parked. */}
       <div className="est-funnel">
-        {counts.map((b) => (
-          <button
-            key={b.key}
-            className={"est-funnel-card" + (bucket === b.key ? " est-funnel-active" : "")}
-            onClick={() => pickBucket(b.key)}
-            aria-pressed={bucket === b.key}
-          >
-            <span className="est-funnel-label">{b.label}</span>
-            <span className="est-funnel-value">{moneyCents(b.totalCents)}</span>
-            <span className="est-funnel-hint">
-              {b.count} {b.hint}
-            </span>
-          </button>
-        ))}
+        {displayOrder
+          .map((k) => counts.find((c) => c.key === k)!)
+          .map((b) => (
+            <button
+              key={b.key}
+              className={
+                `est-funnel-card est-funnel-card-${b.key}` +
+                (bucket === b.key ? " est-funnel-active" : "") +
+                (draggedCard === b.key ? " est-funnel-dragging" : "") +
+                (dragOverCard === b.key && draggedCard !== b.key ? " est-funnel-dragover" : "")
+              }
+              onClick={() => pickBucket(b.key)}
+              aria-pressed={bucket === b.key}
+              draggable
+              title="Drag to reorder"
+              onDragStart={() => setDraggedCard(b.key)}
+              onDragOver={(ev) => {
+                ev.preventDefault();
+                setDragOverCard(b.key);
+              }}
+              onDragLeave={() => setDragOverCard((cur) => (cur === b.key ? null : cur))}
+              onDrop={(ev) => {
+                ev.preventDefault();
+                dropCard(b.key);
+              }}
+              onDragEnd={() => {
+                setDraggedCard(null);
+                setDragOverCard(null);
+              }}
+            >
+              <span className="est-funnel-label">{b.label}</span>
+              <span className="est-funnel-value">{moneyCents(b.totalCents)}</span>
+              <span className="est-funnel-hint">
+                {b.count} {b.hint}
+              </span>
+            </button>
+          ))}
       </div>
 
       {/* Only offered when there is something to choose between. A
