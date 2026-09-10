@@ -3996,6 +3996,31 @@ tr.row-link:hover {
 .upload-queue-state:empty {
   display: none;
 }
+/* A dropzone sharing a row with buttons takes the remaining width. */
+.file-dropzone-grow {
+  flex: 1 1 220px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+/* Any existing element promoted to a drag & drop target: no visual
+   change until a file is over it. */
+.panel-drop.drag-over {
+  outline: 2px dashed var(--blueprint);
+  outline-offset: -2px;
+  background: #eaf1f7;
+  border-radius: 8px;
+}
+/* Small controls (a single button) that accept a dropped file. */
+.drop-target-over {
+  outline: 2px dashed var(--blueprint);
+  outline-offset: 1px;
+  background: #eaf1f7;
+}
+.portal-upload.drag-over {
+  border-color: var(--blueprint, #2d5f8a);
+  background: #eaf1f7;
+  color: var(--blueprint, #2d5f8a);
+}
 
 /* ── Client Portal ─────────────────────────────────────────────────────
    Customer-facing surface (/portal). Deliberately plainer and roomier

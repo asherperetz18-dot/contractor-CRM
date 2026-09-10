@@ -35,6 +35,7 @@ import {
 import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { useFileDrop } from "@/components/uploads/file-drop";
 
 type Tab = "outstanding" | "scheduled" | "paid" | "void";
 
@@ -662,6 +663,12 @@ function AttachReceipt({
     }
   }
 
+  // A receipt dragged from the desktop can land straight on the button.
+  const { dragOver, dropProps } = useFileDrop(
+    (files) => void upload(files[0]),
+    busy || uploading
+  );
+
   return (
     <>
       <input
@@ -676,12 +683,13 @@ function AttachReceipt({
       />
       <button
         type="button"
-        className="btn-ghost small"
-        title="Attach the receipt (photo or PDF)"
+        className={`btn-ghost small${dragOver ? " drop-target-over" : ""}`}
+        title="Attach the receipt (photo or PDF) — click or drop it here"
         disabled={busy || uploading}
         onClick={() => input.current?.click()}
+        {...dropProps}
       >
-        {uploading ? "…" : "📎 Attach"}
+        {uploading ? "…" : dragOver ? "Drop it" : "📎 Attach"}
       </button>
     </>
   );

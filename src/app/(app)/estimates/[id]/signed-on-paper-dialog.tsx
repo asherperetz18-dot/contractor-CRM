@@ -1,12 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { markSignedOnPaper } from "@/lib/actions/estimates";
-import { createLeadFileUploadUrl, recordLeadFile } from "@/lib/actions/lead-files";
-import { downscaleImage } from "@/lib/images/downscale";
-import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
+import { useFileDrop } from "@/components/uploads/file-drop";
 
 /**
  * Records a signature that happened with a pen. The staff member names
@@ -37,6 +36,14 @@ export function SignedOnPaperDialog({
   const [file, setFile] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // The scan can be dragged onto the row, and a picked image shows a
+  // thumbnail so the wrong page is caught before Record is pressed.
+  const { dragOver, dropProps } = useFileDrop((files) => setFile(files[0]), pending);
+  const filePreview = useMemo(
+    () => (file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null),
+    [file]
+  );
+  useEffect(() => () => { if (filePreview) URL.revokeObjectURL(filePreview); }, [filePreview]);
 
   async function confirm() {
     if (!signerName.trim()) return setError("Enter the customer's name as signed.");
@@ -47,28 +54,9 @@ export function SignedOnPaperDialog({
       // browser-to-storage path every lead file takes.
       let scanFileName: string | null = null;
       if (file) {
-        const shrunk = await downscaleImage(file);
-        const signed = await createLeadFileUploadUrl(leadId, shrunk.name, shrunk.size);
-        if (signed.error || !signed.path || !signed.token) {
-          return setError(signed.error ?? "Couldn't start the scan upload.");
-        }
-        const { error: uploadError } = await createBrowserClient()
-          .storage.from("lead-files")
-          .uploadToSignedUrl(signed.path, signed.token, shrunk, {
-            contentType: shrunk.type || undefined,
-          });
-        if (uploadError) return setError(uploadError.message);
-        const recorded = await recordLeadFile(
-          leadId,
-          signed.path,
-          shrunk.name,
-          shrunk.size,
-          shrunk.type || null,
-          null,
-          estimateId
-        );
-        if (recorded.error) return setError(recorded.error);
-        scanFileName = shrunk.name;
+        const uploaded = await uploadLeadFileDirect(leadId, file, { estimateId });
+        if (uploaded.error) return setError(uploaded.error);
+        scanFileName = uploaded.fileName ?? file.name;
       }
 
       const res = await markSignedOnPaper(estimateId, {
@@ -113,7 +101,11 @@ export function SignedOnPaperDialog({
             />
           </label>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, margin: "10px 0" }}>
+        <div
+          className={`panel-drop${dragOver ? " drag-over" : ""}`}
+          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, margin: "10px 0" }}
+          {...dropProps}
+        >
           <input
             ref={fileInput}
             type="file"
@@ -122,8 +114,17 @@ export function SignedOnPaperDialog({
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
           <button type="button" className="btn-ghost small" onClick={() => fileInput.current?.click()}>
-            📎 {file ? "Change scan" : "Attach the signed scan (optional)"}
+            📎{" "}
+            {dragOver
+              ? "Drop the scan"
+              : file
+                ? "Change scan"
+                : "Attach the signed scan (optional) — or drag & drop"}
           </button>
+          {filePreview && (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img className="lead-file-thumb" src={filePreview} alt="Scan preview" />
+          )}
           {file && (
             <span className="est-tax-note" style={{ wordBreak: "break-all", minWidth: 0 }}>
               {file.name}

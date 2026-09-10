@@ -1,14 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  createLeadFileUploadUrl,
-  recordLeadFile,
-  deleteLeadFile,
-} from "@/lib/actions/lead-files";
-import { createClient as createBrowserClient } from "@/lib/supabase/client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { deleteLeadFile } from "@/lib/actions/lead-files";
 import { getVisitMedia, type VisitFile } from "@/lib/actions/visit-media";
-import { downscaleImage } from "@/lib/images/downscale";
+import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
+import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 import { leadPhotoThumbUrl } from "@/lib/data/types";
 
 function sizeLabel(bytes: number | null) {
@@ -42,7 +38,6 @@ export function VisitMedia({
   readOnly?: boolean;
 }) {
   const cameraRef = useRef<HTMLInputElement | null>(null);
-  const libraryRef = useRef<HTMLInputElement | null>(null);
   const [files, setFiles] = useState<VisitFile[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -51,6 +46,20 @@ export function VisitMedia({
     const res = await getVisitMedia(eventId);
     setFiles(res.files ?? []);
   }
+
+  const uploadOne = useCallback(
+    async (file: File) => {
+      const res = await uploadLeadFileDirect(leadId, file, { eventId });
+      if (!res.error) {
+        // Refresh after each file, so a long batch shows up as it lands.
+        const fresh = await getVisitMedia(eventId);
+        setFiles(fresh.files ?? []);
+      }
+      return res.error ?? null;
+    },
+    [leadId, eventId]
+  );
+  const { queue, pending, errors, progressLabel, start } = useUploadQueue(uploadOne);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,52 +77,7 @@ export function VisitMedia({
     e.target.value = "";
     if (!chosen.length) return;
     setError("");
-
-    for (let i = 0; i < chosen.length; i++) {
-      const original = chosen[i];
-      setBusy(`Uploading ${i + 1} of ${chosen.length}…`);
-      // Shrunk here rather than server-side: it saves the upload itself,
-      // which is the slow part on a job site.
-      const file = await downscaleImage(original);
-
-      // Browser straight to storage. This panel is where site video from
-      // a visit lands, and a video posted through a server action never
-      // arrives: Vercel rejects a body over about 4.5MB with a 413
-      // before the action runs.
-      const signed = await createLeadFileUploadUrl(leadId, file.name, file.size);
-      if (signed.error || !signed.path || !signed.token) {
-        setError(`${original.name}: ${signed.error ?? "could not start that upload"}`);
-        break;
-      }
-      const storage = createBrowserClient();
-      const { error: uploadError } = await storage.storage
-        .from("lead-files")
-        .uploadToSignedUrl(signed.path, signed.token, file, {
-          contentType: file.type || undefined,
-        });
-      if (uploadError) {
-        setError(
-          `${original.name}: ` +
-            (/exceeded the maximum allowed size/i.test(uploadError.message)
-              ? "larger than the storage limit on this project"
-              : uploadError.message)
-        );
-        break;
-      }
-      const res = await recordLeadFile(
-        leadId,
-        signed.path,
-        file.name,
-        file.size,
-        file.type || null,
-        eventId
-      );
-      if (res?.error) {
-        setError(`${original.name}: ${res.error}`);
-        break;
-      }
-    }
-    setBusy(null);
+    await start(chosen);
     await reload();
   }
 
@@ -147,35 +111,36 @@ export function VisitMedia({
             hidden
             onChange={handleFiles}
           />
-          <input
-            ref={libraryRef}
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            hidden
-            onChange={handleFiles}
-          />
           <button
             type="button"
             className="btn-primary small"
             onClick={() => cameraRef.current?.click()}
-            disabled={!!busy}
+            disabled={!!busy || pending}
           >
             Take photo / video
           </button>
-          <button
-            type="button"
-            className="btn-ghost small"
-            onClick={() => libraryRef.current?.click()}
+          <FileDropzone
+            onFiles={(f) => {
+              setError("");
+              void start(f).then(reload);
+            }}
+            label="Choose from device — or drag & drop"
+            accept="image/*,video/*"
             disabled={!!busy}
-          >
-            Choose from device
-          </button>
+            queue={queue}
+            progressLabel={progressLabel}
+            className="file-dropzone-grow"
+          />
         </div>
       )}
 
       {busy && <p className="empty-hint">{busy}</p>}
       {error && <p className="error-note">{error}</p>}
+      {errors.map((msg) => (
+        <p key={msg} className="error-note">
+          {msg}
+        </p>
+      ))}
 
       {files === null ? (
         <p className="empty-hint">Loading…</p>
