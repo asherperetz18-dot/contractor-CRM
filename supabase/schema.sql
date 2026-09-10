@@ -55,6 +55,9 @@ create table profiles (
   company_id uuid references companies (id) on delete set null,
   roles app_role[] not null default '{}',
   status user_status not null default 'Active',
+  -- 0145: the person's dragged order of the Estimates funnel cards.
+  -- Null = never arranged. A preference, not a role -- see DECISIONS #010.
+  estimate_funnel_order text[],
   created_at timestamptz not null default now()
 );
 

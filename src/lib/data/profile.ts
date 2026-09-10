@@ -31,6 +31,10 @@ export type Profile = {
   // data/types. Independent of is_super_admin and of company_id below:
   // it's read off the identity, not the membership.
   is_platform_admin?: boolean;
+  /** The dragged order of the Estimates funnel cards. Null = never
+   *  arranged. Identity, not membership: a habit follows the person
+   *  across companies (see docs/DECISIONS.md #010). */
+  estimate_funnel_order?: string[] | null;
   company_id: string;
 };
 
@@ -143,6 +147,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     email: string | null;
     is_super_admin: boolean | null;
     is_platform_admin?: boolean | null;
+    estimate_funnel_order?: string[] | null;
   } | null;
   const membership = membershipData as {
     roles: AppRole[];
@@ -179,6 +184,9 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     // Undefined (0132 not yet run) reads as false -- off costs nobody
     // anything, same reasoning as the accounting flags above.
     is_platform_admin: identity?.is_platform_admin === true,
+    // Undefined (0145 not yet run) reads as null: never arranged, so
+    // the browser's own saved order still applies.
+    estimate_funnel_order: identity?.estimate_funnel_order ?? null,
     company_id: companyId,
   };
 });
