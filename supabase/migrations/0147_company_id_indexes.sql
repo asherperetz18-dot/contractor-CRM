@@ -2,6 +2,19 @@
 -- queried and RLS-filtered by company_id directly, not just through an
 -- already-indexed parent (lead_id/estimate_id/job_id/bill_id).
 --
+-- ── Production status ────────────────────────────────────────────────
+-- Applied to production 2026-09-10, one step at a time as instructed
+-- below (never as a single batched paste). Verified after all 9:
+--   select indexrelid::regclass, indisvalid from pg_index
+--     where indexrelid::regclass::text like '%_company_idx';
+-- returned all 9 -- leads_company_idx, events_company_idx,
+-- jobs_company_idx, sms_messages_company_idx, lead_tasks_company_idx,
+-- lead_files_company_idx, lead_notes_company_idx,
+-- activity_events_company_idx, company_members_company_idx -- each
+-- with indisvalid = true, and the global `indisvalid = false` check
+-- across all indexes returned no rows. Deployed and verified; nothing
+-- further to do here.
+--
 -- Every RLS policy on a tenant table ANDs in is_member_of_company(company_id)
 -- or has_role_in_company(<role>, company_id) (see 0036), so any query
 -- against these tables pays a company_id filter whether or not the app's
