@@ -76,22 +76,42 @@
 -- activity_events) take a steady stream of writes in production
 -- (webhooks, cron jobs, the activity ping). A plain CREATE INDEX takes a
 -- lock that blocks writes for the build's duration; CREATE INDEX
--- CONCURRENTLY does not, at the cost of not being usable inside a
--- transaction block. Following the precedent already set in 0146: run
--- each statement below on its own (no begin/commit) rather than wrapping
--- this file in a transaction.
+-- CONCURRENTLY does not -- at the cost of two hard requirements, not one:
 --
--- If a CONCURRENTLY build is interrupted (connection drop, statement
--- timeout) it can leave behind an INVALID index that silently does
--- nothing. Check with:
---   select indexrelid::regclass, indisvalid from pg_index
---     where indisvalid = false;
--- and if any of these show up invalid, `drop index concurrently
--- <name>;` and rerun that one statement -- don't just re-run the whole
--- file, the others will no-op via IF NOT EXISTS and skip the one that
--- actually needs retrying.
+--   1. It cannot run inside a transaction block. This isn't only about
+--      not wrapping the file in an explicit begin/commit (0146 already
+--      established that precedent, followed here too): Postgres treats
+--      *any* multi-statement paste sent as one query the same way a
+--      begin/commit block would be treated. Per Postgres's own protocol
+--      docs, when a client sends more than one semicolon-separated
+--      statement in a single query message, the server runs the whole
+--      batch as one implicit transaction -- closed by an implicit commit
+--      only if every statement in it succeeded. This repo's own
+--      documented deployment path (README.md -- Supabase dashboard SQL
+--      Editor, paste and run) submits exactly that kind of single,
+--      possibly-multi-statement query. Paste this whole file and hit
+--      "Run" once, and the very first CREATE INDEX CONCURRENTLY fails
+--      immediately with `ERROR: CREATE INDEX CONCURRENTLY cannot run
+--      inside a transaction block` -- before any index is built. That's
+--      a loud, immediate, nothing-half-done failure (not silent
+--      corruption), but avoid it entirely: copy and run ONE numbered
+--      step at a time, each as its own separate paste-and-run in the SQL
+--      Editor (or its own separate `psql` invocation) -- never select
+--      and run more than one step together.
+--   2. If a CONCURRENTLY build IS interrupted mid-flight anyway
+--      (connection drop, statement timeout -- a risk specific to running
+--      each step correctly in isolation, not the batching mistake
+--      above), it can leave behind an INVALID index that silently does
+--      nothing. Check with:
+--        select indexrelid::regclass, indisvalid from pg_index
+--          where indisvalid = false;
+--      and if any of these show up invalid, `drop index concurrently
+--      <name>;` and rerun that one step -- don't just rerun the whole
+--      file; the other steps will no-op via IF NOT EXISTS and skip the
+--      one that actually needs retrying.
 
--- ---------------------------------------------------------------- leads
+-- ---------------------------------------------------------- step 1 of 9
+-- ------------------------------------------------------------------ leads
 -- 145 call sites query leads; 91 filter by company_id directly (the
 -- pipeline board, dashboard counts, search, dedup, etc.) -- the single
 -- most central table in the app and the one DECISIONS #002/#003 already
@@ -102,6 +122,7 @@
 create index concurrently if not exists leads_company_idx
   on leads (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 2 of 9
 -- --------------------------------------------------------------- events
 -- Powers Schedule/Calendar and all three appointment/rain-alert cron
 -- jobs, all of which filter by company_id first. DECISIONS #003 already
@@ -112,6 +133,7 @@ create index concurrently if not exists leads_company_idx
 create index concurrently if not exists events_company_idx
   on events (company_id, date);
 
+-- ---------------------------------------------------------- step 3 of 9
 -- ---------------------------------------------------------------- jobs
 -- Schedule, Calendar, Production, and the dashboard home page all run
 -- `select("*").eq("company_id", companyId)` against jobs with no other
@@ -122,6 +144,7 @@ create index concurrently if not exists events_company_idx
 create index concurrently if not exists jobs_company_idx
   on jobs (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 4 of 9
 -- --------------------------------------------------------- sms_messages
 -- The Reply Inbox is a company-wide, cross-lead view
 -- (`.eq("company_id", companyId)` with no lead_id) -- the one query shape
@@ -130,6 +153,7 @@ create index concurrently if not exists jobs_company_idx
 create index concurrently if not exists sms_messages_company_idx
   on sms_messages (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 5 of 9
 -- ------------------------------------------------------------ lead_tasks
 -- The task-reminders cron scans a company's due tasks directly
 -- (`.eq("company_id", ...)` joined with a due-date window), separately
@@ -138,6 +162,7 @@ create index concurrently if not exists sms_messages_company_idx
 create index concurrently if not exists lead_tasks_company_idx
   on lead_tasks (company_id, due_date);
 
+-- ---------------------------------------------------------- step 6 of 9
 -- ------------------------------------------------------------ lead_files
 -- The Google Drive backup batch job pages through
 -- `.eq("company_id", ...).eq("storage_provider", "supabase")` company-wide,
@@ -146,6 +171,7 @@ create index concurrently if not exists lead_tasks_company_idx
 create index concurrently if not exists lead_files_company_idx
   on lead_files (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 7 of 9
 -- ------------------------------------------------------------ lead_notes
 -- Smaller share of call sites filter by company_id directly than
 -- lead_files, but the table has the same unbounded growth shape (one row
@@ -155,6 +181,7 @@ create index concurrently if not exists lead_files_company_idx
 create index concurrently if not exists lead_notes_company_idx
   on lead_notes (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 8 of 9
 -- -------------------------------------------------------- activity_events
 -- Backs Settings -> Team Activity, a company-wide read
 -- (has_role_in_company('Office'/'Admin', company_id) is the *only* gate
@@ -164,6 +191,7 @@ create index concurrently if not exists lead_notes_company_idx
 create index concurrently if not exists activity_events_company_idx
   on activity_events (company_id, created_at desc);
 
+-- ---------------------------------------------------------- step 9 of 9
 -- ----------------------------------------------------------- company_members
 -- This is the table every other table's RLS ultimately calls into
 -- (is_member_of_company / has_role_in_company both query it), and it's a
