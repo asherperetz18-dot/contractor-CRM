@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { shouldAutoOpenNewEstimate } from "@/lib/data/quick-create";
 import {
   effectiveEstimateRepId,
   estimateExpired,
@@ -103,8 +104,31 @@ export function EstimatesView({
   viewsByEstimate: Record<string, { count: number; last: string }>;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [bucket, setBucket] = useState<Bucket>("drafts");
   const [creating, setCreating] = useState(false);
+
+  // Quick Create's New Estimate lands here as /estimates?new=1 and the
+  // dialog opens by itself. Same idiom as Contacts' openLead: the open
+  // happens during render behind a consumed guard (lint forbids setState
+  // inside an effect), and the effect below strips the param from the
+  // URL so a refresh or a copied link doesn't reopen the dialog.
+  const [consumedNew, setConsumedNew] = useState(false);
+  const newParam = searchParams.get("new");
+  if (newParam && !consumedNew) {
+    setConsumedNew(true);
+    if (shouldAutoOpenNewEstimate(newParam, canCreate)) setCreating(true);
+  } else if (!newParam && consumedNew) {
+    // Param stripped -- reset the guard so the next Quick Create click
+    // (which puts ?new=1 back) opens the dialog again.
+    setConsumedNew(false);
+  }
+
+  useEffect(() => {
+    if (searchParams.get("new")) {
+      router.replace("/estimates", { scroll: false });
+    }
+  }, [searchParams, router]);
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
 
