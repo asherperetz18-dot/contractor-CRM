@@ -13,6 +13,7 @@ import {
   type EstimateSigner,
   type EstimateStatus,
 } from "@/lib/data/types";
+import { isPendingChangeOrder } from "@/lib/data/pending-change-orders";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { FilterSelect } from "@/components/filter-select";
 
@@ -39,7 +40,7 @@ export type EstimateRep = { id: string; name: string | null; email: string | nul
 // twice. Kept visible rather than merely filtered out, because an unsent
 // change order is extra work nobody has agreed to yet, and hiding it is
 // how it gets built anyway.
-type Bucket = "drafts" | "sent" | "signed" | "declined" | "void" | "changes";
+type Bucket = "drafts" | "sent" | "signed" | "declined" | "void" | "changes" | "co_pending";
 
 const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateStatus[] }[] = [
   { key: "drafts", label: "Drafts", hint: "not sent yet", statuses: ["Draft"] },
@@ -60,6 +61,13 @@ const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateSta
     hint: "change orders & completions",
     statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired", "Void"],
   },
+  // The chase list Attached buries: change orders nobody has agreed to
+  // yet. Attached spans every status, so the three unsigned extras sit
+  // among a pile of signed and settled documents -- this card is just
+  // those, with the money still waiting for a signature as its total.
+  // Membership comes from isPendingChangeOrder rather than these
+  // statuses, which are listed for the shape of the row.
+  { key: "co_pending", label: "Change Orders", hint: "pending", statuses: ["Draft", "Sent", "Viewed"] },
 ];
 
 function initials(name: string) {
@@ -177,8 +185,10 @@ export function EstimatesView({
   // each of them got it wrong in turn when change orders arrived.
   // Completion certificates are attachments to a contract too.
   const inBucket = (e: Estimate, b: Bucket, statuses: EstimateStatus[]) =>
-    (b === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&
-    statuses.includes(effectiveStatus(e));
+    b === "co_pending"
+      ? isPendingChangeOrder(e)
+      : (b === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&
+        statuses.includes(effectiveStatus(e));
 
   const counts = BUCKETS.map((b) => {
     const rows = estimates.filter((e) => inBucket(e, b.key, b.statuses));
