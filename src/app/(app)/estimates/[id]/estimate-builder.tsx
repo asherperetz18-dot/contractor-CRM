@@ -35,6 +35,7 @@ import {
   deleteEstimate,
   voidEstimate,
 } from "@/lib/actions/estimates";
+import { createEstimateRevision } from "@/lib/actions/estimate-revisions";
 import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import { PaymentSchedule } from "./payment-schedule";
@@ -633,6 +634,43 @@ export function EstimateBuilder({
                 ` · Pending: ${sig.pending.join(", ")}`}
             </>
           )}
+          {/* The action the sentence above has been promising. Copies the
+              whole document -- lines, sections, terms, schedule, signers
+              -- into a draft v{n+1}, so fixing three words never means
+              retyping a hundred lines. Contracts only: a change order is
+              amended by another change order. */}
+          {signed && estimate.status !== "Void" && estimate.kind === "contract" && canEdit && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                className="btn-primary small"
+                disabled={pending}
+                title="Copies everything on this contract into an editable draft. The signed version stays on record, and is cancelled only when the customer signs the new one."
+                onClick={() =>
+                  startTransition(async () => {
+                    const res = await createEstimateRevision(estimate.id);
+                    if (res.error) return setError(res.error);
+                    if (res.id) router.push(`/estimates/${res.id}`);
+                  })
+                }
+              >
+                {pending ? "Creating…" : "Create new version"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* The other end of the button above: this draft came from a signed
+          contract. Said out loud, because the danger is a rep believing
+          the old version is already gone -- it is voided only when the
+          customer signs this one. */}
+      {estimate.supersedes_id && !locked && estimate.version > 1 && (
+        <div className="est-locked-banner">
+          This draft is v{estimate.version}, a copy of the signed v{estimate.version - 1} —
+          change what you need and send it for signature. The old version stays in force
+          until the customer signs this one; at that moment it is voided automatically and
+          stops counting. If money was already collected on it, adjust this version&rsquo;s
+          payment schedule before sending.
         </div>
       )}
 
