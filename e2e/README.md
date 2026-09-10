@@ -53,12 +53,13 @@ short of the confirming action — see the comments in
   assumption — **every** public page in this app's actual Vercel
   production deployment renders with zero `<script>` tags carrying a
   nonce, not only the two statically-prerendered ones originally
-  documented. Root cause: an upstream, closed-as-not-planned Next.js bug
-  (vercel/next.js#96063) where Turbopack + Vercel's `output: 'standalone'`
-  production packaging drops nonce injection entirely. A local
-  `next start` doesn't hit this (dynamic pages get their nonce
-  correctly there), which is why it wasn't caught until run against real
-  production. Full record: `docs/DECISIONS.md` #011.
+  documented. The bundler was tested and ruled out as the cause (both
+  Turbopack and webpack work locally and both fail identically on real
+  Vercel deployments — production and a Preview alike); the leading,
+  *unconfirmed* explanation is that Vercel's actual Proxy-then-render
+  execution topology doesn't carry this app's nonce mechanism across
+  that boundary, which no local single-process run exercises regardless
+  of bundler. Full record and evidence table: `docs/DECISIONS.md` #011–#013.
 - **`authenticated-smoke.spec.ts`** — everything that needs a real
   logged-in session: dashboard/nav, the reply inbox (Supabase realtime),
   CSV import and file-upload UI reachability, a Drive-backed lead photo,
