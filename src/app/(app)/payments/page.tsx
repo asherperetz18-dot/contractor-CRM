@@ -2,9 +2,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
+import { ManualPaymentTools } from "./manual-payment-tools";
 import { selectAll } from "@/lib/data/select-all";
 import {
+  canManageBills,
   collectionsSummary,
+  isAdminRole,
   moneyCents,
   paymentMethodLabel,
   phaseState,
@@ -28,7 +31,7 @@ type LeadRow = { id: string; first_name: string | null; last_name: string | null
 // portal_payments carries lead_id; the shared PortalPayment type covers
 // only what the estimate document needs, so widen it here rather than
 // adding a column the other call sites don't select.
-type PaymentRow = PortalPayment & { lead_id: string | null };
+type PaymentRow = PortalPayment & { lead_id: string | null; source: string };
 
 function statusBadge(status: string) {
   if (status === "succeeded") return "signed";
@@ -72,7 +75,7 @@ export default async function PaymentsPage() {
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
-        .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, paid_at, created_at")
+        .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, source, paid_at, created_at")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .range(from, to)
@@ -116,6 +119,10 @@ export default async function PaymentsPage() {
   };
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
+
+  // Whether the history rows get a tools column at all: marking a
+  // pending payment cleared takes the same permission as recording one.
+  const showTools = canManageBills(profile);
 
   const s = collectionsSummary(contracts, payments, billedPhases);
   const settledDeposits = new Set(
@@ -307,6 +314,7 @@ export default async function PaymentsPage() {
                 <th>Method</th>
                 <th>Date</th>
                 <th className="right">Amount</th>
+                {showTools && <th></th>}
               </tr>
             </thead>
             <tbody>
@@ -333,6 +341,20 @@ export default async function PaymentsPage() {
                     <td>{paymentMethodLabel(p.method) || "—"}</td>
                     <td>{new Date(p.paid_at ?? p.created_at).toLocaleDateString("en-US")}</td>
                     <td className="right mono">{moneyCents(p.amount_cents)}</td>
+                    {/* Only hand-recorded rows can be settled or removed
+                        here. Stripe rows settle by webhook and are
+                        refunded in Stripe. */}
+                    {showTools && (
+                      <td>
+                        {p.source === "manual" && (
+                          <ManualPaymentTools
+                            paymentId={p.id}
+                            status={p.status}
+                            canRemove={isAdminRole(profile)}
+                          />
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

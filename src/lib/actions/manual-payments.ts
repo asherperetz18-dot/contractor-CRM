@@ -11,6 +11,7 @@ import {
   type EstimateStatus,
   type ManualPaymentMethod,
 } from "@/lib/data/types";
+import { manualClearUpdate } from "@/lib/data/manual-clear";
 
 export type ManualPaymentInput = {
   estimateId: string;
@@ -169,6 +170,59 @@ export async function recordManualPayment(
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath("/pipeline");
   return { ok: true, warning: warnings.join(" ") || undefined };
+}
+
+/**
+ * The cheque was banked, the transfer landed: the pending row becomes
+ * the settled one.
+ *
+ * Without this, the only way to settle a payment recorded as "not yet
+ * cleared" was to record it again as received -- which left both rows in
+ * the history, the same money showing twice. Stripe rows are excluded:
+ * those settle from the webhook when the bank confirms, and marking one
+ * by hand would say money arrived that Stripe never confirmed.
+ */
+export async function markManualPaymentCleared(
+  paymentId: string,
+  /** The day it actually landed, if not today. */
+  clearedOn?: string
+): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can record a payment." };
+  }
+
+  const admin = createAdminClient();
+  const { data: payment } = await admin
+    .from("portal_payments")
+    .select("id, estimate_id, source, status")
+    .eq("id", paymentId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; estimate_id: string; source: string; status: string }>();
+  if (!payment) return { error: "Payment not found." };
+
+  const decision = manualClearUpdate(payment, clearedOn);
+  if ("error" in decision) return { error: decision.error };
+
+  const { data: updated, error } = await admin
+    .from("portal_payments")
+    .update({ ...decision.update, updated_at: new Date().toISOString() })
+    .eq("id", payment.id)
+    .eq("company_id", profile.company_id)
+    // Re-stated on the write so a concurrent settle or a Stripe row can
+    // never slip through between the read above and this update.
+    .eq("source", "manual")
+    .eq("status", "pending")
+    .select("id");
+  if (error || !updated?.length) {
+    return { error: error?.message || "Could not update the payment." };
+  }
+
+  revalidatePath("/payments");
+  revalidatePath(`/estimates/${payment.estimate_id}`);
+  revalidatePath("/pipeline");
+  return { ok: true };
 }
 
 /** Undo a mis-keyed entry. Stripe rows are never touched from here. */
