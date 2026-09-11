@@ -1374,6 +1374,11 @@ export type Lead = {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  /** Second and third numbers for the same person -- bought cold-call
+   *  lists often carry three per contact (migration 0150). Optional
+   *  because rows read before the migration runs won't have them. */
+  phone2?: string | null;
+  phone3?: string | null;
   email: string | null;
   address: string | null;
   zip: string | null;
@@ -1429,6 +1434,8 @@ export type LeadInput = {
   first_name: string;
   last_name: string;
   phone: string;
+  phone2: string;
+  phone3: string;
   email: string;
   address: string;
   zip: string;

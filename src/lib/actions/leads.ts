@@ -23,6 +23,8 @@ function toRow(input: LeadInput) {
     first_name: input.first_name || null,
     last_name: input.last_name || null,
     phone: input.phone || null,
+    phone2: input.phone2 || null,
+    phone3: input.phone3 || null,
     email: input.email || null,
     address: input.address || null,
     zip: input.zip || null,
@@ -47,6 +49,8 @@ export type BulkLeadRow = {
   first_name: string;
   last_name: string;
   phone: string;
+  phone2: string;
+  phone3: string;
   email: string;
   address: string;
   project_type: string;
@@ -64,7 +68,7 @@ export type BulkLeadRow = {
  * sometimes a genuinely new job, so the decision stays with the importer.
  */
 export async function findImportDuplicates(
-  rows: { phone: string; email: string }[]
+  rows: { phone: string; phone2?: string; phone3?: string; email: string }[]
 ): Promise<{ error?: string; duplicateRowIndexes?: number[] }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -72,23 +76,32 @@ export async function findImportDuplicates(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("leads")
-    .select("phone, email, second_contact_phone")
+    .select("phone, phone2, phone3, email, second_contact_phone")
     .eq("company_id", profile.company_id);
   if (error) return { error: error.message };
 
   const phones = new Set<string>();
   const emails = new Set<string>();
-  for (const l of (data as { phone: string | null; email: string | null; second_contact_phone: string | null }[]) ?? []) {
-    if (l.phone) phones.add(normalizePhone(l.phone));
-    if (l.second_contact_phone) phones.add(normalizePhone(l.second_contact_phone));
+  type PhoneRow = {
+    phone: string | null; phone2: string | null; phone3: string | null;
+    email: string | null; second_contact_phone: string | null;
+  };
+  for (const l of (data as PhoneRow[]) ?? []) {
+    for (const p of [l.phone, l.phone2, l.phone3, l.second_contact_phone]) {
+      if (p) phones.add(normalizePhone(p));
+    }
     if (l.email) emails.add(l.email.trim().toLowerCase());
   }
 
   const duplicateRowIndexes: number[] = [];
   rows.forEach((r, i) => {
-    const p = r.phone ? normalizePhone(r.phone) : "";
+    const rowPhones = [r.phone, r.phone2, r.phone3]
+      .map((p) => (p ? normalizePhone(p) : ""))
+      .filter(Boolean);
     const e = r.email ? r.email.trim().toLowerCase() : "";
-    if ((p && phones.has(p)) || (e && emails.has(e))) duplicateRowIndexes.push(i);
+    if (rowPhones.some((p) => phones.has(p)) || (e && emails.has(e))) {
+      duplicateRowIndexes.push(i);
+    }
   });
 
   return { duplicateRowIndexes };
@@ -117,6 +130,8 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     first_name: r.first_name || null,
     last_name: r.last_name || null,
     phone: r.phone || null,
+    phone2: r.phone2 || null,
+    phone3: r.phone3 || null,
     email: r.email || null,
     address: r.address || null,
     project_type: r.project_type || null,
@@ -571,21 +586,25 @@ export async function findDuplicateLeads(
   const supabase = await createClient();
   const { data } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, company_name, phone, second_contact_phone, email, stage")
+    .select(
+      "id, first_name, last_name, company_name, phone, phone2, phone3, second_contact_phone, email, stage"
+    )
     .eq("company_id", profile.company_id);
 
   const out: DuplicateLeadMatch[] = [];
   for (const l of (data ?? []) as {
     id: string; first_name: string | null; last_name: string | null;
     company_name: string | null; phone: string | null;
+    phone2: string | null; phone3: string | null;
     second_contact_phone: string | null; email: string | null; stage: string;
   }[]) {
     const name =
       (l.company_name || `${l.first_name ?? ""} ${l.last_name ?? ""}`).trim() || "Unnamed";
     const phoneHit =
       p.length === 10 &&
-      ((l.phone && normalizePhone(l.phone) === p) ||
-        (l.second_contact_phone && normalizePhone(l.second_contact_phone) === p));
+      [l.phone, l.phone2, l.phone3, l.second_contact_phone].some(
+        (num) => num && normalizePhone(num) === p
+      );
     const emailHit = !!e && (l.email ?? "").trim().toLowerCase() === e;
     if (phoneHit) out.push({ id: l.id, name, stage: l.stage, matchedOn: "phone" });
     else if (emailHit) out.push({ id: l.id, name, stage: l.stage, matchedOn: "email" });

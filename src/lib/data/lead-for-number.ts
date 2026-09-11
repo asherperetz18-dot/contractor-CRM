@@ -54,7 +54,7 @@ export async function leadPhoneMatch(
 
   const rows = await selectAll<LeadPhoneRow>((from, to) =>
     (client.from("leads") as LeadRangeQuery)
-      .select("id, phone, second_contact_phone")
+      .select("id, phone, phone2, phone3, second_contact_phone")
       .eq("company_id", companyId)
       .range(from, to)
   );

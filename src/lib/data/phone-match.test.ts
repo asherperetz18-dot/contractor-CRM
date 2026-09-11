@@ -20,13 +20,16 @@ import { normalizePhone } from "./types.ts";
  * call. So both edges are pinned down.
  */
 
+const bare = { phone2: null, phone3: null, second_contact_phone: null };
 const rows: LeadPhoneRow[] = [
-  { id: "thelma", phone: "+1 323-806-7609", second_contact_phone: null },
-  { id: "jeremy", phone: "(818) 268-7398", second_contact_phone: null },
-  { id: "sandra", phone: "818-268-7398", second_contact_phone: null },
-  { id: "carlos", phone: "760 790 4576", second_contact_phone: "13237778888" },
-  { id: "blank", phone: null, second_contact_phone: null },
-  { id: "short", phone: "555-1234", second_contact_phone: null },
+  { id: "thelma", phone: "+1 323-806-7609", ...bare },
+  { id: "jeremy", phone: "(818) 268-7398", ...bare },
+  { id: "sandra", phone: "818-268-7398", ...bare },
+  { id: "carlos", phone: "760 790 4576", ...bare, second_contact_phone: "13237778888" },
+  { id: "blank", phone: null, ...bare },
+  { id: "short", phone: "555-1234", ...bare },
+  // Bought cold-call lists carry up to three numbers for one person.
+  { id: "dialed", phone: "213-444-1000", ...bare, phone2: "213-444-2000", phone3: "213-444-3000" },
 ];
 
 test("a number nobody has is 'none' -- the only case that may create a contact", () => {
@@ -51,9 +54,17 @@ test("the second contact's number counts as that contact's", () => {
   assert.deepEqual(phoneMatchIn(rows, "323-777-8888"), { kind: "one", leadId: "carlos" });
 });
 
+test("a contact's second and third numbers count as theirs", () => {
+  // A cold-call prospect ringing back on any of their three numbers is
+  // the same person -- "none" here would make the importer clone them.
+  assert.deepEqual(phoneMatchIn(rows, "213-444-1000"), { kind: "one", leadId: "dialed" });
+  assert.deepEqual(phoneMatchIn(rows, "(213) 444-2000"), { kind: "one", leadId: "dialed" });
+  assert.deepEqual(phoneMatchIn(rows, "+1 213 444 3000"), { kind: "one", leadId: "dialed" });
+});
+
 test("one contact holding the same number twice is still one contact", () => {
   const twice: LeadPhoneRow[] = [
-    { id: "solo", phone: "213-555-0000", second_contact_phone: "+1 213 555 0000" },
+    { id: "solo", phone: "213-555-0000", ...bare, second_contact_phone: "+1 213 555 0000" },
   ];
   assert.deepEqual(phoneMatchIn(twice, "2135550000"), { kind: "one", leadId: "solo" });
 });

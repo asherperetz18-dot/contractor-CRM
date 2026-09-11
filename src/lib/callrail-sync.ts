@@ -464,13 +464,13 @@ export async function backfillCallRail(
   let created = 0;
 
   // The whole phone book once, then in-memory matching -- the same
-  // rules as leadPhoneMatch (last 10 digits, both phone fields, and a
+  // rules as leadPhoneMatch (last 10 digits, every phone field, and a
   // number several contacts share reported as "many" rather than as an
   // unknown caller).
   const allLeads = await selectAll<LeadPhoneRow>((f, t) =>
     admin
       .from("leads")
-      .select("id, phone, second_contact_phone")
+      .select("id, phone, phone2, phone3, second_contact_phone")
       .eq("company_id", companyId)
       .range(f, t)
   );
