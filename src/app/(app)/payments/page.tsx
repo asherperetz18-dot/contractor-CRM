@@ -29,7 +29,13 @@ type ContractRow = SignedContract & {
   lead_id: string | null;
 };
 
-type LeadRow = { id: string; first_name: string | null; last_name: string | null };
+type LeadRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  company_name: string | null;
+  assigned_to: string | null;
+};
 
 // portal_payments carries lead_id; the shared PortalPayment type covers
 // only what the estimate document needs, so widen it here rather than
@@ -100,19 +106,43 @@ export default async function PaymentsPage() {
   const leadIds = [
     ...new Set([...contracts, ...payments].map((r) => r.lead_id).filter(Boolean) as string[]),
   ];
-  const leads = leadIds.length
-    ? await selectAll<LeadRow>((from, to) =>
-        supabase
-          .from("leads")
-          .select("id, first_name, last_name")
-          .eq("company_id", profile.company_id)
-          .in("id", leadIds)
-          .range(from, to)
-      )
-    : [];
+  // Leads carry the client identity and the assigned rep; profiles turn
+  // the rep's id into a name. Same joins Money to Collect makes, so the
+  // two pages' client and rep filters always agree.
+  const [leads, members] = await Promise.all([
+    leadIds.length
+      ? selectAll<LeadRow>((from, to) =>
+          supabase
+            .from("leads")
+            .select("id, first_name, last_name, company_name, assigned_to")
+            .eq("company_id", profile.company_id)
+            .in("id", leadIds)
+            .range(from, to)
+        )
+      : Promise.resolve([] as LeadRow[]),
+    supabase
+      .from("company_members")
+      .select("profile_id")
+      .eq("company_id", profile.company_id)
+      .then(async ({ data: mem }) => {
+        const ids = [...new Set((mem ?? []).map((m) => m.profile_id as string))];
+        if (!ids.length) return [] as { id: string; name: string | null }[];
+        const { data } = await supabase.from("profiles").select("id, name").in("id", ids);
+        return (data ?? []) as { id: string; name: string | null }[];
+      }),
+  ]);
+  const repById = new Map(members.map((m) => [m.id, m.name]));
   const nameOf = (leadId: string | null) => {
     const l = leads.find((x) => x.id === leadId);
-    return [l?.first_name, l?.last_name].filter(Boolean).join(" ").trim() || "—";
+    return (
+      l?.company_name ||
+      [l?.first_name, l?.last_name].filter(Boolean).join(" ").trim() ||
+      "—"
+    );
+  };
+  const repOf = (leadId: string | null | undefined) => {
+    const l = leads.find((x) => x.id === leadId);
+    return l?.assigned_to ? (repById.get(l.assigned_to) ?? null) : null;
   };
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
@@ -132,6 +162,8 @@ export default async function PaymentsPage() {
         id: ph.id,
         estimateId: c?.id ?? null,
         docNumber: c?.doc_number ?? null,
+        leadId: c?.lead_id ?? null,
+        rep: repOf(c?.lead_id),
         customer: c ? nameOf(c.lead_id) : "",
         phase: ph.name || "Progress payment",
         dueDate: ph.due_date ?? null,
@@ -153,6 +185,8 @@ export default async function PaymentsPage() {
     .map((c) => ({
       estimateId: c.id,
       docNumber: c.doc_number,
+      leadId: c.lead_id,
+      rep: repOf(c.lead_id),
       title: c.title || "Untitled",
       customer: nameOf(c.lead_id),
       totalCents: c.total_cents,
@@ -161,11 +195,14 @@ export default async function PaymentsPage() {
 
   const historyRows: PaymentHistoryRow[] = payments.map((p) => {
     const c = docOf(p.estimate_id);
+    const leadId = p.lead_id ?? c?.lead_id ?? null;
     return {
       id: p.id,
       estimateId: c?.id ?? null,
       docNumber: c?.doc_number ?? null,
-      customer: nameOf(p.lead_id ?? c?.lead_id ?? null),
+      leadId,
+      rep: repOf(leadId),
+      customer: nameOf(leadId),
       kind: p.kind === "deposit" ? "Deposit" : "Progress",
       status: p.status,
       methodLabel: paymentMethodLabel(p.method) || "—",
