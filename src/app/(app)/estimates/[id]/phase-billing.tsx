@@ -4,11 +4,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   defaultDueDate,
+  moneyCents,
   phaseState,
   phaseStateLabel,
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
+import type { ChangeOrderRollup } from "@/lib/data/change-order-rollup";
 import {
   requestProgressPayment,
   markProgressPaymentBilled,
@@ -35,10 +37,16 @@ export function PhaseBilling({
   phase,
   payments,
   signed,
+  rollup = null,
 }: {
   phase: EstimatePayment;
   payments: PortalPayment[];
   signed: boolean;
+  /** Set when this row mirrors a change order that collects on its own
+   *  schedule -- the badge then reports that schedule, and the bill
+   *  controls stay off it: billing the full amount here would ask the
+   *  customer a second time for money already taken over there. */
+  rollup?: ChangeOrderRollup | null;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -51,6 +59,35 @@ export function PhaseBilling({
   const state = phaseState(phase, on);
 
   if (!signed) return null;
+
+  if (rollup) {
+    const label =
+      rollup.state === "paid"
+        ? "Paid"
+        : rollup.state === "partial"
+          ? "Partially paid"
+          : "Clearing";
+    const badge = rollup.state === "paid" ? "signed" : "sent";
+    return (
+      <div className="est-phase-bill">
+        <span className={"est-badge est-badge-" + badge}>{label}</span>
+        <span className="est-phase-due-note">
+          {rollup.state === "paid" && <>paid on {rollup.docNumber}</>}
+          {rollup.state === "partial" && (
+            <>
+              {moneyCents(rollup.paidCents)} of {moneyCents(rollup.amountCents)} paid on{" "}
+              {rollup.docNumber} &mdash; bill the rest there
+            </>
+          )}
+          {rollup.state === "clearing" && (
+            <>
+              {moneyCents(rollup.pendingCents)} clearing on {rollup.docNumber}
+            </>
+          )}
+        </span>
+      </div>
+    );
+  }
 
   function bill() {
     setError(null);
