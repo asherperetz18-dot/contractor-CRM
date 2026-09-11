@@ -8467,6 +8467,41 @@ textarea.est-item-desc:disabled {
   border: none;
   background: #fff;
 }
+/* Ink: the viewer's marker/laser layer over the mirror, and its twin
+   floating over the sharer's whole app. Neither ever eats a click the
+   person didn't aim at a drawing tool. */
+.cb-ink {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}
+.cb-tools {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 6px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: rgba(13, 19, 27, 0.85);
+}
+.cb-tools .btn-ghost {
+  color: #cdd6df;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.cb-tools .cb-tool-active {
+  color: #fff;
+  background: rgba(224, 49, 39, 0.55);
+  border-color: rgba(224, 49, 39, 0.9);
+}
+.cb-ink-overlay {
+  position: fixed;
+  inset: 0;
+  /* over the app, under the sharer's own pill so Stop stays clickable */
+  z-index: 125;
+  pointer-events: none;
+}
 
 /* Checklist steps: the plan columns (due date, owner) and the
    overdue alarm. */
