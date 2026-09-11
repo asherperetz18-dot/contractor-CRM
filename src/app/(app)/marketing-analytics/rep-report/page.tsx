@@ -304,13 +304,19 @@ export default async function RepReportPage({
   const rangeKey = custom ? "custom" : sp.days && RANGE_LABEL[sp.days] ? sp.days : "30";
 
   const supabase = await createClient();
-  const [leads, members, { data: events }, { data: estimates }, { data: company }] =
+  const [leads, members, events, { data: estimates }, { data: company }] =
     await Promise.all([
       selectAll<Lead>((f, t) =>
         supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
       ),
       getCompanyMembers(companyId),
-      supabase.from("events").select("*").eq("company_id", companyId),
+      // selectAll: a bare select stops at 1000 rows in silence -- this
+      // report's funnel/appointment counts would quietly understate
+      // themselves for any rep report window that spans that many
+      // company-wide appointments.
+      selectAll<Event>((f, t) =>
+        supabase.from("events").select("*").eq("company_id", companyId).range(f, t)
+      ),
       supabase.from("estimates").select("*").eq("company_id", companyId),
       supabase
         .from("company_profile")
@@ -338,7 +344,7 @@ export default async function RepReportPage({
     buildFunnel(
       id,
       (leads as Lead[]) ?? [],
-      ((events as Event[]) ?? []),
+      events,
       ((estimates as Estimate[]) ?? []),
       leadRepById,
       win,
@@ -350,7 +356,7 @@ export default async function RepReportPage({
 
   const leadById = new Map(((leads as Lead[]) ?? []).map((l) => [l.id, l]));
   const appointments = chosen
-    ? apptRows(chosen.id, ((events as Event[]) ?? []), leadById, win)
+    ? apptRows(chosen.id, events, leadById, win)
     : [];
   const leadLines = chosen
     ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), win)

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { selectAll } from "@/lib/data/select-all";
 import {
   computeDispatcherCommissions,
   commissionHolds,
@@ -520,13 +521,19 @@ export async function getLeadsBehindAppointments(): Promise<{
   if (!profile) return { leads: [], notes: [] };
 
   const admin = createAdminClient();
-  const { data: events } = await admin
-    .from("events")
-    .select("lead_id")
-    .eq("company_id", profile.company_id)
-    .not("lead_id", "is", null)
-    .returns<{ lead_id: string }[]>();
-  const ids = [...new Set((events ?? []).map((e) => e.lead_id))];
+  // selectAll: Calendar and Schedule both call this to find appointment
+  // leads RLS would otherwise hide, and a bare select silently drops
+  // whichever appointments land past row 1000 -- their leads' Notes/
+  // Photos/Result tabs would then just be missing, not merely stale.
+  const events = await selectAll<{ lead_id: string }>((f, t) =>
+    admin
+      .from("events")
+      .select("lead_id")
+      .eq("company_id", profile.company_id)
+      .not("lead_id", "is", null)
+      .range(f, t)
+  );
+  const ids = [...new Set(events.map((e) => e.lead_id))];
   if (!ids.length) return { leads: [], notes: [] };
 
   // What the viewer already sees, through their own RLS view -- chunked
@@ -575,12 +582,19 @@ export async function getAppointmentHolders(): Promise<Record<string, string | n
   if (!profile || !isDispatchScoped(profile)) return {};
 
   const admin = createAdminClient();
-  const { data: events } = await admin
-    .from("events")
-    .select("id, lead_id")
-    .eq("company_id", profile.company_id)
-    .returns<{ id: string; lead_id: string | null }[]>();
-  if (!events?.length) return {};
+  // selectAll: this maps every appointment to its dispatcher, and a bare
+  // select silently dropping appointments past row 1000 would leave
+  // exactly those event ids missing from `out` below -- a dispatch-
+  // scoped viewer would see the appointment holder lock simply not
+  // apply to them.
+  const events = await selectAll<{ id: string; lead_id: string | null }>((f, t) =>
+    admin
+      .from("events")
+      .select("id, lead_id")
+      .eq("company_id", profile.company_id)
+      .range(f, t)
+  );
+  if (!events.length) return {};
 
   const leadIds = [...new Set(events.map((e) => e.lead_id).filter(Boolean) as string[])];
   if (!leadIds.length) return {};

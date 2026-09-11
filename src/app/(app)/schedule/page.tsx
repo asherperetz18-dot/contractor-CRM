@@ -47,24 +47,31 @@ export default async function SchedulePage() {
   const behindAppointments = await getLeadsBehindAppointments();
 
   const [
-    { data: events },
-    { data: jobs },
+    events,
+    jobs,
     allReps,
     leads,
     { data: stages },
-    { data: leadTasks },
-    { data: leadNotes },
+    leadTasks,
+    leadNotes,
     { data: estimates },
     { data: calendars },
   ] = await Promise.all([
     // selectAll: a bare select stops at 1000 rows in silence, and a
     // schedule that quietly drops the newest appointments once the
     // history passes a thousand is exactly the page nobody would
-    // suspect. Wrapped to keep the destructuring shape.
+    // suspect.
     selectAll<Event>((f, t) =>
       supabase.from("events").select("*").eq("company_id", companyId).range(f, t)
-    ).then((rows) => ({ data: rows })),
-    supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
+    ),
+    selectAll<Job>((f, t) =>
+      supabase
+        .from("jobs")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("name", { ascending: true })
+        .range(f, t)
+    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     // Only the contacts an appointment actually points at, matching the
     // calendar. This page was loading every lead in the company and
@@ -84,15 +91,21 @@ export default async function SchedulePage() {
         .range(f, t)
     ),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
-    supabase
-      .from("lead_tasks")
-      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
-      .eq("company_id", companyId),
-    supabase
-      .from("lead_notes")
-      .select("*")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
+    selectAll<LeadTask>((f, t) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+        .eq("company_id", companyId)
+        .range(f, t)
+    ),
+    selectAll<LeadNote>((f, t) =>
+      supabase
+        .from("lead_notes")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     // The estimates table, not the legacy documents one -- see the note
     // on the calendar page.
     supabase
@@ -106,13 +119,13 @@ export default async function SchedulePage() {
 
   return (
     <ScheduleList
-      events={(events as Event[]) ?? []}
-      jobs={(jobs as Job[]) ?? []}
+      events={events}
+      jobs={jobs}
       reps={reps}
       leads={[...withoutJoin(leads), ...behindAppointments.leads]}
       stages={(stages as PipelineStageRow[]) ?? []}
-      leadTasks={(leadTasks as LeadTask[]) ?? []}
-      leadNotes={[...((leadNotes as LeadNote[]) ?? []), ...behindAppointments.notes]}
+      leadTasks={leadTasks}
+      leadNotes={[...leadNotes, ...behindAppointments.notes]}
       estimates={(estimates as LinkedEstimate[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
