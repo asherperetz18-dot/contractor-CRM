@@ -11,7 +11,12 @@ import {
   requestScreenShare,
   startScreenShare,
   type ActiveShare,
+  type ShareKind,
 } from "@/lib/actions/screen-share";
+import type { eventWithTime } from "rrweb";
+import { packEvents, Reassembler, type CobrowsePart } from "@/lib/cobrowse/wire";
+import { startCobrowseRecorder, type CobrowseRecorder } from "@/lib/cobrowse/recorder";
+import { CobrowseViewer } from "@/lib/cobrowse/viewer";
 
 /**
  * Live screen help between teammates: one shares, one watches, both
@@ -25,6 +30,15 @@ import {
  * Consent is structural, not policy: the browser's own picker is the
  * only way a screen leaves a machine, and the sharer's Stop -- ours or
  * the browser's -- kills the session for everyone.
+ *
+ * Cobrowse is the second kind of session on the same plumbing: instead
+ * of capturing pixels, rrweb mirrors this tab's DOM over the very same
+ * Realtime channel (src/lib/cobrowse/). No capture API means it works
+ * from iPhones and iPads -- the devices field crews actually hold --
+ * and it shares exactly the CRM tab: never the rest of the screen,
+ * other apps, or notifications. Consent stays structural there too:
+ * nothing records until the person picks who watches (or answers an
+ * admin's request), and Stop ends it for everyone.
  */
 
 const POLL_MS = 20_000;
@@ -39,7 +53,7 @@ function canShareScreen(): boolean {
   return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
 }
 const NO_SHARE_MSG =
-  "Screen sharing isn't available on iPhone or iPad — but you can still watch a teammate's screen and talk.";
+  "This device can't capture its screen — but sharing the CRM view works, and so does watching a teammate.";
 
 // Read the capability at render without a set-state-in-effect: the
 // server (and first hydration paint) assume yes, then the client's real
@@ -73,17 +87,13 @@ export function ScreenShareButton() {
   return (
     <button
       type="button"
-      className={
-        "icon-btn topbar-icon-btn" +
-        (live ? " topbar-dialer-active" : "") +
-        (canShare ? "" : " topbar-icon-muted")
-      }
+      className={"icon-btn topbar-icon-btn" + (live ? " topbar-dialer-active" : "")}
       title={
-        !canShare
-          ? NO_SHARE_MSG
-          : live
-          ? "Sharing your screen — click to stop"
-          : "Share my screen with a teammate"
+        live
+          ? "Sharing — click to stop"
+          : canShare
+          ? "Share my screen with a teammate"
+          : "Share the CRM view with a teammate"
       }
       aria-label="Share my screen"
       onClick={() => window.dispatchEvent(new CustomEvent("crm:screenshare-toggle"))}
@@ -196,9 +206,12 @@ export function ScreenShareEngine({
   const [inviteeName, setInviteeName] = useState<string | null>(null);
   // The picker, opened by a topbar button. mode "share" = "who should
   // watch my screen?"; mode "request" = "whose screen do I want to see?"
+  // kind is what a "share" would send: the whole screen, or (the only
+  // choice on iPhone/iPad) the CRM tab's DOM via cobrowse.
   const [picker, setPicker] = useState<{
     targets: { id: string; name: string }[] | null;
     mode: "share" | "request";
+    kind: ShareKind;
   } | null>(null);
   // admin waiting on a teammate to answer a screen request
   const [requesting, setRequesting] = useState<{ id: string; name: string } | null>(null);
@@ -222,6 +235,9 @@ export function ScreenShareEngine({
   // same for the corner screen window (only one shows at a time)
   const [panelPos, setPanelPos] = useState<{ x: number; y: number } | null>(null);
   const [error, setError] = useState("");
+
+  // which kind of session THIS side is currently sharing
+  const [myKind, setMyKind] = useState<ShareKind>("screen");
 
   const supabase = useRef(createBrowserClient());
   const pc = useRef<RTCPeerConnection | null>(null);
@@ -257,6 +273,16 @@ export function ScreenShareEngine({
   // which asker we've already chimed for, so the re-sent pings don't
   // ring the teammate's popup over and over
   const requestDinged = useRef<string | null>(null);
+  // ── cobrowse plumbing ───────────────────────────────────────────
+  // sharer side: the live rrweb recorder and its batch counter; events
+  // only go out while somebody is actually watching
+  const cobrowseRec = useRef<CobrowseRecorder | null>(null);
+  const cobrowseSeq = useRef(0);
+  const viewerPresentRef = useRef(false);
+  // viewer side: the mounted CobrowseViewer's feed callback, plus the
+  // batches that arrive in the beat before it mounts
+  const viewerFeed = useRef<((events: eventWithTime[]) => void) | null>(null);
+  const cobrowseQueue = useRef<eventWithTime[][]>([]);
 
   const broadcast = useCallback((payload: Signal) => {
     channel.current?.send({ type: "broadcast", event: "signal", payload });
@@ -282,6 +308,12 @@ export function ScreenShareEngine({
     (notify: boolean) => {
       if (notify) broadcast({ kind: "end" });
       resetLanes();
+      cobrowseRec.current?.stop();
+      cobrowseRec.current = null;
+      viewerPresentRef.current = false;
+      viewerFeed.current = null;
+      cobrowseQueue.current = [];
+      setMyKind("screen");
       pc.current?.close();
       pc.current = null;
       screenStream.current?.getTracks().forEach((t) => t.stop());
@@ -333,8 +365,86 @@ export function ScreenShareEngine({
     return peer;
   }, [resetLanes]);
 
+  // ── sharer: cobrowse ────────────────────────────────────────────
+  // No capture API and no media: rrweb watches this tab's DOM and the
+  // batches ride the same share:<token> channel the WebRTC handshake
+  // would have used. viewer-hello answers with a fresh full snapshot
+  // instead of an SDP offer.
+  const startCobrowseSharing = useCallback(
+    async (invitedTo: string | null, inviteeLabel: string | null) => {
+      setError("");
+      const res = await startScreenShare(invitedTo, "cobrowse");
+      if (res.error || !res.token || !res.id) {
+        return setError(res.error ?? "Couldn't start the session.");
+      }
+      shareId.current = res.id;
+      setInviteeName(inviteeLabel);
+
+      const ch = supabase.current.channel(`share:${res.token}`);
+      channel.current = ch;
+      ch.on("broadcast", { event: "signal" }, ({ payload }) => {
+        const sig = payload as Signal;
+        if (sig.kind === "viewer-hello") {
+          if (busyRef.current) return void broadcast({ kind: "busy" });
+          busyRef.current = true;
+          viewerPresentRef.current = true;
+          setViewerHere(true);
+          dingAnswered();
+          // their picture starts from a clean baseline, not mid-stream
+          cobrowseRec.current?.snapshot();
+        } else if (sig.kind === "end") {
+          // the viewer left; this side is still (idly) sharing
+          busyRef.current = false;
+          viewerPresentRef.current = false;
+          setViewerHere(false);
+          dingLeft();
+        }
+      });
+      ch.subscribe();
+
+      let rec: CobrowseRecorder | null = null;
+      try {
+        rec = await startCobrowseRecorder((events) => {
+          // nobody watching = nothing sent; the hello's snapshot restores
+          // the picture the moment somebody joins
+          if (!viewerPresentRef.current) return;
+          for (const part of packEvents(events, cobrowseSeq.current++)) {
+            channel.current?.send({ type: "broadcast", event: "cobrowse", payload: part });
+          }
+        });
+      } catch {
+        // rrweb's chunk failing to load (weak site cellular) must land
+        // in the cleanup below, not escape the click handler with the
+        // session row dangling and the channel still subscribed
+      }
+      if (!rec) {
+        teardown(false);
+        return setError("Couldn't start the CRM view share on this device.");
+      }
+      cobrowseRec.current = rec;
+      // A viewer whose hello beat the recorder's load found nothing to
+      // snapshot then; give them their baseline now.
+      if (viewerPresentRef.current) rec.snapshot();
+
+      setMyKind("cobrowse");
+      setSharing(true);
+      window.dispatchEvent(new CustomEvent("crm:screenshare-state", { detail: { live: true } }));
+      alertChannel.current?.send({
+        type: "broadcast",
+        event: "invite",
+        payload: { invitedTo, sharerName: selfName },
+      });
+    },
+    [broadcast, teardown, selfName]
+  );
+
   // ── sharer ──────────────────────────────────────────────────────
-  const startSharing = useCallback(async (invitedTo: string | null, inviteeLabel: string | null) => {
+  const startSharing = useCallback(async (
+    invitedTo: string | null,
+    inviteeLabel: string | null,
+    kind: ShareKind = "screen"
+  ) => {
+    if (kind === "cobrowse") return startCobrowseSharing(invitedTo, inviteeLabel);
     setError("");
     // Guard the capture call itself: without this, iOS throws a
     // TypeError that the catch below swallows as "user cancelled",
@@ -443,11 +553,58 @@ export function ScreenShareEngine({
     } catch {
       // user cancelled the picker
     }
-  }, [broadcast, newPeer, teardown, resetLanes, selfName]);
+  }, [broadcast, newPeer, teardown, resetLanes, selfName, startCobrowseSharing]);
+
+  // ── viewer: cobrowse ────────────────────────────────────────────
+  // The CobrowseViewer component owns rrweb's replayer; this engine
+  // owns the channel. attachCobrowse is the seam: the component hands
+  // over its feed callback, and batches that land in the beat before
+  // it mounts wait in a queue instead of being lost.
+  const attachCobrowse = useCallback((feed: (events: eventWithTime[]) => void) => {
+    viewerFeed.current = feed;
+    const backlog = cobrowseQueue.current;
+    cobrowseQueue.current = [];
+    for (const events of backlog) feed(events);
+    return () => {
+      if (viewerFeed.current === feed) viewerFeed.current = null;
+    };
+  }, []);
+
+  const startWatchingCobrowse = useCallback(
+    (share: ActiveShare) => {
+      setError("");
+      setOffer(null);
+      const reasm = new Reassembler();
+      const ch = supabase.current.channel(`share:${share.token}`);
+      channel.current = ch;
+      ch.on("broadcast", { event: "cobrowse" }, ({ payload }) => {
+        const events = reasm.push(payload as CobrowsePart);
+        if (!events) return;
+        const feed = viewerFeed.current;
+        if (feed) feed(events as eventWithTime[]);
+        else cobrowseQueue.current.push(events as eventWithTime[]);
+      });
+      ch.on("broadcast", { event: "signal" }, ({ payload }) => {
+        const sig = payload as Signal;
+        if (sig.kind === "busy") {
+          setError(`${share.sharerName} already has a viewer in this session.`);
+          teardown(false);
+        } else if (sig.kind === "end") {
+          teardown(false);
+        }
+      });
+      ch.subscribe((status) => {
+        if (status === "SUBSCRIBED") broadcast({ kind: "viewer-hello" });
+      });
+      setWatching(share);
+    },
+    [broadcast, teardown]
+  );
 
   // ── viewer ──────────────────────────────────────────────────────
   const startWatching = useCallback(
     async (share: ActiveShare) => {
+      if (share.kind === "cobrowse") return startWatchingCobrowse(share);
       setError("");
       setOffer(null);
       let mic: MediaStream | null = null;
@@ -528,7 +685,7 @@ export function ScreenShareEngine({
       });
       setWatching(share);
     },
-    [broadcast, newPeer, teardown]
+    [broadcast, newPeer, teardown, startWatchingCobrowse]
   );
 
   // ── admin: request a teammate's screen ──────────────────────────
@@ -601,9 +758,10 @@ export function ScreenShareEngine({
   useEffect(() => {
     const onToggle = () => {
       if (sharing) teardown(true);
-      else if (!canShareScreen()) setError(NO_SHARE_MSG);
       else if (!watching) {
-        setPicker({ targets: null, mode: "share" });
+        // A device that can't capture its screen still shares the CRM
+        // view -- cobrowse is why this branch no longer errors on iOS.
+        setPicker({ targets: null, mode: "share", kind: canShareScreen() ? "screen" : "cobrowse" });
         void getShareTargets().then((res) => {
           setPicker((p) => (p ? { ...p, targets: res.targets ?? [] } : p));
         });
@@ -618,7 +776,7 @@ export function ScreenShareEngine({
     if (!isAdmin) return;
     const onRequest = () => {
       if (sharing || watching || requesting) return;
-      setPicker({ targets: null, mode: "request" });
+      setPicker({ targets: null, mode: "request", kind: "screen" });
       void getShareTargets().then((res) => {
         setPicker((p) => (p ? { ...p, targets: res.targets ?? [] } : p));
       });
@@ -687,17 +845,9 @@ export function ScreenShareEngine({
     ch.on("broadcast", { event: "request" }, ({ payload }) => {
       const p = payload as { fromId: string; fromName: string; to: string };
       if (p.to !== selfId) return;
-      // This device can't capture its screen (iPhone/iPad) -- decline
-      // right away with the reason, so the admin learns instead of
-      // waiting out the 40s timeout on a request that can never succeed.
-      if (!canShareScreen()) {
-        ch.send({
-          type: "broadcast",
-          event: "request-declined",
-          payload: { to: p.fromId, fromName: selfName, reason: "on an iPhone or iPad, which can't share its screen" },
-        });
-        return;
-      }
+      // A device that can't capture its screen (iPhone/iPad) answers
+      // with cobrowse instead of auto-declining -- the admin sees the
+      // CRM view, which is where the help was needed anyway.
       if (activeRef.current) {
         ch.send({ type: "broadcast", event: "request-declined", payload: { to: p.fromId, fromName: selfName } });
         return;
@@ -890,6 +1040,38 @@ export function ScreenShareEngine({
             Who should watch? A teammate you pick gets pinged right away — and nobody else
             even sees the session.
           </p>
+          {canShare ? (
+            <div className="ss-kind-row" role="radiogroup" aria-label="What to share">
+              <button
+                type="button"
+                className={picker.kind === "screen" ? "btn-primary small" : "btn-ghost small"}
+                aria-pressed={picker.kind === "screen"}
+                onClick={() => setPicker((p) => (p ? { ...p, kind: "screen" } : p))}
+              >
+                🖥 Entire screen
+              </button>
+              <button
+                type="button"
+                className={picker.kind === "cobrowse" ? "btn-primary small" : "btn-ghost small"}
+                aria-pressed={picker.kind === "cobrowse"}
+                onClick={() => setPicker((p) => (p ? { ...p, kind: "cobrowse" } : p))}
+              >
+                🧭 Just the CRM
+              </button>
+            </div>
+          ) : (
+            // No capture API here (iPhone/iPad) -- cobrowse is the way,
+            // and it's already selected; just say what it means.
+            <p className="module-sub">
+              You&apos;ll share the CRM view itself — exactly this tab, never the rest of your
+              screen or other apps.
+            </p>
+          )}
+          {picker.kind === "cobrowse" && canShare && (
+            <p className="module-sub">
+              Only this CRM tab is shared — never the rest of your screen or other apps.
+            </p>
+          )}
           {picker.targets === null ? (
             <p className="empty-hint">Loading your team…</p>
           ) : (
@@ -898,8 +1080,9 @@ export function ScreenShareEngine({
                 type="button"
                 className="btn-ghost"
                 onClick={() => {
+                  const kind = picker.kind;
                   setPicker(null);
-                  void startSharing(null, null);
+                  void startSharing(null, null, kind);
                 }}
               >
                 🌐 Anyone on the team
@@ -910,8 +1093,9 @@ export function ScreenShareEngine({
                   type="button"
                   className="btn-ghost"
                   onClick={() => {
+                    const kind = picker.kind;
                     setPicker(null);
-                    void startSharing(t.id, t.name);
+                    void startSharing(t.id, t.name, kind);
                   }}
                 >
                   👤 {t.name}
@@ -980,7 +1164,7 @@ export function ScreenShareEngine({
                 const req = incomingRequest;
                 requestDinged.current = null;
                 setIncomingRequest(null);
-                void startSharing(req.fromId, req.fromName);
+                void startSharing(req.fromId, req.fromName, canShareScreen() ? "screen" : "cobrowse");
               }}
             >
               Share now
@@ -999,14 +1183,18 @@ export function ScreenShareEngine({
           title="Drag me anywhere"
         >
           <span className="ss-dot" />
-          Sharing your screen
+          {myKind === "cobrowse" ? "Sharing the CRM view" : "Sharing your screen"}
           {viewerHere
             ? ` — ${inviteeName ?? "a teammate"} is watching`
             : ` — waiting for ${inviteeName ?? "a teammate"}`}
-          <button className="btn-ghost small" onClick={toggleMic}>
-            {micOn ? "🎙 Mic on" : "🔇 Mic off"}
-          </button>
-          {viewerHere && (
+          {/* cobrowse carries no audio or camera lanes -- talking goes
+              by phone, as when a mic is missing */}
+          {myKind !== "cobrowse" && (
+            <button className="btn-ghost small" onClick={toggleMic}>
+              {micOn ? "🎙 Mic on" : "🔇 Mic off"}
+            </button>
+          )}
+          {viewerHere && myKind !== "cobrowse" && (
             <button className="btn-ghost small" onClick={() => void toggleCam()}>
               {camOn ? "📷 Cam on" : "📷 Cam off"}
             </button>
@@ -1068,7 +1256,8 @@ export function ScreenShareEngine({
           }}
         >
           <p style={{ marginTop: 0 }}>
-            🖥 <strong>{offer.sharerName}</strong> wants to share their screen with you.
+            🖥 <strong>{offer.sharerName}</strong> wants to share{" "}
+            {offer.kind === "cobrowse" ? "their CRM view" : "their screen"} with you.
           </p>
           <div className="modal-actions">
             <button
@@ -1087,7 +1276,8 @@ export function ScreenShareEngine({
         </Modal>
       ) : offer && !sharing && !watching ? (
         <div className="ss-banner">
-          🖥 <strong>{offer.sharerName}</strong> is sharing their screen
+          🖥 <strong>{offer.sharerName}</strong> is sharing{" "}
+          {offer.kind === "cobrowse" ? "their CRM view" : "their screen"}
           <button className="btn-primary small" onClick={() => void startWatching(offer)}>
             Watch
           </button>
@@ -1123,23 +1313,30 @@ export function ScreenShareEngine({
         >
           <div className="ss-viewer-head">
             <span>
-              <span className="ss-dot" /> Watching <strong>{watching.sharerName}</strong>&apos;s screen
+              <span className="ss-dot" /> Watching <strong>{watching.sharerName}</strong>&apos;s{" "}
+              {watching.kind === "cobrowse" ? "CRM view" : "screen"}
               {shareBackOn ? " — sharing yours too" : ""}
             </span>
             <div className="ss-viewer-tools">
-              <button className="btn-ghost small" onClick={toggleMic}>
-                {micOn ? "🎙 Mic on" : "🔇 Mic off"}
-              </button>
-              <button className="btn-ghost small" onClick={() => void toggleCam()}>
-                {camOn ? "📷 Cam on" : "📷 Cam off"}
-              </button>
-              {/* Sharing your screen back needs screen capture, which
-                  iPhone/iPad can't do -- hide it there rather than offer
-                  a button that only errors. */}
-              {canShare && (
-                <button className="btn-ghost small" onClick={() => void toggleShareBack()}>
-                  {shareBackOn ? "🖥 Stop my screen" : "🖥 Share mine too"}
-                </button>
+              {/* cobrowse has no audio/camera/share-back lanes: it is a
+                  live DOM mirror, not a call */}
+              {watching.kind !== "cobrowse" && (
+                <>
+                  <button className="btn-ghost small" onClick={toggleMic}>
+                    {micOn ? "🎙 Mic on" : "🔇 Mic off"}
+                  </button>
+                  <button className="btn-ghost small" onClick={() => void toggleCam()}>
+                    {camOn ? "📷 Cam on" : "📷 Cam off"}
+                  </button>
+                  {/* Sharing your screen back needs screen capture, which
+                      iPhone/iPad can't do -- hide it there rather than offer
+                      a button that only errors. */}
+                  {canShare && (
+                    <button className="btn-ghost small" onClick={() => void toggleShareBack()}>
+                      {shareBackOn ? "🖥 Stop my screen" : "🖥 Share mine too"}
+                    </button>
+                  )}
+                </>
               )}
               <button
                 className="btn-primary small"
@@ -1152,12 +1349,18 @@ export function ScreenShareEngine({
               </button>
             </div>
           </div>
-          <video ref={remoteVideo} autoPlay playsInline className="ss-video" />
+          {watching.kind === "cobrowse" ? (
+            <CobrowseViewer attach={attachCobrowse} />
+          ) : (
+            <video ref={remoteVideo} autoPlay playsInline className="ss-video" />
+          )}
           {/* the sharer's face over their shared screen */}
-          <div className="ss-cam-bubble" style={{ display: remoteCamOn ? undefined : "none" }}>
-            <video ref={camVideo} autoPlay playsInline muted />
-            <span className="ss-cam-name">{watching.sharerName}</span>
-          </div>
+          {watching.kind !== "cobrowse" && (
+            <div className="ss-cam-bubble" style={{ display: remoteCamOn ? undefined : "none" }}>
+              <video ref={camVideo} autoPlay playsInline muted />
+              <span className="ss-cam-name">{watching.sharerName}</span>
+            </div>
+          )}
         </div>
       )}
 

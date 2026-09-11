@@ -8443,6 +8443,30 @@ textarea.est-item-desc:disabled {
   font-size: 12px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
+/* Cobrowse: the picker's what-to-share toggle, and the stage the live
+   DOM mirror plays on. rrweb sizes its own wrapper to the sharer's
+   viewport; the stage clips it and the viewer scales it to fit. */
+.ss-kind-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cb-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: #000;
+}
+/* The mirrored page is a picture, not a surface to act on: rrweb's
+   iframe is sandboxed anyway, but making that structural keeps a
+   stray click on the viewer's side from even trying. */
+.cb-stage iframe {
+  pointer-events: none;
+  border: none;
+  background: #fff;
+}
 
 /* Checklist steps: the plan columns (due date, owner) and the
    overdue alarm. */
