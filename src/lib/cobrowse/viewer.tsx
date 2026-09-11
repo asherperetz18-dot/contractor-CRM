@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { eventWithTime, Replayer } from "rrweb";
 import {
+  MAX_POINTS,
   emptyInk,
   inkReduce,
   pruneInk,
@@ -200,6 +201,8 @@ export function CobrowseViewer({
   const strokeRef = useRef<{ id: string; points: { x: number; y: number }[] } | null>(null);
   const lastSend = useRef(0);
 
+  const newStrokeId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
   const toNorm = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const geom = geomRef.current;
     if (!geom || !geom.w || !geom.h) return null;
@@ -214,7 +217,7 @@ export function CobrowseViewer({
     const p = toNorm(e);
     if (!p) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    strokeRef.current = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, points: [p] };
+    strokeRef.current = { id: newStrokeId(), points: [p] };
     lastSend.current = 0;
     applyInk({ kind: "stroke", ...strokeRef.current });
   };
@@ -233,6 +236,16 @@ export function CobrowseViewer({
     const stroke = strokeRef.current;
     if (t !== "draw" || !stroke) return;
     stroke.points.push(p);
+    // A stroke the receiver would truncate is a stroke the wire may
+    // reject outright (one un-chunked broadcast): at the cap, seal
+    // this segment and carry the line on under a fresh id, joined at
+    // the last point so nobody sees the seam.
+    if (stroke.points.length >= MAX_POINTS) {
+      applyInk({ kind: "stroke", id: stroke.id, points: stroke.points });
+      strokeRef.current = { id: newStrokeId(), points: [p] };
+      lastSend.current = Date.now();
+      return;
+    }
     // stream the growing stroke: the same id replaces itself over there
     const now = Date.now();
     if (now - lastSend.current >= STROKE_SEND_MS) {
