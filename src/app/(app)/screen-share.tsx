@@ -17,6 +17,8 @@ import type { eventWithTime } from "rrweb";
 import { packEvents, Reassembler, type CobrowsePart } from "@/lib/cobrowse/wire";
 import { startCobrowseRecorder, type CobrowseRecorder } from "@/lib/cobrowse/recorder";
 import { CobrowseViewer } from "@/lib/cobrowse/viewer";
+import { SharerInkOverlay } from "@/lib/cobrowse/ink-overlay";
+import type { InkSignal } from "@/lib/cobrowse/ink";
 
 /**
  * Live screen help between teammates: one shares, one watches, both
@@ -283,6 +285,10 @@ export function ScreenShareEngine({
   // batches that arrive in the beat before it mounts
   const viewerFeed = useRef<((events: eventWithTime[]) => void) | null>(null);
   const cobrowseQueue = useRef<eventWithTime[][]>([]);
+  // sharer side of ink: the overlay's feed for the viewer's drawings.
+  // Ink is ephemeral -- a signal landing before the overlay mounts is
+  // dropped, not queued.
+  const sharerInkFeed = useRef<((signal: InkSignal) => void) | null>(null);
 
   const broadcast = useCallback((payload: Signal) => {
     channel.current?.send({ type: "broadcast", event: "signal", payload });
@@ -313,6 +319,7 @@ export function ScreenShareEngine({
       viewerPresentRef.current = false;
       viewerFeed.current = null;
       cobrowseQueue.current = [];
+      sharerInkFeed.current = null;
       setMyKind("screen");
       pc.current?.close();
       pc.current = null;
@@ -399,6 +406,10 @@ export function ScreenShareEngine({
           setViewerHere(false);
           dingLeft();
         }
+      });
+      // the viewer's drawings, landing on this screen's ink overlay
+      ch.on("broadcast", { event: "ink" }, ({ payload }) => {
+        sharerInkFeed.current?.(payload as InkSignal);
       });
       ch.subscribe();
 
@@ -567,6 +578,19 @@ export function ScreenShareEngine({
     for (const events of backlog) feed(events);
     return () => {
       if (viewerFeed.current === feed) viewerFeed.current = null;
+    };
+  }, []);
+
+  // ── ink seams, one per side ─────────────────────────────────────
+  // watching: the viewer's tools ship each drawing to the sharer
+  const sendCobrowseInk = useCallback((signal: InkSignal) => {
+    channel.current?.send({ type: "broadcast", event: "ink", payload: signal });
+  }, []);
+  // sharing: the overlay hands over its feed for arriving drawings
+  const attachSharerInk = useCallback((feed: (signal: InkSignal) => void) => {
+    sharerInkFeed.current = feed;
+    return () => {
+      if (sharerInkFeed.current === feed) sharerInkFeed.current = null;
     };
   }, []);
 
@@ -1173,6 +1197,10 @@ export function ScreenShareEngine({
         </Modal>
       )}
 
+      {/* While the CRM view is shared, the watcher's drawings land
+          here, floating click-dead over the whole app. */}
+      {sharing && myKind === "cobrowse" && <SharerInkOverlay attach={attachSharerInk} />}
+
       {sharing && (
         <div
           className="ss-pill"
@@ -1350,7 +1378,7 @@ export function ScreenShareEngine({
             </div>
           </div>
           {watching.kind === "cobrowse" ? (
-            <CobrowseViewer attach={attachCobrowse} />
+            <CobrowseViewer attach={attachCobrowse} sendInk={sendCobrowseInk} />
           ) : (
             <video ref={remoteVideo} autoPlay playsInline className="ss-video" />
           )}
