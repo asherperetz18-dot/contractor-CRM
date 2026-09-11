@@ -189,7 +189,7 @@ export default async function ProjectReportPage({
       .in("estimate_id", docIds),
     supabase
       .from("portal_payments")
-      .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at")
+      .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, reference, paid_at, created_at")
       .in("estimate_id", docIds),
     supabase
       .from("job_expenses")
@@ -518,7 +518,13 @@ export default async function ProjectReportPage({
                   <tr key={p.id}>
                     <td>{shortDate(p.paid_at ?? p.created_at)}</td>
                     <td>{p.kind === "deposit" ? "Deposit" : "Progress payment"}</td>
-                    <td className="estdoc-muted">{p.method || "—"}</td>
+                    {/* The cheque number rides with the method — "check
+                        #1042" — so the statement is enough to reconcile
+                        against the bank without opening the app. */}
+                    <td className="estdoc-muted">
+                      {p.method || "—"}
+                      {p.reference ? <span className="mono"> #{p.reference}</span> : null}
+                    </td>
                     <td className="estdoc-num mono">{moneyCents(p.amount_cents)}</td>
                   </tr>
                 ))}

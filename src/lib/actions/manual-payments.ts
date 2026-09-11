@@ -12,6 +12,7 @@ import {
   type ManualPaymentMethod,
 } from "@/lib/data/types";
 import { manualClearUpdate } from "@/lib/data/manual-clear";
+import { manualEditUpdate, type ManualEditInput } from "@/lib/data/manual-edit";
 
 export type ManualPaymentInput = {
   estimateId: string;
@@ -214,6 +215,56 @@ export async function markManualPaymentCleared(
     // never slip through between the read above and this update.
     .eq("source", "manual")
     .eq("status", "pending")
+    .select("id");
+  if (error || !updated?.length) {
+    return { error: error?.message || "Could not update the payment." };
+  }
+
+  revalidatePath("/payments");
+  revalidatePath(`/estimates/${payment.estimate_id}`);
+  revalidatePath("/pipeline");
+  return { ok: true };
+}
+
+/**
+ * Fix a hand-recorded payment in place: the cheque number, the method,
+ * the amount, the day it was taken.
+ *
+ * Before this, the only remedy for a typo was delete-and-record-again --
+ * which needs Office/Admin and loses recorded_by, the trail that makes
+ * cash entry safe to allow at all. Stripe rows stay untouchable: their
+ * record is what actually moved through Stripe.
+ */
+export async function updateManualPayment(
+  paymentId: string,
+  input: ManualEditInput
+): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can edit a payment." };
+  }
+
+  const admin = createAdminClient();
+  const { data: payment } = await admin
+    .from("portal_payments")
+    .select("id, estimate_id, source, status")
+    .eq("id", paymentId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; estimate_id: string; source: string; status: string }>();
+  if (!payment) return { error: "Payment not found." };
+
+  const decision = manualEditUpdate(payment, input);
+  if ("error" in decision) return { error: decision.error };
+
+  const { data: updated, error } = await admin
+    .from("portal_payments")
+    .update({ ...decision.update, updated_at: new Date().toISOString() })
+    .eq("id", payment.id)
+    .eq("company_id", profile.company_id)
+    // Re-stated on the write so a Stripe row can never slip through
+    // between the read above and this update.
+    .eq("source", "manual")
     .select("id");
   if (error || !updated?.length) {
     return { error: error?.message || "Could not update the payment." };

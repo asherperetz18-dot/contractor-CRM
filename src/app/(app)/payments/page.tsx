@@ -40,7 +40,7 @@ type LeadRow = {
 // portal_payments carries lead_id; the shared PortalPayment type covers
 // only what the estimate document needs, so widen it here rather than
 // adding a column the other call sites don't select.
-type PaymentRow = PortalPayment & { lead_id: string | null; source: string };
+type PaymentRow = PortalPayment & { lead_id: string | null; source: string; note: string | null };
 
 /**
  * Where the money is.
@@ -78,7 +78,7 @@ export default async function PaymentsPage() {
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
-        .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, source, paid_at, created_at")
+        .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, source, reference, note, paid_at, created_at")
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .range(from, to)
@@ -206,6 +206,9 @@ export default async function PaymentsPage() {
       kind: p.kind === "deposit" ? "Deposit" : "Progress",
       status: p.status,
       methodLabel: paymentMethodLabel(p.method) || "—",
+      method: p.method,
+      reference: p.reference ?? null,
+      note: p.note,
       date: p.paid_at ?? p.created_at,
       amountCents: p.amount_cents,
       manual: p.source === "manual",

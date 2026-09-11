@@ -2043,6 +2043,9 @@ export type PortalPayment = {
   amount_cents: number;
   status: "pending" | "succeeded" | "failed" | "cancelled";
   method: string | null;
+  /** Cheque number or transfer reference on a hand-recorded payment.
+      Optional because most call sites don't select it. */
+  reference?: string | null;
   paid_at: string | null;
   created_at: string;
 };

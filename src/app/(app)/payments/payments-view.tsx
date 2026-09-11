@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -11,6 +11,7 @@ import {
 import { ClientPicker } from "@/components/ui/client-picker";
 import { matchesClientRep } from "./payment-filters";
 import { ManualPaymentTools } from "./manual-payment-tools";
+import { EditManualPayment } from "./edit-manual-payment";
 
 /**
  * The three tables on the Payments page, behind one set of filters.
@@ -55,6 +56,11 @@ export type PaymentHistoryRow = {
   kind: string;
   status: string;
   methodLabel: string;
+  /** Raw method value, for the edit form. */
+  method: string | null;
+  /** Cheque number or transfer reference. */
+  reference: string | null;
+  note: string | null;
   date: string;
   amountCents: number;
   manual: boolean;
@@ -92,6 +98,9 @@ export function PaymentsView({
 }) {
   const params = useSearchParams();
   const [chip, setChip] = useState<"all" | PhaseState>("all");
+  // Which history row is open for editing. Only hand-recorded rows open:
+  // a Stripe row's method and amount are Stripe's record, not ours.
+  const [editing, setEditing] = useState<string | null>(null);
   // Client and rep live in the URL (?client=<leadId>&rep=<name>) — the
   // same shape as Money to Collect — so a filtered view can be
   // bookmarked or pasted to a teammate.
@@ -321,49 +330,86 @@ export function PaymentsView({
                 <th>Kind</th>
                 <th>Status</th>
                 <th>Method</th>
+                <th>Ck / ref #</th>
                 <th>Date</th>
                 <th className="right">Amount</th>
                 {showTools && <th></th>}
               </tr>
             </thead>
             <tbody>
-              {shownHistory.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    {r.estimateId ? (
-                      <Link className="link-plain" href={`/estimates/${r.estimateId}`}>
-                        <span className="ur-name mono">{r.docNumber}</span>
-                      </Link>
-                    ) : (
-                      <span className="ur-name mono">—</span>
-                    )}
-                  </td>
-                  <td>{r.customer}</td>
-                  <td>{r.kind}</td>
-                  <td>
-                    <span className={"est-badge est-badge-" + statusBadge(r.status)}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td>{r.methodLabel}</td>
-                  <td>{new Date(r.date).toLocaleDateString("en-US")}</td>
-                  <td className="right mono">{moneyCents(r.amountCents)}</td>
-                  {/* Only hand-recorded rows can be settled or removed
-                      here. Stripe rows settle by webhook and are
-                      refunded in Stripe. */}
-                  {showTools && (
-                    <td>
-                      {r.manual && (
-                        <ManualPaymentTools
-                          paymentId={r.id}
-                          status={r.status}
-                          canRemove={canRemove}
-                        />
+              {shownHistory.map((r) => {
+                const editable = r.manual && showTools;
+                return (
+                  <Fragment key={r.id}>
+                    <tr
+                      // The row itself opens the editor, so fixing a
+                      // cheque number doesn't need hunting for a button.
+                      // Links and row tools inside keep their own jobs.
+                      onClick={
+                        editable
+                          ? (e) => {
+                              if ((e.target as HTMLElement).closest("a, button, input, select"))
+                                return;
+                              setEditing(editing === r.id ? null : r.id);
+                            }
+                          : undefined
+                      }
+                      title={editable ? "Click to edit this payment" : undefined}
+                    >
+                      <td>
+                        {r.estimateId ? (
+                          <Link className="link-plain" href={`/estimates/${r.estimateId}`}>
+                            <span className="ur-name mono">{r.docNumber}</span>
+                          </Link>
+                        ) : (
+                          <span className="ur-name mono">—</span>
+                        )}
+                      </td>
+                      <td>{r.customer}</td>
+                      <td>{r.kind}</td>
+                      <td>
+                        <span className={"est-badge est-badge-" + statusBadge(r.status)}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td>{r.methodLabel}</td>
+                      <td className="mono">{r.reference || "—"}</td>
+                      <td>{new Date(r.date).toLocaleDateString("en-US")}</td>
+                      <td className="right mono">{moneyCents(r.amountCents)}</td>
+                      {/* Only hand-recorded rows can be settled or removed
+                          here. Stripe rows settle by webhook and are
+                          refunded in Stripe. */}
+                      {showTools && (
+                        <td>
+                          {r.manual && (
+                            <ManualPaymentTools
+                              paymentId={r.id}
+                              status={r.status}
+                              canRemove={canRemove}
+                            />
+                          )}
+                        </td>
                       )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+                    </tr>
+                    {editing === r.id && editable && (
+                      <tr>
+                        <td colSpan={showTools ? 9 : 8}>
+                          <EditManualPayment
+                            paymentId={r.id}
+                            status={r.status}
+                            amountCents={r.amountCents}
+                            method={r.method}
+                            reference={r.reference}
+                            note={r.note}
+                            date={r.date}
+                            onClose={() => setEditing(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
