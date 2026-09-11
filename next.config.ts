@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 // Headers that are safe to enforce everywhere, immediately, with zero
 // risk of breaking anything: none of them restrict which scripts,
@@ -93,9 +94,35 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "25mb",
     },
   },
+  // Mirrors two of Vercel's own build-time vars into the client bundle --
+  // the browser can't read VERCEL_GIT_COMMIT_SHA or VERCEL_ENV directly.
+  // Every Sentry event (client or server) is tagged with the release, so
+  // a spike right after a deploy is visible as "all on release X"; the
+  // environment mirror keeps a client-side event on a Preview deploy
+  // from being mistagged "production" (NODE_ENV reads "production" on
+  // both). See src/lib/observability/context.ts.
+  env: {
+    NEXT_PUBLIC_APP_RELEASE: process.env.VERCEL_GIT_COMMIT_SHA,
+    NEXT_PUBLIC_APP_ENV: process.env.VERCEL_ENV,
+  },
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: true,
+  widenClientFileUpload: true,
+  // This repo builds with Turbopack, the default builder on this Next.js
+  // version (see docs/DECISIONS.md #012-#013) -- Sentry's webpack-based
+  // build-time instrumentation and sourcemap upload no-op under
+  // Turbopack per @sentry/nextjs's own documented behavior. Error and
+  // breadcrumb capture here is therefore deliberately manual
+  // (src/lib/observability/, instrumentation.ts's onRequestError) rather
+  // than relied on from this wrapper -- kept anyway since it's harmless
+  // and would start working automatically if the build ever moves off
+  // Turbopack.
+});

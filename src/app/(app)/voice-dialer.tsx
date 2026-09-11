@@ -7,6 +7,14 @@ import {
   listCompanyPhoneNumbers,
   type CompanyPhoneNumber,
 } from "@/lib/actions/phone-numbers";
+import { newCorrelationId } from "@/lib/observability/context";
+import { maskPhone, safeTwilioError } from "@/lib/observability/redact";
+import { addBreadcrumb, captureError } from "@/lib/observability/sentry";
+
+// Kept in sync with the @twilio/voice-sdk version in package.json --
+// there's no public export of it from the package itself, and it's
+// useful on a captured error without needing to go look it up.
+const TWILIO_VOICE_SDK_VERSION = "2.18.3";
 
 type CallStatus = "idle" | "connecting" | "ringing" | "in-call" | "ended" | "error";
 
@@ -47,6 +55,10 @@ export function VoiceDialer() {
   const durationRef = useRef(0);
   const tokenMintedAtRef = useRef(0);
   const retriedRef = useRef(false);
+  // One id per call attempt (a retry keeps the original, since it's the
+  // same attempt continuing on a rebuilt device) -- carried through the
+  // Twilio params into every server-side hop, and onto the call_logs row.
+  const correlationIdRef = useRef("");
 
   useEffect(() => {
     return () => {
@@ -99,13 +111,14 @@ export function VoiceDialer() {
    * event refreshes by age, and if the gateway still rejects, the call
    * is retried once on a brand-new device.
    */
-  async function ensureDevice() {
+  async function ensureDevice(correlationId: string) {
     const existing = deviceRef.current;
     if (existing && tokenStillFresh(tokenMintedAtRef.current)) return existing;
     const result = await getVoiceAccessToken();
     if (result.error || !result.token) {
       throw new Error(result.error || "Could not get a call token.");
     }
+    addBreadcrumb({ category: "voice", message: "token_created", correlationId });
     if (existing) {
       existing.updateToken(result.token);
       tokenMintedAtRef.current = clockNow();
@@ -122,6 +135,7 @@ export function VoiceDialer() {
     });
     tokenMintedAtRef.current = clockNow();
     deviceRef.current = device;
+    addBreadcrumb({ category: "voice", message: "device_ready", correlationId });
     return device;
   }
 
@@ -138,7 +152,7 @@ export function VoiceDialer() {
     timerRef.current = null;
   }
 
-  function finishCall(digits: string, callStatus: string) {
+  function finishCall(digits: string, callStatus: string, correlationId?: string, sentryEventId?: string) {
     stopTimer();
     const sid = callSidRef.current;
     const leadId = leadIdRef.current;
@@ -152,6 +166,8 @@ export function VoiceDialer() {
       durationSeconds: dur,
       twilioCallSid: sid,
       status: callStatus,
+      correlationId: correlationId ?? null,
+      sentryEventId: sentryEventId ?? null,
     }).then((result) => {
       // Fires either way. The dial session waits on this event to unlock its
       // disposition buttons, so swallowing a failed log left the rep staring
@@ -165,7 +181,11 @@ export function VoiceDialer() {
   }
 
   async function handleCall(overridePhone?: string, leadId?: string | null, isRetry?: boolean) {
-    if (!isRetry) retriedRef.current = false;
+    if (!isRetry) {
+      retriedRef.current = false;
+      correlationIdRef.current = newCorrelationId();
+    }
+    const correlationId = correlationIdRef.current;
     const digits = (overridePhone ?? phone).trim();
     if (!digits) {
       setErrorMsg("Enter a phone number to call.");
@@ -179,37 +199,53 @@ export function VoiceDialer() {
     // A call that rang out was logged with the length of the previous one.
     durationRef.current = 0;
     setDuration(0);
+    addBreadcrumb({
+      category: "voice",
+      message: "call_requested",
+      correlationId,
+      data: { to: maskPhone(digits), recordEnabled, hasLead: !!leadId, isRetry: !!isRetry },
+    });
     try {
-      const device = await ensureDevice();
+      const device = await ensureDevice(correlationId);
+      const resolvedCallerId = callerId || window.localStorage.getItem(CALLER_ID_KEY) || "";
       const call = await device.connect({
         params: {
           To: digits,
           Record: recordEnabled ? "true" : "false",
+          // Carried through Twilio's own webhooks (form fields Twilio
+          // POSTs back to /api/voice/twiml) since there's no header
+          // Twilio will forward for us -- see docs/features/observability.md.
+          CorrelationId: correlationId,
           // Validated server-side against the company's registered
           // numbers; anything else falls back to the default there.
           // localStorage is the fallback because a dial session's first
           // call can arrive before this panel has loaded its list --
           // the pick made on the Power Dialer page must still count.
-          ...(callerId || window.localStorage.getItem(CALLER_ID_KEY)
-            ? { CallerId: callerId || window.localStorage.getItem(CALLER_ID_KEY)! }
-            : {}),
+          ...(resolvedCallerId ? { CallerId: resolvedCallerId } : {}),
         },
       });
       callRef.current = call;
+      addBreadcrumb({ category: "voice", message: "call_connecting", correlationId, data: { to: maskPhone(digits) } });
 
-      call.on("ringing", () => setStatus("ringing"));
+      call.on("ringing", () => {
+        setStatus("ringing");
+        addBreadcrumb({ category: "voice", message: "ringing", correlationId });
+      });
       call.on("accept", () => {
         setStatus("in-call");
         callSidRef.current = call.parameters.CallSid ?? null;
+        addBreadcrumb({ category: "voice", message: "connected", correlationId, data: { callSid: callSidRef.current } });
         startTimer();
       });
       call.on("disconnect", () => {
         setStatus("ended");
-        finishCall(digits, "completed");
+        addBreadcrumb({ category: "voice", message: "completed", correlationId, data: { callSid: callSidRef.current } });
+        finishCall(digits, "completed", correlationId);
       });
       call.on("cancel", () => {
         setStatus("ended");
-        finishCall(digits, "cancelled");
+        addBreadcrumb({ category: "voice", message: "cancelled", correlationId });
+        finishCall(digits, "cancelled", correlationId);
       });
       call.on("error", (err: Error) => {
         // A stale gateway connection rejects the very first call after
@@ -224,17 +260,31 @@ export function VoiceDialer() {
           handleCall(digits, leadIdRef.current, true);
           return;
         }
+        const twilioError = safeTwilioError(err);
+        const eventId = captureError(err, {
+          route: "voice-dialer",
+          correlationId,
+          service: "twilio",
+          extra: {
+            ...twilioError,
+            dialerStatus: status,
+            recordEnabled,
+            sdkVersion: TWILIO_VOICE_SDK_VERSION,
+            callSid: callSidRef.current,
+          },
+        });
         setErrorMsg(err.message || "Call error.");
         setStatus("error");
-        finishCall(digits, "error");
+        finishCall(digits, "error", correlationId, eventId);
       });
     } catch (err) {
+      captureError(err, { route: "voice-dialer", correlationId, service: "twilio", extra: { stage: "connect" } });
       setErrorMsg(err instanceof Error ? err.message : "Could not place the call.");
       setStatus("error");
       // A connect that throws -- no token, no mic, Twilio not set up -- never
       // reached call.on("error"), so nothing was logged and a dial session had
       // no way forward. The attempt still happened; record it as one.
-      finishCall(digits, "error");
+      finishCall(digits, "error", correlationId);
     }
   }
 
