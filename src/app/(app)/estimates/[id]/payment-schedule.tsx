@@ -18,6 +18,10 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import { generateEstimateSchedule, saveEstimatePayments } from "@/lib/actions/estimates";
+import {
+  changeOrderRollupForPhase,
+  type ChangeOrderBilling,
+} from "@/lib/data/change-order-rollup";
 import { PhaseBilling } from "./phase-billing";
 import { RecordPayment } from "./record-payment";
 
@@ -56,6 +60,7 @@ export function PaymentSchedule({
   depositCapCents,
   payments,
   paid,
+  changeOrderBilling = [],
   locked,
   onChanged,
 }: {
@@ -65,6 +70,8 @@ export function PaymentSchedule({
   depositCapCents: number;
   payments: EstimatePayment[];
   paid: PortalPayment[];
+  /** What each signed change order collected on its own schedule. */
+  changeOrderBilling?: ChangeOrderBilling[];
   locked: boolean;
   onChanged: () => void;
 }) {
@@ -347,6 +354,13 @@ export function PaymentSchedule({
           {rows.map((r, i) => {
             const cents = centsFromInput(r.amount);
             const pct = paymentPercentOfTotal(cents, totalCents);
+            // Money a change order collected on its own schedule, read
+            // back onto its mirror row here. When set, this row's billing
+            // lives on the change order -- offering the parent's full-
+            // amount Bill/Record buttons beside it would double-collect.
+            const rollup = locked && payments[i]
+              ? changeOrderRollupForPhase(payments[i], paid, changeOrderBilling)
+              : null;
             return (
               <tr key={r.key}>
                 <td>
@@ -434,18 +448,24 @@ export function PaymentSchedule({
                     // holds and each row can find its own saved phase.
                     payments[i] && (
                       <>
-                        <PhaseBilling phase={payments[i]} payments={paid} signed={locked} />
-                        {!paid.some(
-                          (p) =>
-                            p.estimate_payment_id === payments[i].id && p.status === "succeeded"
-                        ) && (
-                          <RecordPayment
-                            estimateId={estimateId}
-                            phaseId={payments[i].id}
-                            suggestedCents={cents}
-                            label={r.name || "Progress payment"}
-                          />
-                        )}
+                        <PhaseBilling
+                          phase={payments[i]}
+                          payments={paid}
+                          signed={locked}
+                          rollup={rollup}
+                        />
+                        {!rollup &&
+                          !paid.some(
+                            (p) =>
+                              p.estimate_payment_id === payments[i].id && p.status === "succeeded"
+                          ) && (
+                            <RecordPayment
+                              estimateId={estimateId}
+                              phaseId={payments[i].id}
+                              suggestedCents={cents}
+                              label={r.name || "Progress payment"}
+                            />
+                          )}
                       </>
                     )
                   ) : (

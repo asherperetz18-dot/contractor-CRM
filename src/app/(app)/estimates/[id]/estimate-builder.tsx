@@ -38,6 +38,7 @@ import {
 import { createEstimateRevision } from "@/lib/actions/estimate-revisions";
 import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
+import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { PaymentSchedule } from "./payment-schedule";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
@@ -121,6 +122,7 @@ export function EstimateBuilder({
   signers,
   payments,
   paid,
+  changeOrderBilling = [],
   lead,
   canEdit,
   canSend = true,
@@ -135,6 +137,9 @@ export function EstimateBuilder({
   signers: EstimateSigner[];
   payments: EstimatePayment[];
   paid: PortalPayment[];
+  /** What each signed change order collected on its own schedule, for
+   *  the mirror rows this contract's schedule carries. */
+  changeOrderBilling?: ChangeOrderBilling[];
   lead: BuilderLead | null;
   canEdit: boolean;
   /** The Send Estimates switch. Off = drafts only: Save stays, everything
@@ -1237,6 +1242,7 @@ export function EstimateBuilder({
         depositCapCents={estimate.deposit_cap_cents}
         payments={payments}
         paid={paid}
+        changeOrderBilling={changeOrderBilling}
         locked={locked}
         onChanged={() => router.refresh()}
       />

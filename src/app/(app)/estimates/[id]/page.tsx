@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
+import { paidTotalCents } from "@/lib/data/types";
+import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { CompletionEditor } from "./completion-editor";
 
@@ -87,6 +89,38 @@ export default async function EstimateDetailPage({
     .limit(50);
   const customerViews = ((viewRows ?? []) as { viewed_at: string }[]).map((v) => v.viewed_at);
 
+  // What each signed change order has collected on its own schedule. A
+  // signed change order is one mirror row on this contract's schedule,
+  // but its money usually lands against the change order's own phases --
+  // without this the mirror row reads "Not billed" over cash in hand.
+  let changeOrderBilling: ChangeOrderBilling[] = [];
+  if (estimate.kind === "contract") {
+    const { data: children } = await supabase
+      .from("estimates")
+      .select("id, doc_number")
+      .eq("parent_estimate_id", id)
+      .eq("company_id", profile.company_id)
+      .eq("kind", "change_order")
+      .returns<{ id: string; doc_number: string }[]>();
+    if (children?.length) {
+      const { data: coPayments } = await supabase
+        .from("portal_payments")
+        .select("estimate_id, status, amount_cents")
+        .in("estimate_id", children.map((c) => c.id))
+        .returns<Pick<PortalPayment, "estimate_id" | "status" | "amount_cents">[]>();
+      changeOrderBilling = children.map((c) => {
+        const on = (coPayments ?? []).filter((p) => p.estimate_id === c.id);
+        return {
+          doc_number: c.doc_number,
+          paid_cents: paidTotalCents(on),
+          pending_cents: on
+            .filter((p) => p.status === "pending")
+            .reduce((sum, p) => sum + (p.amount_cents || 0), 0),
+        };
+      });
+    }
+  }
+
   return (
     <EstimateBuilder
       estimate={estimate}
@@ -95,6 +129,7 @@ export default async function EstimateDetailPage({
       signers={(signers ?? []) as EstimateSigner[]}
       payments={(payments ?? []) as EstimatePayment[]}
       paid={(paidRows ?? []) as PortalPayment[]}
+      changeOrderBilling={changeOrderBilling}
       lead={lead ?? null}
       canEdit={canCreateEstimates(profile)}
       // Drafts only when off: the Users & Roles "Send Estimates" switch.
