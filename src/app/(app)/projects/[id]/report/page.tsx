@@ -8,12 +8,15 @@ import {
   phaseReceivableCents,
   billRemainingCents,
   moneyCents,
-  paidTotalCents,
   type Estimate,
   type EstimatePayment,
   type JobExpense,
   type PortalPayment,
 } from "@/lib/data/types";
+import {
+  changeOrderBillingFromPayments,
+  reportPhaseStatus,
+} from "@/lib/data/report-schedule";
 import { PrintButton } from "@/components/print-button";
 
 export const dynamic = "force-dynamic";
@@ -222,6 +225,14 @@ export default async function ProjectReportPage({
 
   const signedChangeOrders = changeOrders.filter((e) => e.status === "Signed");
   const ownPhaseIds = new Set(phases.map((p) => p.id));
+
+  // The schedule the report prints is the contract's own. A signed change
+  // order is already one mirror row on it; listing the change orders' own
+  // phases as well printed every one twice, with whichever copy the money
+  // was not filed to reading "Not yet billed". Money collected on a change
+  // order's own schedule reads through onto its mirror row instead.
+  const contractPhases = phases.filter((p) => p.estimate_id === contract.id);
+  const coBilling = changeOrderBillingFromPayments(signedChangeOrders, paid);
 
   // Same ownership rules as the Projects page. An expense filed to a
   // phase of a DIFFERENT contract is that job's, not this one's; one
@@ -443,7 +454,7 @@ export default async function ProjectReportPage({
             </div>
           </div>
 
-          {phases.length > 0 && (
+          {contractPhases.length > 0 && (
             <>
               <h2 className="estdoc-terms-head">Payment schedule</h2>
               <table className="estdoc-items estdoc-schedule-table">
@@ -456,10 +467,8 @@ export default async function ProjectReportPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {phases.map((ph) => {
-                    const paidForPhase = paidTotalCents(
-                      settled.filter((p) => p.estimate_payment_id === ph.id)
-                    );
+                  {contractPhases.map((ph) => {
+                    const status = reportPhaseStatus(ph, paid, coBilling);
                     return (
                       <tr key={ph.id}>
                         <td>
@@ -470,12 +479,14 @@ export default async function ProjectReportPage({
                         </td>
                         <td className="estdoc-muted">{shortDate(ph.due_date)}</td>
                         <td>
-                          {ph.amount_cents > 0 && paidForPhase >= ph.amount_cents ? (
-                            "Paid"
-                          ) : paidForPhase > 0 ? (
-                            `Partly paid (${moneyCents(paidForPhase)})`
-                          ) : ph.requested_at ? (
-                            `Billed ${shortDate(ph.requested_at)}`
+                          {status.kind === "paid" ? (
+                            `Paid${status.via ? ` on ${status.via}` : ""}`
+                          ) : status.kind === "partial" ? (
+                            `Partly paid (${moneyCents(status.paidCents)}${status.via ? ` on ${status.via}` : ""})`
+                          ) : status.kind === "clearing" ? (
+                            `${moneyCents(status.pendingCents)} clearing on ${status.via}`
+                          ) : status.kind === "billed" ? (
+                            `Billed ${shortDate(status.requestedAt)}`
                           ) : (
                             <span className="estdoc-muted">Not yet billed</span>
                           )}
