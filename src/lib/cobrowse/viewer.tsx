@@ -103,10 +103,16 @@ export function CobrowseViewer({
       pending.push(...events);
       if (!mod && !loading) {
         loading = true;
-        void import("rrweb").then((m) => {
-          mod = m;
-          tryStart();
-        });
+        import("rrweb")
+          .then((m) => {
+            mod = m;
+            tryStart();
+          })
+          .catch(() => {
+            // chunk load failed; clearing the latch lets the next
+            // arriving batch retry instead of blacking out for good
+            loading = false;
+          });
       } else {
         tryStart();
       }

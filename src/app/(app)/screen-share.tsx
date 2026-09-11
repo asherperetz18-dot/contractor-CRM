@@ -402,14 +402,21 @@ export function ScreenShareEngine({
       });
       ch.subscribe();
 
-      const rec = await startCobrowseRecorder((events) => {
-        // nobody watching = nothing sent; the hello's snapshot restores
-        // the picture the moment somebody joins
-        if (!viewerPresentRef.current) return;
-        for (const part of packEvents(events, cobrowseSeq.current++)) {
-          channel.current?.send({ type: "broadcast", event: "cobrowse", payload: part });
-        }
-      });
+      let rec: CobrowseRecorder | null = null;
+      try {
+        rec = await startCobrowseRecorder((events) => {
+          // nobody watching = nothing sent; the hello's snapshot restores
+          // the picture the moment somebody joins
+          if (!viewerPresentRef.current) return;
+          for (const part of packEvents(events, cobrowseSeq.current++)) {
+            channel.current?.send({ type: "broadcast", event: "cobrowse", payload: part });
+          }
+        });
+      } catch {
+        // rrweb's chunk failing to load (weak site cellular) must land
+        // in the cleanup below, not escape the click handler with the
+        // session row dangling and the channel still subscribed
+      }
       if (!rec) {
         teardown(false);
         return setError("Couldn't start the CRM view share on this device.");
