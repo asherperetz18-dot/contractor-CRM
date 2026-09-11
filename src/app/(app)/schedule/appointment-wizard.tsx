@@ -127,6 +127,8 @@ export function AppointmentWizard({
         first_name: newContact.firstName,
         last_name: newContact.lastName,
         phone: newContact.phone,
+        phone2: "",
+        phone3: "",
         email: newContact.email,
         address,
         zip: "",

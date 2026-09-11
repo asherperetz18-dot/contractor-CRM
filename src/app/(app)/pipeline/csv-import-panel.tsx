@@ -13,6 +13,8 @@ type Mapping = {
   lastName: number;
   fullName: number;
   phone: number;
+  phone2: number;
+  phone3: number;
   email: number;
   company: number;
   address: number;
@@ -28,6 +30,8 @@ const BLANK_MAPPING: Mapping = {
   lastName: -1,
   fullName: -1,
   phone: -1,
+  phone2: -1,
+  phone3: -1,
   email: -1,
   company: -1,
   address: -1,
@@ -157,7 +161,15 @@ export function CsvImportPanel({
           firstName: guessColumn(head, ["first name", "firstname", "first"]),
           lastName: guessColumn(head, ["last name", "lastname", "last"]),
           fullName: guessColumn(head, ["name", "full name", "contact", "contact name"]),
-          phone: guessColumn(head, ["phone", "phone number", "mobile", "cell"]),
+          phone: guessColumn(head, ["phone", "phone number", "phone 1", "phone1", "mobile", "cell"]),
+          // Bought dial lists often carry up to three numbers per person.
+          phone2: guessColumn(head, [
+            "phone 2", "phone2", "phone number 2", "mobile 2", "cell 2",
+            "second phone", "alt phone", "alternate phone", "other phone",
+          ]),
+          phone3: guessColumn(head, [
+            "phone 3", "phone3", "phone number 3", "mobile 3", "cell 3", "third phone",
+          ]),
           email: guessColumn(head, ["email", "email address"]),
           company: guessColumn(head, ["company", "business"]),
           address: guessColumn(head, ["address", "job address", "street"]),
@@ -204,6 +216,8 @@ export function CsvImportPanel({
         first_name: firstName,
         last_name: lastName,
         phone: cell(row, mapping.phone),
+        phone2: cell(row, mapping.phone2),
+        phone3: cell(row, mapping.phone3),
         email: cell(row, mapping.email),
         address: cell(row, mapping.address),
         project_type: cell(row, mapping.projectType),
@@ -216,7 +230,7 @@ export function CsvImportPanel({
   }
 
   const usableLeads = rows.length
-    ? buildLeads().filter((l) => l.first_name || l.last_name || l.phone || l.email)
+    ? buildLeads().filter((l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email)
     : [];
   // What will actually be created, once unusable rows and (if chosen)
   // known duplicates are taken out.
@@ -228,7 +242,7 @@ export function CsvImportPanel({
   // was mapped when the file was first loaded.
   async function checkDuplicates() {
     const usable = buildLeads().filter(
-      (l) => l.first_name || l.last_name || l.phone || l.email
+      (l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email
     );
     if (!usable.length) {
       setDupeCount(null);
@@ -237,7 +251,7 @@ export function CsvImportPanel({
     }
     setDupeChecking(true);
     const result = await findImportDuplicates(
-      usable.map((l) => ({ phone: l.phone, email: l.email }))
+      usable.map((l) => ({ phone: l.phone, phone2: l.phone2, phone3: l.phone3, email: l.email }))
     );
     setDupeChecking(false);
     if (result.error || !result.duplicateRowIndexes) {
@@ -256,7 +270,7 @@ export function CsvImportPanel({
     }
     const built = buildLeads();
     let newLeads = built.filter(
-      (l) => l.first_name || l.last_name || l.phone || l.email
+      (l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email
     );
     if (!newLeads.length) {
       setError("No rows had a usable name, phone, or email — check your column mapping above.");
@@ -289,6 +303,8 @@ export function CsvImportPanel({
     ["lastName", "Last Name"],
     ["fullName", "Full Name (if not split)"],
     ["phone", "Phone"],
+    ["phone2", "Phone 2"],
+    ["phone3", "Phone 3"],
     ["email", "Email"],
     ["company", "Company"],
     ["address", "Address"],

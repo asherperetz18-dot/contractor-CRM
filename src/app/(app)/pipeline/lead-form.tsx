@@ -82,6 +82,8 @@ function toInput(lead?: Lead): LeadInput {
     first_name: lead?.first_name ?? "",
     last_name: lead?.last_name ?? "",
     phone: lead?.phone ?? "",
+    phone2: lead?.phone2 ?? "",
+    phone3: lead?.phone3 ?? "",
     email: lead?.email ?? "",
     address: lead?.address ?? "",
     zip: lead?.zip ?? "",
@@ -594,6 +596,22 @@ export function LeadForm({
               placeholder="client@email.com"
             />
           </Field>
+          {/* Bought cold-call lists carry up to three numbers per
+              person, so the card holds them all on one contact. */}
+          <Field label="Phone 2">
+            <input
+              value={form.phone2}
+              onChange={(e) => set("phone2", e.target.value)}
+              placeholder="(555) 555-5555"
+            />
+          </Field>
+          <Field label="Phone 3">
+            <input
+              value={form.phone3}
+              onChange={(e) => set("phone3", e.target.value)}
+              placeholder="(555) 555-5555"
+            />
+          </Field>
         </div>
 
         {!lead && dupMatches.length > 0 && (
@@ -621,7 +639,7 @@ export function LeadForm({
           </div>
         )}
 
-        {lead && (form.phone || form.address || form.email) && (
+        {lead && (form.phone || form.phone2 || form.phone3 || form.address || form.email) && (
           <div className="contact-card contact-card-actions-row" style={{ marginBottom: 14 }}>
             {form.address && (
               <a href={mapsUrl(form.address)} target="_blank" rel="noopener noreferrer">
@@ -649,6 +667,28 @@ export function LeadForm({
                   💬 Text
                 </button>
               </>
+            )}
+            {form.phone2 && (
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={() => callPhone(form.phone2)}
+                title={`Call ${form.phone2}`}
+                aria-label="Call second number"
+              >
+                📞 Call 2
+              </button>
+            )}
+            {form.phone3 && (
+              <button
+                type="button"
+                className="icon-btn contact-quick-action"
+                onClick={() => callPhone(form.phone3)}
+                title={`Call ${form.phone3}`}
+                aria-label="Call third number"
+              >
+                📞 Call 3
+              </button>
             )}
             {form.email && (
               <a

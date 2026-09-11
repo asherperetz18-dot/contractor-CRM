@@ -15,10 +15,14 @@
  * book, so nothing new is created for it.
  */
 
-/** The two columns a contact can be reached on. */
+/** The four columns a contact can be reached on. phone2/phone3 arrive
+ *  with migration 0150 -- bought cold-call lists carry up to three
+ *  numbers for one person. */
 export type LeadPhoneRow = {
   id: string;
   phone: string | null;
+  phone2: string | null;
+  phone3: string | null;
   second_contact_phone: string | null;
 };
 
@@ -51,7 +55,7 @@ export function phoneKey(phone: string | null | undefined): string {
 export function phoneIndex(rows: LeadPhoneRow[]): Map<string, string[]> {
   const index = new Map<string, string[]>();
   for (const row of rows) {
-    for (const raw of [row.phone, row.second_contact_phone]) {
+    for (const raw of [row.phone, row.phone2, row.phone3, row.second_contact_phone]) {
       const key = phoneKey(raw);
       if (!key) continue;
       const ids = index.get(key);
