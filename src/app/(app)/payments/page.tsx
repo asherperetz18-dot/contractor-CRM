@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import { ManualPaymentTools } from "./manual-payment-tools";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canManageBills,
@@ -11,12 +9,17 @@ import {
   moneyCents,
   paymentMethodLabel,
   phaseState,
-  phaseStateLabel,
   type EstimatePayment,
   type PortalPayment,
   type SignedContract,
 } from "@/lib/data/types";
 import { getStripeEnv } from "@/lib/stripe-env";
+import {
+  PaymentsView,
+  type BilledPhaseRow,
+  type DepositChaseRow,
+  type PaymentHistoryRow,
+} from "./payments-view";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +35,6 @@ type LeadRow = { id: string; first_name: string | null; last_name: string | null
 // only what the estimate document needs, so widen it here rather than
 // adding a column the other call sites don't select.
 type PaymentRow = PortalPayment & { lead_id: string | null; source: string };
-
-function statusBadge(status: string) {
-  if (status === "succeeded") return "signed";
-  if (status === "failed") return "declined";
-  return "sent";
-}
 
 /**
  * Where the money is.
@@ -120,17 +117,63 @@ export default async function PaymentsPage() {
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
 
-  // Whether the history rows get a tools column at all: marking a
-  // pending payment cleared takes the same permission as recording one.
-  const showTools = canManageBills(profile);
-
   const s = collectionsSummary(contracts, payments, billedPhases);
   const settledDeposits = new Set(
     payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
   );
-  const chase = contracts
+
+  // The rows below are the tables, flattened to plain strings and cents
+  // so the client-side search can filter them without knowing anything
+  // about leads or contracts. Order is decided here, once.
+  const billedRows: BilledPhaseRow[] = billedPhases
+    .map((ph) => {
+      const c = docOf(ph.estimate_id);
+      return {
+        id: ph.id,
+        estimateId: c?.id ?? null,
+        docNumber: c?.doc_number ?? null,
+        customer: c ? nameOf(c.lead_id) : "",
+        phase: ph.name || "Progress payment",
+        dueDate: ph.due_date ?? null,
+        state: phaseState(
+          ph,
+          payments.filter((p) => p.estimate_payment_id === ph.id)
+        ),
+        amountCents: ph.amount_cents,
+      };
+    })
+    .sort((a, b) => {
+      const rank = (x: string) => (x === "overdue" ? 0 : x === "billed" ? 1 : 2);
+      return rank(a.state) - rank(b.state) || (a.dueDate || "").localeCompare(b.dueDate || "");
+    });
+
+  const chaseRows: DepositChaseRow[] = contracts
     .filter((c) => (c.deposit_cents || 0) > 0 && !settledDeposits.has(c.id))
-    .sort((a, b) => (b.deposit_cents || 0) - (a.deposit_cents || 0));
+    .sort((a, b) => (b.deposit_cents || 0) - (a.deposit_cents || 0))
+    .map((c) => ({
+      estimateId: c.id,
+      docNumber: c.doc_number,
+      title: c.title || "Untitled",
+      customer: nameOf(c.lead_id),
+      totalCents: c.total_cents,
+      depositCents: c.deposit_cents || 0,
+    }));
+
+  const historyRows: PaymentHistoryRow[] = payments.map((p) => {
+    const c = docOf(p.estimate_id);
+    return {
+      id: p.id,
+      estimateId: c?.id ?? null,
+      docNumber: c?.doc_number ?? null,
+      customer: nameOf(p.lead_id ?? c?.lead_id ?? null),
+      kind: p.kind === "deposit" ? "Deposit" : "Progress",
+      status: p.status,
+      methodLabel: paymentMethodLabel(p.method) || "—",
+      date: p.paid_at ?? p.created_at,
+      amountCents: p.amount_cents,
+      manual: p.source === "manual",
+    };
+  });
 
   return (
     <div>
@@ -181,187 +224,18 @@ export default async function PaymentsPage() {
         </div>
       </div>
 
-      {/* Billed progress payments: money already asked for. Overdue first,
-          because that is the list somebody has to work today. */}
-      {billedPhases.length > 0 && (
-        <section className="pay-section">
-          <h2 className="pay-section-title">
-            Billed progress payments
-            {s.overdueCount > 0 ? ` — ${s.overdueCount} overdue` : ""}
-          </h2>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th>Phase</th>
-                <th>Due</th>
-                <th>Status</th>
-                <th className="right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...billedPhases]
-                .map((ph) => ({
-                  ph,
-                  state: phaseState(
-                    ph,
-                    payments.filter((p) => p.estimate_payment_id === ph.id)
-                  ),
-                }))
-                .sort((a, b) => {
-                  const rank = (x: string) => (x === "overdue" ? 0 : x === "billed" ? 1 : 2);
-                  return (
-                    rank(a.state) - rank(b.state) ||
-                    (a.ph.due_date || "").localeCompare(b.ph.due_date || "")
-                  );
-                })
-                .map(({ ph, state }) => {
-                  const c = docOf(ph.estimate_id);
-                  return (
-                    <tr key={ph.id}>
-                      <td>
-                        {c ? (
-                          <Link className="link-plain" href={`/estimates/${c.id}`}>
-                            <span className="ur-name mono">{c.doc_number}</span>
-                          </Link>
-                        ) : (
-                          <span className="ur-name mono">—</span>
-                        )}
-                        <div className="ur-add-phone">{c ? nameOf(c.lead_id) : ""}</div>
-                      </td>
-                      <td>{ph.name || "Progress payment"}</td>
-                      <td>
-                        {ph.due_date
-                          ? new Date(`${ph.due_date}T00:00:00`).toLocaleDateString("en-US")
-                          : "—"}
-                      </td>
-                      <td>
-                        <span
-                          className={
-                            "est-badge est-badge-" +
-                            (state === "paid"
-                              ? "signed"
-                              : state === "overdue"
-                                ? "declined"
-                                : "sent")
-                          }
-                        >
-                          {phaseStateLabel(state)}
-                        </span>
-                      </td>
-                      <td className="right mono">{moneyCents(ph.amount_cents)}</td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      {/* The only figure on this page that is a to-do list rather than a
-          number: these are signed jobs where the deposit never landed. */}
-      {chase.length > 0 && (
-        <section className="pay-section">
-          <h2 className="pay-section-title">
-            Deposits to chase ({s.awaitingDepositCount})
-          </h2>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th>Customer</th>
-                <th className="right">Contract value</th>
-                <th className="right">Deposit due</th>
-              </tr>
-            </thead>
-            <tbody>
-              {chase.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <Link className="link-plain" href={`/estimates/${c.id}`}>
-                      <span className="ur-name mono">{c.doc_number}</span>
-                    </Link>
-                    <div className="ur-add-phone">{c.title || "Untitled"}</div>
-                  </td>
-                  <td>{nameOf(c.lead_id)}</td>
-                  <td className="right mono">{moneyCents(c.total_cents)}</td>
-                  <td className="right mono">{moneyCents(c.deposit_cents || 0)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      <section className="pay-section">
-        <h2 className="pay-section-title">Payment history</h2>
-        {payments.length === 0 ? (
-          <div className="empty-state">
-            <p className="empty-label">No payments yet</p>
-            <p className="empty-hint">
-              Once a customer signs and pays a deposit through the portal, it lands here with the
-              method and date.
-            </p>
-          </div>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Contract</th>
-                <th>Customer</th>
-                <th>Kind</th>
-                <th>Status</th>
-                <th>Method</th>
-                <th>Date</th>
-                <th className="right">Amount</th>
-                {showTools && <th></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p) => {
-                const c = docOf(p.estimate_id);
-                return (
-                  <tr key={p.id}>
-                    <td>
-                      {c ? (
-                        <Link className="link-plain" href={`/estimates/${c.id}`}>
-                          <span className="ur-name mono">{c.doc_number}</span>
-                        </Link>
-                      ) : (
-                        <span className="ur-name mono">—</span>
-                      )}
-                    </td>
-                    <td>{nameOf(p.lead_id ?? c?.lead_id ?? null)}</td>
-                    <td>{p.kind === "deposit" ? "Deposit" : "Progress"}</td>
-                    <td>
-                      <span className={"est-badge est-badge-" + statusBadge(p.status)}>
-                        {p.status}
-                      </span>
-                    </td>
-                    <td>{paymentMethodLabel(p.method) || "—"}</td>
-                    <td>{new Date(p.paid_at ?? p.created_at).toLocaleDateString("en-US")}</td>
-                    <td className="right mono">{moneyCents(p.amount_cents)}</td>
-                    {/* Only hand-recorded rows can be settled or removed
-                        here. Stripe rows settle by webhook and are
-                        refunded in Stripe. */}
-                    {showTools && (
-                      <td>
-                        {p.source === "manual" && (
-                          <ManualPaymentTools
-                            paymentId={p.id}
-                            status={p.status}
-                            canRemove={isAdminRole(profile)}
-                          />
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <PaymentsView
+        billed={billedRows}
+        chase={chaseRows}
+        history={historyRows}
+        overdueCount={s.overdueCount}
+        awaitingDepositCount={s.awaitingDepositCount}
+        // Whether the history rows get a tools column at all: marking a
+        // pending payment cleared takes the same permission as recording
+        // one.
+        showTools={canManageBills(profile)}
+        canRemove={isAdminRole(profile)}
+      />
 
       {/* Overdue counts only what was actually billed, so an untouched
           schedule on an old contract never turns red on its own. */}
