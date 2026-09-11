@@ -1,6 +1,6 @@
 {
   "name": "contractor-crm",
-  "version": "1.129.0",
+  "version": "1.130.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -19,6 +19,7 @@
     "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "rrweb": "^2.1.4",
     "stripe": "^22.4.0",
     "xlsx": "^0.18.5"
   },

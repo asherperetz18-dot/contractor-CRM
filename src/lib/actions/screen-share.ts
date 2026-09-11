@@ -15,7 +15,13 @@ export type ActiveShare = {
   startedAt: string;
   /** Who this share is aimed at; null means anyone on the team. */
   invitedTo: string | null;
+  /** How the pixels travel: "screen" is the WebRTC capture of a whole
+   * screen; "cobrowse" mirrors just the CRM tab's DOM over Realtime --
+   * the only kind an iPhone can send. */
+  kind: ShareKind;
 };
+
+export type ShareKind = "screen" | "cobrowse";
 
 /**
  * Starts a sharing session: the row is how teammates discover it, the
@@ -27,13 +33,19 @@ export type ActiveShare = {
  * the sharer) can read the row at all -- RLS since 0116 -- so the rest
  * of the company never even sees the banner.
  */
-export async function startScreenShare(invitedTo?: string | null): Promise<{
+export async function startScreenShare(
+  invitedTo?: string | null,
+  kind: ShareKind = "screen"
+): Promise<{
   error?: string;
   id?: string;
   token?: string;
 }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
+  // The value lands in a row other clients branch on; a server action
+  // is a public endpoint, so the enum is enforced here, not trusted.
+  if (kind !== "screen" && kind !== "cobrowse") return { error: "Unknown share kind." };
 
   // The invitee must be an active member of THIS company. Checked with
   // the admin client because the value lands in a column that decides
@@ -66,6 +78,7 @@ export async function startScreenShare(invitedTo?: string | null): Promise<{
       sharer_id: profile.id,
       token,
       invited_to: invitedTo ?? null,
+      kind,
     })
     .select("id")
     .single();
@@ -163,7 +176,7 @@ export async function getActiveShares(): Promise<{ error?: string; shares?: Acti
   // have.
   const { data, error } = await supabase
     .from("screen_shares")
-    .select("id, token, sharer_id, started_at, invited_to")
+    .select("id, token, sharer_id, started_at, invited_to, kind")
     .eq("company_id", profile.company_id)
     .is("ended_at", null)
     .gte("started_at", cutoff)
@@ -171,7 +184,14 @@ export async function getActiveShares(): Promise<{ error?: string; shares?: Acti
   if (error) return { error: error.message };
 
   const rows =
-    (data as { id: string; token: string; sharer_id: string; started_at: string; invited_to: string | null }[]) ?? [];
+    (data as {
+      id: string;
+      token: string;
+      sharer_id: string;
+      started_at: string;
+      invited_to: string | null;
+      kind: ShareKind | null;
+    }[]) ?? [];
   if (!rows.length) return { shares: [] };
 
   const admin = createAdminClient();
@@ -194,6 +214,7 @@ export async function getActiveShares(): Promise<{ error?: string; shares?: Acti
       sharerName: nameById.get(r.sharer_id) ?? "A teammate",
       startedAt: r.started_at,
       invitedTo: r.invited_to ?? null,
+      kind: r.kind ?? "screen",
     })),
   };
 }
