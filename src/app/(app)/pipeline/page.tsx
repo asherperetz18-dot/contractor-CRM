@@ -32,8 +32,8 @@ export default async function PipelinePage() {
   const [
     estimateIndex,
     leads,
-    { data: tasks },
-    { data: notes },
+    tasks,
+    notes,
     { data: files },
     allReps,
     { data: stages },
@@ -54,15 +54,21 @@ export default async function PipelinePage() {
         .order("created_at", { ascending: false })
         .range(f, t)
     ),
-    supabase
-      .from("lead_tasks")
-      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
-      .eq("company_id", companyId),
-    supabase
-      .from("lead_notes")
-      .select("id, lead_id, author_id, body, event_id, created_at")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
+    selectAll<LeadTask>((f, t) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+        .eq("company_id", companyId)
+        .range(f, t)
+    ),
+    selectAll<LeadNote>((f, t) =>
+      supabase
+        .from("lead_notes")
+        .select("id, lead_id, author_id, body, event_id, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     supabase
       .from("lead_files")
       .select(
@@ -80,9 +86,9 @@ export default async function PipelinePage() {
 
   return (
     <PipelineBoard
-      leads={(leads as Lead[]) ?? []}
-      tasks={(tasks as LeadTask[]) ?? []}
-      notes={(notes as LeadNote[]) ?? []}
+      leads={leads}
+      tasks={tasks}
+      notes={notes}
       files={(files as LeadFile[]) ?? []}
       reps={reps}
       // Everyone, including deactivated members. `reps` is filtered to

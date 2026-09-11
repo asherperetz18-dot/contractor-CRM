@@ -49,18 +49,31 @@ export default async function CalendarPage() {
   const behindAppointments = await getLeadsBehindAppointments();
 
   const [
-    { data: events },
-    { data: jobs },
+    events,
+    jobs,
     allReps,
     leads,
-    { data: leadTasks },
-    { data: leadNotes },
+    leadTasks,
+    leadNotes,
     { data: estimates },
     { data: calendars },
     { data: stages },
   ] = await Promise.all([
-    supabase.from("events").select("*").eq("company_id", companyId),
-    supabase.from("jobs").select("*").eq("company_id", companyId).order("name", { ascending: true }),
+    // selectAll: a bare select stops at 1000 rows in silence -- see the
+    // schedule page's note on the same shape. At stress-tenant volume
+    // (1,100 events here) a bare select was quietly dropping the newest
+    // 100 appointments off the calendar.
+    selectAll<Event>((f, t) =>
+      supabase.from("events").select("*").eq("company_id", companyId).range(f, t)
+    ),
+    selectAll<Job>((f, t) =>
+      supabase
+        .from("jobs")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("name", { ascending: true })
+        .range(f, t)
+    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     // Only the contacts an appointment actually points at.
     //
@@ -83,15 +96,21 @@ export default async function CalendarPage() {
         .eq("company_id", companyId)
         .range(f, t)
     ),
-    supabase
-      .from("lead_tasks")
-      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
-      .eq("company_id", companyId),
-    supabase
-      .from("lead_notes")
-      .select("id, lead_id, author_id, body, event_id, created_at")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
+    selectAll<LeadTask>((f, t) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+        .eq("company_id", companyId)
+        .range(f, t)
+    ),
+    selectAll<LeadNote>((f, t) =>
+      supabase
+        .from("lead_notes")
+        .select("id, lead_id, author_id, body, event_id, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     // The estimates table, not the legacy documents one. This tab used to
     // read documents where type = 'Estimate', which is a different feature
     // entirely -- so a lead with three real estimates against it showed
@@ -106,7 +125,7 @@ export default async function CalendarPage() {
   ]);
   // Who is actually on the calendar, past or future.
   const onCalendar = new Set<string>();
-  for (const e of ((events as Event[]) ?? [])) {
+  for (const e of events) {
     if (e.assigned_to) onCalendar.add(e.assigned_to);
     if (e.second_assigned_to) onCalendar.add(e.second_assigned_to);
   }
@@ -134,8 +153,8 @@ export default async function CalendarPage() {
 
   return (
     <CalendarBoard
-      events={(events as Event[]) ?? []}
-      jobs={(jobs as Job[]) ?? []}
+      events={events}
+      jobs={jobs}
       reps={reps}
       filterReps={filterReps}
       canDeleteEvents={canDeleteAppointments(profile)}
@@ -145,8 +164,8 @@ export default async function CalendarPage() {
       appointmentHolders={appointmentHolders}
       dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
       leads={[...withoutJoin(leads), ...behindAppointments.leads]}
-      leadTasks={(leadTasks as LeadTask[]) ?? []}
-      leadNotes={[...((leadNotes as LeadNote[]) ?? []), ...behindAppointments.notes]}
+      leadTasks={leadTasks}
+      leadNotes={[...leadNotes, ...behindAppointments.notes]}
       estimates={(estimates as LinkedEstimate[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       stages={(stages as PipelineStageRow[]) ?? []}

@@ -31,8 +31,8 @@ export default async function ContactsPage() {
   const [
     estimateIndex,
     leads,
-    { data: tasks },
-    { data: notes },
+    tasks,
+    notes,
     { data: files },
     allReps,
     { data: stages },
@@ -57,15 +57,21 @@ export default async function ContactsPage() {
     // so a task created here saved to the database and then vanished from
     // the screen -- the panel said "No follow-up tasks yet" over a table
     // that had the task in it, and people reasonably retyped it.
-    supabase
-      .from("lead_tasks")
-      .select("id, lead_id, title, due_date, due_time, completed_at, assigned_to, created_at")
-      .eq("company_id", companyId),
-    supabase
-      .from("lead_notes")
-      .select("id, lead_id, author_id, body, event_id, created_at")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
+    selectAll<LeadTask>((f, t) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, lead_id, title, due_date, due_time, completed_at, assigned_to, created_at")
+        .eq("company_id", companyId)
+        .range(f, t)
+    ),
+    selectAll<LeadNote>((f, t) =>
+      supabase
+        .from("lead_notes")
+        .select("id, lead_id, author_id, body, event_id, created_at")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     supabase
       .from("lead_files")
       .select(
@@ -83,9 +89,9 @@ export default async function ContactsPage() {
 
   return (
     <ContactsTable
-      leads={(leads as Lead[]) ?? []}
-      tasks={(tasks as LeadTask[]) ?? []}
-      notes={(notes as LeadNote[]) ?? []}
+      leads={leads}
+      tasks={tasks}
+      notes={notes}
       files={(files as LeadFile[]) ?? []}
       reps={reps}
       stages={(stages as PipelineStageRow[]) ?? []}

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { canEditSchedule, type Job } from "@/lib/data/types";
@@ -10,8 +11,18 @@ export default async function ProductionPage() {
   const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [{ data: jobs }, allAssignees] = await Promise.all([
-    supabase.from("jobs").select("*").eq("company_id", companyId).order("created_at", { ascending: false }),
+  const [jobs, allAssignees] = await Promise.all([
+    // selectAll: a bare select stops at 1000 rows in silence -- a
+    // production board that quietly drops the oldest jobs once the book
+    // passes a thousand is exactly the page nobody would suspect.
+    selectAll<Job>((f, t) =>
+      supabase
+        .from("jobs")
+        .select("*")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
   const assignees = allAssignees
@@ -20,7 +31,7 @@ export default async function ProductionPage() {
 
   return (
     <ProductionBoard
-      jobs={(jobs as Job[]) ?? []}
+      jobs={jobs}
       assignees={assignees}
       canWrite={canWrite}
     />

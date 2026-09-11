@@ -81,10 +81,10 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const [
     { data: company },
     leads,
-    { data: events },
+    events,
     { data: calls },
     { data: texts },
-    { data: tasks },
+    tasks,
     { data: members },
   ] = await Promise.all([
     supabase.from("company_profile").select("name").eq("company_id", companyId).maybeSingle(),
@@ -100,10 +100,18 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         .eq("company_id", companyId)
         .range(rangeFrom, rangeTo)
     ),
-    supabase
-      .from("events")
-      .select("id, created_at, date, status, assigned_to, customer_confirmed, rain_alert_pop")
-      .eq("company_id", companyId),
+    // Same cap, same shape: "1000 APPOINTMENTS BOOKED" on a tenant with
+    // 1,100 events was this query's bare select, not the real count.
+    selectAll<{
+      created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
+      rain_alert_pop: number | null;
+    }>((rangeFrom, rangeTo) =>
+      supabase
+        .from("events")
+        .select("id, created_at, date, status, assigned_to, customer_confirmed, rain_alert_pop")
+        .eq("company_id", companyId)
+        .range(rangeFrom, rangeTo)
+    ),
     supabase
       .from("call_logs")
       .select("id, created_at, duration_seconds, rep_id")
@@ -112,10 +120,14 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
       .from("sms_messages")
       .select("id, created_at, direction")
       .eq("company_id", companyId),
-    supabase
-      .from("lead_tasks")
-      .select("id, lead_id, due_date, completed_at")
-      .eq("company_id", companyId),
+    selectAll<{ lead_id: string; due_date: string; completed_at: string | null }>(
+      (rangeFrom, rangeTo) =>
+        supabase
+          .from("lead_tasks")
+          .select("id, lead_id, due_date, completed_at")
+          .eq("company_id", companyId)
+          .range(rangeFrom, rangeTo)
+    ),
     supabase.from("profiles").select("id, name, email"),
   ]);
 
@@ -123,13 +135,10 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     id: string; created_at: string; stage: string; value: number | null; won_at: string | null;
     source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
   }[];
-  const eventRows = (events ?? []) as {
-    created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
-    rain_alert_pop: number | null;
-  }[];
+  const eventRows = events;
   const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
   const textRows = (texts ?? []) as { created_at: string; direction: string }[];
-  const taskRows = (tasks ?? []) as { lead_id: string; due_date: string; completed_at: string | null }[];
+  const taskRows = tasks;
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
 
   function statsFor(period: BriefPeriod): BriefStats {
