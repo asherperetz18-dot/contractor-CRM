@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { recordingNoticeSay } from "@/lib/voice-notice";
+import { resolveCorrelationId } from "@/lib/observability/context";
+import { logInfo } from "@/lib/observability/logger";
+import { captureError, setRouteScope } from "@/lib/observability/sentry";
 
 /**
  * The recording notice, played to the person being called.
@@ -21,11 +24,14 @@ import { recordingNoticeSay } from "@/lib/voice-notice";
  * message twice a day.
  */
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
+  const correlationId = resolveCorrelationId(new URL(req.url).searchParams.get("cid"));
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
 
   const companyId = await companyForAccountSid(params.AccountSid || "");
+  setRouteScope({ route: "api/voice/announce", correlationId, companyId: companyId ?? undefined });
   const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
 
   // No credentials means no signature to verify against. Answering with
@@ -35,9 +41,27 @@ export async function POST(req: NextRequest) {
   if (twilioEnv) {
     const signature = req.headers.get("x-twilio-signature");
     if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
+      // This is one of the plausible root causes behind a Twilio Voice
+      // SDK "General Error" that fires right around the callee
+      // answering: this leg's TwiML fetch failing here can abort the
+      // bridge the browser is waiting on. See docs/DECISIONS.md.
+      captureError(new Error("Twilio signature validation failed"), {
+        route: "api/voice/announce",
+        correlationId,
+        companyId: companyId ?? undefined,
+        service: "twilio",
+      });
       return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
     }
   }
+
+  logInfo({
+    event: "api/voice/announce.completed",
+    route: "api/voice/announce",
+    correlationId,
+    companyId: companyId ?? undefined,
+    durationMs: Date.now() - startedAt,
+  });
 
   return new NextResponse(
     `<?xml version="1.0" encoding="UTF-8"?><Response>${recordingNoticeSay()}</Response>`,

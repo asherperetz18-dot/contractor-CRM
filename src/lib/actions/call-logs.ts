@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioVoiceForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { dispositionStageMove } from "@/lib/data/types";
+import { newCorrelationId } from "@/lib/observability/context";
+import { withActionObservability } from "@/lib/observability/observe";
 
 export async function logCall(input: {
   leadId: string | null;
@@ -15,42 +17,48 @@ export async function logCall(input: {
   durationSeconds: number;
   twilioCallSid: string | null;
   status: string;
+  correlationId?: string | null;
+  sentryEventId?: string | null;
 }): Promise<{ id?: string; error?: string }> {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not signed in." };
+  return withActionObservability("actions.logCall", input.correlationId || newCorrelationId(), async () => {
+    const profile = await getCurrentProfile();
+    if (!profile) return { error: "Not signed in." };
 
-  const supabase = await createClient();
-  const voiceEnv = await getTwilioVoiceForCompany(profile.company_id);
+    const supabase = await createClient();
+    const voiceEnv = await getTwilioVoiceForCompany(profile.company_id);
 
-  // A call placed from a lead card, the calendar or the dial queue
-  // carries its lead. A number typed into the keypad carries nothing --
-  // but the number itself is often already in the book, and the call
-  // belongs on that customer's history whichever way it was dialled.
-  // Inbound has always matched this way; outbound simply never did, so a
-  // rep who typed a customer's number saw the call vanish from their card.
-  const leadId =
-    input.leadId ?? (await leadForPhoneNumber(supabase, profile.company_id, input.toNumber));
+    // A call placed from a lead card, the calendar or the dial queue
+    // carries its lead. A number typed into the keypad carries nothing --
+    // but the number itself is often already in the book, and the call
+    // belongs on that customer's history whichever way it was dialled.
+    // Inbound has always matched this way; outbound simply never did, so a
+    // rep who typed a customer's number saw the call vanish from their card.
+    const leadId =
+      input.leadId ?? (await leadForPhoneNumber(supabase, profile.company_id, input.toNumber));
 
-  const { data, error } = await supabase
-    .from("call_logs")
-    .insert({
-      lead_id: leadId,
-      rep_id: profile.id,
-      direction: "outbound",
-      from_number: voiceEnv?.phoneNumber ?? "",
-      to_number: input.toNumber,
-      status: input.status,
-      duration_seconds: Math.max(0, Math.round(input.durationSeconds)),
-      twilio_call_sid: input.twilioCallSid,
-      company_id: profile.company_id,
-    })
-    .select("id")
-    .single();
-  if (error) return { error: error.message };
+    const { data, error } = await supabase
+      .from("call_logs")
+      .insert({
+        lead_id: leadId,
+        rep_id: profile.id,
+        direction: "outbound",
+        from_number: voiceEnv?.phoneNumber ?? "",
+        to_number: input.toNumber,
+        status: input.status,
+        duration_seconds: Math.max(0, Math.round(input.durationSeconds)),
+        twilio_call_sid: input.twilioCallSid,
+        company_id: profile.company_id,
+        correlation_id: input.correlationId ?? null,
+        sentry_event_id: input.sentryEventId ?? null,
+      })
+      .select("id")
+      .single();
+    if (error) return { error: error.message };
 
-  revalidatePath("/call-reports");
-  revalidatePath("/dial-queue");
-  return { id: (data as { id: string }).id };
+    revalidatePath("/call-reports");
+    revalidatePath("/dial-queue");
+    return { id: (data as { id: string }).id };
+  });
 }
 
 export async function updateCallDisposition(
