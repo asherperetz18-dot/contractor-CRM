@@ -284,6 +284,13 @@ export function CsvImportPanel({
       });
       setDupeIndexes(new Set(indexes));
       setDupeCount(indexes.length);
+      // New dupe indexes re-shape the skip-duplicates import list, so a
+      // half-done run's cursor would resume at the wrong row and skip
+      // real ones. Restarting at zero is safe: rows imported before the
+      // failure now match as duplicates and are filtered out, not
+      // re-imported. (Re-checking after a partial run is precisely the
+      // recommended recovery, so this path is the rule, not the edge.)
+      setImportCursor(0);
     } catch {
       setDupeCount(null);
       setError("The duplicate check didn't finish — check your connection and try again.");

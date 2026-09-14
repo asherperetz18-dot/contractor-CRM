@@ -69,6 +69,12 @@ export type BulkLeadRow = {
  * down once whatever the spreadsheet's size. Paginated because a bare
  * select stops at PostgREST's 1000-row page -- the old check silently
  * compared against only the first 1000 contacts.
+ *
+ * Paged by hand rather than with `selectAll` (decision #002) on
+ * purpose: selectAll swallows errors and returns the rows it managed to
+ * read, and a silently short key set here reads as "no duplicates" --
+ * the one wrong answer that causes a double import. This caller needs
+ * the error.
  */
 export async function getExistingContactKeys(): Promise<{
   error?: string;
