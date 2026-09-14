@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import type { PipelineStage, PipelineStageRow } from "@/lib/data/types";
-import { bulkImportLeads, findImportDuplicates } from "@/lib/actions/leads";
+import { bulkImportLeads, getExistingContactKeys } from "@/lib/actions/leads";
+import { IMPORT_CHUNK_ROWS, chunkRows, matchDuplicateIndexes } from "@/lib/import-batching";
 
 type Mapping = {
   firstName: number;
@@ -127,6 +128,11 @@ export function CsvImportPanel({
   const [dupeChecking, setDupeChecking] = useState(false);
   const [skipDupes, setSkipDupes] = useState(true);
   const [dupeIndexes, setDupeIndexes] = useState<Set<number>>(new Set());
+  // Live "12,000 / 61,542" while chunks upload, and where to pick up
+  // from if a chunk fails mid-run -- already-imported leads are never
+  // re-sent, the next attempt continues from the cursor.
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importCursor, setImportCursor] = useState(0);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -134,6 +140,11 @@ export function CsvImportPanel({
     setError("");
     setImportedCount(null);
     setSkippedCount(null);
+    // Duplicate results and the resume cursor describe the previous
+    // file's rows -- carried over, they'd skip/resume the wrong ones.
+    setDupeCount(null);
+    setDupeIndexes(new Set());
+    setImportCursor(0);
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -200,9 +211,16 @@ export function CsvImportPanel({
 
   function setMap(field: keyof Mapping, idx: string) {
     setMapping((m) => ({ ...m, [field]: Number(idx) }));
+    // The dupe indexes and resume cursor point into the row list the old
+    // mapping produced; under a new mapping they'd mark the wrong rows.
+    setDupeCount(null);
+    setDupeIndexes(new Set());
+    setImportCursor(0);
   }
 
-  function buildLeads() {
+  // Memoised: this maps every row, and at spreadsheet scale (70k+)
+  // redoing it on each render made the whole mapping UI drag.
+  const builtLeads = useMemo(() => {
     return rows.map((row) => {
       let firstName = cell(row, mapping.firstName);
       let lastName = cell(row, mapping.lastName);
@@ -227,57 +245,70 @@ export function CsvImportPanel({
         notes: cell(row, mapping.notes),
       };
     });
-  }
+  }, [rows, mapping]);
 
-  const usableLeads = rows.length
-    ? buildLeads().filter((l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email)
-    : [];
+  const usableLeads = useMemo(
+    () =>
+      builtLeads.filter(
+        (l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email
+      ),
+    [builtLeads]
+  );
   // What will actually be created, once unusable rows and (if chosen)
   // known duplicates are taken out.
   const importCount =
     skipDupes && dupeCount ? Math.max(0, usableLeads.length - dupeCount) : usableLeads.length;
 
-  // Run against the usable rows whenever the mapping changes, so the
-  // warning reflects the columns currently selected rather than whatever
-  // was mapped when the file was first loaded.
+  // The server sends down every existing contact's phone/email keys and
+  // the matching happens here: at spreadsheet scale, uploading the rows
+  // for the server to match blew Vercel's request-body cap -- which is
+  // also why a failure must reset state in `finally`, or the button
+  // reads "Checking…" forever with no explanation.
   async function checkDuplicates() {
-    const usable = buildLeads().filter(
-      (l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email
-    );
-    if (!usable.length) {
+    if (!usableLeads.length) {
       setDupeCount(null);
       setDupeIndexes(new Set());
       return;
     }
     setDupeChecking(true);
-    const result = await findImportDuplicates(
-      usable.map((l) => ({ phone: l.phone, phone2: l.phone2, phone3: l.phone3, email: l.email }))
-    );
-    setDupeChecking(false);
-    if (result.error || !result.duplicateRowIndexes) {
+    try {
+      const keys = await getExistingContactKeys();
+      if (keys.error || !keys.phones || !keys.emails) {
+        setDupeCount(null);
+        setError(keys.error || "The duplicate check didn't finish — try again.");
+        return;
+      }
+      const indexes = matchDuplicateIndexes(usableLeads, {
+        phones: keys.phones,
+        emails: keys.emails,
+      });
+      setDupeIndexes(new Set(indexes));
+      setDupeCount(indexes.length);
+    } catch {
       setDupeCount(null);
-      return;
+      setError("The duplicate check didn't finish — check your connection and try again.");
+    } finally {
+      setDupeChecking(false);
     }
-    setDupeIndexes(new Set(result.duplicateRowIndexes));
-    setDupeCount(result.duplicateRowIndexes.length);
   }
 
+  // Uploads in chunks rather than one call: a 70k-row payload is over
+  // Vercel's 4.5MB request cap, and one invocation inserting it all
+  // outlives the function timeout -- the import froze at exactly the
+  // scale it was for. A failed chunk stops the run but keeps the
+  // cursor, so Resume continues instead of re-importing from row one.
   async function runImport() {
     const hasNameSource = mapping.firstName >= 0 || mapping.fullName >= 0;
     if (!hasNameSource) {
       setError("Map at least a Name column before importing.");
       return;
     }
-    const built = buildLeads();
-    let newLeads = built.filter(
-      (l) => l.first_name || l.last_name || l.phone || l.phone2 || l.phone3 || l.email
-    );
+    let newLeads = usableLeads;
     if (!newLeads.length) {
       setError("No rows had a usable name, phone, or email — check your column mapping above.");
       return;
     }
-    const dupesFound = dupeIndexes.size;
-    if (skipDupes && dupesFound > 0) {
+    if (skipDupes && dupeIndexes.size > 0) {
       newLeads = newLeads.filter((_, i) => !dupeIndexes.has(i));
       if (!newLeads.length) {
         setError("Every row already exists — nothing new to import.");
@@ -286,15 +317,36 @@ export function CsvImportPanel({
     }
     setPending(true);
     setError("");
-    const result = await bulkImportLeads(newLeads, targetStage);
-    setPending(false);
-    if ("error" in result && result.error) {
-      setError(`${result.error} (${result.imported} imported before the error)`);
-      return;
+    let done = importCursor;
+    setImportProgress({ done, total: newLeads.length });
+    try {
+      for (const chunk of chunkRows(newLeads.slice(importCursor), IMPORT_CHUNK_ROWS)) {
+        const result = await bulkImportLeads(chunk, targetStage);
+        if ("error" in result && result.error) {
+          done += result.imported ?? 0;
+          setImportCursor(done);
+          setError(
+            `${result.error} — ${done.toLocaleString()} of ${newLeads.length.toLocaleString()} are in so far. Resume continues from there; nothing already imported is sent again.`
+          );
+          return;
+        }
+        done += chunk.length;
+        setImportCursor(done);
+        setImportProgress({ done, total: newLeads.length });
+      }
+      setImportedCount(done);
+      setSkippedCount(builtLeads.length - newLeads.length);
+      setImportCursor(0);
+      router.refresh();
+    } catch {
+      setImportCursor(done);
+      setError(
+        `The connection dropped mid-import — ${done.toLocaleString()} of ${newLeads.length.toLocaleString()} are in so far. Resume continues from there; nothing already imported is sent again.`
+      );
+    } finally {
+      setPending(false);
+      setImportProgress(null);
     }
-    setImportedCount(result.imported ?? 0);
-    setSkippedCount(built.length - newLeads.length);
-    router.refresh();
   }
 
   const previewRows = rows.slice(0, 5);
@@ -380,9 +432,9 @@ export function CsvImportPanel({
               : "."}
           </p>
 
-          {/* Duplicate check is explicit rather than automatic: it scans
-              every existing contact, and re-running it on each keystroke of
-              the mapping would be wasteful on a 900-contact list. */}
+          {/* Duplicate check is explicit rather than automatic: it pulls
+              every existing contact's keys from the server, and doing
+              that on each mapping change would be wasteful. */}
           <div className="csv-dupe-row">
             <button
               type="button"
@@ -405,7 +457,12 @@ export function CsvImportPanel({
               <input
                 type="checkbox"
                 checked={skipDupes}
-                onChange={(e) => setSkipDupes(e.target.checked)}
+                onChange={(e) => {
+                  setSkipDupes(e.target.checked);
+                  // Toggling re-shapes the import list, so a half-done
+                  // run's cursor would resume at the wrong row.
+                  setImportCursor(0);
+                }}
               />{" "}
               Skip the {dupeCount} duplicate{dupeCount === 1 ? "" : "s"} and import{" "}
               {usableLeads.length - dupeCount} new contact
@@ -470,12 +527,16 @@ export function CsvImportPanel({
               disabled={!rows.length || pending}
               onClick={runImport}
             >
-              {pending
-                ? "Importing…"
-                : /* Reflect what will actually be created -- the raw row
-                     count ignored unusable rows and skipped duplicates,
-                     so the button promised more than it delivered. */
-                  `Import ${importCount || ""} Contact${importCount === 1 ? "" : "s"}`}
+              {pending && importProgress
+                ? `Importing… ${importProgress.done.toLocaleString()} / ${importProgress.total.toLocaleString()}`
+                : pending
+                  ? "Importing…"
+                  : importCursor > 0
+                    ? `Resume import (${Math.max(0, importCount - importCursor).toLocaleString()} left)`
+                    : /* Reflect what will actually be created -- the raw row
+                         count ignored unusable rows and skipped duplicates,
+                         so the button promised more than it delivered. */
+                      `Import ${importCount || ""} Contact${importCount === 1 ? "" : "s"}`}
             </button>
           )}
         </div>

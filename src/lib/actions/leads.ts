@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { collectContactKeys } from "@/lib/import-batching";
 import { snapshotLead, TRASH_RETENTION_DAYS } from "@/lib/lead-trash";
 import { syncSignersWithContact } from "@/lib/signers-sync";
 import type { ContactForSigners } from "@/lib/data/signers-follow-contact";
@@ -61,50 +62,42 @@ export type BulkLeadRow = {
 };
 
 /**
- * Which incoming rows already exist, matched on phone (normalised to the
- * last 10 digits so formatting differences don't hide a match) or email.
- *
- * Reports rather than blocks -- a repeat enquiry from the same person is
- * sometimes a genuinely new job, so the decision stays with the importer.
+ * Every phone/email key the company's existing contacts already use, for
+ * the import panel's duplicate check. The matching itself happens in the
+ * browser (`matchDuplicateIndexes`): shipping a 73k-row spreadsheet up
+ * here blew Vercel's 4.5MB request-body cap, while this key set travels
+ * down once whatever the spreadsheet's size. Paginated because a bare
+ * select stops at PostgREST's 1000-row page -- the old check silently
+ * compared against only the first 1000 contacts.
  */
-export async function findImportDuplicates(
-  rows: { phone: string; phone2?: string; phone3?: string; email: string }[]
-): Promise<{ error?: string; duplicateRowIndexes?: number[] }> {
+export async function getExistingContactKeys(): Promise<{
+  error?: string;
+  phones?: string[];
+  emails?: string[];
+}> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .select("phone, phone2, phone3, email, second_contact_phone")
-    .eq("company_id", profile.company_id);
-  if (error) return { error: error.message };
-
-  const phones = new Set<string>();
-  const emails = new Set<string>();
   type PhoneRow = {
     phone: string | null; phone2: string | null; phone3: string | null;
     email: string | null; second_contact_phone: string | null;
   };
-  for (const l of (data as PhoneRow[]) ?? []) {
-    for (const p of [l.phone, l.phone2, l.phone3, l.second_contact_phone]) {
-      if (p) phones.add(normalizePhone(p));
-    }
-    if (l.email) emails.add(l.email.trim().toLowerCase());
+  const all: PhoneRow[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("leads")
+      .select("phone, phone2, phone3, email, second_contact_phone")
+      .eq("company_id", profile.company_id)
+      .order("id")
+      .range(from, from + PAGE - 1);
+    if (error) return { error: error.message };
+    const page = (data as PhoneRow[]) ?? [];
+    all.push(...page);
+    if (page.length < PAGE) break;
   }
-
-  const duplicateRowIndexes: number[] = [];
-  rows.forEach((r, i) => {
-    const rowPhones = [r.phone, r.phone2, r.phone3]
-      .map((p) => (p ? normalizePhone(p) : ""))
-      .filter(Boolean);
-    const e = r.email ? r.email.trim().toLowerCase() : "";
-    if (rowPhones.some((p) => phones.has(p)) || (e && emails.has(e))) {
-      duplicateRowIndexes.push(i);
-    }
-  });
-
-  return { duplicateRowIndexes };
+  return collectContactKeys(all);
 }
 
 // leads.date_received is NOT NULL. A blank or unrecognised date in the
