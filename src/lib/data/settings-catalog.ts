@@ -428,6 +428,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     cards: [
       { title: "Billing & Usage", desc: "Subscription plan, features, billing history, and AI token usage", icon: "🧾" },
       { title: "Audit Log", desc: "View table change history, archive, and AI-generate summaries", icon: "🕐" },
+      {
+        title: "Database Health",
+        desc: "Checks that every database update shipped with the app has been run, and names the file to run if one was missed",
+        icon: "🩺",
+        href: "/settings/schema-health",
+        adminOnly: true,
+      },
     ],
   },
 ];
