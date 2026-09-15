@@ -57,6 +57,9 @@ export function LoginForm() {
           New business? <a href="/get-started">Start an account</a>
         </p>
       </div>
+      <footer className="site-footer">
+        © 2026 AI Build Pros LLC. All rights reserved.
+      </footer>
     </div>
   );
 }
