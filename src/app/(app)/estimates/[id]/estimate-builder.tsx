@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { safeInternalPath } from "@/lib/safe-path";
-import { Field } from "@/components/ui/field";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
 import {
   centsFromInput,
@@ -35,7 +34,9 @@ import {
   sendEstimateToCustomer,
   deleteEstimate,
   voidEstimate,
+  type SendEstimateResult,
 } from "@/lib/actions/estimates";
+import { EstimateSendPanel } from "./estimate-send-panel";
 import { createEstimateRevision } from "@/lib/actions/estimate-revisions";
 import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
@@ -58,6 +59,7 @@ export type BuilderLead = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  second_contact_email: string | null;
 };
 
 // Quantity and price are held as the raw strings the rep typed so a
@@ -187,9 +189,6 @@ export function EstimateBuilder({
   const [discountLabel, setDiscountLabel] = useState(estimate.discount_label ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  // Free-typed extra recipients for the next email/both send -- a project
-  // manager, a family member not on file as Second Contact.
-  const [ccInput, setCcInput] = useState("");
   // Which line item has its scope editor open, by row key.
   const [scopeRow, setScopeRow] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -319,36 +318,44 @@ export function EstimateBuilder({
     setSaved(null);
   }
 
+  // Shared with the send panel's onSend: a send must save whatever's on
+  // screen first (same "Save & Email" semantics the old buttons had), so
+  // both paths build the same payload from the same form state rather
+  // than the send path risking a stale copy of it.
+  function draftPayload() {
+    return {
+      fields: {
+        title,
+        customer_message: message || null,
+        terms: terms || null,
+        expires_at: expiresAt || null,
+        start_date: startDate || null,
+        completion_date: completionDate || null,
+        job_address: jobAddress.trim() || null,
+      },
+      items: rows.map((r) => ({
+        id: r.id,
+        group_id: r.groupId,
+        name: r.name,
+        description: r.description || null,
+        quantity: parseQuantity(r.quantity),
+        unit: r.unit || null,
+        unit_price_cents: centsFromInput(r.unitPrice),
+        taxable: r.taxable,
+        cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
+        is_optional: r.optional,
+      })),
+      discount: discountForTotals
+        ? { ...discountForTotals, label: discountLabel.trim() || null }
+        : null,
+    };
+  }
+
   function save(then?: () => void) {
     setError(null);
     startTransition(async () => {
-      const res = await saveEstimateDraft(
-        estimate.id,
-        {
-          title,
-          customer_message: message || null,
-          terms: terms || null,
-          expires_at: expiresAt || null,
-          start_date: startDate || null,
-          completion_date: completionDate || null,
-          job_address: jobAddress.trim() || null,
-        },
-        rows.map((r) => ({
-          id: r.id,
-          group_id: r.groupId,
-          name: r.name,
-          description: r.description || null,
-          quantity: parseQuantity(r.quantity),
-          unit: r.unit || null,
-          unit_price_cents: centsFromInput(r.unitPrice),
-          taxable: r.taxable,
-          cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
-          is_optional: r.optional,
-        })),
-        discountForTotals
-          ? { ...discountForTotals, label: discountLabel.trim() || null }
-          : null
-      );
+      const payload = draftPayload();
+      const res = await saveEstimateDraft(estimate.id, payload.fields, payload.items, payload.discount);
       if (res.error) return setError(res.error);
 
       setSaved(
@@ -379,40 +386,41 @@ export function EstimateBuilder({
     });
   }
 
-  // Texting the portal link is the normal path; emailing it is the
-  // alternative for a customer who prefers or only has email; sending both
-  // at once covers a customer who checks whichever they see first; marking
-  // it sent without either is the fallback for a customer with no mobile
-  // number or email, or one the rep is handing a printout to in person.
-  function send(deliver: "text" | "email" | "both" | "manual") {
+  // Marking sent without texting or emailing -- the fallback for a
+  // customer with no mobile number or email, or one the rep is handing a
+  // printout to in person.
+  function handleMarkSent() {
     setError(null);
     startTransition(async () => {
-      // Not a ternary: assigning two differently-shaped Promise results
-      // through a conditional expression made TypeScript infer `res` as a
-      // merged/widened shape rather than a clean union, collapsing
-      // `invalidCc` to `{}` below. Plain if/else keeps the real union.
-      let res: Awaited<ReturnType<typeof sendEstimateToCustomer>> | Awaited<ReturnType<typeof markEstimateSent>>;
-      if (deliver === "manual") {
-        res = await markEstimateSent(estimate.id);
-      } else {
-        res = await sendEstimateToCustomer(estimate.id, deliver, ccInput);
-      }
+      const res = await markEstimateSent(estimate.id);
       if (res.error) return setError(res.error);
-      const label = deliver === "email" ? "Emailed" : deliver === "text" ? "Texted" : "Sent";
-      const warning = "warning" in res ? res.warning : undefined;
-      const invalidCc = "invalidCc" in res ? res.invalidCc : undefined;
-      const notes = [
-        warning ? `but ${warning}` : null,
-        invalidCc?.length ? `not a valid address, so not sent: ${invalidCc.join(", ")}` : null,
-      ].filter(Boolean);
-      setSaved(
-        "sentTo" in res && res.sentTo
-          ? `${label} to ${res.sentTo}${notes.length ? ` — ${notes.join("; ")}` : ""}`
-          : "Marked as sent"
-      );
-      setCcInput("");
+      setSaved("Marked as sent");
       router.refresh();
     });
+  }
+
+  // The send panel's onSend: save whatever's on screen first (the same
+  // "Save & Email" semantics the old buttons had -- a fresh edit is part
+  // of what gets sent, not silently left behind), then send. Returns the
+  // send result so the panel can show its own To/Cc/Bcc-specific feedback;
+  // a save failure is surfaced the same shape so the panel doesn't need a
+  // separate error path for it.
+  async function handleSendFromPanel(
+    channel: "email" | "text" | "both",
+    recipients: { to: string; cc: string; bcc: string }
+  ): Promise<SendEstimateResult> {
+    const payload = draftPayload();
+    const saveRes = await saveEstimateDraft(estimate.id, payload.fields, payload.items, payload.discount);
+    if (saveRes.error) return { error: saveRes.error };
+
+    const res = await sendEstimateToCustomer(estimate.id, channel, recipients);
+    if (!res.error) {
+      const label = channel === "email" ? "Emailed" : channel === "text" ? "Texted" : "Sent";
+      const note = res.warning ? ` — but ${res.warning}` : "";
+      setSaved(res.sentTo ? `${label} to ${res.sentTo}${note}` : "Marked as sent");
+      router.refresh();
+    }
+    return res;
   }
 
   const customer = lead
@@ -463,46 +471,15 @@ export function EstimateBuilder({
               these too; hiding them just stops a rep clicking into an
               error. */}
           {!locked && canSend && (
-            <>
-              <button
-                className="btn-ghost"
-                onClick={() => save(() => send("manual"))}
-                disabled={pending}
-                title="Mark as sent without texting or emailing -- for a customer with no mobile number or email"
-              >
-                Mark Sent
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={() => save(() => setPaperDialog(true))}
-                disabled={pending}
-                title="Record a signature that happened with a pen -- nothing is sent to the customer"
-              >
-                Signed on paper
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={() => save(() => send("email"))}
-                disabled={pending}
-              >
-                Save &amp; Email to Customer
-              </button>
-              <button
-                className="btn-save-blue"
-                onClick={() => save(() => send("text"))}
-                disabled={pending}
-              >
-                Save &amp; Text to Customer
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => save(() => send("both"))}
-                disabled={pending}
-                title="Sends both the email and the text -- whichever the customer has on file"
-              >
-                Save &amp; Send Email + Text
-              </button>
-            </>
+            <EstimateSendPanel
+              docNumber={estimate.doc_number}
+              customerEmail={lead?.email ?? null}
+              secondContactEmail={lead?.second_contact_email ?? null}
+              pending={pending}
+              onMarkSent={() => save(handleMarkSent)}
+              onSignedOnPaper={() => save(() => setPaperDialog(true))}
+              onSend={handleSendFromPanel}
+            />
           )}
           {/* Delete only while it is a draft nobody outside the company
               has seen. There was no delete button at all before this --
@@ -530,23 +507,6 @@ export function EstimateBuilder({
           )}
         </div>
       </div>
-
-      {!locked && canSend && (
-        <div style={{ maxWidth: 420, marginBottom: 14 }}>
-          <Field label="CC additional emails (optional)">
-            <input
-              value={ccInput}
-              onChange={(e) => setCcInput(e.target.value)}
-              placeholder="pm@example.com, another@example.com"
-              disabled={pending}
-            />
-          </Field>
-          <p className="hint-note" style={{ margin: "4px 0 0" }}>
-            Comma-separated. Sent alongside Save &amp; Email/Both — a courtesy
-            copy of the same document and link, not a required signer.
-          </p>
-        </div>
-      )}
 
       {deleting && (
         <div className="est-locked-banner">

@@ -3,14 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/safe-path";
-import { Field } from "@/components/ui/field";
 import { SignedOnPaperDialog } from "./signed-on-paper-dialog";
+import { EstimateSendPanel } from "./estimate-send-panel";
 import type { Estimate, EstimateSigner } from "@/lib/data/types";
 import { saveCompletionDetails } from "@/lib/actions/completion";
 import {
   deleteEstimate,
   markEstimateSent,
   sendEstimateToCustomer,
+  type SendEstimateResult,
 } from "@/lib/actions/estimates";
 
 /**
@@ -37,7 +38,7 @@ export function CompletionEditor({
 }: {
   estimate: Estimate;
   signers: EstimateSigner[];
-  customer: { name: string; address: string | null };
+  customer: { name: string; address: string | null; email: string | null; secondContactEmail: string | null };
   canEdit: boolean;
   /** The Send Estimates switch -- same meaning as on the estimate builder. */
   canSend?: boolean;
@@ -53,14 +54,13 @@ export function CompletionEditor({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [ccInput, setCcInput] = useState("");
   const [pending, startTransition] = useTransition();
 
   const signed = estimate.status === "Signed";
   const locked = signed || !canEdit;
   const customerItems = estimate.completion_customer_items?.trim();
 
-  function save(then?: () => Promise<void>) {
+  function save(then?: () => void) {
     setError(null);
     setSaved(null);
     startTransition(async () => {
@@ -72,29 +72,32 @@ export function CompletionEditor({
     });
   }
 
-  async function send(deliver: "manual" | "email" | "text") {
-    // Not a ternary: see the estimate builder's send() for why -- it made
-    // TypeScript merge the two branches' shapes instead of a real union.
-    let res: Awaited<ReturnType<typeof sendEstimateToCustomer>> | Awaited<ReturnType<typeof markEstimateSent>>;
-    if (deliver === "manual") {
-      res = await markEstimateSent(estimate.id);
-    } else {
-      res = await sendEstimateToCustomer(estimate.id, deliver, ccInput);
+  function handleMarkSent() {
+    startTransition(async () => {
+      const res = await markEstimateSent(estimate.id);
+      if (res.error) return setError(res.error);
+      setSaved("Marked as sent");
+      router.refresh();
+    });
+  }
+
+  // The send panel's onSend: save whatever's on screen first (same
+  // "Save & Email" semantics the old buttons had), then send.
+  async function handleSendFromPanel(
+    channel: "email" | "text" | "both",
+    recipients: { to: string; cc: string; bcc: string }
+  ): Promise<SendEstimateResult> {
+    const saveRes = await saveCompletionDetails(estimate.id, { completedOn, notes });
+    if (saveRes.error) return { error: saveRes.error };
+
+    const res = await sendEstimateToCustomer(estimate.id, channel, recipients);
+    if (!res.error) {
+      const label = channel === "email" ? "Emailed" : channel === "text" ? "Texted" : "Sent";
+      const note = res.warning ? ` — but ${res.warning}` : "";
+      setSaved(res.sentTo ? `${label} to ${res.sentTo}${note}` : "Marked as sent");
+      router.refresh();
     }
-    if (res.error) return setError(res.error);
-    const warning = "warning" in res ? res.warning : undefined;
-    const invalidCc = "invalidCc" in res ? res.invalidCc : undefined;
-    const notes = [
-      warning ? `but ${warning}` : null,
-      invalidCc?.length ? `not a valid address, so not sent: ${invalidCc.join(", ")}` : null,
-    ].filter(Boolean);
-    setSaved(
-      "sentTo" in res && res.sentTo
-        ? `${deliver === "email" ? "Emailed" : "Texted"} to ${res.sentTo}${notes.length ? ` — ${notes.join("; ")}` : ""}`
-        : "Marked as sent"
-    );
-    setCcInput("");
-    router.refresh();
+    return res;
   }
 
   return (
@@ -132,40 +135,17 @@ export function CompletionEditor({
             </button>
           )}
           {/* Behind the Send Estimates switch, like the estimate builder:
-              each of these takes the certificate out of Draft. */}
+              sending takes the certificate out of Draft. */}
           {!locked && canSend && (
-            <>
-              <button
-                className="btn-ghost"
-                onClick={() => save(() => send("manual"))}
-                disabled={pending}
-                title="Mark as sent without texting or emailing"
-              >
-                Mark Sent
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={() => save(async () => setPaperDialog(true))}
-                disabled={pending}
-                title="Record a signature that happened with a pen -- nothing is sent to the customer"
-              >
-                Signed on paper
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={() => save(() => send("email"))}
-                disabled={pending}
-              >
-                Save &amp; Email to Customer
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => save(() => send("text"))}
-                disabled={pending}
-              >
-                Save &amp; Text to Customer
-              </button>
-            </>
+            <EstimateSendPanel
+              docNumber={estimate.doc_number}
+              customerEmail={customer.email}
+              secondContactEmail={customer.secondContactEmail}
+              pending={pending}
+              onMarkSent={() => save(handleMarkSent)}
+              onSignedOnPaper={() => save(() => setPaperDialog(true))}
+              onSend={handleSendFromPanel}
+            />
           )}
           {canDelete && estimate.status === "Draft" && (
             <button
@@ -178,23 +158,6 @@ export function CompletionEditor({
           )}
         </div>
       </div>
-
-      {!locked && canSend && (
-        <div style={{ maxWidth: 420, marginBottom: 14 }}>
-          <Field label="CC additional emails (optional)">
-            <input
-              value={ccInput}
-              onChange={(e) => setCcInput(e.target.value)}
-              placeholder="pm@example.com, another@example.com"
-              disabled={pending}
-            />
-          </Field>
-          <p className="hint-note" style={{ margin: "4px 0 0" }}>
-            Comma-separated. Sent alongside Save &amp; Email — a courtesy copy
-            of the same document and link, not a required signer.
-          </p>
-        </div>
-      )}
 
       {deleting && (
         <div className="est-locked-banner">

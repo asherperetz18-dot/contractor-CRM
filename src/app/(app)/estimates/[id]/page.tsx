@@ -51,7 +51,7 @@ export default async function EstimateDetailPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("leads")
-      .select("id, first_name, last_name, email, phone, address")
+      .select("id, first_name, last_name, email, phone, address, second_contact_email")
       .eq("id", estimate.lead_id)
       .maybeSingle<BuilderLead>(),
   ]);
@@ -70,6 +70,8 @@ export default async function EstimateDetailPage({
             [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() ||
             "Unnamed lead",
           address: lead?.address ?? null,
+          email: lead?.email ?? null,
+          secondContactEmail: lead?.second_contact_email ?? null,
         }}
         canEdit={canCreateEstimates(profile)}
         canSend={canSendEstimates(profile)}
