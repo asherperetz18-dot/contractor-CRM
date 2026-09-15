@@ -3,10 +3,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  computeLeadWarnings,
   daysSince,
-  hasFollowUpDue,
-  isColdLead,
   isSettledStage,
   leadDisplayName,
   mapsUrl,
@@ -19,13 +16,15 @@ import {
   type LeadNote,
   type LeadSourceRow,
   type LeadTask,
-  type LeadWarnings,
   type PipelineStage,
   type PipelineStageRow,
   type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
 import { moveLeadStage } from "@/lib/actions/leads";
+import { getLeadCard, getPipelineBoardData, getStageCards } from "@/lib/actions/pipeline-board";
+import type { BoardCard, PipelineBoardData, PipelineBoardQuery } from "@/lib/pipeline-board-types";
+import { PIPELINE_CARD_WINDOW } from "./board-query";
 import { LeadForm } from "./lead-form";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
@@ -50,9 +49,6 @@ function loadHiddenStages(): Set<string> {
   }
 }
 
-// Cards rendered in a column up front, and added as it is scrolled.
-// Comfortably more than a column shows at once.
-const CARD_BATCH = 40;
 
 /**
  * One stage column, memoized. Opening the lead window is a state change
@@ -65,12 +61,14 @@ const CARD_BATCH = 40;
 const PipelineColumn = memo(function PipelineColumn({
   stage,
   items,
+  count,
   stages,
   canWrite,
   isDragOver,
   draggedId,
   repById,
   onOpenLead,
+  onLoadMore,
   onDragStartCard,
   onDragEndCard,
   onDragOverCol,
@@ -81,13 +79,17 @@ const PipelineColumn = memo(function PipelineColumn({
   onToggleSelect,
 }: {
   stage: string;
-  items: Lead[];
+  items: BoardCard[];
+  /** Every lead in the stage, not just the fetched window. */
+  count: number;
   stages: PipelineStageRow[];
   canWrite: boolean;
   isDragOver: boolean;
   draggedId: string | null;
   repById: Map<string, string>;
-  onOpenLead: (lead: Lead) => void;
+  onOpenLead: (card: BoardCard) => void;
+  /** Ask the server for the column's next window of cards. */
+  onLoadMore: (stage: string) => void;
   onDragStartCard: (id: string) => void;
   onDragEndCard: () => void;
   onDragOverCol: (stage: string) => void;
@@ -98,22 +100,15 @@ const PipelineColumn = memo(function PipelineColumn({
   onToggleSelect: (id: string) => void;
 }) {
   /**
-   * Cards enter the page as the column is scrolled, not all at once.
-   *
-   * The board rendered every lead in every stage: 36,379 DOM nodes on a
-   * full book, against a recommended ceiling nearer 1,400, which made
-   * this one of the two slowest pages to open and the worst of them on a
-   * phone. A column shows a handful of cards at a time and nobody reads
-   * a thousand of them.
-   *
-   * Dragging is unaffected: a card can only be picked up if it is on
-   * screen, and a drop targets the column rather than a position within
-   * it. The count in the header still counts every lead in the stage,
-   * not the rendered ones.
+   * Cards arrive from the server as the column is scrolled, not all at
+   * once: the page carries each column's first window, and reaching the
+   * bottom asks for the next. The count in the header still counts
+   * every lead in the stage, not the fetched ones. Dragging is
+   * unaffected: a card can only be picked up if it is on screen, and a
+   * drop targets the column rather than a position within it.
    */
-  const [shown, setShown] = useState(CARD_BATCH);
-  const visible = shown >= items.length ? items : items.slice(0, shown);
-  const remaining = items.length - visible.length;
+  const visible = items;
+  const remaining = Math.max(0, count - visible.length);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -121,13 +116,13 @@ const PipelineColumn = memo(function PipelineColumn({
     if (!end) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) setShown((n) => n + CARD_BATCH);
+        if (entries[0]?.isIntersecting) onLoadMore(stage);
       },
       { rootMargin: "600px" }
     );
     io.observe(end);
     return () => io.disconnect();
-  }, [shown, items.length]);
+  }, [stage, onLoadMore, items.length]);
 
   return (
     <div
@@ -149,7 +144,7 @@ const PipelineColumn = memo(function PipelineColumn({
       <div className="pipeline-col-head">
         <span className="tick" style={{ background: stageColor(stages, stage) }} />
         <span>{stage}</span>
-        <span className="count-pill">{items.length}</span>
+        <span className="count-pill">{count.toLocaleString()}</span>
       </div>
       <div className="pipeline-col-body">
         {visible.map((l) => {
@@ -238,10 +233,7 @@ const PipelineColumn = memo(function PipelineColumn({
 });
 
 export function PipelineBoard({
-  leads,
-  tasks,
-  notes,
-  files,
+  initialBoard,
   reps,
   allMembers,
   stages,
@@ -256,10 +248,7 @@ export function PipelineBoard({
   estimateIndex,
   dispatcherPicker,
 }: {
-  leads: Lead[];
-  tasks: LeadTask[];
-  notes: LeadNote[];
-  files: LeadFile[];
+  initialBoard: PipelineBoardData | null;
   reps: Profile[];
   /** For putting a name to an id only -- includes deactivated members. */
   allMembers: Profile[];
@@ -286,14 +275,25 @@ export function PipelineBoard({
   // working in -- descending buried today's arrivals under year-old
   // imported ones.
   const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [repFilter, setRepFilter] = useState<string>("All Reps");
+  // "All" | "unassigned" | a rep's profile id -- ids, not display
+  // names, since the server filters assigned_to by them.
+  const [repFilter, setRepFilter] = useState<string>("All");
   const [ageFilter, setAgeFilter] = useState<AgeFilter>("All");
   const [noApptOnly, setNoApptOnly] = useState(false);
   const [hiddenStages, setHiddenStages] = useState<Set<string>>(() => loadHiddenStages());
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Lead | null>(null);
+  /** The opened lead window: the full row plus its tasks/notes/files,
+   *  fetched when the card is clicked -- they no longer ride with the
+   *  page for every lead at once. */
+  const [editing, setEditing] = useState<{
+    lead: Lead;
+    tasks: LeadTask[];
+    notes: LeadNote[];
+    files: LeadFile[];
+  } | null>(null);
+  const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [scrollMetrics, setScrollMetrics] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
   const [dragThumb, setDragThumb] = useState<{ startX: number; startScrollLeft: number } | null>(
     null
@@ -303,6 +303,9 @@ export function PipelineBoard({
   const [showNew, setShowNew] = useState(false);
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
+  /** The expanded stage's biggest deals, fetched when its row is
+   *  clicked -- the board no longer holds every lead to filter from. */
+  const [expandedStageLeads, setExpandedStageLeads] = useState<BoardCard[]>([]);
   const [showWonBreakdown, setShowWonBreakdown] = useState(false);
   const [showImport, setShowImport] = useState(false);
   // Off by default: dragging is the board's everyday interaction, and
@@ -387,43 +390,119 @@ export function PipelineBoard({
     };
   }, [dragThumb]);
 
-  const tasksByLead = useMemo(() => {
-    const map = new Map<string, LeadTask[]>();
-    for (const t of tasks) {
-      const list = map.get(t.lead_id) ?? [];
-      list.push(t);
-      map.set(t.lead_id, list);
-    }
-    return map;
-  }, [tasks]);
+  /**
+   * Everything on screen, asked of the server per filter change: each
+   * column's window of cards with exact counts, the stat-tile numbers,
+   * and the attention digest. The whole book used to arrive as props
+   * and get reduced here -- at 79k contacts that was tens of megabytes
+   * and a page that took minutes to open.
+   */
+  const [board, setBoard] = useState<PipelineBoardData | null>(initialBoard);
+  const [loadingBoard, setLoadingBoard] = useState(false);
+  const loadingMoreRef = useRef<Set<string>>(new Set());
 
-  const notesByLead = useMemo(() => {
-    const map = new Map<string, LeadNote[]>();
-    for (const n of notes) {
-      const list = map.get(n.lead_id) ?? [];
-      list.push(n);
-      map.set(n.lead_id, list);
-    }
-    return map;
-  }, [notes]);
+  const boardQuery: PipelineBoardQuery = useMemo(() => {
+    const today = new Date();
+    const iso = (daysBack: number) => {
+      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysBack);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    return {
+      statusFilter,
+      repFilter,
+      receivedSince: ageFilter === "7" ? iso(7) : ageFilter === "30" ? iso(30) : "",
+      receivedBefore: ageFilter === "Stale" ? iso(14) : "",
+      noApptOnly,
+      sortBy,
+      sortDir,
+      window: PIPELINE_CARD_WINDOW,
+    };
+  }, [statusFilter, repFilter, ageFilter, noApptOnly, sortBy, sortDir]);
 
-  const filesByLead = useMemo(() => {
-    const map = new Map<string, LeadFile[]>();
-    for (const f of files) {
-      const list = map.get(f.lead_id) ?? [];
-      list.push(f);
-      map.set(f.lead_id, list);
-    }
-    return map;
-  }, [files]);
+  // Newest query wins: every fetch of the whole board -- a filter
+  // change or a post-drop refetch -- takes a token, and only the
+  // holder of the latest token may write the board or merge cards
+  // into a column. The server-rendered default board is page one.
+  const firstQueryRef = useRef(true);
+  const queryIdRef = useRef(0);
 
-  const warningsByLead = useMemo(() => {
-    const map = new Map<string, LeadWarnings>();
-    for (const l of leads) {
-      map.set(l.id, computeLeadWarnings(l, l.has_appt, tasksByLead.get(l.id) ?? []));
+  const refetchBoard = useCallback(async () => {
+    queryIdRef.current += 1;
+    const id = queryIdRef.current;
+    setLoadingBoard(true);
+    try {
+      const fresh = await getPipelineBoardData(boardQuery);
+      if (fresh && queryIdRef.current === id) setBoard(fresh);
+    } finally {
+      if (queryIdRef.current === id) setLoadingBoard(false);
     }
-    return map;
-  }, [leads, tasksByLead]);
+  }, [boardQuery]);
+
+  useEffect(() => {
+    if (firstQueryRef.current) {
+      firstQueryRef.current = false;
+      return;
+    }
+    void refetchBoard();
+  }, [refetchBoard]);
+
+  const onLoadMore = useCallback(
+    (stage: string) => {
+      setBoard((current) => {
+        if (!current) return current;
+        const col = current.columns.find((c) => c.stage === stage);
+        if (!col || col.cards.length >= col.count) return current;
+        if (loadingMoreRef.current.has(stage)) return current;
+        loadingMoreRef.current.add(stage);
+        // Capture the active query token so a response from a filter
+        // that has since changed is discarded rather than merged into
+        // the column (its cards and count belong to the old filter).
+        const id = queryIdRef.current;
+        getStageCards(boardQuery, stage, col.cards.length, PIPELINE_CARD_WINDOW)
+          .then((more) => {
+            if (queryIdRef.current !== id) return;
+            setBoard((b) => {
+              if (!b) return b;
+              return {
+                ...b,
+                columns: b.columns.map((c) => {
+                  if (c.stage !== stage) return c;
+                  // Drop anything already on screen: the column can have
+                  // shifted under us (a drag, a save) between windows.
+                  const seen = new Set(c.cards.map((x) => x.id));
+                  return {
+                    ...c,
+                    count: more.count,
+                    cards: [...c.cards, ...more.cards.filter((x) => !seen.has(x.id))],
+                  };
+                }),
+              };
+            });
+          })
+          .finally(() => loadingMoreRef.current.delete(stage));
+        return current;
+      });
+    },
+    [boardQuery]
+  );
+
+  /** A card, digest row, or breakdown row was clicked: fetch the full
+   *  lead and its panels, then open the window. A second click while
+   *  one is already loading is ignored rather than queued -- two lead
+   *  windows racing each other would open whichever landed last. */
+  const openLead = useCallback(
+    async (card: { id: string }) => {
+      if (openingLeadId) return;
+      setOpeningLeadId(card.id);
+      try {
+        const bundle = await getLeadCard(card.id);
+        if (bundle) setEditing(bundle);
+      } finally {
+        setOpeningLeadId(null);
+      }
+    },
+    [openingLeadId]
+  );
 
   // A Map instead of reps.find per lead: the rep filter and every card
   // footer used to do a linear scan of the roster per lead per render.
@@ -459,15 +538,34 @@ export function PipelineBoard({
   const onDropCol = useCallback(
     (stage: string) => {
       if (draggedId && canWrite) {
+        // The card jumps columns immediately; the server then recounts.
+        setBoard((b) => {
+          if (!b) return b;
+          let moved: BoardCard | undefined;
+          const stripped = b.columns.map((c) => {
+            const hit = c.cards.find((x) => x.id === draggedId);
+            if (!hit) return c;
+            moved = { ...hit, stage };
+            return { ...c, cards: c.cards.filter((x) => x.id !== draggedId), count: Math.max(0, c.count - 1) };
+          });
+          if (!moved) return b;
+          return {
+            ...b,
+            columns: stripped.map((c) =>
+              c.stage === stage ? { ...c, cards: [moved!, ...c.cards], count: c.count + 1 } : c
+            ),
+          };
+        });
         startTransition(async () => {
           await moveLeadStage(draggedId, stage as PipelineStage);
+          await refetchBoard();
           router.refresh();
         });
       }
       setDraggedId(null);
       setDragOverStage(null);
     },
-    [draggedId, canWrite, router, startTransition]
+    [draggedId, canWrite, router, startTransition, refetchBoard]
   );
   const onDragEndCard = useCallback(() => {
     setDraggedId(null);
@@ -477,109 +575,21 @@ export function PipelineBoard({
     setDragOverStage((s) => (s === stage ? null : s));
   }, []);
 
-  // The whole filter/sort/group chain is memoized so its arrays keep
-  // their identity across unrelated renders. Before this, clicking a
-  // card re-ran a dozen full passes over every lead -- and rebuilt
-  // every column's items array, which would also have made memoizing
-  // the columns pointless -- before the lead window could paint.
-  const repFiltered = useMemo(
-    () =>
-      repFilter === "All Reps"
-        ? leads
-        : leads.filter(
-            (l) => ((l.assigned_to && repById.get(l.assigned_to)) || "Unassigned") === repFilter
-          ),
-    [leads, repFilter, repById]
-  );
-
-  const statusFiltered = useMemo(
-    () =>
-      repFiltered.filter((l) => {
-        if (statusFilter === "Open") return !isSettledStage(l.stage);
-        if (statusFilter === "Won") return l.stage === "Won";
-        return l.stage === "Lost";
-      }),
-    [repFiltered, statusFilter]
-  );
-
-  const ageFiltered = useMemo(
-    () =>
-      statusFiltered.filter((l) => {
-        if (ageFilter === "All") return true;
-        const age = daysSince(l.date_received);
-        if (ageFilter === "7") return age <= 7;
-        if (ageFilter === "30") return age <= 30;
-        return age > 14;
-      }),
-    [statusFiltered, ageFilter]
-  );
-
-  const apptFiltered = useMemo(
-    () => (noApptOnly ? ageFiltered.filter((l) => !l.has_appt) : ageFiltered),
-    [ageFiltered, noApptOnly]
-  );
-
-  const openLeads = useMemo(() => repFiltered.filter((l) => !isSettledStage(l.stage)), [repFiltered]);
-  const pipelineValue = openLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
-  const avgDealSize = openLeads.length ? pipelineValue / openLeads.length : 0;
-  const wonLeads = useMemo(
-    () =>
-      repFiltered
-        .filter((l) => l.stage === "Won")
-        .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0)),
-    [repFiltered]
-  );
-  const wonValue = wonLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
-  const staleCount = useMemo(
-    () => openLeads.filter((l) => daysSince(l.date_received) > 14).length,
-    [openLeads]
-  );
-  // What the two money figures are actually made of. A value of 0 is
-  // counted as a lead but contributes nothing, which is why the note
-  // below the table says how many of those there are -- otherwise the
-  // averages look inexplicably low.
-  const leadsWithNoValue = useMemo(
-    () => openLeads.filter((l) => !Number(l.value)).length,
-    [openLeads]
-  );
-  const valueByStage = useMemo(() => {
-    const map = new Map<string, { count: number; value: number }>();
-    for (const l of openLeads) {
-      const row = map.get(l.stage) ?? { count: 0, value: 0 };
-      row.count += 1;
-      row.value += Number(l.value) || 0;
-      map.set(l.stage, row);
-    }
-    return [...map.entries()]
-      .map(([stage, row]) => ({ stage, ...row }))
-      .sort((a, b) => b.value - a.value || b.count - a.count);
-  }, [openLeads]);
-  const noApptCount = useMemo(() => openLeads.filter((l) => !l.has_appt).length, [openLeads]);
-
-  const followUpsDue = useMemo(
-    () => openLeads.filter((l) => hasFollowUpDue(tasksByLead.get(l.id) ?? [])),
-    [openLeads, tasksByLead]
-  );
-  const coldLeads = useMemo(
-    () =>
-      openLeads.filter((l) => {
-        const w = warningsByLead.get(l.id);
-        return w && isColdLead(w);
-      }),
-    [openLeads, warningsByLead]
-  );
-
-  const sortedFiltered = useMemo(
-    () =>
-      [...apptFiltered].sort((a, b) => {
-        let cmp: number;
-        if (sortBy === "Name") cmp = leadDisplayName(a).localeCompare(leadDisplayName(b));
-        else if (sortBy === "Amount") cmp = (Number(a.value) || 0) - (Number(b.value) || 0);
-        else cmp = daysSince(a.date_received) - daysSince(b.date_received);
-        return sortDir === "asc" ? cmp : -cmp;
-      }),
-    [apptFiltered, sortBy, sortDir]
-  );
+  // The numbers behind the tiles and breakdowns now arrive computed --
+  // the same arithmetic, run server-side over a slim scan (see
+  // src/lib/pipeline-aggregates.ts and its tests).
+  const aggregates = board?.aggregates;
+  const pipelineValue = aggregates?.pipelineValue ?? 0;
+  const avgDealSize = aggregates?.avgDealSize ?? 0;
+  const wonValue = aggregates?.wonValue ?? 0;
+  const wonCount = aggregates?.wonCount ?? 0;
+  const staleCount = aggregates?.staleCount ?? 0;
+  const leadsWithNoValue = aggregates?.leadsWithNoValue ?? 0;
+  const valueByStage = aggregates?.valueByStage ?? [];
+  const noApptCount = aggregates?.noApptCount ?? 0;
+  const openCount = aggregates?.openCount ?? 0;
+  const wonTop = board?.wonTop ?? [];
+  const digest = board?.digest;
 
   const openStageNames = useMemo(
     () => stages.map((s) => s.name).filter((s) => !isSettledStage(s)),
@@ -594,16 +604,20 @@ export function PipelineBoard({
   // made a focused board report "-1 of 15".
   const visibleColumnCount = visibleStageNames.length;
 
-  const displayGroups: { stage: string; items: Lead[] }[] = useMemo(() => {
-    if (statusFilter === "Won") return [{ stage: "Won", items: sortedFiltered }];
-    if (statusFilter === "Lost") return [{ stage: "Lost", items: sortedFiltered }];
-    return visibleStageNames.map((stage) => ({
-      stage,
-      items: sortedFiltered.filter((l) => l.stage === stage),
-    }));
-  }, [statusFilter, sortedFiltered, visibleStageNames]);
+  const displayGroups: { stage: string; items: BoardCard[]; count: number }[] = useMemo(() => {
+    const columns = board?.columns ?? [];
+    if (statusFilter !== "Open")
+      return columns.map((c) => ({ stage: c.stage, items: c.cards, count: c.count }));
+    return columns
+      .filter((c) => !hiddenStages.has(c.stage))
+      .map((c) => ({ stage: c.stage, items: c.cards, count: c.count }));
+  }, [board, statusFilter, hiddenStages]);
 
-  const repOptions = ["All Reps", "Unassigned", ...reps.map((r) => r.name || r.email || "")];
+  const repOptions = [
+    { value: "All", label: "All Reps" },
+    { value: "unassigned", label: "Unassigned" },
+    ...reps.map((r) => ({ value: r.id, label: r.name || r.email || "" })),
+  ];
 
   const clientWidth = scrollMetrics.clientWidth || 1;
   const totalScrollWidth = scrollMetrics.scrollWidth || clientWidth;
@@ -620,7 +634,8 @@ export function PipelineBoard({
         <div>
           <h1 className="module-title">Pipeline</h1>
           <p className="module-sub">
-            {leads.length} opps · {statusFilter.toLowerCase()}
+            {(board?.totalLeads ?? 0).toLocaleString()} opps · {statusFilter.toLowerCase()}
+            {loadingBoard ? " · updating…" : ""}
           </p>
         </div>
         {canCreateLeads && (
@@ -717,19 +732,27 @@ export function PipelineBoard({
                 {valueByStage.map((row) => {
                   const open = expandedStage === row.stage;
                   // The leads themselves, right under the row that was
-                  // clicked. Narrowing the board's columns instead was too
-                  // indirect -- the board still looked like a board, so it
-                  // read as "nothing happened".
-                  const stageLeads = open
-                    ? openLeads
-                        .filter((l) => l.stage === row.stage)
-                        .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
-                    : [];
+                  // clicked -- fetched biggest-first when the row opens,
+                  // since the board no longer holds the whole book.
+                  const stageLeads = open ? expandedStageLeads : [];
                   return (
                     <Fragment key={row.stage}>
                       <tr
                         className={"value-breakdown-row" + (open ? " is-open" : "")}
-                        onClick={() => setExpandedStage(open ? null : row.stage)}
+                        onClick={() => {
+                          if (open) {
+                            setExpandedStage(null);
+                            return;
+                          }
+                          setExpandedStage(row.stage);
+                          setExpandedStageLeads([]);
+                          getStageCards(
+                            { ...boardQuery, sortBy: "Amount", sortDir: "desc" },
+                            row.stage,
+                            0,
+                            50
+                          ).then((r) => setExpandedStageLeads(r.cards));
+                        }}
                         title={open ? "Hide these leads" : `Show the ${row.count} leads here`}
                       >
                         <td>
@@ -750,7 +773,7 @@ export function PipelineBoard({
                                 <div
                                   key={l.id}
                                   className="value-lead-row"
-                                  onClick={() => setEditing(l)}
+                                  onClick={() => openLead(l)}
                                   title="Open this contact"
                                 >
                                   <span className="value-lead-name">{leadDisplayName(l)}</span>
@@ -771,8 +794,8 @@ export function PipelineBoard({
             </table>
           )}
           <p className="hint-note">
-            {leadsWithNoValue} of {openLeads.length} open leads have no value recorded, so
-            they add nothing to these totals.
+            {leadsWithNoValue.toLocaleString()} of {openCount.toLocaleString()} open leads have
+            no value recorded, so they add nothing to these totals.
           </p>
         </div>
       )}
@@ -803,15 +826,15 @@ export function PipelineBoard({
               Close
             </button>
           </div>
-          {wonLeads.length === 0 ? (
+          {wonCount === 0 ? (
             <p className="empty-hint">No won deals yet.</p>
           ) : (
             <div className="value-lead-list">
-              {wonLeads.map((l) => (
+              {wonTop.map((l) => (
                 <div
                   key={l.id}
                   className="value-lead-row"
-                  onClick={() => setEditing(l)}
+                  onClick={() => openLead(l)}
                   title="Open this contact"
                 >
                   <span className="value-lead-name">{leadDisplayName(l)}</span>
@@ -824,20 +847,28 @@ export function PipelineBoard({
             </div>
           )}
           <p className="hint-note">
-            {wonLeads.filter((l) => !Number(l.value)).length} of {wonLeads.length} won deals
-            have no value recorded, so they add nothing to the total.
+            {wonCount > wonTop.length
+              ? `Showing the ${wonTop.length} biggest of ${wonCount.toLocaleString()} won deals. `
+              : ""}
+            {aggregates?.wonNoValueCount ?? 0} of {wonCount.toLocaleString()} won deals have no
+            value recorded, so they add nothing to the total.
           </p>
         </div>
       )}
 
-      <AttentionDigest
-        followUpsDue={followUpsDue}
-        coldLeads={coldLeads}
-        warningsByLead={warningsByLead}
-        repName={repName}
-        dispatcherName={dispatcherName}
-        onOpenLead={setEditing}
-      />
+      {digest && (
+        <AttentionDigest
+          followUpsDue={digest.followUpsDue}
+          followUpsDueCount={digest.followUpsDueCount}
+          coldLeads={digest.coldLeads}
+          coldLeadsCount={digest.coldLeadsCount}
+          warnings={digest.warnings}
+          windowSize={digest.windowSize}
+          repName={repName}
+          dispatcherName={dispatcherName}
+          onOpenLead={openLead}
+        />
+      )}
 
       <div className="filter-bar">
         <div className="chip-row no-margin">
@@ -856,8 +887,8 @@ export function PipelineBoard({
             onChange={(e) => setRepFilter(e.target.value)}
           >
             {repOptions.map((r) => (
-              <option key={r} value={r}>
-                {r}
+              <option key={r.value} value={r.value}>
+                {r.label}
               </option>
             ))}
           </select>
@@ -945,7 +976,7 @@ export function PipelineBoard({
         </div>
       )}
 
-      {leads.length === 0 ? (
+      {(board?.totalLeads ?? 0) === 0 ? (
         <div className="empty-state">
           <div className="empty-mark" aria-hidden="true">
             ＋
@@ -988,17 +1019,19 @@ export function PipelineBoard({
             </div>
           )}
         <div className="pipeline-board" ref={setScrollContainer}>
-          {displayGroups.map(({ stage, items }) => (
+          {displayGroups.map(({ stage, items, count }) => (
             <PipelineColumn
               key={stage}
               stage={stage}
               items={items}
+              count={count}
               stages={stages}
               canWrite={canWrite}
               isDragOver={dragOverStage === stage}
               draggedId={draggedId}
               repById={repById}
-              onOpenLead={setEditing}
+              onOpenLead={openLead}
+              onLoadMore={onLoadMore}
               onDragStartCard={setDraggedId}
               onDragEndCard={onDragEndCard}
               onDragOverCol={setDragOverStage}
@@ -1015,7 +1048,10 @@ export function PipelineBoard({
 
       {showBulkEmail && (
         <BulkEmailModal
-          leads={leads
+          // Selection only ever happens on cards that are on screen, so
+          // the loaded columns hold every selected lead.
+          leads={(board?.columns ?? [])
+            .flatMap((c) => c.cards)
             .filter((l) => selected.has(l.id))
             .map((l) => ({ id: l.id, name: leadDisplayName(l), email: l.email }))}
           onClose={() => setShowBulkEmail(false)}
@@ -1031,7 +1067,10 @@ export function PipelineBoard({
           projectTypes={projectTypes}
           sources={sources}
           onCancel={() => setShowNew(false)}
-          onSaved={() => setShowNew(false)}
+          onSaved={() => {
+            setShowNew(false);
+            void refetchBoard();
+          }}
         />
       )}
       {showImport && canWrite && (
@@ -1039,15 +1078,15 @@ export function PipelineBoard({
       )}
       {editing && (
         <LeadForm
-          lead={editing}
+          lead={editing.lead}
           reps={reps}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}
           sources={sources}
-          tasks={tasksByLead.get(editing.id) ?? []}
-          notes={notesByLead.get(editing.id) ?? []}
-          files={filesByLead.get(editing.id) ?? []}
+          tasks={editing.tasks}
+          notes={editing.notes}
+          files={editing.files}
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
@@ -1055,8 +1094,14 @@ export function PipelineBoard({
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
           onCancel={() => setEditing(null)}
-          onSaved={() => setEditing(null)}
-          onDeleted={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            void refetchBoard();
+          }}
+          onDeleted={() => {
+            setEditing(null);
+            void refetchBoard();
+          }}
         />
       )}
     </div>

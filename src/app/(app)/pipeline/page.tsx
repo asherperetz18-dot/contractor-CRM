@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -9,16 +8,14 @@ import {
   canCreateLeads,
   canEditDispatch,
   type CalendarRow,
-  type Lead,
-  type LeadFile,
-  type LeadNote,
   type LeadSourceRow,
-  type LeadTask,
   type PipelineStageRow,
   type ProjectTypeRow,
 } from "@/lib/data/types";
 import { getLeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
+import { getPipelineBoardData } from "@/lib/actions/pipeline-board";
+import { PIPELINE_CARD_WINDOW } from "./board-query";
 import { PipelineBoard } from "./pipeline-board";
 
 export default async function PipelinePage() {
@@ -29,53 +26,31 @@ export default async function PipelinePage() {
   const isAdmin = isStrictAdmin(profile);
   const companyId = profile?.company_id ?? "";
 
+  // The book itself never rides along: each column carries its first
+  // window of cards plus an exact count, the stat tiles arrive as
+  // numbers, and a lead's tasks/notes/files are fetched when its card
+  // is opened. This page used to ship every lead, task, note, and file
+  // in the company -- see DECISIONS #020.
   const [
     estimateIndex,
-    leads,
-    tasks,
-    notes,
-    { data: files },
+    initialBoard,
     allReps,
     { data: stages },
     { data: calendars },
     { data: projectTypes },
     { data: sources },
   ] = await Promise.all([
-    // Loaded with the page so the contact card's estimate chip is there
-    // on the first frame rather than a couple of seconds in. It needs
-    // nothing from the queries beside it, so it belongs inside this
-    // parallel block rather than in a round trip ahead of it.
     getLeadEstimateIndex(),
-    selectAll<Lead>((f, t) =>
-      supabase
-        .from("leads")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .range(f, t)
-    ),
-    selectAll<LeadTask>((f, t) =>
-      supabase
-        .from("lead_tasks")
-        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
-        .eq("company_id", companyId)
-        .range(f, t)
-    ),
-    selectAll<LeadNote>((f, t) =>
-      supabase
-        .from("lead_notes")
-        .select("id, lead_id, author_id, body, event_id, created_at")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .range(f, t)
-    ),
-    supabase
-      .from("lead_files")
-      .select(
-        "id, lead_id, uploaded_by, file_name, file_path, file_url, file_size, content_type, storage_provider, created_at"
-      )
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
+    getPipelineBoardData({
+      statusFilter: "Open",
+      repFilter: "All",
+      receivedSince: "",
+      receivedBefore: "",
+      noApptOnly: false,
+      sortBy: "Days",
+      sortDir: "asc",
+      window: PIPELINE_CARD_WINDOW,
+    }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
@@ -86,10 +61,7 @@ export default async function PipelinePage() {
 
   return (
     <PipelineBoard
-      leads={leads}
-      tasks={tasks}
-      notes={notes}
-      files={(files as LeadFile[]) ?? []}
+      initialBoard={initialBoard}
       reps={reps}
       // Everyone, including deactivated members. `reps` is filtered to
       // Active because it feeds the assignment dropdowns, but a lead can

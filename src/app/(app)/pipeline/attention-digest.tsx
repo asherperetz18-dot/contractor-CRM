@@ -5,9 +5,9 @@ import {
   leadDisplayName,
   mapsUrl,
   money,
-  type Lead,
   type LeadWarnings,
 } from "@/lib/data/types";
+import type { BoardCard } from "@/lib/pipeline-board-types";
 
 function WarningBadges({ warnings }: { warnings: LeadWarnings | undefined }) {
   if (!warnings) return null;
@@ -31,7 +31,7 @@ function DigestSection({
   count,
   hint,
   leads,
-  warningsByLead,
+  warnings,
   repName,
   dispatcherName,
   onOpenLead,
@@ -42,11 +42,11 @@ function DigestSection({
   title: string;
   count: number;
   hint: string;
-  leads: Lead[];
-  warningsByLead: Map<string, LeadWarnings>;
+  leads: BoardCard[];
+  warnings: Record<string, LeadWarnings>;
   repName: (id: string | null) => string;
   dispatcherName: (id: string | null) => string;
-  onOpenLead: (lead: Lead) => void;
+  onOpenLead: (lead: BoardCard) => void;
   defaultOpen?: boolean;
   /** Tints the panel red -- only honoured while the count is above zero,
    *  so a panel reading "0" is never red. A colour that is always on
@@ -139,7 +139,7 @@ function DigestSection({
                   </td>
                   <td>{l.stage}</td>
                   <td>
-                    <WarningBadges warnings={warningsByLead.get(l.id)} />
+                    <WarningBadges warnings={warnings[l.id]} />
                   </td>
                   <td>{dispatcherName(l.dispatcher_id)}</td>
                   <td>{repName(l.assigned_to)}</td>
@@ -150,8 +150,8 @@ function DigestSection({
           </table>
           </div>
         ))}
-      {open && leads.length > 25 && (
-        <p className="hint-note">Showing 25 of {leads.length}.</p>
+      {open && count > 25 && (
+        <p className="hint-note">Showing {Math.min(25, leads.length)} of {count.toLocaleString()}.</p>
       )}
     </div>
   );
@@ -159,27 +159,36 @@ function DigestSection({
 
 export function AttentionDigest({
   followUpsDue,
+  followUpsDueCount,
   coldLeads,
-  warningsByLead,
+  coldLeadsCount,
+  warnings,
+  windowSize,
   repName,
   dispatcherName,
   onOpenLead,
 }: {
-  followUpsDue: Lead[];
-  coldLeads: Lead[];
-  warningsByLead: Map<string, LeadWarnings>;
+  followUpsDue: BoardCard[];
+  followUpsDueCount: number;
+  coldLeads: BoardCard[];
+  coldLeadsCount: number;
+  warnings: Record<string, LeadWarnings>;
+  /** How many of the newest open leads the digest examined -- warnings
+   *  need each lead's notes, so the whole book can't be scanned. */
+  windowSize: number;
   repName: (id: string | null) => string;
   dispatcherName: (id: string | null) => string;
-  onOpenLead: (lead: Lead) => void;
+  onOpenLead: (lead: BoardCard) => void;
 }) {
+  const scope = windowSize >= 1000 ? ` — checked across your ${windowSize.toLocaleString()} newest open leads` : "";
   return (
     <div style={{ marginBottom: 4 }}>
       <DigestSection
         title="Follow-ups Due"
-        count={followUpsDue.length}
-        hint="Leads with a task overdue or due today"
+        count={followUpsDueCount}
+        hint={"Leads with a task overdue or due today" + scope}
         leads={followUpsDue}
-        warningsByLead={warningsByLead}
+        warnings={warnings}
         repName={repName}
         dispatcherName={dispatcherName}
         onOpenLead={onOpenLead}
@@ -187,11 +196,11 @@ export function AttentionDigest({
       />
       <DigestSection
         title="Cold Leads"
-        count={coldLeads.length}
-        hint="No appointments on record · stale notes or expired tasks"
+        count={coldLeadsCount}
+        hint={"No appointments on record · stale notes or expired tasks" + scope}
         attention
         leads={coldLeads}
-        warningsByLead={warningsByLead}
+        warnings={warnings}
         repName={repName}
         dispatcherName={dispatcherName}
         onOpenLead={onOpenLead}

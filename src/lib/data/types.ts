@@ -1509,7 +1509,9 @@ export type LeadWarnings = {
 const STALE_NOTES_DAYS = 14;
 
 export function computeLeadWarnings(
-  lead: Lead,
+  // Only the notes fields are read, and the pipeline board's digest now
+  // computes warnings from slim rows that carry exactly these.
+  lead: Pick<Lead, "notes" | "notes_updated_at">,
   hasAppt: boolean,
   tasks: LeadTask[]
 ): LeadWarnings {
