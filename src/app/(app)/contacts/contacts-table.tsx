@@ -7,7 +7,6 @@ import {
   leadDisplayName,
   mapsUrl,
   money,
-  normalizePhone,
   stageColor,
   type CalendarRow,
   type Lead,
@@ -19,16 +18,25 @@ import {
   type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
+import {
+  getContactDuplicateGroups,
+  listContacts,
+  listMatchingRecipients,
+  type ContactListRow,
+} from "@/lib/actions/contact-list";
+import { getLeadCard } from "@/lib/actions/pipeline-board";
+import type { DuplicateGroup } from "@/lib/contact-duplicates";
 import { LeadForm } from "../pipeline/lead-form";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { safeInternalPath } from "@/lib/safe-path";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
+import { CONTACT_ROW_BATCH } from "./row-batch";
 
 /**
  * One contact row, memoized. Clicking a row re-renders the table (the
- * click opens the contact window via state), and re-reconciling ~1,500
- * rows before the window paints is where the open used to spend its
+ * click opens the contact window via state), and re-reconciling every
+ * row before the window paints is where the open used to spend its
  * time. Stable props mean that render now skips every row.
  */
 const ContactRow = memo(function ContactRow({
@@ -40,13 +48,13 @@ const ContactRow = memo(function ContactRow({
   checked,
   onToggleSelect,
 }: {
-  lead: Lead;
+  lead: ContactListRow;
   repLabel: string;
   color: string;
-  onOpen: (lead: Lead) => void;
+  onOpen: (lead: ContactListRow) => void;
   selectable: boolean;
   checked: boolean;
-  onToggleSelect: (id: string) => void;
+  onToggleSelect: (lead: ContactListRow) => void;
 }) {
   return (
     <tr onClick={() => onOpen(lead)}>
@@ -55,7 +63,7 @@ const ContactRow = memo(function ContactRow({
           <input
             type="checkbox"
             checked={checked}
-            onChange={() => onToggleSelect(lead.id)}
+            onChange={() => onToggleSelect(lead)}
             aria-label={`Select ${leadDisplayName(lead)}`}
           />
         </td>
@@ -89,16 +97,14 @@ const ContactRow = memo(function ContactRow({
   );
 });
 
-// Rows rendered up front, and added each time the end of the list comes
-// into view. Comfortably more than a screenful, so the first batch never
-// looks short.
-const ROW_BATCH = 60;
+/** A selected contact carries what the bulk email needs, so a row can
+ *  stay selected after it scrolls out of the fetched window. */
+type Recipient = { id: string; name: string; email: string | null };
 
 export function ContactsTable({
-  leads,
-  tasks,
-  notes,
-  files,
+  initialRows,
+  initialTotal,
+  stats,
   reps,
   stages,
   calendars,
@@ -111,10 +117,9 @@ export function ContactsTable({
   estimateIndex,
   dispatcherPicker,
 }: {
-  leads: Lead[];
-  tasks: LeadTask[];
-  notes: LeadNote[];
-  files: LeadFile[];
+  initialRows: ContactListRow[];
+  initialTotal: number;
+  stats: { totalContacts: number; withOpenLeads: number; noSetterAssigned: number };
   reps: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
@@ -130,43 +135,156 @@ export function ContactsTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
-  const [editing, setEditing] = useState<Lead | null>(null);
-  const [consumedOpenId, setConsumedOpenId] = useState<string | null>(null);
+  /** The opened contact window: the full row plus its tasks/notes/files,
+   *  fetched when the row is clicked -- the page no longer carries them
+   *  for every contact at once. */
+  const [editing, setEditing] = useState<{
+    lead: Lead;
+    tasks: LeadTask[];
+    notes: LeadNote[];
+    files: LeadFile[];
+  } | null>(null);
+  const openingRef = useRef(false);
   const [returnTo, setReturnTo] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Map<string, Recipient>>(new Map());
   const [showBulkEmail, setShowBulkEmail] = useState(false);
+  const [selectAllNote, setSelectAllNote] = useState("");
 
-  // Stable reference (empty deps, setSelected itself never changes) so
-  // toggling one row's checkbox doesn't blow away every other row's
-  // memoization -- the same concern behind repById/tasksByLead above.
-  const toggleSelected = useCallback((id: string) => {
+  /**
+   * The window of rows on screen, asked of the server: typing searches
+   * the whole book server-side, scrolling appends the next batch. The
+   * book used to arrive whole as a prop -- at 79k contacts that was the
+   * slowest page in the app by far.
+   */
+  const [rows, setRows] = useState<ContactListRow[]>(initialRows);
+  const [total, setTotal] = useState(initialTotal);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const queryIdRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const firstQueryRef = useRef(true);
+
+  useEffect(() => {
+    // The server rendered the first batch of the empty search.
+    if (firstQueryRef.current) {
+      firstQueryRef.current = false;
+      return;
+    }
+    queryIdRef.current += 1;
+    const id = queryIdRef.current;
+    setLoadingRows(true);
+    const t = setTimeout(() => {
+      listContacts({ search, offset: 0, limit: CONTACT_ROW_BATCH })
+        .then((page) => {
+          if (queryIdRef.current !== id) return;
+          setRows(page.rows);
+          setTotal(page.total);
+        })
+        .finally(() => {
+          if (queryIdRef.current === id) setLoadingRows(false);
+        });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const loadMore = useCallback(() => {
+    if (loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    const id = queryIdRef.current;
+    listContacts({ search, offset: rows.length, limit: CONTACT_ROW_BATCH })
+      .then((page) => {
+        if (queryIdRef.current !== id) return;
+        setRows((prev) => {
+          const seen = new Set(prev.map((r) => r.id));
+          return [...prev, ...page.rows.filter((r) => !seen.has(r.id))];
+        });
+        setTotal(page.total);
+      })
+      .finally(() => {
+        loadingMoreRef.current = false;
+      });
+  }, [search, rows.length]);
+
+  /** Refresh the loaded window in place after a save/delete. */
+  const refreshRows = useCallback(() => {
+    queryIdRef.current += 1;
+    const id = queryIdRef.current;
+    listContacts({ search, offset: 0, limit: Math.max(rows.length, CONTACT_ROW_BATCH) }).then(
+      (page) => {
+        if (queryIdRef.current !== id) return;
+        setRows(page.rows);
+        setTotal(page.total);
+      }
+    );
+  }, [search, rows.length]);
+
+  /**
+   * The duplicate banner, fetched after first paint: its grouping scans
+   * the whole book server-side, and the page should never wait on it.
+   */
+  const [dups, setDups] = useState<{ groups: DuplicateGroup[]; totalGroups: number } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getContactDuplicateGroups().then((d) => {
+      if (alive) setDups(d);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+
+  const toggleSelected = useCallback((lead: ContactListRow) => {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const next = new Map(prev);
+      if (next.has(lead.id)) next.delete(lead.id);
+      else next.set(lead.id, { id: lead.id, name: leadDisplayName(lead), email: lead.email });
       return next;
     });
+    setSelectAllNote("");
   }, []);
 
+  /** Opens a contact window from any surface: a row, a duplicate-group
+   *  member, or a deep link. Fetches the card's data right then. */
+  const openLead = useCallback(
+    async (id: string, from?: string | null) => {
+      if (openingRef.current) return;
+      openingRef.current = true;
+      try {
+        const bundle = await getLeadCard(id);
+        if (bundle) {
+          if (from !== undefined) setReturnTo(safeInternalPath(from));
+          setEditing(bundle);
+        }
+      } finally {
+        openingRef.current = false;
+      }
+    },
+    []
+  );
+
   const openLeadId = searchParams.get("openLead");
-  if (openLeadId && openLeadId !== consumedOpenId) {
-    setConsumedOpenId(openLeadId);
-    // Where to go back to once they close the contact. Captured now,
-    // because the effect below strips the URL down to /contacts and the
-    // page would otherwise have no memory of where the user came from --
-    // closing a lead opened from Marketing Analytics stranded them in
-    // Dispatch › Contacts, which looks like the app navigated on its own.
-    setReturnTo(safeInternalPath(searchParams.get("from")));
-    const found = leads.find((l) => l.id === openLeadId);
-    if (found) setEditing(found);
-  } else if (!openLeadId && consumedOpenId) {
-    // Param has been stripped from the URL (below) -- clear the guard so
-    // a future deep link to this same lead (e.g. searching for it again)
-    // can reopen it. Without this, consumedOpenId stays set forever and
-    // silently blocks every subsequent open of that lead until a full
-    // page refresh remounts the component.
-    setConsumedOpenId(null);
-  }
+  // A ref, not state: the guard changes inside an effect, and it exists
+  // only to make each deep link open exactly once.
+  const consumedOpenIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (openLeadId && openLeadId !== consumedOpenIdRef.current) {
+      consumedOpenIdRef.current = openLeadId;
+      // openLead captures `from` -- where to go back to once they close
+      // the contact -- because the effect below strips the URL down to
+      // /contacts and the page would otherwise have no memory of where
+      // the user came from; closing a lead opened from Marketing
+      // Analytics stranded them in Dispatch › Contacts, which looks like
+      // the app navigated on its own.
+      void openLead(openLeadId, searchParams.get("from"));
+    } else if (!openLeadId && consumedOpenIdRef.current) {
+      // Param has been stripped from the URL (below) -- clear the guard
+      // so a future deep link to this same lead (e.g. searching for it
+      // again) can reopen it; otherwise it stays set forever and
+      // silently blocks every subsequent open of that lead until a full
+      // page refresh remounts the component.
+      consumedOpenIdRef.current = null;
+    }
+  }, [openLeadId, searchParams, openLead]);
 
   useEffect(() => {
     if (searchParams.get("openLead")) {
@@ -182,88 +300,15 @@ export function ContactsTable({
    * navigating away from Contacts there would be the same bug in
    * reverse.
    */
-  function closeLead() {
+  function closeLead(changed?: boolean) {
     setEditing(null);
+    if (changed) refreshRows();
     if (returnTo) {
       const target = returnTo;
       setReturnTo(null);
       router.push(target);
     }
   }
-
-  const totalContacts = leads.length;
-  // Memoized alongside the per-lead indexes below: this component
-  // re-renders when a row is clicked to open the contact, and with the
-  // whole book on screen every unmemoized pass over it happens between
-  // the click and the window painting.
-  const { withOpenLeads, noSetterAssigned } = useMemo(
-    () => ({
-      withOpenLeads: leads.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage)).length,
-      noSetterAssigned: leads.filter((l) => !l.assigned_to).length,
-    }),
-    [leads]
-  );
-
-  // O(1) lookups when opening a contact, instead of filtering the
-  // company-wide arrays inline in the LeadForm props -- which re-ran on
-  // every render and handed the form fresh array identities each time.
-  const tasksByLead = useMemo(() => {
-    const map = new Map<string, LeadTask[]>();
-    for (const t of tasks) {
-      const list = map.get(t.lead_id) ?? [];
-      list.push(t);
-      map.set(t.lead_id, list);
-    }
-    return map;
-  }, [tasks]);
-  const notesByLead = useMemo(() => {
-    const map = new Map<string, LeadNote[]>();
-    for (const n of notes) {
-      const list = map.get(n.lead_id) ?? [];
-      list.push(n);
-      map.set(n.lead_id, list);
-    }
-    return map;
-  }, [notes]);
-  const filesByLead = useMemo(() => {
-    const map = new Map<string, LeadFile[]>();
-    for (const f of files) {
-      const list = map.get(f.lead_id) ?? [];
-      list.push(f);
-      map.set(f.lead_id, list);
-    }
-    return map;
-  }, [files]);
-
-  /**
-   * Contacts that look like the same person twice.
-   *
-   * Grouped on the primary phone's last ten digits and on the email,
-   * because that is exactly how the CSV importer warns on the way in --
-   * these are the ones that got in before that warning existed. Review
-   * only: each row opens the contact, and deleting the redundant one
-   * happens there, where the full record is visible.
-   */
-  const duplicateGroups = useMemo(() => {
-    const groups: { key: string; kind: "phone" | "email"; members: Lead[] }[] = [];
-    const byPhone = new Map<string, Lead[]>();
-    const byEmail = new Map<string, Lead[]>();
-    for (const l of leads) {
-      const p = l.phone ? normalizePhone(l.phone) : "";
-      if (p.length === 10) byPhone.set(p, [...(byPhone.get(p) ?? []), l]);
-      const e = (l.email ?? "").trim().toLowerCase();
-      if (e) byEmail.set(e, [...(byEmail.get(e) ?? []), l]);
-    }
-    for (const [key, members] of byPhone) if (members.length > 1) groups.push({ key, kind: "phone", members });
-    // An email group that is just a phone group again adds noise, not
-    // information -- only report it when it names somebody new.
-    const inPhoneGroups = new Set(groups.flatMap((g) => g.members.map((m) => m.id)));
-    for (const [key, members] of byEmail)
-      if (members.length > 1 && members.some((m) => !inPhoneGroups.has(m.id)))
-        groups.push({ key, kind: "email", members });
-    return groups.sort((a, b) => b.members.length - a.members.length);
-  }, [leads]);
-  const [showDuplicates, setShowDuplicates] = useState(false);
 
   const repById = useMemo(
     () => new Map(reps.map((r) => [r.id, r.name || "Unassigned"])),
@@ -274,64 +319,26 @@ export function ContactsTable({
     return repById.get(id) || "Unassigned";
   }
 
-  const q = search.trim().toLowerCase();
-  const qDigits = q.replace(/\D/g, "");
-  const filtered = useMemo(
-    () =>
-      q
-        ? leads.filter((l) => {
-            const textMatch = `${leadDisplayName(l)} ${l.email ?? ""} ${l.phone ?? ""} ${l.address ?? ""}`
-              .toLowerCase()
-              .includes(q);
-            const phoneMatch =
-              qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
-            return textMatch || phoneMatch;
-          })
-        : leads,
-    [leads, q, qDigits]
-  );
+  const remaining = Math.max(0, total - rows.length);
 
-  /**
-   * Rows are put in the page as they are scrolled to, not all at once.
-   *
-   * Every contact was rendered whether or not anyone could see it: at
-   * 3,573 contacts that is 38,193 DOM nodes, against a recommended
-   * ceiling nearer 1,400, and it made this the slowest page in the app
-   * to open -- several seconds, and worse on the phones the crew
-   * actually use. Nobody reads three thousand rows; they search, or they
-   * scroll a little.
-   *
-   * The list itself is unchanged. Scrolling still just works, there are
-   * no pages to click through, and the search still runs over every
-   * contact rather than the ones on screen -- only how many rows exist
-   * in the document at once has changed.
-   */
-  const [reveal, setReveal] = useState({ q: "", n: ROW_BATCH });
-  // Derived, not reset in an effect: a different search is a different
-  // list, and it starts at the top again.
-  const shown = reveal.q === q ? reveal.n : ROW_BATCH;
-  const visible = shown >= filtered.length ? filtered : filtered.slice(0, shown);
-  const remaining = filtered.length - visible.length;
-
-  // Against the current search results, not just the revealed batch --
-  // "select all" should mean everything the search matched, whether or
-  // not it has scrolled into the document yet.
-  const allFilteredSelected = filtered.length > 0 && filtered.every((l) => selected.has(l.id));
-  function toggleSelectAllFiltered() {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allFilteredSelected) {
-        for (const l of filtered) next.delete(l.id);
-      } else {
-        for (const l of filtered) next.add(l.id);
-      }
-      return next;
-    });
+  // "Select all" means everything the search matched, not the rows
+  // scrolled into view -- the ids come from the server, capped, and the
+  // note says when the cap bit.
+  const allLoadedSelected = rows.length > 0 && rows.every((l) => selected.has(l.id));
+  async function toggleSelectAllMatching() {
+    if (allLoadedSelected) {
+      setSelected(new Map());
+      setSelectAllNote("");
+      return;
+    }
+    const match = await listMatchingRecipients(search);
+    setSelected(new Map(match.recipients.map((r) => [r.id, r])));
+    setSelectAllNote(
+      match.capped
+        ? `Selected the ${match.recipients.length.toLocaleString()} newest of ${match.total.toLocaleString()} matches — narrow the search to reach the rest.`
+        : ""
+    );
   }
-  const selectedLeads = useMemo(
-    () => leads.filter((l) => selected.has(l.id)),
-    [leads, selected]
-  );
 
   const endRef = useRef<HTMLTableRowElement | null>(null);
   useEffect(() => {
@@ -339,7 +346,7 @@ export function ContactsTable({
     if (!end) return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) setReveal({ q, n: shown + ROW_BATCH });
+        if (entries[0]?.isIntersecting) loadMore();
       },
       // Ahead of the viewport, so the next batch is already there by the
       // time the last visible row is reached.
@@ -347,7 +354,7 @@ export function ContactsTable({
     );
     io.observe(end);
     return () => io.disconnect();
-  }, [q, shown]);
+  }, [loadMore]);
 
   return (
     <div>
@@ -360,24 +367,24 @@ export function ContactsTable({
 
       <div className="stat-grid">
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{totalContacts}</div>
+          <div className="stat-value mono">{stats.totalContacts.toLocaleString()}</div>
           <div className="stat-label">Total Contacts</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{withOpenLeads}</div>
+          <div className="stat-value mono">{stats.withOpenLeads.toLocaleString()}</div>
           <div className="stat-label">With Open Leads</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{noSetterAssigned}</div>
+          <div className="stat-value mono">{stats.noSetterAssigned.toLocaleString()}</div>
           <div className="stat-label">No Rep Assigned</div>
         </div>
       </div>
 
-      {duplicateGroups.length > 0 && (
+      {dups && dups.totalGroups > 0 && (
         <div className="dup-banner">
           <span>
-            ⚠ {duplicateGroups.length} possible duplicate{" "}
-            {duplicateGroups.length === 1 ? "group" : "groups"} — contacts sharing a phone number
+            ⚠ {dups.totalGroups.toLocaleString()} possible duplicate{" "}
+            {dups.totalGroups === 1 ? "group" : "groups"} — contacts sharing a phone number
             or email.
           </span>
           <button className="btn-ghost small" onClick={() => setShowDuplicates((v) => !v)}>
@@ -386,9 +393,9 @@ export function ContactsTable({
         </div>
       )}
 
-      {showDuplicates && (
+      {showDuplicates && dups && (
         <div className="dup-panel">
-          {duplicateGroups.map((g) => (
+          {dups.groups.map((g) => (
             <div key={g.kind + g.key} className="dup-group">
               <div className="dup-group-head">
                 {g.kind === "phone" ? "📞 " : "✉ "}
@@ -401,7 +408,7 @@ export function ContactsTable({
                   key={l.id}
                   type="button"
                   className="dup-member"
-                  onClick={() => setEditing(l)}
+                  onClick={() => openLead(l.id)}
                   title="Open this contact — delete the redundant one from its card"
                 >
                   <span className="ur-name">{leadDisplayName(l)}</span>
@@ -414,6 +421,12 @@ export function ContactsTable({
               ))}
             </div>
           ))}
+          {dups.totalGroups > dups.groups.length && (
+            <p className="hint-note">
+              Showing the {dups.groups.length} largest of {dups.totalGroups.toLocaleString()}{" "}
+              groups — clear these and reload for the next batch.
+            </p>
+          )}
           <p className="hint-note">
             Open each contact and keep the one with the real history — notes, appointments,
             estimates. Deleting the redundant copy happens on its card, where you can see what
@@ -432,20 +445,30 @@ export function ContactsTable({
 
       {canWrite && selected.size > 0 && (
         <div className="bulk-action-bar">
-          <span>{selected.size} selected</span>
+          <span>{selected.size.toLocaleString()} selected</span>
           <button type="button" className="btn-primary small" onClick={() => setShowBulkEmail(true)}>
             ✉ Email Selected
           </button>
-          <button type="button" className="btn-ghost small" onClick={() => setSelected(new Set())}>
+          <button
+            type="button"
+            className="btn-ghost small"
+            onClick={() => {
+              setSelected(new Map());
+              setSelectAllNote("");
+            }}
+          >
             Clear
           </button>
+          {selectAllNote && <span className="hint-note">{selectAllNote}</span>}
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="empty-state">
-          <p className="empty-label">No contacts match</p>
-          <p className="empty-hint">Try a different search term.</p>
+          <p className="empty-label">{loadingRows ? "Searching…" : "No contacts match"}</p>
+          <p className="empty-hint">
+            {loadingRows ? "Checking every contact." : "Try a different search term."}
+          </p>
         </div>
       ) : (
         <div className="table-scroll">
@@ -456,8 +479,8 @@ export function ContactsTable({
                 <th className="ur-select-cell">
                   <input
                     type="checkbox"
-                    checked={allFilteredSelected}
-                    onChange={toggleSelectAllFiltered}
+                    checked={allLoadedSelected}
+                    onChange={toggleSelectAllMatching}
                     aria-label="Select all matching contacts"
                   />
                 </th>
@@ -472,13 +495,13 @@ export function ContactsTable({
             </tr>
           </thead>
           <tbody>
-            {visible.map((l) => (
+            {rows.map((l) => (
               <ContactRow
                 key={l.id}
                 lead={l}
                 repLabel={repName(l.assigned_to)}
                 color={stageColor(stages, l.stage)}
-                onOpen={setEditing}
+                onOpen={(lead) => void openLead(lead.id)}
                 selectable={canWrite}
                 checked={selected.has(l.id)}
                 onToggleSelect={toggleSelected}
@@ -498,34 +521,35 @@ export function ContactsTable({
 
       {showBulkEmail && (
         <BulkEmailModal
-          leads={selectedLeads.map((l) => ({ id: l.id, name: leadDisplayName(l), email: l.email }))}
+          leads={[...selected.values()]}
           onClose={() => setShowBulkEmail(false)}
           onSent={() => {
-            setSelected(new Set());
+            setSelected(new Map());
+            setSelectAllNote("");
           }}
         />
       )}
 
       {editing && (
         <LeadForm
-          lead={editing}
+          lead={editing.lead}
           reps={reps}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}
           sources={sources}
-          tasks={tasksByLead.get(editing.id) ?? []}
-          notes={notesByLead.get(editing.id) ?? []}
-          files={filesByLead.get(editing.id) ?? []}
+          tasks={editing.tasks}
+          notes={editing.notes}
+          files={editing.files}
           readOnly={!canWrite}
           canDelete={canDelete}
           isAdmin={isAdmin}
           canManageMoney={canManageMoney}
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
-          onCancel={closeLead}
-          onSaved={closeLead}
-          onDeleted={closeLead}
+          onCancel={() => closeLead(false)}
+          onSaved={() => closeLead(true)}
+          onDeleted={() => closeLead(true)}
         />
       )}
     </div>

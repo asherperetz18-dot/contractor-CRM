@@ -278,7 +278,7 @@ export async function getLeadCard(leadId: string): Promise<{
     supabase.from("leads").select("*").eq("id", leadId).eq("company_id", profile.company_id).maybeSingle(),
     supabase
       .from("lead_tasks")
-      .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+      .select("id, lead_id, title, due_date, due_time, completed_at, assigned_to, created_at")
       .eq("lead_id", leadId),
     supabase
       .from("lead_notes")
