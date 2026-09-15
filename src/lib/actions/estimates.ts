@@ -14,6 +14,7 @@ import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
+import { parseExtraRecipients } from "@/lib/estimate-recipients";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -1014,13 +1015,21 @@ export async function voidEstimate(
 // must not fire twice for a single click.
 export async function sendEstimateToCustomer(
   estimateId: string,
-  channel: "text" | "email" | "both"
+  channel: "text" | "email" | "both",
+  /** Free-typed extra recipients (comma/semicolon/newline-separated), on
+   *  top of the lead's own email and its second-contact email. Parsed and
+   *  validated here, not trusted pre-parsed from the client. */
+  ccEmailsRaw?: string
 ): Promise<{
   error?: string;
   sentTo?: string;
   channel?: "text" | "email" | "both";
-  /** Set on a "both" send where one of the two channels didn't go out. */
+  /** Any problem that didn't stop the send outright -- a channel/CC that
+   *  failed while something else went out. */
   warning?: string;
+  /** Typed CC entries that weren't a valid email address, reported back
+   *  rather than silently dropped. */
+  invalidCc?: string[];
 }> {
   const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
@@ -1108,6 +1117,16 @@ export async function sendEstimateToCustomer(
   const canText = wantsText && !!lead.phone && !!twilioEnv;
   const canEmail = wantsEmail && !!lead.email;
 
+  // Hoisted above the email block: the exclude list for extra recipients
+  // needs both addresses, and an extra recipient must still get a copy
+  // even when the lead itself has no email on file (channel "both" with
+  // only a phone) -- their invite isn't contingent on the customer's own.
+  const secondEmail = (lead as unknown as { second_contact_email?: string | null })
+    .second_contact_email;
+  const { emails: validExtraEmails, invalid: invalidExtraEmails } = wantsEmail
+    ? parseExtraRecipients(ccEmailsRaw ?? "", [lead.email, secondEmail])
+    : { emails: [] as string[], invalid: [] as string[] };
+
   const sentTo: string[] = [];
   const problems: string[] = [];
   const logRows: {
@@ -1139,7 +1158,7 @@ export async function sendEstimateToCustomer(
     problems.push(lead.phone ? "texting isn't configured for this company yet" : "no phone number on file");
   }
 
-  if (canEmail) {
+  if (canEmail || validExtraEmails.length > 0) {
     const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
     const mail = buildEstimateEmail({
       customerName: customerName || null,
@@ -1157,29 +1176,30 @@ export async function sendEstimateToCustomer(
       link,
     });
     const emailEnv = await getEmailForCompany(guard.companyId);
-    const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
-      replyTo: sender?.email ?? undefined,
-      env: emailEnv ?? undefined,
-    });
-    if (sent.error) {
-      problems.push(`Email failed (${sent.error})`);
-    } else {
-      sentTo.push(lead.email!);
-      logRows.push({
-        from_number: "email",
-        to_number: lead.email!,
-        body: `[Estimate emailed] ${mail.subject}`,
-        twilio_sid: sent.id || null,
-        channel: "email",
+
+    if (canEmail) {
+      const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
+        replyTo: sender?.email ?? undefined,
+        env: emailEnv ?? undefined,
       });
+      if (sent.error) {
+        problems.push(`Email failed (${sent.error})`);
+      } else {
+        sentTo.push(lead.email!);
+        logRows.push({
+          from_number: "email",
+          to_number: lead.email!,
+          body: `[Estimate emailed] ${mail.subject}`,
+          twilio_sid: sent.id || null,
+          channel: "email",
+        });
+      }
     }
 
     // The co-owner reads it too. Same document, same link -- a joint
     // owner is a signer, and a signer who never received the proposal
     // is a signature that never arrives. Best-effort: their inbox
     // failing must not fail the send that already worked.
-    const secondEmail = (lead as unknown as { second_contact_email?: string | null })
-      .second_contact_email;
     if (secondEmail && secondEmail !== lead.email) {
       const cc = await sendEmail(secondEmail, mail.subject, mail.html, mail.text, {
         replyTo: sender?.email ?? undefined,
@@ -1198,7 +1218,30 @@ export async function sendEstimateToCustomer(
         });
       }
     }
-  } else if (wantsEmail && channel === "both" && !lead.email) {
+
+    // Free-typed extras (a project manager, a family member not on file
+    // as Second Contact): same courtesy copy, same link -- not a signer,
+    // just a recipient. One bad address never blocks the others.
+    for (const extra of validExtraEmails) {
+      const cc = await sendEmail(extra, mail.subject, mail.html, mail.text, {
+        replyTo: sender?.email ?? undefined,
+        env: emailEnv ?? undefined,
+      });
+      if (cc.error) {
+        problems.push(`${extra} failed (${cc.error})`);
+      } else {
+        sentTo.push(extra);
+        logRows.push({
+          from_number: "email",
+          to_number: extra,
+          body: `[Estimate emailed — cc] ${mail.subject}`,
+          twilio_sid: cc.id || null,
+          channel: "email",
+        });
+      }
+    }
+  }
+  if (wantsEmail && channel === "both" && !lead.email) {
     problems.push("no email address on file");
   }
 
@@ -1264,9 +1307,12 @@ export async function sendEstimateToCustomer(
   return {
     sentTo: sentTo.join(" and "),
     channel,
-    // Only on "both": a single explicit channel either already errored
-    // above or fully succeeded, so it never has a partial problem to show.
-    warning: channel === "both" && problems.length ? problems.join("; ") : undefined,
+    // Not just "both" any more: a co-owner or CC send can fail
+    // independently of the customer's own channel, on any explicit
+    // channel, so that problem must surface here too rather than only
+    // ever being visible on a "both" send.
+    warning: problems.length ? problems.join("; ") : undefined,
+    invalidCc: invalidExtraEmails.length ? invalidExtraEmails : undefined,
   };
 }
 
