@@ -7764,6 +7764,30 @@ textarea.est-item-desc:disabled {
   color: var(--ink-soft);
 }
 
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--blueprint);
+  border-radius: 6px;
+  background: #eef3f8;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.ur-select-cell {
+  width: 32px;
+  text-align: center;
+}
+
+.lead-card-selected {
+  outline: 2px solid var(--blueprint);
+  outline-offset: -2px;
+}
+
 .dup-panel {
   margin: 0 0 16px;
   padding: 12px 14px;

@@ -179,3 +179,13 @@ One real alternative technical path exists and is worth naming without committin
 **Decision:** Match at read time on `estimate_payments.name === change order doc_number` (exact, trimmed — `src/lib/data/change-order-rollup.ts`) instead of adding a `source_estimate_id` column. The name is written by signing onto a schedule that is already locked (the parent must be Signed before a change order can exist, and a signed contract's schedule editor is read-only), so nothing in the app can rename the row afterwards and the match cannot silently break. A column would be more explicit but costs a migration plus a backfill for existing rows, for a fact the name already states.
 
 **Consequence:** If a future feature ever makes locked schedule rows renamable, the rename must either be blocked on mirror rows or this link must move into a real column at that point. The rollup is display + button-gating on the estimate page only; aggregate views (Money to Collect, collections summary) still count the change order's own phases, which is where the billing truth lives.
+
+## 016 — Bulk-email activity is logged into `sms_messages`, not a new table
+
+**Date:** 2026-09-14
+
+**Context:** The only prior "email a client" affordance was a `mailto:` link (one contact at a time). Adding a real send-to-many compose flow (`src/lib/actions/bulk-email.ts`, via the existing Resend `sendEmail()` pipeline) raised the question of where to record that an email went out, for the same "did they ever get anything?" activity trail the portal-link send already relies on.
+
+**Decision:** Reuse `sms_messages` (`channel: "email"`, `direction: "outbound"`, `body: "[Bulk email] <subject>"`) instead of a new `email_messages`/`bulk_email_log` table — the exact same table and shape `sendPortalLink` already writes to for its own outbound email (`src/lib/actions/portal.ts`). One outbound-contact-activity table beats two overlapping ones, and it costs no migration.
+
+**Consequence:** Anything that later needs to distinguish "a portal link" from "a bulk email" in this trail must parse the `body` prefix (`[Bulk email]` vs the portal-link subject text) — there's no dedicated column for message type. If a third outbound-email surface appears, or the two need querying apart at scale, that's the point to add a real `kind`/`source` column instead of a third string prefix.
