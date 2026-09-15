@@ -419,34 +419,32 @@ export function PipelineBoard({
     };
   }, [statusFilter, repFilter, ageFilter, noApptOnly, sortBy, sortDir]);
 
+  // Newest query wins: every fetch of the whole board -- a filter
+  // change or a post-drop refetch -- takes a token, and only the
+  // holder of the latest token may write the board or merge cards
+  // into a column. The server-rendered default board is page one.
+  const firstQueryRef = useRef(true);
+  const queryIdRef = useRef(0);
+
   const refetchBoard = useCallback(async () => {
+    queryIdRef.current += 1;
+    const id = queryIdRef.current;
     setLoadingBoard(true);
     try {
       const fresh = await getPipelineBoardData(boardQuery);
-      if (fresh) setBoard(fresh);
+      if (fresh && queryIdRef.current === id) setBoard(fresh);
     } finally {
-      setLoadingBoard(false);
+      if (queryIdRef.current === id) setLoadingBoard(false);
     }
   }, [boardQuery]);
 
-  // Newest query wins; the server-rendered default board is page one.
-  const firstQueryRef = useRef(true);
-  const queryIdRef = useRef(0);
   useEffect(() => {
     if (firstQueryRef.current) {
       firstQueryRef.current = false;
       return;
     }
-    const id = ++queryIdRef.current;
-    setLoadingBoard(true);
-    getPipelineBoardData(boardQuery)
-      .then((fresh) => {
-        if (queryIdRef.current === id && fresh) setBoard(fresh);
-      })
-      .finally(() => {
-        if (queryIdRef.current === id) setLoadingBoard(false);
-      });
-  }, [boardQuery]);
+    void refetchBoard();
+  }, [refetchBoard]);
 
   const onLoadMore = useCallback(
     (stage: string) => {
@@ -456,8 +454,13 @@ export function PipelineBoard({
         if (!col || col.cards.length >= col.count) return current;
         if (loadingMoreRef.current.has(stage)) return current;
         loadingMoreRef.current.add(stage);
+        // Capture the active query token so a response from a filter
+        // that has since changed is discarded rather than merged into
+        // the column (its cards and count belong to the old filter).
+        const id = queryIdRef.current;
         getStageCards(boardQuery, stage, col.cards.length, PIPELINE_CARD_WINDOW)
           .then((more) => {
+            if (queryIdRef.current !== id) return;
             setBoard((b) => {
               if (!b) return b;
               return {
