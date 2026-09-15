@@ -219,11 +219,15 @@ export async function getDialSessionLeads(
         .select("*")
         .eq("company_id", profile.company_id)
         .in("id", chunk),
+      // Bounded to the rep's day: an unbounded read is silently capped
+      // at 1000 rows by PostgREST, and the warning only ever shows
+      // calls since sinceIso anyway.
       supabase
         .from("call_logs")
         .select("lead_id, created_at")
         .eq("company_id", profile.company_id)
         .eq("direction", "outbound")
+        .gte("created_at", sinceIso)
         .in("lead_id", chunk),
     ]);
     rows.push(...((data ?? []) as Lead[]));
