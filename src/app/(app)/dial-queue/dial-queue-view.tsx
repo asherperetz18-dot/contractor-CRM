@@ -13,58 +13,65 @@ import {
   normalizePhone,
   type CallAttemptsFilter,
   type CallDispositionRow,
-  type CallLog,
   type DialList,
   type Lead,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
 import { deleteDialList, saveDialList } from "@/lib/actions/dial-lists";
+import { getDialLeads, listDialContacts, matchDialCsvPhones } from "@/lib/actions/dial-contacts";
+import {
+  DIAL_PAGE_SIZE,
+  type DialContactPage,
+  type DialContactRow,
+} from "@/lib/dial-filters";
 import { DialSession } from "./dial-session";
 import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
 
 type Tab = "contact" | "lead";
 type LeadStatus = "Open" | "Won" | "Lost";
-const PAGE_SIZE = 50;
 
-function leadStatus(lead: Lead): LeadStatus {
+function leadStatus(lead: Pick<DialContactRow, "stage">): LeadStatus {
   if (lead.stage === "Won") return "Won";
   if (lead.stage === "Lost") return "Lost";
   return "Open";
 }
 
-function inDateRange(dateStr: string, filter: string) {
-  if (filter === "All Dates") return true;
-  const d = new Date(dateStr);
+/**
+ * The date filter as an ISO lower bound, computed here rather than on
+ * the server so "Today" means the rep's calendar day, not UTC's.
+ */
+function createdSinceFor(filter: string): string {
   const now = new Date();
-  if (filter === "Today") return d.toDateString() === now.toDateString();
+  if (filter === "Today") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return start.toISOString();
+  }
   if (filter === "This Week") {
     const weekAgo = new Date(now);
     weekAgo.setDate(now.getDate() - 7);
-    return d >= weekAgo;
+    return weekAgo.toISOString();
   }
   if (filter === "This Month") {
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   }
-  return true;
+  return "";
 }
 
 export function DialQueueView({
-  leads,
+  initialContacts,
   stages,
   reps,
   dispositions,
-  callLogs,
   dialLists,
   callScript,
   canWrite,
   phoneNumbers,
 }: {
-  leads: Lead[];
+  initialContacts: DialContactPage;
   stages: PipelineStageRow[];
   reps: Profile[];
   dispositions: CallDispositionRow[];
-  callLogs: CallLog[];
   dialLists: DialList[];
   callScript: string | null;
   canWrite: boolean;
@@ -119,83 +126,64 @@ export function DialQueueView({
   const [savePending, setSavePending] = useState(false);
   const [csvStatus, setCsvStatus] = useState("");
 
-  const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
   const repById = useMemo(() => new Map(reps.map((r) => [r.id, r])), [reps]);
-
-  const callStatsByLead = useMemo(() => {
-    const map = new Map<string, { attempts: number; disposition: string }>();
-    for (const log of callLogs) {
-      if (!log.lead_id) continue;
-      const existing = map.get(log.lead_id);
-      if (existing) {
-        existing.attempts += 1;
-      } else {
-        // callLogs is ordered newest-first, so the first entry we see per
-        // lead is that lead's most recent call/disposition.
-        map.set(log.lead_id, { attempts: 1, disposition: log.disposition });
-      }
-    }
-    return map;
-  }, [callLogs]);
 
   function setTabAndReset(t: Tab) {
     setTab(t);
     setPage(1);
   }
 
-  const leadsWithPhone = useMemo(() => leads.filter((l) => l.phone && l.phone.trim()), [leads]);
+  /**
+   * The page of rows on screen, asked of the server per filter change.
+   * The whole book used to arrive as a prop and get filtered here --
+   * at 79k contacts that meant a page that took ages to open, so the
+   * browser now holds 50 rows and a total, nothing more.
+   */
+  const [contactPage, setContactPage] = useState<DialContactPage>(initialContacts);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const firstQueryRef = useRef(true);
+  // Newest query wins: a slow response for a filter the rep already
+  // left must not overwrite the list they are looking at.
+  const queryIdRef = useRef(0);
+  useEffect(() => {
+    // The server rendered page 1 of the default filters; skip refetching it.
+    if (firstQueryRef.current) {
+      firstQueryRef.current = false;
+      return;
+    }
+    const id = ++queryIdRef.current;
+    setLoadingRows(true);
+    const run = () => {
+      listDialContacts({
+        tab,
+        search,
+        page,
+        callAttempts,
+        dispositionFilter,
+        addressTypeFilter,
+        statusFilter,
+        stageFilter,
+        repFilter,
+        createdSince: createdSinceFor(dateFilter),
+      })
+        .then((result) => {
+          if (queryIdRef.current !== id) return;
+          setContactPage(result);
+        })
+        .finally(() => {
+          if (queryIdRef.current === id) setLoadingRows(false);
+        });
+    };
+    // Typing debounces; a filter click still feels immediate because
+    // 250ms is under the reaction time of reading the new list anyway.
+    const t = setTimeout(run, 250);
+    return () => clearTimeout(t);
+  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter]);
 
-  const contactRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return leadsWithPhone.filter((l) => {
-      const stats = callStatsByLead.get(l.id) ?? { attempts: 0, disposition: NO_DISPOSITION };
-      if (callAttempts === "Never" && stats.attempts !== 0) return false;
-      if (callAttempts === "1x" && stats.attempts !== 1) return false;
-      if (callAttempts === "2x" && stats.attempts !== 2) return false;
-      if (callAttempts === "3+" && stats.attempts < 3) return false;
-
-      if (dispositionFilter === NO_DISPOSITION && stats.disposition !== NO_DISPOSITION) return false;
-      if (dispositionFilter === "Any Disposition" && stats.disposition === NO_DISPOSITION) return false;
-      if (
-        dispositionFilter !== NO_DISPOSITION &&
-        dispositionFilter !== "Any Disposition" &&
-        stats.disposition !== dispositionFilter
-      )
-        return false;
-
-      if (addressTypeFilter !== "All" && l.address_type !== addressTypeFilter) return false;
-
-      if (q) {
-        const name = leadDisplayName(l).toLowerCase();
-        const qDigits = q.replace(/\D/g, "");
-        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
-        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q) && !phoneMatch) return false;
-      }
-      return true;
-    });
-  }, [leadsWithPhone, callStatsByLead, callAttempts, dispositionFilter, addressTypeFilter, search]);
-
-  const leadRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return leadsWithPhone.filter((l) => {
-      if (statusFilter !== "All" && leadStatus(l) !== statusFilter) return false;
-      if (stageFilter !== "All" && l.stage !== stageFilter) return false;
-      if (repFilter !== "All" && l.assigned_to !== repFilter) return false;
-      if (!inDateRange(l.created_at, dateFilter)) return false;
-      if (q) {
-        const name = leadDisplayName(l).toLowerCase();
-        const qDigits = q.replace(/\D/g, "");
-        const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
-        if (!name.includes(q) && !(l.phone ?? "").toLowerCase().includes(q) && !phoneMatch) return false;
-      }
-      return true;
-    });
-  }, [leadsWithPhone, statusFilter, stageFilter, repFilter, dateFilter, search]);
-
-  const activeRows = tab === "contact" ? contactRows : leadRows;
-  const totalPages = Math.max(1, Math.ceil(activeRows.length / PAGE_SIZE));
+  const pageRows = contactPage.rows;
+  const total = contactPage.total;
+  const totalPages = Math.max(1, Math.ceil(total / DIAL_PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageRows = activeRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   function toggleSelected(id: string) {
     setSelected((prev) => {
@@ -219,16 +207,25 @@ export function DialQueueView({
     });
   }
 
-  function callLead(lead: Lead) {
+  function callLead(lead: DialContactRow) {
     window.dispatchEvent(
       new CustomEvent("crm:call", { detail: { phone: lead.phone, leadId: lead.id } })
     );
   }
 
-  function startDialing() {
-    const queue = leads.filter((l) => selected.has(l.id));
-    if (queue.length === 0) return;
-    setSession(queue);
+  const [startingSession, setStartingSession] = useState(false);
+  async function startDialing() {
+    if (selected.size === 0 || startingSession) return;
+    setStartingSession(true);
+    try {
+      // The session works the full card (quick-edit, maps link), so the
+      // real rows are fetched now, for just the selection -- ids whose
+      // lead has meanwhile been deleted simply come back absent.
+      const queue = await getDialLeads([...selected]);
+      if (queue.length > 0) setSession(queue);
+    } finally {
+      setStartingSession(false);
+    }
   }
 
   async function handleSaveList() {
@@ -250,7 +247,9 @@ export function DialQueueView({
   }
 
   function loadList(list: DialList) {
-    setSelected(new Set(list.lead_ids.filter((id) => leadById.has(id))));
+    // Ids are taken as saved; one whose lead has since been deleted is
+    // dropped when the session fetches the real rows.
+    setSelected(new Set(list.lead_ids));
   }
 
   async function handleDeleteList(list: DialList) {
@@ -263,14 +262,9 @@ export function DialQueueView({
     const file = e.target.files?.[0];
     if (!file) return;
     setCsvStatus("");
-    const phoneIndex = new Map<string, string>();
-    for (const l of leads) {
-      if (l.phone) phoneIndex.set(normalizePhone(l.phone), l.id);
-      if (l.second_contact_phone) phoneIndex.set(normalizePhone(l.second_contact_phone), l.id);
-    }
 
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: "array" });
@@ -285,13 +279,24 @@ export function DialQueueView({
         const body = json.slice(phoneCol === -1 ? 0 : 1);
         if (phoneCol === -1) phoneCol = 0;
 
-        let matched = 0;
-        let skipped = 0;
-        const matchedIds = new Set<string>();
+        // The file's numbers, normalized. Matching happens server-side
+        // against every phone the company's contacts carry -- the page
+        // no longer holds the contact book to match against here.
+        const rowKeys: string[] = [];
         for (const row of body) {
           const raw = String((row as unknown[])[phoneCol] ?? "").trim();
           if (!raw) continue;
-          const leadId = phoneIndex.get(normalizePhone(raw));
+          rowKeys.push(normalizePhone(raw));
+        }
+        setCsvStatus("Matching…");
+        const matches = await matchDialCsvPhones([...new Set(rowKeys)]);
+        const leadByKey = new Map(matches.map((m) => [m.key, m.leadId]));
+
+        let matched = 0;
+        let skipped = 0;
+        const matchedIds = new Set<string>();
+        for (const key of rowKeys) {
+          const leadId = leadByKey.get(key);
           if (leadId) {
             matchedIds.add(leadId);
             matched += 1;
@@ -419,7 +424,7 @@ export function DialQueueView({
                 <p className="hint-note" style={{ margin: 0 }}>
                   {dispositionFilter === NO_DISPOSITION
                     ? "Showing contacts you haven't set a disposition for yet — your fresh call list. Switch the filters above to build a different list."
-                    : `Showing ${activeRows.length} contact${activeRows.length === 1 ? "" : "s"} matching your filters.`}
+                    : `Showing ${total} contact${total === 1 ? "" : "s"} matching your filters.`}
                 </p>
               </>
             ) : (
@@ -480,10 +485,10 @@ export function DialQueueView({
             )}
           </div>
 
-          {activeRows.length === 0 ? (
+          {pageRows.length === 0 ? (
             <div className="empty-state">
-              <p className="empty-label">No contacts match</p>
-              <p className="empty-hint">Try different filters.</p>
+              <p className="empty-label">{loadingRows ? "Loading…" : "No contacts match"}</p>
+              <p className="empty-hint">{loadingRows ? "Fetching contacts." : "Try different filters."}</p>
             </div>
           ) : (
             <div className="table-scroll">
@@ -563,7 +568,7 @@ export function DialQueueView({
             </div>
           )}
 
-          {activeRows.length > 0 && (
+          {total > 0 && (
             <div className="dial-queue-pagination">
               <button
                 className="btn-ghost small"
@@ -573,8 +578,8 @@ export function DialQueueView({
                 ← Prev
               </button>
               <span>
-                {activeRows.length} contact{activeRows.length === 1 ? "" : "s"} · page {currentPage} of{" "}
-                {totalPages}
+                {total} contact{total === 1 ? "" : "s"} · page {currentPage} of {totalPages}
+                {loadingRows ? " · loading…" : ""}
               </span>
               <button
                 className="btn-ghost small"
@@ -597,10 +602,10 @@ export function DialQueueView({
             <button
               className="btn-primary"
               style={{ width: "100%" }}
-              disabled={selected.size === 0 || !canWrite}
+              disabled={selected.size === 0 || !canWrite || startingSession}
               onClick={startDialing}
             >
-              Start Dialing
+              {startingSession ? "Loading contacts…" : "Start Dialing"}
             </button>
             {phoneNumbers.length > 1 && (
               <label className="dial-queue-from">
