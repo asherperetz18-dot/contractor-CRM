@@ -42,6 +42,7 @@ export default async function DialQueuePage() {
       statusFilter: "All",
       stageFilter: "All",
       repFilter: "All",
+      calledFilter: "All",
       createdSince: "",
     }),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),

@@ -32,6 +32,8 @@ export type DialContactRow = {
 
 export const DIAL_PAGE_SIZE = 50;
 
+export type LeadCalledFilter = "All" | "Never" | "Called";
+
 export type DialContactQuery = {
   tab: "contact" | "lead";
   search: string;
@@ -44,6 +46,7 @@ export type DialContactQuery = {
   statusFilter: "All" | "Open" | "Won" | "Lost";
   stageFilter: string;
   repFilter: string;
+  calledFilter: LeadCalledFilter;
   /** ISO lower bound for created_at, computed in the browser so "Today"
    *  means the rep's today, not the server's UTC day. Empty = all dates. */
   createdSince: string;
@@ -119,6 +122,21 @@ export function contactQueryPlan(
   }
   ids.sort();
   return neverCalledQualifies ? { mode: "exclude", ids } : { mode: "include", ids };
+}
+
+/**
+ * The By Lead tab's call-status filter as a query plan. "We haven't
+ * dialed them yet" is everyone except the dialed set (exclude); "we
+ * called them before" is exactly that set (include). Log rows repeat
+ * per call and may lack a lead; the plan carries each dialed lead once,
+ * sorted, same shape contactQueryPlan produces.
+ */
+export function calledFilterPlan(
+  dialedLeadIds: (string | null)[],
+  filter: "Never" | "Called"
+): ContactQueryPlan {
+  const ids = [...new Set(dialedLeadIds.filter((id): id is string => id !== null))].sort();
+  return filter === "Never" ? { mode: "exclude", ids } : { mode: "include", ids };
 }
 
 /**
