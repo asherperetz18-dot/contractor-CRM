@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { summarizeBackupCounts, type BackupCountSummary } from "@/lib/backup-counts";
 
 /**
  * Every table worth restoring from, in dependency order -- companies and
@@ -63,6 +64,27 @@ export const BACKUP_TABLES = [
 ] as const;
 
 const PAGE_SIZE = 1000;
+
+/**
+ * How many rows a backup would contain, without reading any of them.
+ *
+ * The Backup settings page only renders counts, but it used to get them
+ * from buildBackup() -- a full read of every table. The day 73k leads
+ * were imported, that read grew past Vercel's 60-second static-page
+ * budget and failed the whole deploy. One head-count query per table
+ * keeps the page's cost proportional to the table list, not the data.
+ */
+export async function countBackupRows(): Promise<BackupCountSummary> {
+  const admin = createAdminClient();
+  const results = [];
+  for (const table of BACKUP_TABLES) {
+    const { count, error } = await admin
+      .from(table)
+      .select("*", { count: "exact", head: true });
+    results.push({ table: table as string, count, error: error?.message ?? null });
+  }
+  return summarizeBackupCounts(results);
+}
 
 export type BackupResult = {
   generatedAt: string;

@@ -1,4 +1,25 @@
 import { defineConfig } from "@playwright/test";
+import { readFileSync, existsSync } from "node:fs";
+import path from "node:path";
+
+// Load .env (repo root) into process.env if present, without
+// overwriting anything already set by the actual shell environment --
+// same minimal-parser approach as scripts/bar-test-lib.mjs, no new
+// dependency. .env is gitignored (.env* pattern); this never logs a
+// value, only assigns process.env keys that were still unset.
+const envPath = path.resolve(__dirname, "../.env");
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (process.env[key] === undefined) {
+      process.env[key] = trimmed.slice(eq + 1).trim();
+    }
+  }
+}
 
 /**
  * Production/release smoke suite -- separate from the unit tests

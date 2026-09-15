@@ -1,9 +1,9 @@
-/* Money to Collect: type-to-find client filter. Lives in the filter bar
-   between the tab chips and the search box. */
-.collect-client-picker {
+/* Type-to-find client filter (Money to Collect, Payments). Lives in the
+   filter bar next to the tab/status chips. */
+.client-picker {
   position: relative;
 }
-.collect-client-clear {
+.client-picker-clear {
   position: absolute;
   right: 6px;
   top: 50%;
@@ -16,7 +16,7 @@
   cursor: pointer;
   padding: 2px 4px;
 }
-.collect-client-list {
+.client-picker-list {
   position: absolute;
   z-index: 30;
   top: calc(100% + 4px);
@@ -34,7 +34,7 @@
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
-.collect-client-opt {
+.client-picker-opt {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -44,13 +44,13 @@
   font-size: 13px;
   cursor: pointer;
 }
-.collect-client-opt.is-active {
+.client-picker-opt.is-active {
   background: var(--paper);
 }
-.collect-client-opt.is-selected {
+.client-picker-opt.is-selected {
   font-weight: 600;
 }
-.collect-client-opt.is-empty {
+.client-picker-opt.is-empty {
   color: var(--ink-soft);
   cursor: default;
 }

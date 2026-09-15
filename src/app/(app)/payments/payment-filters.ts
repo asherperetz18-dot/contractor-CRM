@@ -1,29 +1,27 @@
 /**
- * The Payments page's quick search, as a pure function.
+ * The Payments page's client/rep scoping, as a pure function — the same
+ * filters Money to Collect has, applied to all three tables at once.
  *
- * One box narrows every table on the page by contract number, customer,
- * phase or amount. Amount matching strips $, commas, periods and spaces
- * from the query so "19200", "19,200" and "$19,200.00" all normalize to
- * a plain digit string matched straight against the cents integer's own
- * digits — the same rule the Projects page search uses.
+ * A row that has no lead or no rep (an old import, a contract whose lead
+ * was deleted) never matches an active filter: under "this client" or
+ * "this rep" an unattributed payment is not theirs.
  */
 
-export type PaymentSearchable = {
-  /** Contract number, customer name, phase title… null/undefined skipped. */
-  texts: (string | null | undefined)[];
-  amountsCents: number[];
+export type ClientRepFilter = {
+  /** Selected lead id, or "" for all clients. */
+  clientId: string;
+  /** Selected rep display name, or "" for all reps. */
+  rep: string;
 };
 
-export function matchesPaymentSearch(search: string, row: PaymentSearchable): boolean {
-  const q = search.trim().toLowerCase();
-  if (!q) return true;
-  const haystack = row.texts.filter(Boolean).join(" ").toLowerCase();
-  if (haystack.includes(q)) return true;
-  // A bare digit or two over-matches (almost every amount has a "1"
-  // somewhere), so amount matching only kicks in past that.
-  const qDigits = q.replace(/[^0-9]/g, "");
+export type ClientRepRow = {
+  leadId: string | null;
+  rep: string | null;
+};
+
+export function matchesClientRep(filter: ClientRepFilter, row: ClientRepRow): boolean {
   return (
-    qDigits.length >= 2 &&
-    row.amountsCents.some((cents) => String(Math.abs(cents)).includes(qDigits))
+    (!filter.clientId || row.leadId === filter.clientId) &&
+    (!filter.rep || row.rep === filter.rep)
   );
 }

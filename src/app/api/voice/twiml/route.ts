@@ -3,6 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
+import { resolveCorrelationId } from "@/lib/observability/context";
+import { logInfo } from "@/lib/observability/logger";
+import { maskPhone } from "@/lib/observability/redact";
+import { captureError, setRouteScope } from "@/lib/observability/sentry";
 
 function xmlEscape(value: string): string {
   return value
@@ -24,21 +28,41 @@ function xmlEscape(value: string): string {
  * a business the customer had never spoken to.
  */
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
+
+  // Round-tripped from the browser via device.connect({params}) in
+  // voice-dialer.tsx -- Twilio doesn't forward a header we could set
+  // instead, so it rides as a form field. See docs/features/observability.md.
+  const correlationId = resolveCorrelationId(params.CorrelationId);
 
   // No match means the platform account, which is what the original
   // business still runs on -- falling through to it keeps that dialer
   // working rather than answering 500 to every call.
   const companyId = await companyForAccountSid(params.AccountSid || "");
+  setRouteScope({ route: "api/voice/twiml", correlationId, companyId: companyId ?? undefined });
+
   const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
   if (!twilioEnv) {
+    captureError(new Error("Twilio not configured for this account"), {
+      route: "api/voice/twiml",
+      correlationId,
+      companyId: companyId ?? undefined,
+      service: "twilio",
+    });
     return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
   }
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
+    captureError(new Error("Twilio signature validation failed"), {
+      route: "api/voice/twiml",
+      correlationId,
+      companyId: companyId ?? undefined,
+      service: "twilio",
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
   }
 
@@ -51,6 +75,15 @@ export async function POST(req: NextRequest) {
   const to = toE164(params.To);
 
   if (!/^\+[0-9]{7,15}$/.test(to)) {
+    // A rep's own typo, not a system fault -- recorded, never alerted.
+    captureError(new Error("Invalid destination number"), {
+      route: "api/voice/twiml",
+      correlationId,
+      companyId: companyId ?? undefined,
+      service: "twilio",
+      expected: true,
+      extra: { to: maskPhone(params.To) },
+    });
     return new NextResponse(
       `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Invalid destination number.</Say></Response>`,
       { status: 200, headers: { "Content-Type": "text/xml" } }
@@ -99,13 +132,19 @@ export async function POST(req: NextRequest) {
   // knows, and leave the homeowner -- the only person whose consent is
   // at issue -- hearing nothing. answerOnBridge keeps the rep on
   // ringback until it finishes.
+  // Forwarded as a query param so /api/voice/announce and
+  // /api/voice/recording-status -- separate invocations, possibly
+  // separate serverless instances -- can tag their own events with the
+  // same correlation id as this one.
+  const cid = encodeURIComponent(correlationId);
+
   const recordAttrs = shouldRecord
     ? ` answerOnBridge="true" record="record-from-answer-dual"` +
-      ` recordingStatusCallback="${xmlEscape(`${origin}/api/voice/recording-status`)}"` +
+      ` recordingStatusCallback="${xmlEscape(`${origin}/api/voice/recording-status?cid=${cid}`)}"` +
       ` recordingStatusCallbackEvent="completed"`
     : "";
   const numberAttrs = shouldRecord
-    ? ` url="${xmlEscape(`${origin}/api/voice/announce`)}"`
+    ? ` url="${xmlEscape(`${origin}/api/voice/announce?cid=${cid}`)}"`
     : "";
 
   const twiml =
@@ -113,6 +152,15 @@ export async function POST(req: NextRequest) {
     `<Response><Dial callerId="${xmlEscape(callerId)}"${recordAttrs}>` +
     `<Number${numberAttrs}>${xmlEscape(to)}</Number>` +
     `</Dial></Response>`;
+
+  logInfo({
+    event: "api/voice/twiml.completed",
+    route: "api/voice/twiml",
+    correlationId,
+    companyId: companyId ?? undefined,
+    recordEnabled: shouldRecord,
+    durationMs: Date.now() - startedAt,
+  });
 
   return new NextResponse(twiml, {
     status: 200,

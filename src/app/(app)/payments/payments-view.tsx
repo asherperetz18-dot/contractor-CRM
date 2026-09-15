@@ -1,30 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   moneyCents,
   phaseStateLabel,
   type PhaseState,
 } from "@/lib/data/types";
-import { matchesPaymentSearch } from "./payment-filters";
+import { ClientPicker } from "@/components/ui/client-picker";
+import { matchesClientRep } from "./payment-filters";
 import { ManualPaymentTools } from "./manual-payment-tools";
+import { EditManualPayment } from "./edit-manual-payment";
 
 /**
- * The three tables on the Payments page, behind one search box.
+ * The three tables on the Payments page, behind one set of filters.
  *
- * The page grew past the point where scrolling finds a payment: one box
- * narrows every table at once by contract #, customer, phase or amount
- * (typed any way — "4500", "4,500", "$4,500.00"), and status chips cut
- * the billed-progress list to just Overdue / Billed / Paid. The stat
- * cards above stay company-wide — the headline numbers should never
- * quietly mean "the filtered subset".
+ * The same client and rep pickers as Money to Collect narrow every table
+ * at once, and status chips cut the billed-progress list to just
+ * Overdue / Billed / Paid. The stat cards above stay company-wide — the
+ * headline numbers should never quietly mean "the filtered subset".
  */
 
 export type BilledPhaseRow = {
   id: string;
   estimateId: string | null;
   docNumber: string | null;
+  leadId: string | null;
+  rep: string | null;
   customer: string;
   phase: string;
   dueDate: string | null;
@@ -35,6 +38,8 @@ export type BilledPhaseRow = {
 export type DepositChaseRow = {
   estimateId: string;
   docNumber: string;
+  leadId: string | null;
+  rep: string | null;
   title: string;
   customer: string;
   totalCents: number;
@@ -45,10 +50,17 @@ export type PaymentHistoryRow = {
   id: string;
   estimateId: string | null;
   docNumber: string | null;
+  leadId: string | null;
+  rep: string | null;
   customer: string;
   kind: string;
   status: string;
   methodLabel: string;
+  /** Raw method value, for the edit form. */
+  method: string | null;
+  /** Cheque number or transfer reference. */
+  reference: string | null;
+  note: string | null;
   date: string;
   amountCents: number;
   manual: boolean;
@@ -84,41 +96,71 @@ export function PaymentsView({
   showTools: boolean;
   canRemove: boolean;
 }) {
-  const [search, setSearch] = useState("");
+  const params = useSearchParams();
   const [chip, setChip] = useState<"all" | PhaseState>("all");
+  // Which history row is open for editing. Only hand-recorded rows open:
+  // a Stripe row's method and amount are Stripe's record, not ours.
+  const [editing, setEditing] = useState<string | null>(null);
+  // Client and rep live in the URL (?client=<leadId>&rep=<name>) — the
+  // same shape as Money to Collect — so a filtered view can be
+  // bookmarked or pasted to a teammate.
+  const [clientId, setClientId] = useState(() => params.get("client") ?? "");
+  const [rep, setRep] = useState(() => params.get("rep") ?? "");
 
-  const q = search.trim();
+  useEffect(() => {
+    const next = new URLSearchParams(window.location.search);
+    if (clientId) next.set("client", clientId);
+    else next.delete("client");
+    if (rep) next.set("rep", rep);
+    else next.delete("rep");
+    const qs = next.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, [clientId, rep]);
 
-  // Chips only for states that actually exist on the page, so a company
-  // with nothing overdue never sees a dead "Overdue" button.
+  // Dropdown choices come from the rows themselves, so a client or rep
+  // only appears when they actually have money on this page; the count
+  // next to each name is how many rows they own across all three tables.
+  const allRows: { leadId: string | null; customer: string; rep: string | null }[] = [
+    ...billed,
+    ...chase,
+    ...history,
+  ];
+  const clients = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; count: number }>();
+    for (const r of allRows) {
+      if (!r.leadId) continue;
+      const c = m.get(r.leadId) ?? { id: r.leadId, name: r.customer, count: 0 };
+      c.count += 1;
+      m.set(r.leadId, c);
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billed, chase, history]);
+  const reps = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of allRows) if (r.rep) m.set(r.rep, (m.get(r.rep) ?? 0) + 1);
+    return [...m.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billed, chase, history]);
+
+  const scoped = { clientId, rep };
+  const scopedBilled = billed.filter((r) => matchesClientRep(scoped, r));
+  const shownBilled = scopedBilled.filter((r) => chip === "all" || r.state === chip);
+  const shownChase = chase.filter((r) => matchesClientRep(scoped, r));
+  const shownHistory = history.filter((r) => matchesClientRep(scoped, r));
+
+  // Chips only for states that actually exist under the client/rep
+  // scope, so a company with nothing overdue never sees a dead
+  // "Overdue" button.
   const stateCounts = new Map<PhaseState, number>();
-  for (const r of billed) stateCounts.set(r.state, (stateCounts.get(r.state) ?? 0) + 1);
+  for (const r of scopedBilled) stateCounts.set(r.state, (stateCounts.get(r.state) ?? 0) + 1);
   const chips = (["overdue", "billed", "clearing", "paid"] as PhaseState[]).filter((s) =>
     stateCounts.has(s)
   );
 
-  const shownBilled = billed.filter(
-    (r) =>
-      (chip === "all" || r.state === chip) &&
-      matchesPaymentSearch(q, {
-        texts: [r.docNumber, r.customer, r.phase],
-        amountsCents: [r.amountCents],
-      })
-  );
-  const shownChase = chase.filter((r) =>
-    matchesPaymentSearch(q, {
-      texts: [r.docNumber, r.title, r.customer],
-      amountsCents: [r.totalCents, r.depositCents],
-    })
-  );
-  const shownHistory = history.filter((r) =>
-    matchesPaymentSearch(q, {
-      texts: [r.docNumber, r.customer, r.kind, r.methodLabel],
-      amountsCents: [r.amountCents],
-    })
-  );
-
-  const filtering = Boolean(q) || chip !== "all";
+  const filtering = Boolean(clientId || rep) || chip !== "all";
 
   return (
     <div>
@@ -130,7 +172,7 @@ export function PaymentsView({
               className={"chip" + (chip === "all" ? " chip-active" : "")}
               onClick={() => setChip("all")}
             >
-              All <span className="count-pill">{billed.length}</span>
+              All <span className="count-pill">{scopedBilled.length}</span>
             </button>
             {chips.map((s) => (
               <button
@@ -144,20 +186,28 @@ export function PaymentsView({
             ))}
           </>
         )}
-        <input
-          className="ur-search"
-          style={{ maxWidth: 320, marginBottom: 0, marginLeft: "auto" }}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search contract #, customer, or amount…"
-        />
+        <ClientPicker clients={clients} value={clientId} onChange={setClientId} />
+        <select
+          className="ur-company-filter"
+          aria-label="Filter by rep"
+          value={rep}
+          onChange={(e) => setRep(e.target.value)}
+        >
+          <option value="">All reps</option>
+          {reps.map((r) => (
+            <option key={r.name} value={r.name}>
+              {r.name} ({r.count})
+            </option>
+          ))}
+        </select>
         {filtering && (
           <button
             type="button"
             className="btn-ghost small"
             onClick={() => {
-              setSearch("");
               setChip("all");
+              setClientId("");
+              setRep("");
             }}
           >
             ✕ Clear
@@ -280,49 +330,86 @@ export function PaymentsView({
                 <th>Kind</th>
                 <th>Status</th>
                 <th>Method</th>
+                <th>Ck / ref #</th>
                 <th>Date</th>
                 <th className="right">Amount</th>
                 {showTools && <th></th>}
               </tr>
             </thead>
             <tbody>
-              {shownHistory.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    {r.estimateId ? (
-                      <Link className="link-plain" href={`/estimates/${r.estimateId}`}>
-                        <span className="ur-name mono">{r.docNumber}</span>
-                      </Link>
-                    ) : (
-                      <span className="ur-name mono">—</span>
-                    )}
-                  </td>
-                  <td>{r.customer}</td>
-                  <td>{r.kind}</td>
-                  <td>
-                    <span className={"est-badge est-badge-" + statusBadge(r.status)}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td>{r.methodLabel}</td>
-                  <td>{new Date(r.date).toLocaleDateString("en-US")}</td>
-                  <td className="right mono">{moneyCents(r.amountCents)}</td>
-                  {/* Only hand-recorded rows can be settled or removed
-                      here. Stripe rows settle by webhook and are
-                      refunded in Stripe. */}
-                  {showTools && (
-                    <td>
-                      {r.manual && (
-                        <ManualPaymentTools
-                          paymentId={r.id}
-                          status={r.status}
-                          canRemove={canRemove}
-                        />
+              {shownHistory.map((r) => {
+                const editable = r.manual && showTools;
+                return (
+                  <Fragment key={r.id}>
+                    <tr
+                      // The row itself opens the editor, so fixing a
+                      // cheque number doesn't need hunting for a button.
+                      // Links and row tools inside keep their own jobs.
+                      onClick={
+                        editable
+                          ? (e) => {
+                              if ((e.target as HTMLElement).closest("a, button, input, select"))
+                                return;
+                              setEditing(editing === r.id ? null : r.id);
+                            }
+                          : undefined
+                      }
+                      title={editable ? "Click to edit this payment" : undefined}
+                    >
+                      <td>
+                        {r.estimateId ? (
+                          <Link className="link-plain" href={`/estimates/${r.estimateId}`}>
+                            <span className="ur-name mono">{r.docNumber}</span>
+                          </Link>
+                        ) : (
+                          <span className="ur-name mono">—</span>
+                        )}
+                      </td>
+                      <td>{r.customer}</td>
+                      <td>{r.kind}</td>
+                      <td>
+                        <span className={"est-badge est-badge-" + statusBadge(r.status)}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td>{r.methodLabel}</td>
+                      <td className="mono">{r.reference || "—"}</td>
+                      <td>{new Date(r.date).toLocaleDateString("en-US")}</td>
+                      <td className="right mono">{moneyCents(r.amountCents)}</td>
+                      {/* Only hand-recorded rows can be settled or removed
+                          here. Stripe rows settle by webhook and are
+                          refunded in Stripe. */}
+                      {showTools && (
+                        <td>
+                          {r.manual && (
+                            <ManualPaymentTools
+                              paymentId={r.id}
+                              status={r.status}
+                              canRemove={canRemove}
+                            />
+                          )}
+                        </td>
                       )}
-                    </td>
-                  )}
-                </tr>
-              ))}
+                    </tr>
+                    {editing === r.id && editable && (
+                      <tr>
+                        <td colSpan={showTools ? 9 : 8}>
+                          <EditManualPayment
+                            paymentId={r.id}
+                            status={r.status}
+                            amountCents={r.amountCents}
+                            method={r.method}
+                            reference={r.reference}
+                            note={r.note}
+                            date={r.date}
+                            onClose={() => setEditing(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
