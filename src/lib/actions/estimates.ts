@@ -15,6 +15,7 @@ import { finalizeSignedEstimate } from "@/lib/estimate-signing";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
+import { defaultEstimateNarrative, paragraphsToHtml } from "@/lib/estimate-email-copy";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -33,7 +34,6 @@ import {
   splitEvenlyCents,
   computeEstimateTotals,
   lineTotalCents,
-  moneyCents,
   parseQuantity,
   paidTotalCents,
   type EstimateStatus,
@@ -124,19 +124,22 @@ function buildEstimateEmail(params: {
   projectAddress: string | null;
   totalCents: number;
   link: string;
+  /** A rep's own message, replacing the default 3-paragraph narrative --
+   *  the greeting, CTA link, sign-off, footer and disclaimer are never
+   *  affected by this, so a customized message can't accidentally drop
+   *  the link or the required footer/disclaimer. */
+  narrative?: string;
 }) {
   const { customerName, company, docNumber, title, projectAddress, totalCents, link } = params;
   const greeting = customerName || "there";
-  const amount = moneyCents(totalCents);
   const subject = `${company.name}: your proposal ${docNumber} is ready to review`;
+  const narrative =
+    params.narrative?.trim() ||
+    defaultEstimateNarrative({ companyName: company.name, docNumber, title, projectAddress, totalCents });
 
   const safe = {
     greeting: escapeHtml(greeting),
     companyName: escapeHtml(company.name),
-    docNumber: escapeHtml(docNumber),
-    title: title ? escapeHtml(title) : null,
-    projectAddress: projectAddress ? escapeHtml(projectAddress) : null,
-    amount: escapeHtml(amount),
     link: escapeHtml(link),
     dba: company.dba ? escapeHtml(company.dba) : null,
     address: company.address ? escapeHtml(company.address) : null,
@@ -150,15 +153,6 @@ function buildEstimateEmail(params: {
     "recipient, any use, copying, disclosure, dissemination or distribution is strictly prohibited. " +
     "If you are not the intended recipient, please notify the sender immediately by return email " +
     "and delete this communication and destroy all copies.";
-
-  // "on your {title} project" / "at {address}" are each dropped whole
-  // rather than left with a blank behind them -- an estimate with no
-  // title or a lead with no address must still read as a complete
-  // sentence, not one with a hole in it.
-  const onProjectClause = title ? ` on your ${title} project` : "";
-  const atAddressClause = projectAddress ? ` at ${projectAddress}` : "";
-  const safeOnProjectClause = safe.title ? ` on your ${safe.title} project` : "";
-  const safeAtAddressClause = safe.projectAddress ? ` at ${safe.projectAddress}` : "";
 
   const textFooterLines = [
     company.name,
@@ -187,11 +181,7 @@ function buildEstimateEmail(params: {
     text: [
       `Hi ${greeting},`,
       ``,
-      `Thank you for the opportunity to work with you${onProjectClause}.`,
-      ``,
-      `${company.name} has prepared proposal #${docNumber} for your project${atAddressClause}. The grand total of the proposal is ${amount}.`,
-      ``,
-      `Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.`,
+      narrative,
       ``,
       `Review & Sign:`,
       link,
@@ -210,9 +200,7 @@ function buildEstimateEmail(params: {
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
       <p>Hi ${safe.greeting},</p>
-      <p>Thank you for the opportunity to work with you${safeOnProjectClause}.</p>
-      <p>${safe.companyName} has prepared proposal #${safe.docNumber} for your project${safeAtAddressClause}. The grand total of the proposal is <strong>${safe.amount}</strong>.</p>
-      <p>Please use the link below to review the full proposal, including the scope of work and pricing. If everything looks good, you can also accept and sign the proposal directly online.</p>
+      ${paragraphsToHtml(narrative)}
       <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Review &amp; Sign</a></p>
       <p>If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.</p>
       <p style="margin:16px 0 2px">Thank you,<br><strong>${safe.companyName}</strong></p>
@@ -1032,8 +1020,11 @@ export async function sendEstimateToCustomer(
   channel: "text" | "email" | "both",
   /** Free-typed extra recipients (each a comma/semicolon/newline-separated
    *  string), on top of the lead's own email and its second-contact email.
-   *  Parsed and validated here, not trusted pre-parsed from the client. */
-  recipients?: { to?: string; cc?: string; bcc?: string }
+   *  Parsed and validated here, not trusted pre-parsed from the client.
+   *  `narrative`, when given, replaces the default 3-paragraph message body
+   *  -- everything else in the email (link, footer, disclaimer) is fixed
+   *  either way. */
+  recipients?: { to?: string; cc?: string; bcc?: string; narrative?: string }
 ): Promise<SendEstimateResult> {
   const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
@@ -1196,6 +1187,7 @@ export async function sendEstimateToCustomer(
       projectAddress: lead.address,
       totalCents: estimate.total_cents,
       link,
+      narrative: recipients?.narrative,
     });
     const emailEnv = await getEmailForCompany(guard.companyId);
 
@@ -1317,6 +1309,60 @@ export async function sendEstimateToCustomer(
     invalidTo: resolved.invalidTo.length ? resolved.invalidTo : undefined,
     invalidCc: resolved.invalidCc.length ? resolved.invalidCc : undefined,
     invalidBcc: resolved.invalidBcc.length ? resolved.invalidBcc : undefined,
+  };
+}
+
+/**
+ * Read-only: the subject and default message a send would use right now,
+ * so the send drawer can show a rep the actual copy before they commit to
+ * it -- rather than the email being entirely opaque until it lands in an
+ * inbox. Mints no token and sends nothing; same guard as sending, since a
+ * rep who can't send an estimate has no reason to preview one either.
+ */
+export async function previewEstimateEmail(
+  estimateId: string
+): Promise<{ error?: string; subject?: string; narrative?: string }> {
+  const guard = await requireEstimateSender();
+  if ("error" in guard) return guard;
+
+  const admin = createAdminClient();
+  const { data: estimate } = await admin
+    .from("estimates")
+    .select("id, lead_id, company_id, doc_number, title, total_cents")
+    .eq("id", estimateId)
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{
+      id: string;
+      lead_id: string;
+      company_id: string;
+      doc_number: string;
+      title: string | null;
+      total_cents: number;
+    }>();
+  if (!estimate) return { error: "Estimate not found." };
+
+  const { data: lead } = await admin
+    .from("leads")
+    .select("address")
+    .eq("id", estimate.lead_id)
+    .maybeSingle<{ address: string | null }>();
+
+  const { data: companyRow } = await admin
+    .from("company_profile")
+    .select("name")
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{ name: string | null }>();
+  const companyName = companyRow?.name || "Your contractor";
+
+  return {
+    subject: `${companyName}: your proposal ${estimate.doc_number} is ready to review`,
+    narrative: defaultEstimateNarrative({
+      companyName,
+      docNumber: estimate.doc_number,
+      title: estimate.title,
+      projectAddress: lead?.address ?? null,
+      totalCents: estimate.total_cents,
+    }),
   };
 }
 

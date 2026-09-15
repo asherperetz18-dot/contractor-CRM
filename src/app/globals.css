@@ -3061,30 +3061,6 @@ tr.row-link:hover {
   border-color: var(--line);
   color: var(--ink-soft);
 }
-.channel-segmented {
-  display: flex;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.channel-segmented button {
-  flex: 1;
-  background: #fff;
-  border: none;
-  padding: 8px 0;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink-soft);
-  cursor: pointer;
-  font-family: inherit;
-}
-.channel-segmented button + button {
-  border-left: 1px solid var(--line);
-}
-.channel-segmented button.active {
-  background: var(--blueprint);
-  color: #fff;
-}
 .link-add {
   font-size: 12.5px;
   color: var(--blueprint);
