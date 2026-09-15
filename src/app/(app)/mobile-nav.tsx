@@ -88,6 +88,9 @@ export function MobileNav({
               Sign out
             </button>
           </form>
+          <div className="sidebar-foot-legal">
+            © 2026 AI Build Pros LLC. All rights reserved.
+          </div>
         </div>
       </aside>
     </>

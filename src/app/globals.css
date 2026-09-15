@@ -8039,6 +8039,12 @@ textarea.est-item-desc:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sidebar-foot-legal {
+  margin-top: 10px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.35);
+  text-align: center;
+}
 
 /* Cloud Storage sync-status cards, after the reference product's
    by-category block: count, size, and a quiet progress bar each. */
