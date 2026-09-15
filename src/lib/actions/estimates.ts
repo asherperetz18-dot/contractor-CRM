@@ -14,7 +14,7 @@ import { advanceStageOnEstimateSent } from "@/lib/pipeline/advance-stage";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
-import { parseExtraRecipients } from "@/lib/estimate-recipients";
+import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -1013,24 +1013,28 @@ export async function voidEstimate(
 // invite, this send has one-time side effects (the contractor "signs" at
 // send time, the pipeline stage advances, the lead's value is written) that
 // must not fire twice for a single click.
-export async function sendEstimateToCustomer(
-  estimateId: string,
-  channel: "text" | "email" | "both",
-  /** Free-typed extra recipients (comma/semicolon/newline-separated), on
-   *  top of the lead's own email and its second-contact email. Parsed and
-   *  validated here, not trusted pre-parsed from the client. */
-  ccEmailsRaw?: string
-): Promise<{
+export type SendEstimateResult = {
   error?: string;
   sentTo?: string;
   channel?: "text" | "email" | "both";
-  /** Any problem that didn't stop the send outright -- a channel/CC that
+  /** Any problem that didn't stop the send outright -- a channel that
    *  failed while something else went out. */
   warning?: string;
-  /** Typed CC entries that weren't a valid email address, reported back
-   *  rather than silently dropped. */
+  /** Typed entries that weren't a valid email address, reported back
+   *  per bucket rather than silently dropped. */
+  invalidTo?: string[];
   invalidCc?: string[];
-}> {
+  invalidBcc?: string[];
+};
+
+export async function sendEstimateToCustomer(
+  estimateId: string,
+  channel: "text" | "email" | "both",
+  /** Free-typed extra recipients (each a comma/semicolon/newline-separated
+   *  string), on top of the lead's own email and its second-contact email.
+   *  Parsed and validated here, not trusted pre-parsed from the client. */
+  recipients?: { to?: string; cc?: string; bcc?: string }
+): Promise<SendEstimateResult> {
   const guard = await requireEstimateSender();
   if ("error" in guard) return guard;
 
@@ -1077,12 +1081,17 @@ export async function sendEstimateToCustomer(
   // the same way sendPortalLink is -- it sends whichever of the two the
   // customer actually has, rather than refusing both because one is short
   // a channel.
+  // Any typed recipient counts as "has an email target" too -- a rep
+  // filling in To/Cc/Bcc for a lead with no email on file (a referral
+  // routed straight to a project manager, say) must not be blocked by a
+  // check that only ever looked at the lead's own address.
+  const hasEmailTarget = !!lead.email || !!(recipients?.to || recipients?.cc || recipients?.bcc);
   if (channel === "text") {
     if (!lead.phone) return { error: "This customer has no phone number on file." };
     if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
   } else if (channel === "email") {
-    if (!lead.email) return { error: "This customer has no email address on file." };
-  } else if (!lead.phone && !lead.email) {
+    if (!hasEmailTarget) return { error: "This customer has no email address on file." };
+  } else if (!lead.phone && !hasEmailTarget) {
     return { error: "This customer has no phone number or email address on file." };
   }
 
@@ -1115,17 +1124,30 @@ export async function sendEstimateToCustomer(
   const sender = await getCurrentProfile();
 
   const canText = wantsText && !!lead.phone && !!twilioEnv;
-  const canEmail = wantsEmail && !!lead.email;
 
-  // Hoisted above the email block: the exclude list for extra recipients
-  // needs both addresses, and an extra recipient must still get a copy
-  // even when the lead itself has no email on file (channel "both" with
-  // only a phone) -- their invite isn't contingent on the customer's own.
+  // Resolved above the email block: an extra recipient must still get a
+  // copy even when the lead itself has no email on file (channel "both"
+  // with only a phone) -- their invite isn't contingent on the customer's
+  // own, and resolveEstimateRecipients promotes one of them into To when
+  // that happens.
   const secondEmail = (lead as unknown as { second_contact_email?: string | null })
     .second_contact_email;
-  const { emails: validExtraEmails, invalid: invalidExtraEmails } = wantsEmail
-    ? parseExtraRecipients(ccEmailsRaw ?? "", [lead.email, secondEmail])
-    : { emails: [] as string[], invalid: [] as string[] };
+  const resolved = wantsEmail
+    ? resolveEstimateRecipients({
+        leadEmail: lead.email,
+        secondContactEmail: secondEmail ?? null,
+        toRaw: recipients?.to ?? "",
+        ccRaw: recipients?.cc ?? "",
+        bccRaw: recipients?.bcc ?? "",
+      })
+    : {
+        to: [] as string[],
+        cc: [] as string[],
+        bcc: [] as string[],
+        invalidTo: [] as string[],
+        invalidCc: [] as string[],
+        invalidBcc: [] as string[],
+      };
 
   const sentTo: string[] = [];
   const problems: string[] = [];
@@ -1158,7 +1180,7 @@ export async function sendEstimateToCustomer(
     problems.push(lead.phone ? "texting isn't configured for this company yet" : "no phone number on file");
   }
 
-  if (canEmail || validExtraEmails.length > 0) {
+  if (wantsEmail && resolved.to.length > 0) {
     const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
     const mail = buildEstimateEmail({
       customerName: customerName || null,
@@ -1177,71 +1199,51 @@ export async function sendEstimateToCustomer(
     });
     const emailEnv = await getEmailForCompany(guard.companyId);
 
-    if (canEmail) {
-      const sent = await sendEmail(lead.email!, mail.subject, mail.html, mail.text, {
-        replyTo: sender?.email ?? undefined,
-        env: emailEnv ?? undefined,
-      });
-      if (sent.error) {
-        problems.push(`Email failed (${sent.error})`);
-      } else {
-        sentTo.push(lead.email!);
+    // One real message with real To/Cc/Bcc headers -- everyone in To/Cc
+    // sees each other's address, same as any other mail client; Bcc stays
+    // hidden from all of them. Not a loop of private sends: that would
+    // have meant nobody could see who else was included, which is
+    // indistinguishable from everyone being Bcc'd.
+    const sent = await sendEmail(resolved.to, mail.subject, mail.html, mail.text, {
+      replyTo: sender?.email ?? undefined,
+      env: emailEnv ?? undefined,
+      cc: resolved.cc,
+      bcc: resolved.bcc,
+    });
+    if (sent.error) {
+      problems.push(`Email failed (${sent.error})`);
+    } else {
+      const allEmailed = [...resolved.to, ...resolved.cc, ...resolved.bcc];
+      sentTo.push(...allEmailed);
+      for (const addr of resolved.to) {
         logRows.push({
           from_number: "email",
-          to_number: lead.email!,
+          to_number: addr,
           body: `[Estimate emailed] ${mail.subject}`,
           twilio_sid: sent.id || null,
           channel: "email",
         });
       }
-    }
-
-    // The co-owner reads it too. Same document, same link -- a joint
-    // owner is a signer, and a signer who never received the proposal
-    // is a signature that never arrives. Best-effort: their inbox
-    // failing must not fail the send that already worked.
-    if (secondEmail && secondEmail !== lead.email) {
-      const cc = await sendEmail(secondEmail, mail.subject, mail.html, mail.text, {
-        replyTo: sender?.email ?? undefined,
-        env: emailEnv ?? undefined,
-      });
-      if (cc.error) {
-        problems.push(`co-owner email failed (${cc.error})`);
-      } else {
-        sentTo.push(secondEmail);
+      for (const addr of resolved.cc) {
         logRows.push({
           from_number: "email",
-          to_number: secondEmail,
-          body: `[Estimate emailed — co-owner] ${mail.subject}`,
-          twilio_sid: cc.id || null,
-          channel: "email",
-        });
-      }
-    }
-
-    // Free-typed extras (a project manager, a family member not on file
-    // as Second Contact): same courtesy copy, same link -- not a signer,
-    // just a recipient. One bad address never blocks the others.
-    for (const extra of validExtraEmails) {
-      const cc = await sendEmail(extra, mail.subject, mail.html, mail.text, {
-        replyTo: sender?.email ?? undefined,
-        env: emailEnv ?? undefined,
-      });
-      if (cc.error) {
-        problems.push(`${extra} failed (${cc.error})`);
-      } else {
-        sentTo.push(extra);
-        logRows.push({
-          from_number: "email",
-          to_number: extra,
+          to_number: addr,
           body: `[Estimate emailed — cc] ${mail.subject}`,
-          twilio_sid: cc.id || null,
+          twilio_sid: sent.id || null,
+          channel: "email",
+        });
+      }
+      for (const addr of resolved.bcc) {
+        logRows.push({
+          from_number: "email",
+          to_number: addr,
+          body: `[Estimate emailed — bcc] ${mail.subject}`,
+          twilio_sid: sent.id || null,
           channel: "email",
         });
       }
     }
-  }
-  if (wantsEmail && channel === "both" && !lead.email) {
+  } else if (wantsEmail) {
     problems.push("no email address on file");
   }
 
@@ -1307,12 +1309,14 @@ export async function sendEstimateToCustomer(
   return {
     sentTo: sentTo.join(" and "),
     channel,
-    // Not just "both" any more: a co-owner or CC send can fail
-    // independently of the customer's own channel, on any explicit
-    // channel, so that problem must surface here too rather than only
-    // ever being visible on a "both" send.
+    // Not just "both" any more: on a "both" send, text and email now fail
+    // independently of each other (one atomic email covering the whole
+    // To/Cc/Bcc list, separate from the Twilio text), so that problem must
+    // surface here too rather than only ever being visible on a "both" send.
     warning: problems.length ? problems.join("; ") : undefined,
-    invalidCc: invalidExtraEmails.length ? invalidExtraEmails : undefined,
+    invalidTo: resolved.invalidTo.length ? resolved.invalidTo : undefined,
+    invalidCc: resolved.invalidCc.length ? resolved.invalidCc : undefined,
+    invalidBcc: resolved.invalidBcc.length ? resolved.invalidBcc : undefined,
   };
 }
 

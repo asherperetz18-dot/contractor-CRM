@@ -58,10 +58,15 @@ export type SendEmailOptions = {
   // platform env below when the caller has no company context (e.g. the
   // pre-login password-reset email, which isn't scoped to one company).
   env?: { apiKey: string; from: string };
+  // Real, visible Cc/Bcc on the one message Resend sends -- everyone in
+  // `to`/`cc` sees each other's address, same as any other mail client;
+  // `bcc` stays invisible to all of them. Omit either for a plain send.
+  cc?: string[];
+  bcc?: string[];
 };
 
 export async function sendEmail(
-  to: string,
+  to: string | string[],
   subject: string,
   html: string,
   text: string,
@@ -83,12 +88,14 @@ export async function sendEmail(
   const branded = withLegalFooter(html, text);
   const body: Record<string, unknown> = {
     from: env.from,
-    to: [to],
+    to: Array.isArray(to) ? to : [to],
     subject,
     html: branded.html,
     text: branded.text,
   };
   if (options.replyTo) body.reply_to = options.replyTo;
+  if (options.cc?.length) body.cc = options.cc;
+  if (options.bcc?.length) body.bcc = options.bcc;
 
   // Network faults and malformed values surface as a readable message
   // instead of a 500 from an unhandled throw.
