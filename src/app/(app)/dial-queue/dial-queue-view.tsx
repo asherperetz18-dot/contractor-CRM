@@ -100,6 +100,7 @@ export function DialQueueView({
   const [repFilter, setRepFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("All Dates");
   const [calledFilter, setCalledFilter] = useState<LeadCalledFilter>("All");
+  const [leadDispositionFilter, setLeadDispositionFilter] = useState("All");
 
   // Which company number this desk shows when calling. Shared with the
   // floating dialer through localStorage plus an event, so picking it
@@ -174,6 +175,7 @@ export function DialQueueView({
         stageFilter,
         repFilter,
         calledFilter,
+        leadDispositionFilter,
         createdSince: createdSinceFor(dateFilter),
       })
         .then((result) => {
@@ -188,7 +190,7 @@ export function DialQueueView({
     // 250ms is under the reaction time of reading the new list anyway.
     const t = setTimeout(run, 250);
     return () => clearTimeout(t);
-  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter, calledFilter, listRefresh]);
+  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter, calledFilter, leadDispositionFilter, listRefresh]);
 
   const pageRows = contactPage.rows;
   const total = contactPage.total;
@@ -506,13 +508,33 @@ export function DialQueueView({
                   <option value="Never">Not Called Yet</option>
                   <option value="Called">Called Before</option>
                 </select>
+                <select
+                  value={leadDispositionFilter}
+                  onChange={(e) => {
+                    setLeadDispositionFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="All">All Dispositions</option>
+                  <option value={NO_DISPOSITION}>{NO_DISPOSITION}</option>
+                  <option value="Any Disposition">Any Disposition</option>
+                  {dispositions
+                    .filter((d) => d.name !== NO_DISPOSITION)
+                    .map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                </select>
               </div>
             )}
-            {tab === "lead" && calledFilter !== "All" && (
+            {tab === "lead" && (calledFilter !== "All" || leadDispositionFilter !== "All") && (
               <p className="hint-note" style={{ margin: 0 }}>
                 {calledFilter === "Never"
                   ? "Showing leads no one has dialed yet — combine with a stage to build a fresh call list."
-                  : "Showing leads that have been dialed at least once."}
+                  : leadDispositionFilter !== "All"
+                    ? `Showing leads whose latest call outcome matches "${leadDispositionFilter}".`
+                    : "Showing leads that have been dialed at least once."}
               </p>
             )}
           </div>

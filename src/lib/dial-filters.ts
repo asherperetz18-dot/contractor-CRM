@@ -47,6 +47,9 @@ export type DialContactQuery = {
   stageFilter: string;
   repFilter: string;
   calledFilter: LeadCalledFilter;
+  /** "All" (no constraint), No Disposition, "Any Disposition", or a
+   *  named disposition -- judged on the lead's latest outbound call. */
+  leadDispositionFilter: string;
   /** ISO lower bound for created_at, computed in the browser so "Today"
    *  means the rep's today, not the server's UTC day. Empty = all dates. */
   createdSince: string;
@@ -125,18 +128,32 @@ export function contactQueryPlan(
 }
 
 /**
- * The By Lead tab's call-status filter as a query plan. "We haven't
- * dialed them yet" is everyone except the dialed set (exclude); "we
- * called them before" is exactly that set (include). Log rows repeat
- * per call and may lack a lead; the plan carries each dialed lead once,
- * sorted, same shape contactQueryPlan produces.
+ * The By Lead tab's call-status + disposition combination as one query
+ * plan, by the same reasoning as contactQueryPlan: when never-called
+ * leads qualify (they have 0 attempts and no disposition), the answer
+ * is everyone except the dialed leads that fail the combination;
+ * otherwise only dialed leads can qualify, exactly those that pass.
+ * "All" on either axis means no constraint on it -- the caller skips
+ * planning entirely when both are "All".
  */
-export function calledFilterPlan(
-  dialedLeadIds: (string | null)[],
-  filter: "Never" | "Called"
+export function leadTabPlan(
+  stats: Map<string, CallStats>,
+  called: LeadCalledFilter,
+  dispositionFilter: string
 ): ContactQueryPlan {
-  const ids = [...new Set(dialedLeadIds.filter((id): id is string => id !== null))].sort();
-  return filter === "Never" ? { mode: "exclude", ids } : { mode: "include", ids };
+  const calledOk = (attempts: number) =>
+    called === "Never" ? attempts === 0 : called === "Called" ? attempts > 0 : true;
+  const dispositionOk = (d: string) =>
+    dispositionFilter === "All" ? true : matchesDisposition(d, dispositionFilter);
+
+  const neverCalledQualifies = calledOk(0) && dispositionOk(NO_DISPOSITION);
+  const ids: string[] = [];
+  for (const [leadId, s] of stats) {
+    const passes = calledOk(s.attempts) && dispositionOk(s.disposition);
+    if (neverCalledQualifies ? !passes : passes) ids.push(leadId);
+  }
+  ids.sort();
+  return neverCalledQualifies ? { mode: "exclude", ids } : { mode: "include", ids };
 }
 
 /**

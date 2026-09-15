@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCallStats,
-  calledFilterPlan,
   contactQueryPlan,
   digitsSearchPattern,
+  leadTabPlan,
 } from "./dial-filters.ts";
 import { NO_DISPOSITION } from "./data/types.ts";
 
@@ -88,14 +88,23 @@ test("a named disposition can only ever match called leads, so the plan includes
   assert.deepEqual(contactQueryPlan(stats, "Never", "Booked"), { mode: "include", ids: [] });
 });
 
-test("the By Lead call-status filter plans around the dialed set", () => {
-  // Log rows repeat per call and can miss a lead; the plan wants each
-  // dialed lead once, sorted, so it is stable to chunk and to cache.
-  const dialed = [B, A, null, B];
+test("the By Lead call-status + disposition filters reduce to one plan", () => {
+  const stats = buildCallStats([
+    { lead_id: A, disposition: "Booked" },
+    { lead_id: B, disposition: NO_DISPOSITION },
+  ]);
   // "Not Called Yet": everyone except the dialed leads.
-  assert.deepEqual(calledFilterPlan(dialed, "Never"), { mode: "exclude", ids: [A, B].sort() });
+  assert.deepEqual(leadTabPlan(stats, "Never", "All"), { mode: "exclude", ids: [A, B].sort() });
   // "Called Before": exactly the dialed leads.
-  assert.deepEqual(calledFilterPlan(dialed, "Called"), { mode: "include", ids: [A, B].sort() });
+  assert.deepEqual(leadTabPlan(stats, "Called", "All"), { mode: "include", ids: [A, B].sort() });
+  // A named disposition alone: leads whose latest call carries it.
+  assert.deepEqual(leadTabPlan(stats, "All", "Booked"), { mode: "include", ids: [A] });
+  // No Disposition admits never-called leads, so it excludes the
+  // dispositioned -- B, dialed but never dispositioned, stays in.
+  assert.deepEqual(leadTabPlan(stats, "All", NO_DISPOSITION), { mode: "exclude", ids: [A] });
+  assert.deepEqual(leadTabPlan(stats, "All", "Any Disposition"), { mode: "include", ids: [A] });
+  // Contradiction -- never called, but carrying a disposition -- matches nobody.
+  assert.deepEqual(leadTabPlan(stats, "Never", "Booked"), { mode: "include", ids: [] });
 });
 
 test("a phone search becomes a digits pattern that survives formatting", () => {
