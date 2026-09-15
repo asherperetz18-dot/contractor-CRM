@@ -8,6 +8,12 @@ import {
   type CompanyPhoneNumber,
 } from "@/lib/actions/phone-numbers";
 import { newCorrelationId } from "@/lib/observability/context";
+import {
+  markRinging,
+  newCallAttempt,
+  settleAttempt,
+  shouldRetryError,
+} from "@/lib/call-attempt";
 import { maskPhone, safeTwilioError } from "@/lib/observability/redact";
 import { addBreadcrumb, captureError } from "@/lib/observability/sentry";
 
@@ -181,6 +187,20 @@ export function VoiceDialer() {
   }
 
   async function handleCall(overridePhone?: string, leadId?: string | null, isRetry?: boolean) {
+    // One live call at a time. A second request while one is in flight
+    // used to reach Twilio and bounce off with "A Call is already
+    // active" -- and could ring the same person twice. Refuse it here,
+    // and still answer the dial session so its buttons don't wait on a
+    // log that will never come.
+    if (!isRetry && callRef.current) {
+      setErrorMsg("A call is already active — hang up first.");
+      window.dispatchEvent(
+        new CustomEvent("crm:call-logged", {
+          detail: { leadId: leadId ?? null, error: "A call is already active." },
+        })
+      );
+      return;
+    }
     if (!isRetry) {
       retriedRef.current = false;
       correlationIdRef.current = newCorrelationId();
@@ -205,6 +225,11 @@ export function VoiceDialer() {
       correlationId,
       data: { to: maskPhone(digits), recordEnabled, hasLead: !!leadId, isRetry: !!isRetry },
     });
+    // The latch that makes this attempt end exactly once: Twilio fires
+    // more than one terminal event per call (cancel AND disconnect on a
+    // hang-up while ringing; disconnect AND error on a gateway drop),
+    // and each handler used to log its own call_logs row.
+    const attempt = newCallAttempt();
     try {
       const device = await ensureDevice(correlationId);
       const resolvedCallerId = callerId || window.localStorage.getItem(CALLER_ID_KEY) || "";
@@ -228,6 +253,7 @@ export function VoiceDialer() {
       addBreadcrumb({ category: "voice", message: "call_connecting", correlationId, data: { to: maskPhone(digits) } });
 
       call.on("ringing", () => {
+        markRinging(attempt);
         setStatus("ringing");
         addBreadcrumb({ category: "voice", message: "ringing", correlationId });
       });
@@ -238,28 +264,36 @@ export function VoiceDialer() {
         startTimer();
       });
       call.on("disconnect", () => {
+        if (!settleAttempt(attempt)) return;
         setStatus("ended");
         addBreadcrumb({ category: "voice", message: "completed", correlationId, data: { callSid: callSidRef.current } });
         finishCall(digits, "completed", correlationId);
       });
       call.on("cancel", () => {
+        if (!settleAttempt(attempt)) return;
         setStatus("ended");
         addBreadcrumb({ category: "voice", message: "cancelled", correlationId });
         finishCall(digits, "cancelled", correlationId);
       });
       call.on("error", (err: Error) => {
         // A stale gateway connection rejects the very first call after
-        // it dies. One silent rebuild-and-redial, then honest failure.
+        // it dies. One silent rebuild-and-redial, then honest failure --
+        // and only for a call that never rang and hasn't already ended:
+        // a late gateway error after a real ring used to re-dial the
+        // same person a second time.
         const code = (err as { code?: number }).code;
-        if ((code === 31005 || code === 20104) && !retriedRef.current) {
+        if (shouldRetryError(attempt, code, retriedRef.current)) {
+          settleAttempt(attempt);
           retriedRef.current = true;
           deviceRef.current?.destroy();
           deviceRef.current = null;
+          callRef.current = null;
           tokenMintedAtRef.current = 0;
           setErrorMsg("Reconnecting to the phone network…");
           handleCall(digits, leadIdRef.current, true);
           return;
         }
+        if (!settleAttempt(attempt)) return;
         const twilioError = safeTwilioError(err);
         const eventId = captureError(err, {
           route: "voice-dialer",
