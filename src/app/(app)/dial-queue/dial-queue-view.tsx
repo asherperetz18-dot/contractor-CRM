@@ -24,6 +24,7 @@ import {
   DIAL_PAGE_SIZE,
   type DialContactPage,
   type DialContactRow,
+  type LeadCalledFilter,
 } from "@/lib/dial-filters";
 import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { DialSession } from "./dial-session";
@@ -98,6 +99,7 @@ export function DialQueueView({
   const [stageFilter, setStageFilter] = useState("All");
   const [repFilter, setRepFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("All Dates");
+  const [calledFilter, setCalledFilter] = useState<LeadCalledFilter>("All");
 
   // Which company number this desk shows when calling. Shared with the
   // floating dialer through localStorage plus an event, so picking it
@@ -171,6 +173,7 @@ export function DialQueueView({
         statusFilter,
         stageFilter,
         repFilter,
+        calledFilter,
         createdSince: createdSinceFor(dateFilter),
       })
         .then((result) => {
@@ -185,7 +188,7 @@ export function DialQueueView({
     // 250ms is under the reaction time of reading the new list anyway.
     const t = setTimeout(run, 250);
     return () => clearTimeout(t);
-  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter, listRefresh]);
+  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter, calledFilter, listRefresh]);
 
   const pageRows = contactPage.rows;
   const total = contactPage.total;
@@ -492,7 +495,25 @@ export function DialQueueView({
                   <option value="This Week">This Week</option>
                   <option value="This Month">This Month</option>
                 </select>
+                <select
+                  value={calledFilter}
+                  onChange={(e) => {
+                    setCalledFilter(e.target.value as LeadCalledFilter);
+                    setPage(1);
+                  }}
+                >
+                  <option value="All">Called or Not</option>
+                  <option value="Never">Not Called Yet</option>
+                  <option value="Called">Called Before</option>
+                </select>
               </div>
+            )}
+            {tab === "lead" && calledFilter !== "All" && (
+              <p className="hint-note" style={{ margin: 0 }}>
+                {calledFilter === "Never"
+                  ? "Showing leads no one has dialed yet — combine with a stage to build a fresh call list."
+                  : "Showing leads that have been dialed at least once."}
+              </p>
             )}
           </div>
 

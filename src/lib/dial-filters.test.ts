@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildCallStats,
+  calledFilterPlan,
   contactQueryPlan,
   digitsSearchPattern,
 } from "./dial-filters.ts";
@@ -85,6 +86,16 @@ test("a named disposition can only ever match called leads, so the plan includes
   });
   // Contradiction — never called, but must carry a disposition — matches nobody.
   assert.deepEqual(contactQueryPlan(stats, "Never", "Booked"), { mode: "include", ids: [] });
+});
+
+test("the By Lead call-status filter plans around the dialed set", () => {
+  // Log rows repeat per call and can miss a lead; the plan wants each
+  // dialed lead once, sorted, so it is stable to chunk and to cache.
+  const dialed = [B, A, null, B];
+  // "Not Called Yet": everyone except the dialed leads.
+  assert.deepEqual(calledFilterPlan(dialed, "Never"), { mode: "exclude", ids: [A, B].sort() });
+  // "Called Before": exactly the dialed leads.
+  assert.deepEqual(calledFilterPlan(dialed, "Called"), { mode: "include", ids: [A, B].sort() });
 });
 
 test("a phone search becomes a digits pattern that survives formatting", () => {

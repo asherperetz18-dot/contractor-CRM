@@ -5,6 +5,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
   buildCallStats,
+  calledFilterPlan,
   contactQueryPlan,
   digitsSearchPattern,
 } from "@/lib/dial-filters";
@@ -109,8 +110,9 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
     return out;
   }
 
-  // The By Lead tab maps straight onto one paged query.
-  if (input.tab === "lead") {
+  // The By Lead tab without a call-status pick maps straight onto one
+  // paged query.
+  if (input.tab === "lead" && input.calledFilter === "All") {
     const { data, count, error } = await applyBaseFilters(
       supabase.from("leads").select(ROW_COLUMNS, { count: "exact" }) as unknown as LeadsQuery
     )
@@ -120,17 +122,34 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
     return { rows: (data ?? []) as DialContactRow[], total: count ?? 0 };
   }
 
-  // By Contact: attempts/disposition are facts about *called* leads, a
-  // small set next to the whole book. Reduce the combination to a plan.
-  const logs = await selectAll<{ lead_id: string | null; disposition: string }>((f, t) =>
-    supabase
-      .from("call_logs")
-      .select("lead_id, disposition")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false })
-      .range(f, t)
-  );
-  const plan = contactQueryPlan(buildCallStats(logs), input.callAttempts, input.dispositionFilter);
+  // Both remaining paths hinge on the *called* leads, a small set next
+  // to the whole book. Reduce the filter combination to a plan: a small
+  // id list to include, or to exclude from everyone the filters accept.
+  let plan;
+  if (input.tab === "lead") {
+    // Call status on By Lead: who we actually dialed (outbound only --
+    // a customer calling us is not us having called them).
+    const dialed = await selectAll<{ lead_id: string | null }>((f, t) =>
+      supabase
+        .from("call_logs")
+        .select("lead_id")
+        .eq("company_id", companyId)
+        .eq("direction", "outbound")
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    );
+    plan = calledFilterPlan(dialed.map((d) => d.lead_id), input.calledFilter as "Never" | "Called");
+  } else {
+    const logs = await selectAll<{ lead_id: string | null; disposition: string }>((f, t) =>
+      supabase
+        .from("call_logs")
+        .select("lead_id, disposition")
+        .eq("company_id", companyId)
+        .order("created_at", { ascending: false })
+        .range(f, t)
+    );
+    plan = contactQueryPlan(buildCallStats(logs), input.callAttempts, input.dispositionFilter);
+  }
 
   if (plan.mode === "include") {
     // Only these called leads can match: fetch them (chunked), keep the
