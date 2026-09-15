@@ -405,19 +405,23 @@ export function EstimateBuilder({
   // send result so the panel can show its own To/Cc/Bcc-specific feedback;
   // a save failure is surfaced the same shape so the panel doesn't need a
   // separate error path for it.
-  async function handleSendFromPanel(
-    channel: "email" | "text" | "both",
-    recipients: { to: string; cc: string; bcc: string }
-  ): Promise<SendEstimateResult> {
+  async function handleSendFromPanel(recipients: {
+    to: string;
+    cc: string;
+    bcc: string;
+    narrative?: string;
+  }): Promise<SendEstimateResult> {
     const payload = draftPayload();
     const saveRes = await saveEstimateDraft(estimate.id, payload.fields, payload.items, payload.discount);
     if (saveRes.error) return { error: saveRes.error };
 
-    const res = await sendEstimateToCustomer(estimate.id, channel, recipients);
+    // Always "both": send whichever of email/text this contact has on
+    // file, rather than making a rep choose -- sendEstimateToCustomer
+    // already treats "both" as permissive (only errors if neither exists).
+    const res = await sendEstimateToCustomer(estimate.id, "both", recipients);
     if (!res.error) {
-      const label = channel === "email" ? "Emailed" : channel === "text" ? "Texted" : "Sent";
       const note = res.warning ? ` — but ${res.warning}` : "";
-      setSaved(res.sentTo ? `${label} to ${res.sentTo}${note}` : "Marked as sent");
+      setSaved(res.sentTo ? `Sent to ${res.sentTo}${note}` : "Marked as sent");
       router.refresh();
     }
     return res;
@@ -472,6 +476,7 @@ export function EstimateBuilder({
               error. */}
           {!locked && canSend && (
             <EstimateSendPanel
+              estimateId={estimate.id}
               docNumber={estimate.doc_number}
               customerEmail={lead?.email ?? null}
               secondContactEmail={lead?.second_contact_email ?? null}

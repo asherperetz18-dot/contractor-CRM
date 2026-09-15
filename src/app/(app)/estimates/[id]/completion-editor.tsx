@@ -83,18 +83,19 @@ export function CompletionEditor({
 
   // The send panel's onSend: save whatever's on screen first (same
   // "Save & Email" semantics the old buttons had), then send.
-  async function handleSendFromPanel(
-    channel: "email" | "text" | "both",
-    recipients: { to: string; cc: string; bcc: string }
-  ): Promise<SendEstimateResult> {
+  async function handleSendFromPanel(recipients: {
+    to: string;
+    cc: string;
+    bcc: string;
+    narrative?: string;
+  }): Promise<SendEstimateResult> {
     const saveRes = await saveCompletionDetails(estimate.id, { completedOn, notes });
     if (saveRes.error) return { error: saveRes.error };
 
-    const res = await sendEstimateToCustomer(estimate.id, channel, recipients);
+    const res = await sendEstimateToCustomer(estimate.id, "both", recipients);
     if (!res.error) {
-      const label = channel === "email" ? "Emailed" : channel === "text" ? "Texted" : "Sent";
       const note = res.warning ? ` — but ${res.warning}` : "";
-      setSaved(res.sentTo ? `${label} to ${res.sentTo}${note}` : "Marked as sent");
+      setSaved(res.sentTo ? `Sent to ${res.sentTo}${note}` : "Marked as sent");
       router.refresh();
     }
     return res;
@@ -138,6 +139,7 @@ export function CompletionEditor({
               sending takes the certificate out of Draft. */}
           {!locked && canSend && (
             <EstimateSendPanel
+              estimateId={estimate.id}
               docNumber={estimate.doc_number}
               customerEmail={customer.email}
               secondContactEmail={customer.secondContactEmail}
