@@ -3114,6 +3114,7 @@ tr.row-link:hover {
 .auth-shell {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   background: var(--paper);
@@ -3158,6 +3159,16 @@ tr.row-link:hover {
   color: var(--blueprint);
   font-weight: 600;
   text-decoration: none;
+}
+/* The app owner's legal line, on sign-in surfaces and the customer
+   portal. Distinct from .portal-footer, which is the tenant company's
+   social signature. */
+.site-footer {
+  margin-top: 18px;
+  padding: 0 16px 28px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  text-align: center;
 }
 
 @media (max-width: 1100px) {
@@ -4029,6 +4040,7 @@ tr.row-link:hover {
 .portal-auth-wrap {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 24px;
@@ -6347,6 +6359,7 @@ a.portal-header-stars:hover {
   .module-toolbar,
   .portal-header,
   .portal-footer,
+  .site-footer,
   .voice-dialer-wrap,
   .ai-chat,
   .estdoc-sign,

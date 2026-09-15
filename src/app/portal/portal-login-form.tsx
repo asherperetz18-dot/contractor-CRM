@@ -78,6 +78,9 @@ export function PortalLoginForm() {
           </>
         )}
       </div>
+      <footer className="site-footer">
+        © 2026 AI Build Pros LLC. All rights reserved.
+      </footer>
     </div>
   );
 }
