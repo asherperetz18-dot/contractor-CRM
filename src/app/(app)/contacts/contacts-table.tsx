@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,6 +23,7 @@ import { LeadForm } from "../pipeline/lead-form";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { safeInternalPath } from "@/lib/safe-path";
+import { BulkEmailModal } from "@/components/bulk-email-modal";
 
 /**
  * One contact row, memoized. Clicking a row re-renders the table (the
@@ -35,14 +36,30 @@ const ContactRow = memo(function ContactRow({
   repLabel,
   color,
   onOpen,
+  selectable,
+  checked,
+  onToggleSelect,
 }: {
   lead: Lead;
   repLabel: string;
   color: string;
   onOpen: (lead: Lead) => void;
+  selectable: boolean;
+  checked: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   return (
     <tr onClick={() => onOpen(lead)}>
+      {selectable && (
+        <td className="ur-select-cell" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={() => onToggleSelect(lead.id)}
+            aria-label={`Select ${leadDisplayName(lead)}`}
+          />
+        </td>
+      )}
       <td>
         <div className="ur-name">{leadDisplayName(lead)}</div>
         {lead.email && <div className="ur-add-phone">{lead.email}</div>}
@@ -116,6 +133,20 @@ export function ContactsTable({
   const [editing, setEditing] = useState<Lead | null>(null);
   const [consumedOpenId, setConsumedOpenId] = useState<string | null>(null);
   const [returnTo, setReturnTo] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkEmail, setShowBulkEmail] = useState(false);
+
+  // Stable reference (empty deps, setSelected itself never changes) so
+  // toggling one row's checkbox doesn't blow away every other row's
+  // memoization -- the same concern behind repById/tasksByLead above.
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const openLeadId = searchParams.get("openLead");
   if (openLeadId && openLeadId !== consumedOpenId) {
@@ -282,6 +313,26 @@ export function ContactsTable({
   const visible = shown >= filtered.length ? filtered : filtered.slice(0, shown);
   const remaining = filtered.length - visible.length;
 
+  // Against the current search results, not just the revealed batch --
+  // "select all" should mean everything the search matched, whether or
+  // not it has scrolled into the document yet.
+  const allFilteredSelected = filtered.length > 0 && filtered.every((l) => selected.has(l.id));
+  function toggleSelectAllFiltered() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const l of filtered) next.delete(l.id);
+      } else {
+        for (const l of filtered) next.add(l.id);
+      }
+      return next;
+    });
+  }
+  const selectedLeads = useMemo(
+    () => leads.filter((l) => selected.has(l.id)),
+    [leads, selected]
+  );
+
   const endRef = useRef<HTMLTableRowElement | null>(null);
   useEffect(() => {
     const end = endRef.current;
@@ -379,6 +430,18 @@ export function ContactsTable({
         placeholder="Search name, email, phone, or address..."
       />
 
+      {canWrite && selected.size > 0 && (
+        <div className="bulk-action-bar">
+          <span>{selected.size} selected</span>
+          <button type="button" className="btn-primary small" onClick={() => setShowBulkEmail(true)}>
+            ✉ Email Selected
+          </button>
+          <button type="button" className="btn-ghost small" onClick={() => setSelected(new Set())}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="empty-state">
           <p className="empty-label">No contacts match</p>
@@ -389,6 +452,16 @@ export function ContactsTable({
         <table className="data-table">
           <thead>
             <tr>
+              {canWrite && (
+                <th className="ur-select-cell">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAllFiltered}
+                    aria-label="Select all matching contacts"
+                  />
+                </th>
+              )}
               <th>Contact</th>
               <th>Address</th>
               <th>Phone</th>
@@ -406,11 +479,14 @@ export function ContactsTable({
                 repLabel={repName(l.assigned_to)}
                 color={stageColor(stages, l.stage)}
                 onOpen={setEditing}
+                selectable={canWrite}
+                checked={selected.has(l.id)}
+                onToggleSelect={toggleSelected}
               />
             ))}
             {remaining > 0 && (
               <tr ref={endRef}>
-                <td colSpan={7} className="table-more">
+                <td colSpan={canWrite ? 8 : 7} className="table-more">
                   {remaining.toLocaleString()} more
                 </td>
               </tr>
@@ -418,6 +494,16 @@ export function ContactsTable({
           </tbody>
         </table>
         </div>
+      )}
+
+      {showBulkEmail && (
+        <BulkEmailModal
+          leads={selectedLeads.map((l) => ({ id: l.id, name: leadDisplayName(l), email: l.email }))}
+          onClose={() => setShowBulkEmail(false)}
+          onSent={() => {
+            setSelected(new Set());
+          }}
+        />
       )}
 
       {editing && (

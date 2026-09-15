@@ -31,6 +31,7 @@ import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { AttentionDigest } from "./attention-digest";
 import { CsvImportPanel } from "./csv-import-panel";
+import { BulkEmailModal } from "@/components/bulk-email-modal";
 
 type StatusFilter = "Open" | "Won" | "Lost";
 type SortBy = "Name" | "Days" | "Amount";
@@ -75,6 +76,9 @@ const PipelineColumn = memo(function PipelineColumn({
   onDragOverCol,
   onDragLeaveCol,
   onDropCol,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   stage: string;
   items: Lead[];
@@ -89,6 +93,9 @@ const PipelineColumn = memo(function PipelineColumn({
   onDragOverCol: (stage: string) => void;
   onDragLeaveCol: (stage: string) => void;
   onDropCol: (stage: string) => void;
+  selectMode: boolean;
+  selected: Set<string>;
+  onToggleSelect: (id: string) => void;
 }) {
   /**
    * Cards enter the page as the column is scrolled, not all at once.
@@ -149,17 +156,33 @@ const PipelineColumn = memo(function PipelineColumn({
           const stale = daysSince(l.date_received);
           return (
             <div
-              className={"lead-card" + (draggedId === l.id ? " lead-card-dragging" : "")}
+              className={
+                "lead-card" +
+                (draggedId === l.id ? " lead-card-dragging" : "") +
+                (selectMode && selected.has(l.id) ? " lead-card-selected" : "")
+              }
               key={l.id}
-              draggable={canWrite}
+              // Dragging and multi-select don't mix -- a drag gesture
+              // started on a card that's meant to be checked off would
+              // silently also try to move its stage.
+              draggable={canWrite && !selectMode}
               onDragStart={(e) => {
                 onDragStartCard(l.id);
                 e.dataTransfer.effectAllowed = "move";
               }}
               onDragEnd={onDragEndCard}
-              onClick={() => onOpenLead(l)}
+              onClick={() => (selectMode ? onToggleSelect(l.id) : onOpenLead(l))}
             >
               <div className="lead-card-name-row">
+                {selectMode && (
+                  <input
+                    type="checkbox"
+                    checked={selected.has(l.id)}
+                    onChange={() => onToggleSelect(l.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Select ${leadDisplayName(l)}`}
+                  />
+                )}
                 <span className="lead-card-name">{leadDisplayName(l)}</span>
                 {l.source && <span className="source-tag">{l.source}</span>}
               </div>
@@ -282,6 +305,26 @@ export function PipelineBoard({
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
   const [showWonBreakdown, setShowWonBreakdown] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  // Off by default: dragging is the board's everyday interaction, and
+  // checkboxes on every card would fight it for clicks. Turning select
+  // mode on is an explicit, occasional detour for a bulk action.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulkEmail, setShowBulkEmail] = useState(false);
+
+  const toggleSelected = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelected(new Set());
+  }
 
   function showAllStages() {
     setHiddenStages(new Set());
@@ -836,6 +879,14 @@ export function PipelineBoard({
           </select>
         </div>
         <div className="filter-bar-right">
+          {canWrite && (
+            <button
+              className={"chip" + (selectMode ? " chip-active" : "")}
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            >
+              {selectMode ? "Done Selecting" : "Select"}
+            </button>
+          )}
           <span className="filter-label">Sort by</span>
           {(["Name", "Days", "Amount"] as SortBy[]).map((s) => (
             <button
@@ -881,6 +932,18 @@ export function PipelineBoard({
           </div>
         </div>
       </div>
+
+      {selectMode && selected.size > 0 && (
+        <div className="bulk-action-bar">
+          <span>{selected.size} selected</span>
+          <button type="button" className="btn-primary small" onClick={() => setShowBulkEmail(true)}>
+            ✉ Email Selected
+          </button>
+          <button type="button" className="btn-ghost small" onClick={exitSelectMode}>
+            Done
+          </button>
+        </div>
+      )}
 
       {leads.length === 0 ? (
         <div className="empty-state">
@@ -941,10 +1004,23 @@ export function PipelineBoard({
               onDragOverCol={setDragOverStage}
               onDragLeaveCol={onDragLeaveCol}
               onDropCol={onDropCol}
+              selectMode={selectMode}
+              selected={selected}
+              onToggleSelect={toggleSelected}
             />
           ))}
         </div>
         </>
+      )}
+
+      {showBulkEmail && (
+        <BulkEmailModal
+          leads={leads
+            .filter((l) => selected.has(l.id))
+            .map((l) => ({ id: l.id, name: leadDisplayName(l), email: l.email }))}
+          onClose={() => setShowBulkEmail(false)}
+          onSent={exitSelectMode}
+        />
       )}
 
       {showNew && canCreateLeads && (
