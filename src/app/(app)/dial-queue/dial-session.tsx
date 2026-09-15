@@ -11,6 +11,7 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
+import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { bookAppointmentForLead, quickUpdateLead } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 
@@ -30,17 +31,25 @@ function todayISO() {
 
 export function DialSession({
   leads,
+  callInfo,
   dispositions,
   reps,
   callScript,
   onClose,
 }: {
   leads: Lead[];
+  /** Per-lead call recency at session start: how many times each was
+   *  already called today, and when the last call was -- the session
+   *  warns and pauses auto-dial so nobody gets rung twice in hours. */
+  callInfo: Record<string, LeadCallInfo>;
   dispositions: CallDispositionRow[];
   /** For the quick-booking step when an outcome sets an appointment. */
   reps: Profile[];
   callScript: string | null;
-  onClose: () => void;
+  /** `completed` is true when the queue was worked to the end -- the
+   *  caller clears the spent selection so Start Dialing can't ring the
+   *  same people all over again. */
+  onClose: (completed: boolean) => void;
 }) {
   const [index, setIndex] = useState(0);
   const [callLogId, setCallLogId] = useState<string | null>(null);
@@ -176,7 +185,7 @@ export function DialSession({
     // session still deserves to land on the lead.
     const leftover = noteRef.current.trim();
     if (leftover && lead) void addLeadNote(lead.id, `📞 ${leftover}`);
-    onClose();
+    onClose(ended);
   }
 
   /**
@@ -248,7 +257,11 @@ export function DialSession({
       return;
     }
     setIndex((i) => i + 1);
-    if (autoNext && autoDial) setCountdown(3);
+    // Never auto-dial someone who was already called today -- the card
+    // shows the warning and waits for a deliberate Call Now instead.
+    const next = leads[index + 1];
+    const calledToday = next ? (callInfo[next.id]?.callsSince ?? 0) > 0 : false;
+    if (autoNext && autoDial && !calledToday) setCountdown(3);
   }
 
   async function commit(logId: string, name: string) {
@@ -312,7 +325,7 @@ export function DialSession({
 
   if (ended) {
     return (
-      <Modal title="Session Complete" onClose={onClose}>
+      <Modal title="Session Complete" onClose={() => onClose(true)}>
         <p className="dial-session-name">Nice work.</p>
         <p className="hint-note">
           You made {calledCount} call{calledCount === 1 ? "" : "s"} out of {leads.length} contact
@@ -321,7 +334,7 @@ export function DialSession({
         <div className="modal-actions">
           <div />
           <div>
-            <button className="btn-primary" onClick={onClose}>
+            <button className="btn-primary" onClick={() => onClose(true)}>
               Close
             </button>
           </div>
@@ -397,6 +410,16 @@ export function DialSession({
       )}
 
       {callScript && <div className="dial-session-script">{callScript}</div>}
+
+      {lead && (callInfo[lead.id]?.callsSince ?? 0) > 0 && (
+        <p className="error-note" style={{ textAlign: "center" }}>
+          ⚠ Already called {callInfo[lead.id].callsSince}× today
+          {callInfo[lead.id].lastAt
+            ? ` — last at ${new Date(callInfo[lead.id].lastAt as string).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+            : ""}
+          . Auto-dial is paused for this contact.
+        </p>
+      )}
 
       {countdown !== null ? (
         <div className="dial-countdown">

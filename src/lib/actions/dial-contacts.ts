@@ -9,6 +9,7 @@ import {
   digitsSearchPattern,
 } from "@/lib/dial-filters";
 import { normalizePhone, type Lead } from "@/lib/data/types";
+import { summarizeLeadCalls, type LeadCallInfo } from "@/lib/lead-call-info";
 import {
   DIAL_PAGE_SIZE,
   type DialContactPage,
@@ -192,26 +193,52 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
 }
 
 /**
- * Full Lead rows for the contacts a rep selected -- the dial session
- * needs the real card (quick-edit fields, address for the maps link).
- * Bounded by the selection, not the book; ordered newest-first to match
- * the queue's own order.
+ * Everything a dial session starts with: the full Lead rows for the
+ * selected contacts (the session works the real card -- quick-edit
+ * fields, the maps link), in the order the rep queued them, plus each
+ * lead's call recency so the session can warn "already called today"
+ * and pause auto-dial instead of ringing the same person twice in an
+ * afternoon. `sinceIso` is the rep's local midnight, computed in the
+ * browser so "today" means their calendar day.
  */
-export async function getDialLeads(ids: string[]): Promise<Lead[]> {
+export async function getDialSessionLeads(
+  ids: string[],
+  sinceIso: string
+): Promise<{ leads: Lead[]; callInfo: Record<string, LeadCallInfo> }> {
   const profile = await getCurrentProfile();
-  if (!profile || ids.length === 0) return [];
+  if (!profile || ids.length === 0) return { leads: [], callInfo: {} };
   const supabase = await createClient();
+
   const rows: Lead[] = [];
+  const logRows: { lead_id: string | null; created_at: string }[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
-    const { data } = await supabase
-      .from("leads")
-      .select("*")
-      .eq("company_id", profile.company_id)
-      .in("id", ids.slice(i, i + IN_CHUNK));
+    const chunk = ids.slice(i, i + IN_CHUNK);
+    const [{ data }, { data: logs }] = await Promise.all([
+      supabase
+        .from("leads")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .in("id", chunk),
+      // Bounded to the rep's day: an unbounded read is silently capped
+      // at 1000 rows by PostgREST, and the warning only ever shows
+      // calls since sinceIso anyway.
+      supabase
+        .from("call_logs")
+        .select("lead_id, created_at")
+        .eq("company_id", profile.company_id)
+        .eq("direction", "outbound")
+        .gte("created_at", sinceIso)
+        .in("lead_id", chunk),
+    ]);
     rows.push(...((data ?? []) as Lead[]));
+    logRows.push(...((logs ?? []) as { lead_id: string | null; created_at: string }[]));
   }
-  rows.sort((a, b) => b.created_at.localeCompare(a.created_at));
-  return rows;
+
+  // The queue dials in the order the rep built it, not table order.
+  const position = new Map(ids.map((id, i) => [id, i]));
+  rows.sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+
+  return { leads: rows, callInfo: Object.fromEntries(summarizeLeadCalls(logRows, sinceIso)) };
 }
 
 /**

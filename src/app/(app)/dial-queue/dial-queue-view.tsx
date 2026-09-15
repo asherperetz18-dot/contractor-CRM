@@ -19,12 +19,13 @@ import {
   type Profile,
 } from "@/lib/data/types";
 import { deleteDialList, saveDialList } from "@/lib/actions/dial-lists";
-import { getDialLeads, listDialContacts, matchDialCsvPhones } from "@/lib/actions/dial-contacts";
+import { getDialSessionLeads, listDialContacts, matchDialCsvPhones } from "@/lib/actions/dial-contacts";
 import {
   DIAL_PAGE_SIZE,
   type DialContactPage,
   type DialContactRow,
 } from "@/lib/dial-filters";
+import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { DialSession } from "./dial-session";
 import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
 
@@ -84,7 +85,10 @@ export function DialQueueView({
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [session, setSession] = useState<Lead[] | null>(null);
+  const [session, setSession] = useState<{
+    leads: Lead[];
+    callInfo: Record<string, LeadCallInfo>;
+  } | null>(null);
 
   const [callAttempts, setCallAttempts] = useState<CallAttemptsFilter>("All");
   const [dispositionFilter, setDispositionFilter] = useState(NO_DISPOSITION);
@@ -141,6 +145,9 @@ export function DialQueueView({
    */
   const [contactPage, setContactPage] = useState<DialContactPage>(initialContacts);
   const [loadingRows, setLoadingRows] = useState(false);
+  /** Bumped when a dial session closes, so the list reflects the
+   *  dispositions it just recorded. */
+  const [listRefresh, setListRefresh] = useState(0);
   const firstQueryRef = useRef(true);
   // Newest query wins: a slow response for a filter the rep already
   // left must not overwrite the list they are looking at.
@@ -178,7 +185,7 @@ export function DialQueueView({
     // 250ms is under the reaction time of reading the new list anyway.
     const t = setTimeout(run, 250);
     return () => clearTimeout(t);
-  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter]);
+  }, [tab, search, page, callAttempts, dispositionFilter, addressTypeFilter, statusFilter, stageFilter, repFilter, dateFilter, listRefresh]);
 
   const pageRows = contactPage.rows;
   const total = contactPage.total;
@@ -220,9 +227,13 @@ export function DialQueueView({
     try {
       // The session works the full card (quick-edit, maps link), so the
       // real rows are fetched now, for just the selection -- ids whose
-      // lead has meanwhile been deleted simply come back absent.
-      const queue = await getDialLeads([...selected]);
-      if (queue.length > 0) setSession(queue);
+      // lead has meanwhile been deleted simply come back absent. The
+      // rep's local midnight rides along so "already called today" means
+      // their calendar day, not the server's.
+      const today = new Date();
+      const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const result = await getDialSessionLeads([...selected], midnight.toISOString());
+      if (result.leads.length > 0) setSession(result);
     } finally {
       setStartingSession(false);
     }
@@ -717,11 +728,21 @@ export function DialQueueView({
 
       {session && (
         <DialSession
-          leads={session}
+          leads={session.leads}
+          callInfo={session.callInfo}
           dispositions={dispositions}
           reps={reps}
           callScript={callScript}
-          onClose={() => setSession(null)}
+          onClose={(completed) => {
+            setSession(null);
+            // A finished queue is spent: keeping it selected made the
+            // next Start Dialing ring the same people all over again.
+            // An early exit keeps the selection so the rep can resume.
+            if (completed) setSelected(new Set());
+            // Dispositions moved contacts off this filter's list --
+            // refetch so the table shows the book as it now stands.
+            setListRefresh((t) => t + 1);
+          }}
         />
       )}
     </div>
