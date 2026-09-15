@@ -33,6 +33,9 @@ export function ForgotPasswordForm() {
           <a href="/login">Back to sign in</a>
         </p>
       </div>
+      <footer className="site-footer">
+        © 2026 AI Build Pros LLC. All rights reserved.
+      </footer>
     </div>
   );
 }

@@ -58,6 +58,9 @@ export default async function WelcomePage({
           <a href="/login">Go to sign in</a>
         </p>
       </div>
+      <footer className="site-footer">
+        © 2026 AI Build Pros LLC. All rights reserved.
+      </footer>
     </div>
   );
 }

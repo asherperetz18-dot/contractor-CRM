@@ -59,6 +59,9 @@ export function ResetPasswordForm({ tokenHash }: { tokenHash: string }) {
           </button>
         </form>
       </div>
+      <footer className="site-footer">
+        © 2026 AI Build Pros LLC. All rights reserved.
+      </footer>
     </div>
   );
 }

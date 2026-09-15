@@ -1,4 +1,5 @@
 import "server-only";
+import { withLegalFooter } from "./email-footer";
 
 // Same BOM defense as twilio-env.ts -- `vercel env add` has intermittently
 // prepended a UTF-8 BOM to piped-in values on this machine, and a BOM can
@@ -79,7 +80,14 @@ export async function sendEmail(
   const fromProblem = nonAsciiComplaint("The sender address (EMAIL_FROM)", env.from);
   if (fromProblem) return { error: fromProblem };
 
-  const body: Record<string, unknown> = { from: env.from, to: [to], subject, html, text };
+  const branded = withLegalFooter(html, text);
+  const body: Record<string, unknown> = {
+    from: env.from,
+    to: [to],
+    subject,
+    html: branded.html,
+    text: branded.text,
+  };
   if (options.replyTo) body.reply_to = options.replyTo;
 
   // Network faults and malformed values surface as a readable message
