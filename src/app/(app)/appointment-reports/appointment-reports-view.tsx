@@ -14,7 +14,7 @@ import {
   leadDisplayName,
   shortReceivedDate,
   type Event,
-  type Lead,
+  type LeadLite,
   type Profile,
 } from "@/lib/data/types";
 
@@ -41,7 +41,7 @@ export function AppointmentReportsView({
   reps,
 }: {
   events: Event[];
-  leads: Lead[];
+  leads: LeadLite[];
   reps: Profile[];
   canWrite: boolean;
 }) {

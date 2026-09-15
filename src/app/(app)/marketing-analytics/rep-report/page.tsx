@@ -24,6 +24,24 @@ import {
 import { PrintButton } from "@/components/print-button";
 import { RepReportFilters } from "./report-filters";
 
+/** The lead fields this report reads -- fetched exactly, never the
+ *  40-column row with notes, for every lead in the company. */
+type RepReportLead = Pick<
+  Lead,
+  | "id"
+  | "contact_type"
+  | "company_name"
+  | "first_name"
+  | "last_name"
+  | "assigned_to"
+  | "created_at"
+  | "lead_cost"
+  | "phone"
+  | "source"
+  | "stage"
+  | "value"
+>;
+
 export const dynamic = "force-dynamic";
 
 type Company = {
@@ -149,7 +167,7 @@ type LeadRow = {
  */
 function buildFunnel(
   repId: string,
-  leads: Lead[],
+  leads: RepReportLead[],
   events: Event[],
   estimates: Estimate[],
   leadRepById: Map<string, string | null>,
@@ -210,7 +228,7 @@ function buildFunnel(
   };
 }
 
-function customerOf(lead: Lead | undefined): string {
+function customerOf(lead: RepReportLead | undefined): string {
   if (!lead) return "Unknown";
   return (
     [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() ||
@@ -259,7 +277,7 @@ function apptRows(
  */
 function leadRows(
   repId: string,
-  leads: Lead[],
+  leads: RepReportLead[],
   estimates: Estimate[],
   win: Window
 ): LeadRow[] {
@@ -306,8 +324,15 @@ export default async function RepReportPage({
   const supabase = await createClient();
   const [leads, members, events, { data: estimates }, { data: company }] =
     await Promise.all([
-      selectAll<Lead>((f, t) =>
-        supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
+      selectAll<RepReportLead>((f, t) =>
+        supabase
+          .from("leads")
+          .select(
+            "id, contact_type, company_name, first_name, last_name, assigned_to, created_at, lead_cost, phone, source, stage, value"
+          )
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .range(f, t)
       ),
       getCompanyMembers(companyId),
       // selectAll: a bare select stops at 1000 rows in silence -- this

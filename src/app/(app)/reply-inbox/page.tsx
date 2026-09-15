@@ -2,16 +2,22 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import { canEditDispatch, type Lead, type SmsMessage } from "@/lib/data/types";
+import { leadsLiteByIds, leadsLiteForMessages } from "@/lib/data/lead-lite";
+import { canEditDispatch, type SmsMessage } from "@/lib/data/types";
 import { ReplyInboxView } from "./reply-inbox-view";
 
-export default async function ReplyInboxPage() {
+export default async function ReplyInboxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ leadId?: string }>;
+}) {
+  const { leadId: targetLeadId } = await searchParams;
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canEditDispatch(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [messages, leads, allReps] = await Promise.all([
+  const [messages, allReps] = await Promise.all([
     // selectAll, not a bare select: past 1000 lifetime messages the
     // ascending order + PostgREST's silent max-rows cap returned the
     // OLDEST thousand -- newest conversations missing entirely, which
@@ -36,17 +42,25 @@ export default async function ReplyInboxPage() {
         .order("created_at", { ascending: true })
         .range(f, t)
     ),
-    selectAll<Lead>((f, t) =>
-      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
-    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
   const reps = allReps.filter((r) => r.phone);
 
+  // Only the contacts these conversations reference -- by id, or by the
+  // counterparty's phone for texts never linked to a lead -- plus the
+  // lead a compose deep-link (?leadId=) targets, which may have no
+  // messages yet. The whole book used to ride along for this lookup.
+  const [messageLeads, targetLeads] = await Promise.all([
+    leadsLiteForMessages(supabase, companyId, messages as SmsMessage[]),
+    targetLeadId ? leadsLiteByIds(supabase, companyId, [targetLeadId]) : Promise.resolve([]),
+  ]);
+  const seen = new Set(messageLeads.map((l) => l.id));
+  const leads = [...messageLeads, ...targetLeads.filter((l) => !seen.has(l.id))];
+
   return (
     <ReplyInboxView
       messages={(messages as SmsMessage[]) ?? []}
-      leads={(leads as Lead[]) ?? []}
+      leads={leads}
       reps={reps}
       canWrite={canWrite}
     />

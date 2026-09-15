@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import { canUseSalesCenter, type Event, type Lead } from "@/lib/data/types";
+import { leadsLiteByIds } from "@/lib/data/lead-lite";
+import { canUseSalesCenter, type Event } from "@/lib/data/types";
 import { AppointmentReportsView } from "./appointment-reports-view";
 
 export default async function AppointmentReportsPage() {
@@ -11,7 +12,7 @@ export default async function AppointmentReportsPage() {
   const canWrite = canUseSalesCenter(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [events, leads, reps] = await Promise.all([
+  const [events, reps] = await Promise.all([
     // Paged: appointments accumulate faster than anything else here, and
     // a plain select stops at 1000 rows without saying so.
     selectAll<Event>((f, t) =>
@@ -22,11 +23,12 @@ export default async function AppointmentReportsPage() {
         .order("date", { ascending: false })
         .range(f, t)
     ),
-    selectAll<Lead>((f, t) =>
-      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
-    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
+
+  // Only the contacts these appointments reference -- the whole book
+  // used to ride along just to print names next to the rows.
+  const leads = await leadsLiteByIds(supabase, companyId, events.map((e) => e.lead_id));
 
   return (
     <AppointmentReportsView
