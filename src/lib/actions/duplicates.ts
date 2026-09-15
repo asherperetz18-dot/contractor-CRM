@@ -5,15 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canEditDispatch, normalizePhone, type Lead } from "@/lib/data/types";
+import { canEditDispatch } from "@/lib/data/types";
+import {
+  buildDuplicatePairs,
+  type DupPairContact,
+  type DuplicatePair,
+  type OversizedDupGroup,
+} from "@/lib/duplicate-pairs";
 
-export type DuplicateReason = "phone" | "email";
-
-export type DuplicatePair = {
-  leadA: Lead;
-  leadB: Lead;
-  reasons: DuplicateReason[];
-};
+export type { DuplicatePair, DuplicateReason, OversizedDupGroup } from "@/lib/duplicate-pairs";
 
 async function requireCanEditLeads(): Promise<{ error: string } | { companyId: string }> {
   const profile = await getCurrentProfile();
@@ -26,70 +26,50 @@ async function requireCanEditLeads(): Promise<{ error: string } | { companyId: s
 // Detection is computed on demand from leads (matching normalized phone
 // or exact-lowercase email) rather than stored, so it's always current.
 // Only lead_duplicate_dismissals -- which pairs a user has already ruled
-// out -- is persisted.
-export async function findDuplicateLeads(): Promise<{ error?: string; pairs?: DuplicatePair[] }> {
+// out -- is persisted. The scan is slim (never notes, never full rows),
+// pairing runs in buildDuplicatePairs with its safety rails (a junk
+// number shared by hundreds of imports reports as a cluster instead of
+// exploding into pairs, and the list is capped) -- the uncapped version
+// froze the browser the day the 73k import landed. See its tests.
+const MAX_PAIR_GROUP = 8;
+const MAX_PAIRS = 200;
+
+export async function findDuplicateLeads(): Promise<{
+  error?: string;
+  pairs?: DuplicatePair[];
+  totalPairs?: number;
+  oversized?: OversizedDupGroup[];
+}> {
   const guard = await requireCanEditLeads();
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
-  const [leads, { data: dismissals }] = await Promise.all([
-    selectAll<Lead>((rangeFrom, rangeTo) =>
-      supabase.from("leads").select("*").eq("company_id", guard.companyId).range(rangeFrom, rangeTo)
+  const [rows, { data: dismissals }] = await Promise.all([
+    selectAll<DupPairContact>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select("id, contact_type, company_name, first_name, last_name, phone, email, source, stage, created_at")
+        .eq("company_id", guard.companyId)
+        // Ordered so the pager's pages can't overlap or skip.
+        .order("created_at", { ascending: false })
+        .range(rangeFrom, rangeTo)
     ),
     supabase
       .from("lead_duplicate_dismissals")
       .select("lead_id_a, lead_id_b")
       .eq("company_id", guard.companyId),
   ]);
-  const allLeads = (leads as Lead[]) ?? [];
   const dismissedPairs = new Set(
     ((dismissals ?? []) as { lead_id_a: string; lead_id_b: string }[]).map(
       (d) => `${d.lead_id_a}:${d.lead_id_b}`
     )
   );
 
-  const byPhone = new Map<string, Lead[]>();
-  const byEmail = new Map<string, Lead[]>();
-  for (const lead of allLeads) {
-    const phone = lead.phone ? normalizePhone(lead.phone) : "";
-    if (phone.length >= 7) {
-      if (!byPhone.has(phone)) byPhone.set(phone, []);
-      byPhone.get(phone)!.push(lead);
-    }
-    const email = lead.email?.trim().toLowerCase() ?? "";
-    if (email) {
-      if (!byEmail.has(email)) byEmail.set(email, []);
-      byEmail.get(email)!.push(lead);
-    }
-  }
-
-  const pairReasons = new Map<
-    string,
-    { leadA: Lead; leadB: Lead; reasons: Set<DuplicateReason> }
-  >();
-  function addGroups(groups: Map<string, Lead[]>, reason: DuplicateReason) {
-    for (const group of groups.values()) {
-      if (group.length < 2) continue;
-      for (let i = 0; i < group.length; i++) {
-        for (let j = i + 1; j < group.length; j++) {
-          const [a, b] = group[i].id < group[j].id ? [group[i], group[j]] : [group[j], group[i]];
-          const key = `${a.id}:${b.id}`;
-          if (dismissedPairs.has(key)) continue;
-          const entry = pairReasons.get(key) ?? { leadA: a, leadB: b, reasons: new Set<DuplicateReason>() };
-          entry.reasons.add(reason);
-          pairReasons.set(key, entry);
-        }
-      }
-    }
-  }
-  addGroups(byPhone, "phone");
-  addGroups(byEmail, "email");
-
-  const pairs = [...pairReasons.values()]
-    .map((p) => ({ leadA: p.leadA, leadB: p.leadB, reasons: [...p.reasons] }))
-    .sort((a, b) => b.reasons.length - a.reasons.length);
-
-  return { pairs };
+  const result = buildDuplicatePairs(rows, dismissedPairs, {
+    maxGroupSize: MAX_PAIR_GROUP,
+    maxPairs: MAX_PAIRS,
+  });
+  return { pairs: result.pairs, totalPairs: result.totalPairs, oversized: result.oversized };
 }
 
 export type MergePreviewSide = {

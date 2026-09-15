@@ -1,4 +1,5 @@
-import { money, type Lead, type Profile } from "@/lib/data/types";
+import { money, type Profile } from "@/lib/data/types";
+import type { RepLeadStats } from "@/lib/report-leads";
 
 const MEDALS = ["🏆", "🥈", "🥉"];
 
@@ -13,10 +14,11 @@ function initials(name: string | null, email: string | null) {
 
 export function SalespeopleGrid({
   reps,
-  leads,
+  statsByRep,
 }: {
   reps: Profile[];
-  leads: Lead[];
+  /** Per-rep tallies, computed server-side from a slim scan. */
+  statsByRep: Record<string, RepLeadStats>;
 }) {
   // Sales role only. This page ranks selling performance, so an Admin or
   // Office account sitting in it with zeroes reads as a rep who has sold
@@ -26,13 +28,10 @@ export function SalespeopleGrid({
   );
 
   const stats = activeReps
-    .map((rep) => {
-      const assigned = leads.filter((l) => l.assigned_to === rep.id);
-      const open = assigned.filter((l) => !["Won", "Lost", "DNC"].includes(l.stage));
-      const won = assigned.filter((l) => l.stage === "Won");
-      const wonValue = won.reduce((s, l) => s + (Number(l.value) || 0), 0);
-      return { rep, assignedCount: assigned.length, openCount: open.length, wonCount: won.length, wonValue };
-    })
+    .map((rep) => ({
+      rep,
+      ...(statsByRep[rep.id] ?? { assignedCount: 0, openCount: 0, wonCount: 0, wonValue: 0 }),
+    }))
     .sort((a, b) => b.wonValue - a.wonValue);
 
   return (

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { resolveWindow, withinWindow } from "@/lib/data/date-range";
-import { leadDisplayName, normalizePhone, type Lead, type SmsMessage } from "@/lib/data/types";
+import { leadDisplayName, normalizePhone, type LeadLite, type SmsMessage } from "@/lib/data/types";
 
 type DirectionFilter = "All" | "outbound" | "inbound";
 
@@ -33,7 +33,7 @@ function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
 
-export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; leads: Lead[] }) {
+export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; leads: LeadLite[] }) {
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<DirectionFilter>("All");
   const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
@@ -46,7 +46,7 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
   // Inbound texts from someone who isn't linked to a lead still need a
   // name where we have one -- match on the sender's number.
   const leadByPhone = useMemo(() => {
-    const map = new Map<string, Lead>();
+    const map = new Map<string, LeadLite>();
     for (const l of leads) {
       if (l.phone) map.set(normalizePhone(l.phone), l);
       if (l.second_contact_phone) map.set(normalizePhone(l.second_contact_phone), l);
@@ -54,7 +54,7 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
     return map;
   }, [leads]);
 
-  function contactFor(m: SmsMessage): Lead | null {
+  function contactFor(m: SmsMessage): LeadLite | null {
     if (m.lead_id) return leadById.get(m.lead_id) ?? null;
     const other = m.direction === "inbound" ? m.from_number : m.to_number;
     return leadByPhone.get(normalizePhone(other)) ?? null;

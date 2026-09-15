@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   leadDisplayName,
-  type Lead,
+  type LeadLite,
   type Profile,
   type SetterContact,
 } from "@/lib/data/types";
 import { assignSetterContact, unassignSetterContact } from "@/lib/actions/setter-contacts";
+import { searchBookableLeads, type LeadMatch } from "@/lib/actions/lead-search";
 
 export function SetterAssignments({
   reps,
@@ -17,7 +18,7 @@ export function SetterAssignments({
   canWrite,
 }: {
   reps: Profile[];
-  leads: Lead[];
+  leads: LeadLite[];
   assignments: SetterContact[];
   canWrite: boolean;
 }) {
@@ -26,6 +27,20 @@ export function SetterAssignments({
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState(false);
+
+  // The picker's matches come from the server now -- searching the book
+  // in the browser was only possible because every lead was shipped here.
+  const [matches, setMatches] = useState<LeadMatch[]>([]);
+  useEffect(() => {
+    const q = search.trim();
+    const t = setTimeout(() => {
+      // Two characters is where a search starts being a search; below
+      // that the list clears rather than showing most of the book.
+      if (q.length < 2) setMatches([]);
+      else searchBookableLeads(q).then(setMatches);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
 
@@ -73,10 +88,7 @@ export function SetterAssignments({
             const isAdding = addingFor === rep.id;
             const assignedLeadIds = new Set(assigned.map((a) => a.lead_id));
             const candidates = q
-              ? leads
-                  .filter((l) => !assignedLeadIds.has(l.id))
-                  .filter((l) => leadDisplayName(l).toLowerCase().includes(q))
-                  .slice(0, 8)
+              ? matches.filter((l) => !assignedLeadIds.has(l.id)).slice(0, 8)
               : [];
 
             return (
@@ -144,7 +156,7 @@ export function SetterAssignments({
                                   className="contact-match-row"
                                   onClick={() => handleAssign(rep.id, l.id)}
                                 >
-                                  {leadDisplayName(l)}
+                                  {l.label}
                                   {l.address ? ` — ${l.address}` : ""}
                                 </div>
                               ))}

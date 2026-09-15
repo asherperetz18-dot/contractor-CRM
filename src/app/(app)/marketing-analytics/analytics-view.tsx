@@ -21,6 +21,26 @@ const PRESETS = [
   { key: "all", label: "All Time" },
 ];
 
+/** The lead fields this page's funnel/source math reads -- the page
+ *  fetches exactly these, never the 40-column row. */
+export type AnalyticsLead = Pick<
+  Lead,
+  | "id"
+  | "contact_type"
+  | "company_name"
+  | "first_name"
+  | "last_name"
+  | "source"
+  | "stage"
+  | "value"
+  | "created_at"
+  | "won_at"
+  | "has_appt"
+  | "assigned_to"
+  | "lead_cost"
+  | "phone"
+>;
+
 export type SignedContract = {
   lead_id: string;
   status: string;
@@ -34,7 +54,7 @@ export function AnalyticsView({
   stages,
   signedContracts,
 }: {
-  leads: Lead[];
+  leads: AnalyticsLead[];
   reps: Profile[];
   stages: PipelineStageRow[];
   signedContracts: SignedContract[];
@@ -160,7 +180,7 @@ export function AnalyticsView({
       .filter((s) => s.count > 0);
   }, [createdInRange, stages]);
 
-  function daysToClose(l: Lead) {
+  function daysToClose(l: Pick<Lead, "won_at" | "created_at">) {
     if (!l.won_at) return null;
     return Math.max(
       0,

@@ -1412,6 +1412,24 @@ export type Lead = {
 // Power Dialer's ADDRESS TYPE filter (verified against the real
 // iBuildPro product). Defaults to "Unverified" since we don't run an
 // address-verification service; can be set manually.
+/**
+ * The slice of a lead the report pages render next to their rows -- a
+ * name to print, a phone to match, an address to show. Fetched only for
+ * the leads a page's rows actually reference (src/lib/data/lead-lite.ts);
+ * the full 40-column row never travels for lookups. DECISIONS #021.
+ */
+export type LeadLite = {
+  id: string;
+  contact_type: ContactType;
+  company_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  /** The second contact's number -- Text Reports matches texts on it too. */
+  second_contact_phone: string | null;
+  address: string | null;
+};
+
 export type AddressType =
   | "Unverified"
   | "Unknown"

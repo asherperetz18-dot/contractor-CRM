@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   leadDisplayName,
   normalizePhone,
-  type Lead,
+  type LeadLite,
   type Profile,
   type SmsMessage,
 } from "@/lib/data/types";
@@ -34,7 +34,7 @@ export function ReplyInboxView({
   canWrite,
 }: {
   messages: SmsMessage[];
-  leads: Lead[];
+  leads: LeadLite[];
   reps: Profile[];
   canWrite: boolean;
 }) {

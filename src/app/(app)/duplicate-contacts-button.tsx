@@ -11,6 +11,7 @@ import {
   mergeLeads,
   type DuplicatePair,
   type MergePreviewSide,
+  type OversizedDupGroup,
 } from "@/lib/actions/duplicates";
 import { leadDisplayName } from "@/lib/data/types";
 
@@ -114,6 +115,8 @@ export function DuplicateContactsButton() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pairs, setPairs] = useState<DuplicatePair[] | null>(null);
+  const [totalPairs, setTotalPairs] = useState(0);
+  const [oversized, setOversized] = useState<OversizedDupGroup[]>([]);
   const [error, setError] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
@@ -133,6 +136,8 @@ export function DuplicateContactsButton() {
       return;
     }
     setPairs(result.pairs ?? []);
+    setTotalPairs(result.totalPairs ?? result.pairs?.length ?? 0);
+    setOversized(result.oversized ?? []);
   }
 
   async function handleDismiss(pair: DuplicatePair) {
@@ -257,9 +262,21 @@ export function DuplicateContactsButton() {
               {!loading && pairs && pairs.length > 0 && (
                 <>
                   <p className="hint-note">
-                    Found {pairs.length} potential duplicate{pairs.length === 1 ? "" : "s"}. Pick
-                    which contact to keep, or mark a pair as not a duplicate.
+                    Found {totalPairs.toLocaleString()} potential duplicate
+                    {totalPairs === 1 ? "" : "s"}
+                    {totalPairs > pairs.length
+                      ? ` — showing the ${pairs.length} strongest matches; resolve or dismiss these and rescan for more`
+                      : ""}
+                    . Pick which contact to keep, or mark a pair as not a duplicate.
                   </p>
+                  {oversized.length > 0 && (
+                    <p className="hint-note">
+                      {oversized.length.toLocaleString()} shared value{oversized.length === 1 ? "" : "s"} are
+                      each on more than 8 contacts and are left out of pair review — a number or
+                      email on that many records is bad imported data, not a mergeable pair.
+                      Largest: {oversized.slice(0, 3).map((g) => `${g.key} (${g.count.toLocaleString()} contacts)`).join(", ")}.
+                    </p>
+                  )}
                   <div className="dup-pair-list">
                     {pairs.map((pair) => {
                       const busy = busyKey === pairKey(pair);

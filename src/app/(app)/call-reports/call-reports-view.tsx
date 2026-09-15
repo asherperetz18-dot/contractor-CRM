@@ -8,7 +8,7 @@ import {
   leadDisplayName,
   type CallDispositionRow,
   type CallLog,
-  type Lead,
+  type LeadLite,
   type Profile,
 } from "@/lib/data/types";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
@@ -40,7 +40,7 @@ export function CallReportsView({
   initialRange,
 }: {
   callLogs: CallLog[];
-  leads: Lead[];
+  leads: LeadLite[];
   reps: Profile[];
   dispositions: CallDispositionRow[];
   canWrite: boolean;

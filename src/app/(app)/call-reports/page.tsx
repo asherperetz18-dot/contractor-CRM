@@ -2,11 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
+import { leadsLiteByIds } from "@/lib/data/lead-lite";
 import {
   canUseSalesCenter,
   type CallDispositionRow,
   type CallLog,
-  type Lead,
 } from "@/lib/data/types";
 import { CallReportsView } from "./call-reports-view";
 
@@ -35,7 +35,7 @@ export default async function CallReportsPage({
   const fromIso = valid(fromTs) ? fromTs! : rangeKey === "all" ? null : thirtyDaysBack;
   const toIso = valid(toTs) ? toTs! : null;
 
-  const [callLogs, leads, reps, { data: dispositions }] = await Promise.all([
+  const [callLogs, reps, { data: dispositions }] = await Promise.all([
     // selectAll, where a bare select stopped at PostgREST's 1000-row
     // ceiling in silence -- the Total Calls card was reading exactly
     // 1000 because that was the cap, not the count.
@@ -49,17 +49,18 @@ export default async function CallReportsPage({
       if (toIso) q = q.lt("created_at", toIso);
       return q.range(f, t);
     }),
-    selectAll<Lead>((f, t) =>
-      supabase.from("leads").select("*").eq("company_id", companyId).range(f, t)
-    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("call_dispositions").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
 
+  // Only the contacts these calls reference -- the whole book used to
+  // ride along just to print names next to the rows.
+  const leads = await leadsLiteByIds(supabase, companyId, (callLogs ?? []).map((c) => c.lead_id));
+
   return (
     <CallReportsView
       callLogs={callLogs ?? []}
-      leads={(leads as Lead[]) ?? []}
+      leads={leads}
       reps={reps}
       dispositions={(dispositions as CallDispositionRow[]) ?? []}
       canWrite={canWrite}
