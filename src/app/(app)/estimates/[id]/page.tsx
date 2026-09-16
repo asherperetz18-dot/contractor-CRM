@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
+import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { paidTotalCents } from "@/lib/data/types";
+import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { CompletionEditor } from "./completion-editor";
@@ -80,6 +81,32 @@ export default async function EstimateDetailPage({
     );
   }
 
+  // The closer's hold on sending. Resolved here so the page can hide
+  // the send buttons and say who sends instead of them -- the server
+  // actions refuse a held send anyway; this stops the click happening.
+  let sendHold: string | null = null;
+  if (estimate.lead_id && canSendEstimates(profile) && !isAdminRole(profile)) {
+    const { data: leadCloser } = await supabase
+      .from("leads")
+      .select("closer_id")
+      .eq("id", estimate.lead_id)
+      .maybeSingle<{ closer_id: string | null }>();
+    const held = closerHoldsSend({
+      closerId: leadCloser?.closer_id ?? null,
+      userId: profile.id,
+      officeOrAdmin: false,
+      kind: estimate.kind,
+    });
+    if (held) {
+      const { data: closer } = await supabase
+        .from("profiles")
+        .select("name, email")
+        .eq("id", leadCloser!.closer_id!)
+        .maybeSingle<{ name: string | null; email: string | null }>();
+      sendHold = closerHoldMessage(closer?.name || closer?.email || null);
+    }
+  }
+
   // When the customer looked, newest first -- for the trail line under
   // the document header.
   const { data: viewRows } = await supabase
@@ -134,8 +161,10 @@ export default async function EstimateDetailPage({
       changeOrderBilling={changeOrderBilling}
       lead={lead ?? null}
       canEdit={canCreateEstimates(profile)}
-      // Drafts only when off: the Users & Roles "Send Estimates" switch.
-      canSend={canSendEstimates(profile)}
+      // Drafts only when off: the Users & Roles "Send Estimates" switch,
+      // plus the closer's hold on a closer-led lead.
+      canSend={canSendEstimates(profile) && !sendHold}
+      sendHoldNote={sendHold}
       // Separate from canEdit on purpose. A bookkeeper records what the
       // job cost without being able to touch the contract it is recorded
       // against -- which is the whole reason the Bookkeeping role exists.
