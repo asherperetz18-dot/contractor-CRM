@@ -15,7 +15,12 @@ import { fileURLToPath } from "node:url";
 // the new rule, every line item on it to the old one. This test pins
 // the two rules to the same answer -- whoever next edits either
 // function edits both, or reads this.
-const GRANTS = ["assigned_to", "dispatcher_id", "closer_id"];
+//
+// second_assigned_to is the appointment seat (0152): a rep booked onto
+// a lead's appointment -- either chair -- sees the lead, its estimates
+// and their contents, exactly like the closer. The string only occurs
+// in the events clause, so it pins that whole grant.
+const GRANTS = ["assigned_to", "dispatcher_id", "closer_id", "second_assigned_to"];
 
 const migrationsDir = join(
   dirname(fileURLToPath(import.meta.url)),
