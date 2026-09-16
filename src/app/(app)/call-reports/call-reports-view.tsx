@@ -11,6 +11,7 @@ import {
   type LeadLite,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
 
 function formatDuration(seconds: number) {
@@ -191,7 +192,12 @@ export function CallReportsView({
         />
         <select value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
           <option value="All">All Reps</option>
-          {reps.map((r) => (
+          {repDropdownOptions(
+            reps,
+            // Salespeople plus anyone who actually made calls, and the
+            // current tick so it stays visible to be undone.
+            callLogs.map((c) => c.rep_id).concat(repFilter)
+          ).map((r) => (
             <option key={r.id} value={r.id}>
               {r.name || r.email}
             </option>

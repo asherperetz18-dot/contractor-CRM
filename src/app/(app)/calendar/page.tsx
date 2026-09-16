@@ -18,6 +18,7 @@ import {
   canWriteLeadNotes,
   isDispatchScoped,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions/dispatcher";
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { CalendarBoard } from "./calendar-board";
@@ -149,7 +150,7 @@ export default async function CalendarPage() {
   // becomes unreachable through the filter. Appointments alone hides a
   // newly hired rep until their first booking, so they look missing on
   // the day they need to be picked.
-  const filterReps = reps.filter((r) => r.roles?.includes("Sales") || onCalendar.has(r.id));
+  const filterReps = repDropdownOptions(reps, onCalendar);
 
   return (
     <CalendarBoard

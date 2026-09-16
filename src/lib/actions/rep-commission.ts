@@ -13,6 +13,7 @@ import {
   paidTotalCents,
   commissionHolds,
   commissionQualifiedAt,
+  type AppRole,
   type CommissionHold,
   type RepCommission,
 } from "@/lib/data/types";
@@ -253,21 +254,36 @@ export async function saveSalesCommissionDefaults(input: {
   return {};
 }
 
-/** Active members, for the two salesperson pickers. */
-export async function getCommissionReps(): Promise<{ id: string; name: string }[]> {
+export type CommissionRep = { id: string; name: string; roles: AppRole[] };
+
+/** Active members with their roles, for the salesperson and closer
+ *  pickers -- roles included so callers can narrow to actual reps
+ *  (repDropdownOptions) while still resolving any stored id to a name. */
+export async function getCommissionReps(): Promise<CommissionRep[]> {
   const profile = await getCurrentProfile();
   if (!profile) return [];
   const supabase = await createClient();
   const { data } = await supabase
     .from("company_members")
-    .select("profile_id, status, profiles(id, name, email)")
+    .select("profile_id, status, roles, profiles(id, name, email)")
     .eq("company_id", profile.company_id)
     .eq("status", "Active")
-    .returns<{ profiles: { id: string; name: string | null; email: string | null } | null }[]>();
+    .returns<
+      {
+        roles: AppRole[] | null;
+        profiles: { id: string; name: string | null; email: string | null } | null;
+      }[]
+    >();
   return (data ?? [])
-    .map((r) => r.profiles)
-    .filter((p): p is { id: string; name: string | null; email: string | null } => !!p)
-    .map((p) => ({ id: p.id, name: p.name || p.email || "Unnamed" }))
+    .filter(
+      (r): r is { roles: AppRole[] | null; profiles: NonNullable<(typeof r)["profiles"]> } =>
+        !!r.profiles
+    )
+    .map((r) => ({
+      id: r.profiles.id,
+      name: r.profiles.name || r.profiles.email || "Unnamed",
+      roles: r.roles ?? [],
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

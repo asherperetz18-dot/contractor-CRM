@@ -60,6 +60,7 @@ import {
 // have would just fail.
 const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
 import { TasksPanel } from "./tasks-panel";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { NotesTimeline } from "./notes-timeline";
 import { MessagesPanel } from "./messages-panel";
 import {
@@ -1023,7 +1024,7 @@ export function LeadForm({
               onChange={(e) => set("assigned_to", e.target.value)}
             >
               <option value="">Unassigned</option>
-              {reps.map((r) => (
+              {repDropdownOptions(reps, [lead?.assigned_to, form.assigned_to]).map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name || r.email}
                 </option>
@@ -1229,7 +1230,7 @@ export function LeadForm({
                     }
                   >
                     <option value="">Unassigned</option>
-                    {reps.map((r) => (
+                    {repDropdownOptions(reps, [booking.assignedTo]).map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name || r.email}
                       </option>

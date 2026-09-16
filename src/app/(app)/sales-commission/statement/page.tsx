@@ -7,6 +7,7 @@ import {
   type CommissionHold,
 } from "@/lib/data/types";
 import { getRepCommissions, getCommissionReps } from "@/lib/actions/rep-commission";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { PrintButton } from "@/components/print-button";
 import { StatementFilters } from "./statement-filters";
 
@@ -124,7 +125,9 @@ export default async function CommissionStatementPage({
       </div>
 
       <StatementFilters
-        reps={reps}
+        // Salespeople only, plus anyone with a commission line and the
+        // rep already picked in the URL, so no statement goes unheadable.
+        reps={repDropdownOptions(reps, [sp.rep, ...all.map((r) => r.repId)])}
         repId={sp.rep ?? ""}
         from={from}
         to={to}

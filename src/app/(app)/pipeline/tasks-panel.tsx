@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Field } from "@/components/ui/field";
 import type { LeadTask, Profile } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { completeLeadTask, createLeadTask, deleteLeadTask } from "@/lib/actions/leads";
 
 function todayISO() {
@@ -188,7 +189,7 @@ export function TasksPanel({
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
             >
               <option value="">Unassigned</option>
-              {reps.map((r) => (
+              {repDropdownOptions(reps, [form.assigned_to]).map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name || r.email}
                 </option>

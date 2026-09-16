@@ -14,6 +14,7 @@ import {
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { bookAppointmentForLead, createLead } from "@/lib/actions/leads";
 import { searchBookableLeads, type LeadMatch } from "@/lib/actions/lead-search";
 import { createEvent } from "@/lib/actions/events";
@@ -390,7 +391,7 @@ export function AppointmentWizard({
               <Field label="Assigned To">
                 <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
                   <option value="">Unassigned</option>
-                  {reps.map((r) => (
+                  {repDropdownOptions(reps, [assignedTo]).map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name || r.email}
                     </option>

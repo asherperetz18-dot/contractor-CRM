@@ -21,6 +21,7 @@ import {
   type ProjectTypeRow,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { moveLeadStage } from "@/lib/actions/leads";
 import { getLeadCard, getPipelineBoardData, getStageCards } from "@/lib/actions/pipeline-board";
 import type { BoardCard, PipelineBoardData, PipelineBoardQuery } from "@/lib/pipeline-board-types";
@@ -616,7 +617,12 @@ export function PipelineBoard({
   const repOptions = [
     { value: "All", label: "All Reps" },
     { value: "unassigned", label: "Unassigned" },
-    ...reps.map((r) => ({ value: r.id, label: r.name || r.email || "" })),
+    // Salespeople only, plus the current tick -- "All"/"unassigned"
+    // match no member id, so passing the raw filter value is harmless.
+    ...repDropdownOptions(reps, [repFilter]).map((r) => ({
+      value: r.id,
+      label: r.name || r.email || "",
+    })),
   ];
 
   const clientWidth = scrollMetrics.clientWidth || 1;

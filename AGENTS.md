@@ -30,3 +30,27 @@ upload UI must offer, without being asked:
   storage → record), never through a server action body.
 
 CSV/spreadsheet imports are data, not pictures — they are exempt.
+
+# People dropdowns — standing rule (always, automatic)
+
+Never render the raw roster into a `<select>` of people again. Every
+dropdown that offers people narrows through `repDropdownOptions`
+(`src/lib/data/rep-options.ts`), alphabetical by the name the option
+shows. Any new or touched people dropdown gets this without being asked:
+
+- **Assignment fields** (Assigned To, Second Assigned To, Assigned Rep,
+  salesperson seats, Closer, task assignee, booking pickers): active
+  **Sales-role** members only, passing the field's current value as
+  `keep` — a stored assignee must never vanish from its own select, or
+  it renders blank and saves as data lost.
+- **Rep filters** (schedule, calendar, appointment/call reports,
+  pipeline board, commission statement): the same list **plus the ids
+  present in the rows being filtered** and the current tick — someone
+  with rows must stay reachable, and a tick must stay visible to be
+  undone (same idea as `repOptionIds` on the estimates funnel).
+- **Role-specific pickers keep their own role** — Dispatcher stays
+  Dispatch (`getDispatchers`), production job assignees stay crew. The
+  rule is "only the people relevant to the field", not literally Sales
+  everywhere.
+- Name lookups (`repById`, `repName`) keep reading the **whole** roster
+  — narrowing those turns historical assignees into "Unnamed".
