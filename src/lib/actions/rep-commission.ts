@@ -17,6 +17,11 @@ import {
   type CommissionHold,
   type RepCommission,
 } from "@/lib/data/types";
+import {
+  describeSalesTeamChange,
+  salesTeamChanged,
+  type SalesTeamSnapshot,
+} from "@/lib/data/sales-team-changes";
 
 export type SalesTeam = {
   sales_rep_1: string | null;
@@ -170,20 +175,30 @@ export async function saveSalesTeam(
   }
 
   const supabase = await createClient();
+  // The row as it stands, so the audit trail below can hold both sides.
+  const { data: current } = await supabase
+    .from("estimates")
+    .select(TEAM_COLUMNS)
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<SalesTeamSnapshot>();
+
+  const stored: SalesTeamSnapshot = {
+    sales_rep_1: team.sales_rep_1 || null,
+    sales_rep_1_bp: oneBp,
+    sales_rep_2: team.sales_rep_2 || null,
+    sales_rep_2_bp: twoBp,
+    closer_id: team.closer_id || null,
+    closer_pool_bp: closerBp,
+    // Stamped here rather than read at report time, so changing the
+    // company rate later cannot restate what has already been paid.
+    commission_rate_bp: Math.round(team.commission_rate_bp),
+    lead_cost_bp: Math.round(team.lead_cost_bp),
+  };
+
   const { data, error } = await supabase
     .from("estimates")
-    .update({
-      sales_rep_1: team.sales_rep_1 || null,
-      sales_rep_1_bp: oneBp,
-      sales_rep_2: team.sales_rep_2 || null,
-      sales_rep_2_bp: twoBp,
-      closer_id: team.closer_id || null,
-      closer_pool_bp: closerBp,
-      // Stamped here rather than read at report time, so changing the
-      // company rate later cannot restate what has already been paid.
-      commission_rate_bp: Math.round(team.commission_rate_bp),
-      lead_cost_bp: Math.round(team.lead_cost_bp),
-    })
+    .update(stored)
     .eq("id", estimateId)
     .eq("company_id", profile.company_id)
     .select("id");
@@ -192,7 +207,85 @@ export async function saveSalesTeam(
 
   revalidatePath("/estimates");
   revalidatePath("/commissions");
+
+  // Seats decide pay and the statement computes live from them, so a
+  // swap with no record would restate history silently. One row per
+  // save that changed anything (sales_team_changes, 0154), snapshots
+  // as stored. If the row can't be written the save has already stood,
+  // so the admin is told the history is short, not that saving failed.
+  if (current && salesTeamChanged(current, stored)) {
+    const { error: logError } = await supabase.from("sales_team_changes").insert({
+      company_id: profile.company_id,
+      estimate_id: estimateId,
+      changed_by: profile.id,
+      old_team: current,
+      new_team: stored,
+    });
+    if (logError) {
+      return {
+        error: "The team was saved, but recording it in the change history failed: " + logError.message,
+      };
+    }
+  }
   return {};
+}
+
+export type SalesTeamChangeRow = {
+  id: string;
+  changedAt: string;
+  changedByName: string;
+  lines: string[];
+};
+
+/**
+ * The change history for one contract's sales team, newest first.
+ * Gated like the save itself: this is pay history, not team info.
+ */
+export async function getSalesTeamChanges(
+  estimateId: string
+): Promise<{ error?: string; changes?: SalesTeamChangeRow[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin can read this." };
+
+  const supabase = await createClient();
+  const [changesRes, peopleRes] = await Promise.all([
+    supabase
+      .from("sales_team_changes")
+      .select("id, changed_at, changed_by, old_team, new_team")
+      .eq("company_id", profile.company_id)
+      .eq("estimate_id", estimateId)
+      .order("changed_at", { ascending: false })
+      .returns<
+        {
+          id: string;
+          changed_at: string;
+          changed_by: string | null;
+          old_team: SalesTeamSnapshot;
+          new_team: SalesTeamSnapshot;
+        }[]
+      >(),
+    // The whole roster, not just reps: a seat somebody held last year
+    // must still resolve to their name (AGENTS.md).
+    supabase
+      .from("profiles")
+      .select("id, name, email")
+      .returns<{ id: string; name: string | null; email: string | null }[]>(),
+  ]);
+  if (changesRes.error) return { error: changesRes.error.message };
+
+  const nameById = new Map(
+    (peopleRes.data ?? []).map((p) => [p.id, p.name || p.email || "Unnamed"])
+  );
+  const repName = (id: string) => nameById.get(id) ?? "Unnamed";
+  return {
+    changes: (changesRes.data ?? []).map((c) => ({
+      id: c.id,
+      changedAt: c.changed_at,
+      changedByName: c.changed_by ? (nameById.get(c.changed_by) ?? "Unnamed") : "system",
+      lines: describeSalesTeamChange(c.old_team, c.new_team, repName),
+    })),
+  };
 }
 
 /**
