@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getPopupAlerts } from "@/lib/actions/popup-alerts";
+import type { PopupAlerts, PopupAlertsInput } from "@/lib/actions/popup-alerts";
 import type { FreshText } from "@/lib/actions/text-alerts";
 import { shapeToasts, type PopupToast } from "@/lib/popup-shape";
 import { pageTitle, tabTitle } from "@/lib/tab-title";
@@ -158,11 +158,25 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
       document.title = tabTitle(document.title, document.hidden, awaiting.current + hiddenNew.current);
     }
 
+    // A route handler, not the server action: the action path re-runs
+    // the whole layout per ask (~1.5s, live-users-button.tsx), and this
+    // asks every 20 seconds on every open tab -- with the user's own
+    // Save/Send queued behind it.
+    async function fetchAlerts(
+      input: PopupAlertsInput
+    ): Promise<{ error?: string; data?: PopupAlerts } | null> {
+      const qs = new URLSearchParams();
+      if (input.textsSince) qs.set("textsSince", input.textsSince);
+      if (input.eventsSince) qs.set("eventsSince", input.eventsSince);
+      const r = await fetch(`/api/popup-alerts?${qs}`, { cache: "no-store" });
+      return r.ok ? r.json() : null;
+    }
+
     async function poll() {
       if (inFlight) return;
       inFlight = true;
       try {
-        const res = await getPopupAlerts({
+        const res = await fetchAlerts({
           textsSince: back(textsSeen.current),
           eventsSince: back(eventsSeen.current),
         }).catch(() => null);

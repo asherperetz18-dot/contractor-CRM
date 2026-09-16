@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  getNotifications,
   markNotificationsRead,
   type BellData,
   type BellItem,
@@ -61,17 +60,33 @@ export function NotificationBell() {
   useEffect(() => {
     let dead = false;
     const load = async () => {
-      const res = await getNotifications();
-      if (!dead && res.data) setData(res.data);
+      // A route handler, not the server action: the action path re-runs
+      // the whole layout per ask (~1.5s, live-users-button.tsx), and
+      // this asks every minute on every open tab.
+      const res = await fetch("/api/notifications", { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<{ error?: string; data?: BellData }>) : null))
+        .catch(() => null);
+      if (!dead && res?.data) setData(res.data);
     };
     load();
-    const timer = setInterval(load, 60000);
+    // A hidden tab keeps its badge stale rather than polling: the popup
+    // watcher still runs hidden (it owns the title count and the ding)
+    // and its FRESH_EVENT wakes this bell, and coming back to the tab
+    // refreshes it below.
+    const timer = setInterval(() => {
+      if (!document.hidden) void load();
+    }, 60000);
     const onFresh = () => void load();
     window.addEventListener(FRESH_EVENT, onFresh);
+    const onVisible = () => {
+      if (!document.hidden) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       dead = true;
       clearInterval(timer);
       window.removeEventListener(FRESH_EVENT, onFresh);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

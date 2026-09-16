@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
+import { presetWindow } from "@/lib/data/date-range";
+import { getAnalyticsLeads } from "@/lib/actions/marketing-analytics";
 import type { PipelineStageRow } from "@/lib/data/types";
-import { AnalyticsView, type AnalyticsLead, type SignedContract } from "./analytics-view";
+import { AnalyticsView, type SignedContract } from "./analytics-view";
 
 export default async function MarketingAnalyticsPage() {
   const supabase = await createClient();
@@ -11,16 +12,12 @@ export default async function MarketingAnalyticsPage() {
   const companyId = profile?.company_id ?? "";
 
   const [leads, allReps, { data: stages }, { data: estimates }] = await Promise.all([
-    // Exactly the fields the funnel math reads -- full rows (notes
-    // included) used to ride along for every lead in the company.
-    selectAll<AnalyticsLead>((f, t) =>
-      supabase
-        .from("leads")
-        .select("id, contact_type, company_name, first_name, last_name, source, stage, value, created_at, won_at, has_appt, assigned_to, lead_cost, phone")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .range(f, t)
-    ),
+    // Only the default window's slice -- the whole 79k book used to
+    // ride to the browser here (#019/#020). 31 days for the view's
+    // 30-day default, so the client's own clock can never trim the
+    // boundary day; the view re-filters exactly, and other ranges are
+    // fetched on demand.
+    getAnalyticsLeads(presetWindow("31")),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     // Signed contracts decide which leads a source actually sold. The
@@ -37,7 +34,7 @@ export default async function MarketingAnalyticsPage() {
 
   return (
     <AnalyticsView
-      leads={leads}
+      initialLeads={leads}
       reps={reps}
       stages={(stages as PipelineStageRow[]) ?? []}
       signedContracts={(estimates as SignedContract[]) ?? []}

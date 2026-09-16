@@ -5,7 +5,6 @@ import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/modal";
 import {
   endScreenShare,
-  getActiveShares,
   getIceServers,
   getShareTargets,
   requestScreenShare,
@@ -819,7 +818,12 @@ export function ScreenShareEngine({
 
   const refreshOffers = useCallback(async () => {
     if (activeRef.current) return;
-    const res = await getActiveShares().catch(() => null);
+    // A route handler, not the server action: every idle tab asks every
+    // 20 seconds, and the action path re-runs the whole layout per ask
+    // (~1.5s, live-users-button.tsx).
+    const res = await fetch("/api/screen-shares", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<{ error?: string; shares?: ActiveShare[] }>) : null))
+      .catch(() => null);
     if (!res?.shares || activeRef.current) return;
     // A share aimed at me outranks an open one; RLS already hides
     // shares aimed at somebody else.
@@ -844,12 +848,23 @@ export function ScreenShareEngine({
     }
   }, [selfId, startWatching, clearRequestTimers]);
 
-  // discovery poll for the viewer banner
+  // discovery poll for the viewer banner. A hidden tab skips its turn
+  // -- an offer can't be accepted unseen, the invite broadcast below
+  // still lands instantly, and coming back to the tab asks right away.
   useEffect(() => {
     if (sharing || watching) return;
     void refreshOffers();
-    const t = setInterval(() => void refreshOffers(), POLL_MS);
-    return () => clearInterval(t);
+    const t = setInterval(() => {
+      if (!document.hidden) void refreshOffers();
+    }, POLL_MS);
+    const onVisible = () => {
+      if (!document.hidden) void refreshOffers();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [sharing, watching, dismissed, refreshOffers]);
 
   // The company alert channel: a starting sharer knocks here, and

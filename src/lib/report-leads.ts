@@ -39,6 +39,38 @@ export type RepLeadStats = {
  * (assigned_to, stage, value) -- the same buckets the grid computed
  * from full rows in the browser.
  */
+/** One row per rep from the rep_lead_stats SQL function (0156) --
+ *  Postgres aggregates can arrive as strings through JSON, so every
+ *  figure is coerced here, in one place. */
+export type RepLeadStatsRow = {
+  assigned_to: string;
+  assigned_count: number | string;
+  open_count: number | string;
+  won_count: number | string;
+  won_value: number | string;
+};
+
+/**
+ * The same tallies repLeadStats builds from a scan, taken instead from
+ * the grouped rows the database already reduced -- so the page reads
+ * one row per rep, not one per lead. The two must bucket identically;
+ * the buckets live in the SQL (migration 0156) and are pinned by the
+ * tests beside this file.
+ */
+export function repLeadStatsFromRows(rows: RepLeadStatsRow[]): Map<string, RepLeadStats> {
+  return new Map(
+    rows.map((r) => [
+      r.assigned_to,
+      {
+        assignedCount: Number(r.assigned_count) || 0,
+        openCount: Number(r.open_count) || 0,
+        wonCount: Number(r.won_count) || 0,
+        wonValue: Number(r.won_value) || 0,
+      },
+    ])
+  );
+}
+
 export function repLeadStats(
   slim: { assigned_to: string | null; stage: string; value: number }[]
 ): Map<string, RepLeadStats> {

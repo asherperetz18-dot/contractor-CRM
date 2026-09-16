@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { counterpartyPhoneKeys, repLeadStats } from "./report-leads.ts";
+import { counterpartyPhoneKeys, repLeadStats, repLeadStatsFromRows } from "./report-leads.ts";
 
 /**
  * The report pages used to ship every lead in the company to the
@@ -36,4 +36,24 @@ test("rep tallies: assigned, open, won, and won value — same buckets the grid 
   assert.deepEqual(stats.get("r1"), { assignedCount: 4, openCount: 1, wonCount: 1, wonValue: 50000 });
   assert.deepEqual(stats.get("r2"), { assignedCount: 1, openCount: 0, wonCount: 1, wonValue: 2500 });
   assert.equal(stats.has(""), false);
+});
+
+test("RPC rows convert to the same tallies the scan built — numerics may arrive as strings", () => {
+  const stats = repLeadStatsFromRows([
+    { assigned_to: "r1", assigned_count: 3, open_count: 1, won_count: "2", won_value: "75000" },
+    { assigned_to: "r2", assigned_count: "1", open_count: "1", won_count: 0, won_value: 0 },
+  ]);
+  assert.deepEqual(stats.get("r1"), {
+    assignedCount: 3,
+    openCount: 1,
+    wonCount: 2,
+    wonValue: 75000,
+  });
+  assert.deepEqual(stats.get("r2"), {
+    assignedCount: 1,
+    openCount: 1,
+    wonCount: 0,
+    wonValue: 0,
+  });
+  assert.equal(stats.size, 2);
 });

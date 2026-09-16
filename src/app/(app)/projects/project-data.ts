@@ -41,7 +41,7 @@ export async function buildProjectCards(
 }> {
   // selectAll throughout: a bare select stops at 1000 rows in silence,
   // and a projects page that quietly omits jobs is worse than none.
-  const [estimates, payments, paid, expenses, leads, reps, openBills, billPayments] = await Promise.all([
+  const [estimates, payments, paid, expenses, reps, openBills, billPayments] = await Promise.all([
     selectAll<Estimate>((from, to) =>
       supabase.from("estimates").select("*").eq("company_id", companyId).range(from, to)
     ),
@@ -63,13 +63,6 @@ export async function buildProjectCards(
       supabase
         .from("job_expenses")
         .select("id, company_id, lead_id, estimate_payment_id, vendor, category, description, amount_cents, spent_on, source, qb_txn_id, qb_txn_type, qb_project_id, created_at")
-        .eq("company_id", companyId)
-        .range(from, to)
-    ),
-    selectAll<ProjectLead>((from, to) =>
-      supabase
-        .from("leads")
-        .select("id, first_name, last_name, company_name, address, assigned_to")
         .eq("company_id", companyId)
         .range(from, to)
     ),
@@ -139,6 +132,21 @@ export async function buildProjectCards(
   for (const c of contracts) {
     contractsPerLead.set(c.lead_id, (contractsPerLead.get(c.lead_id) ?? 0) + 1);
   }
+
+  // Only the leads these documents actually name -- not the company's
+  // whole 79k contact book, which is a multi-second fetch for a page
+  // that labels its project cards (same cure as Estimates, #019/#020).
+  const leadIds = [...new Set(estimates.map((e) => e.lead_id).filter(Boolean))];
+  const leads = leadIds.length
+    ? await selectAll<ProjectLead>((from, to) =>
+        supabase
+          .from("leads")
+          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .eq("company_id", companyId)
+          .in("id", leadIds)
+          .range(from, to)
+      )
+    : ([] as ProjectLead[]);
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r.name]));
