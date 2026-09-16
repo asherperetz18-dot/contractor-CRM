@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { touchDevice } from "@/lib/actions/devices";
 import { describeDevice, getOrCreateDeviceId } from "@/lib/device";
 import { createClient } from "@/lib/supabase/client";
 
@@ -97,7 +96,16 @@ export function ActivityTracker() {
     const deviceLabel = describeDevice(navigator.userAgent);
 
     async function touch() {
-      const res = await touchDevice(deviceId, navigator.userAgent, deviceLabel);
+      // A route handler, not the server action: this rides the 30s
+      // heartbeat on every working tab, and the action path re-runs the
+      // whole layout per ask (~1.5s, live-users-button.tsx).
+      const res = await fetch("/api/device-touch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId, userAgent: navigator.userAgent, label: deviceLabel }),
+      })
+        .then((r) => (r.ok ? (r.json() as Promise<{ revoked?: boolean }>) : null))
+        .catch(() => null);
       // Revoked while signed in: end it here. There is no push channel to
       // this browser, so this heartbeat is the only thing that can carry
       // the news -- which is why it takes effect within a heartbeat
