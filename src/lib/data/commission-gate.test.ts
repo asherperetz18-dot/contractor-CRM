@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { commissionHolds, commissionQualifiedAt, computeRepCommission } from "./types.ts";
+import {
+  closerPoolShareBp,
+  commissionHolds,
+  commissionQualifiedAt,
+  computeRepCommission,
+} from "./types.ts";
 
 /**
  * Commission is paid when the job is finished and settled: paid in full,
@@ -156,6 +161,77 @@ test("two reps always split the pot exactly, with no cent lost to rounding", () 
     rep2Bp: 6667,
   });
   assert.equal(c.rep1Cents + c.rep2Cents, c.poolCents);
+});
+
+// ── The closer's seat ────────────────────────────────────────────────
+//
+// The closer holds their own seat on the contract (closer_pool_bp, a
+// share of the pool -- migration 0153), and the reps split what is
+// left. Their cut comes off the top so a second rep can join the split
+// without touching what the closer was promised.
+
+test("the closer's cut comes off the pool first, and the rep keeps the rest", () => {
+  // Same $80,000 job as above: pool $14,000. A 10%-of-pool closer
+  // (the default 5%-of-net against a 50% rate) takes $1,400.
+  const c = computeRepCommission({
+    contractCents: 8_000_000,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 4_000_000,
+    hasCosts: true,
+    rep1Bp: 10000,
+    rep2Bp: 0,
+    closerPoolBp: 1000,
+  });
+  assert.equal(c.poolCents, 1_400_000);
+  assert.equal(c.closerCents, 140_000);
+  assert.equal(c.rep1Cents, 1_260_000);
+});
+
+test("two reps and a closer account for the whole pot, to the cent", () => {
+  const c = computeRepCommission({
+    contractCents: 1_000_001,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 333_333,
+    hasCosts: true,
+    rep1Bp: 3333,
+    rep2Bp: 6667,
+    closerPoolBp: 1000,
+  });
+  assert.equal(c.closerCents + c.rep1Cents + c.rep2Cents, c.poolCents);
+});
+
+// The conversion 0135 documented: closer_bp is promised as a share of
+// NET PROFIT, the pool split is stored as a share of THE POOL. Getting
+// the bases mixed up pays the closer ten times too much, so the same
+// arithmetic the seeding trigger runs lives here for the panel's
+// pre-signature preview -- and is pinned to the trigger's worked
+// example (5% of net against a 50% pool = 10% of the pool).
+test("a 5%-of-net closer against a 50% pool takes 10% of the pool", () => {
+  assert.equal(closerPoolShareBp(500, 5000), 1000);
+});
+
+test("no commission rate means no pool, so the closer's converted share is nil", () => {
+  assert.equal(closerPoolShareBp(500, 0), 0);
+});
+
+test("a closer share at or beyond the whole pool is clamped, not negative maths", () => {
+  assert.equal(closerPoolShareBp(6000, 5000), 10000);
+});
+
+test("no closer means the maths of every older contract is untouched", () => {
+  const withField = computeRepCommission({
+    contractCents: 8_000_000,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 4_000_000,
+    hasCosts: true,
+    rep1Bp: 10000,
+    rep2Bp: 0,
+  });
+  assert.equal(withField.closerCents, 0);
+  assert.equal(withField.rep1Cents, 1_400_000);
 });
 
 // ── Appointment delete permission ────────────────────────────────────

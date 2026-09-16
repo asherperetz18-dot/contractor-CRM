@@ -2895,8 +2895,10 @@ export type RepCommission = {
   leadCostCents: number;
   expensesCents: number;
   netProfitCents: number;
-  /** The whole pot before it is split between the reps. */
+  /** The whole pot before it is split between the closer and the reps. */
   poolCents: number;
+  /** The closer's cut, taken off the pool before the reps split it. */
+  closerCents: number;
   rep1Cents: number;
   rep2Cents: number;
   /**
@@ -2911,6 +2913,26 @@ export type RepCommission = {
    */
   unmeasured: boolean;
 };
+
+/**
+ * The closer's promised share of net profit, converted into a share of
+ * the commission pool.
+ *
+ * The same arithmetic the seeding trigger runs at signature (0135,
+ * reworked in 0153): closer_bp is a share of NET PROFIT, the stored
+ * split is a share of THE POOL, and dividing by the commission rate is
+ * what moves between the bases. Lives here too so the Sales Team
+ * panel's pre-signature preview and the trigger cannot disagree.
+ *
+ * A zero rate means no pool, so there is nothing to convert into; a
+ * share at or beyond the whole pool is clamped to it -- visibly wrong
+ * on the panel, where a negative rep share would just look like a bug.
+ */
+export function closerPoolShareBp(closerShareBp: number, commissionRateBp: number): number {
+  if (commissionRateBp <= 0) return 0;
+  const poolBp = Math.round((closerShareBp / commissionRateBp) * 10000);
+  return Math.min(Math.max(poolBp, 0), 10000);
+}
 
 /**
  * What the reps earn on one contract.
@@ -2932,9 +2954,15 @@ export function computeRepCommission(input: {
   /** Actual money spent on the job, and whether any was recorded. */
   expensesCents: number;
   hasCosts: boolean;
-  /** How the pot divides. 6000/4000 is a 60/40 split. */
+  /** How the pot divides between the reps, after the closer's cut.
+   *  6000/4000 is a 60/40 split of what the closer leaves behind. */
   rep1Bp: number;
   rep2Bp: number;
+  /** The closer's share OF THE POOL (estimates.closer_pool_bp, 0153).
+   *  Zero or absent on a contract with no closer seat -- including
+   *  every contract signed before the seat existed, where the closer
+   *  sat in rep seat two and this stays 0. */
+  closerPoolBp?: number;
 }): RepCommission {
   const leadCostCents = Math.round((input.contractCents * input.leadCostBp) / 10000);
   const netProfitCents = input.contractCents - leadCostCents - input.expensesCents;
@@ -2942,10 +2970,15 @@ export function computeRepCommission(input: {
   // does not owe the company a refund out of this calculation either.
   const poolCents = Math.max(0, Math.round((netProfitCents * input.commissionRateBp) / 10000));
 
-  const rep1Cents = Math.round((poolCents * input.rep1Bp) / 10000);
-  // The remainder, so the two shares always add up to the pot exactly
+  // Off the top, so a second rep can join the split without touching
+  // what the closer was promised.
+  const closerCents = Math.round((poolCents * (input.closerPoolBp ?? 0)) / 10000);
+  const repPoolCents = poolCents - closerCents;
+
+  const rep1Cents = Math.round((repPoolCents * input.rep1Bp) / 10000);
+  // The remainder, so the shares always add up to the pot exactly
   // rather than losing a cent to rounding on a 1/3 split.
-  const rep2Cents = input.rep2Bp > 0 ? poolCents - rep1Cents : 0;
+  const rep2Cents = input.rep2Bp > 0 ? repPoolCents - rep1Cents : 0;
 
   return {
     contractCents: input.contractCents,
@@ -2953,6 +2986,7 @@ export function computeRepCommission(input: {
     expensesCents: input.expensesCents,
     netProfitCents,
     poolCents,
+    closerCents,
     rep1Cents,
     rep2Cents,
     unmeasured: !input.hasCosts,
