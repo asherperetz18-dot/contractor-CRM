@@ -4,9 +4,7 @@ import { canViewFinancials } from "@/lib/data/accounting-access";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canManageBills,
-  collectionsSummary,
   isAdminRole,
-  moneyCents,
   paymentMethodLabel,
   phaseState,
   type EstimatePayment,
@@ -17,6 +15,7 @@ import { getStripeEnv } from "@/lib/stripe-env";
 import {
   PaymentsView,
   type BilledPhaseRow,
+  type ContractValueRow,
   type DepositChaseRow,
   type PaymentHistoryRow,
 } from "./payments-view";
@@ -147,7 +146,6 @@ export default async function PaymentsPage() {
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
 
-  const s = collectionsSummary(contracts, payments, billedPhases);
   const settledDeposits = new Set(
     payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
   );
@@ -193,6 +191,15 @@ export default async function PaymentsPage() {
       depositCents: c.deposit_cents || 0,
     }));
 
+  // Every signed contract's value, so the view can put an Outstanding
+  // figure under the client/rep filters — the chase rows alone can't,
+  // they only carry contracts whose deposit is still owed.
+  const contractRows: ContractValueRow[] = contracts.map((c) => ({
+    leadId: c.lead_id,
+    rep: repOf(c.lead_id),
+    totalCents: c.total_cents,
+  }));
+
   const historyRows: PaymentHistoryRow[] = payments.map((p) => {
     const c = docOf(p.estimate_id);
     const leadId = p.lead_id ?? c?.lead_id ?? null;
@@ -233,43 +240,14 @@ export default async function PaymentsPage() {
         </p>
       )}
 
-      <div className="stat-grid stat-grid-6">
-        <div className={"stat-card stat-static" + (s.collectedCents > 0 ? " stat-card-won" : "")}>
-          <div className="stat-value mono">{moneyCents(s.collectedCents)}</div>
-          <div className="stat-label">Collected</div>
-        </div>
-        {/* Red only while something is actually late, so the colour never
-            means anything but "act on this". */}
-        <div className={"stat-card stat-static" + (s.overdueCents > 0 ? " stat-card-late" : "")}>
-          <div className="stat-value mono">{moneyCents(s.overdueCents)}</div>
-          <div className="stat-label">Overdue</div>
-        </div>
-        <div className={"stat-card stat-static" + (s.billedCents > 0 ? " stat-card-gold" : "")}>
-          <div className="stat-value mono">{moneyCents(s.billedCents)}</div>
-          <div className="stat-label">Billed, Unpaid</div>
-        </div>
-        <div className={"stat-card stat-static" + (s.outstandingCents > 0 ? " stat-card-gold" : "")}>
-          <div className="stat-value mono">{moneyCents(s.outstandingCents)}</div>
-          <div className="stat-label">Outstanding</div>
-        </div>
-        <div
-          className={"stat-card stat-static" + (s.awaitingDepositCents > 0 ? " stat-card-gold" : "")}
-        >
-          <div className="stat-value mono">{moneyCents(s.awaitingDepositCents)}</div>
-          <div className="stat-label">Deposits Not Paid</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{moneyCents(s.clearingCents)}</div>
-          <div className="stat-label">Clearing (ACH)</div>
-        </div>
-      </div>
-
+      {/* The stat cards render inside the view so they follow the same
+          client/rep filters as the tables — pick a client and every box
+          is that client's money, like Money to Collect. */}
       <PaymentsView
         billed={billedRows}
         chase={chaseRows}
         history={historyRows}
-        overdueCount={s.overdueCount}
-        awaitingDepositCount={s.awaitingDepositCount}
+        contracts={contractRows}
         // Whether the history rows get a tools column at all: marking a
         // pending payment cleared takes the same permission as recording
         // one.
