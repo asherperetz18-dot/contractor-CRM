@@ -5,15 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { shouldAutoOpenNewEstimate } from "@/lib/data/quick-create";
 import {
   effectiveEstimateRepId,
-  estimateExpired,
   moneyCents,
   isSellableKind,
   signatureProgress,
   type Estimate,
   type EstimateSigner,
-  type EstimateStatus,
 } from "@/lib/data/types";
-import { isPendingChangeOrder } from "@/lib/data/pending-change-orders";
+import {
+  effectiveEstimateStatus,
+  funnelCardStats,
+  inFunnelBucket,
+  matchesRepFilter,
+} from "@/lib/data/funnel-cards";
 import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funnel-order";
 import { saveFunnelOrder } from "@/lib/actions/funnel-order";
 import { useFunnelOrder } from "./funnel-order-prefs";
@@ -44,35 +47,25 @@ export type EstimateRep = { id: string; name: string | null; email: string | nul
 // change order is extra work nobody has agreed to yet, and hiding it is
 // how it gets built anyway.
 // Tied to the canonical card list so a card added there cannot be
-// forgotten here, and vice versa -- the compiler objects.
+// forgotten here, and vice versa -- the compiler objects. Which statuses
+// and kinds each card spans lives with the counting, in
+// lib/data/funnel-cards; this list is the labels.
 type Bucket = FunnelCardKey;
 
-const BUCKETS: { key: Bucket; label: string; hint: string; statuses: EstimateStatus[] }[] = [
-  { key: "drafts", label: "Drafts", hint: "not sent yet", statuses: ["Draft"] },
-  { key: "sent", label: "Proposals", hint: "awaiting signature", statuses: ["Sent", "Viewed"] },
-  { key: "signed", label: "Contracts", hint: "signed", statuses: ["Signed"] },
-  { key: "declined", label: "Declined", hint: "lost or expired", statuses: ["Declined", "Expired"] },
+const BUCKETS: { key: Bucket; label: string; hint: string }[] = [
+  { key: "drafts", label: "Drafts", hint: "not sent yet" },
+  { key: "sent", label: "Proposals", hint: "awaiting signature" },
+  { key: "signed", label: "Contracts", hint: "signed" },
+  { key: "declined", label: "Declined", hint: "lost or expired" },
   // Voided documents get their own card rather than being folded into
   // Declined. "The customer said no" and "we cancelled this" are
   // different events, and the second is the one somebody comes looking
   // for when they want to know what happened to a contract.
-  { key: "void", label: "Voided", hint: "cancelled", statuses: ["Void"] },
-  // Every status: a change order matters most while it is unsigned, so
-  // splitting these across the other cards would bury the ones that need
-  // chasing among contracts that don't.
-  {
-    key: "changes",
-    label: "Attached",
-    hint: "change orders & completions",
-    statuses: ["Draft", "Sent", "Viewed", "Signed", "Declined", "Expired", "Void"],
-  },
+  { key: "void", label: "Voided", hint: "cancelled" },
+  { key: "changes", label: "Attached", hint: "change orders & completions" },
   // The chase list Attached buries: change orders nobody has agreed to
-  // yet. Attached spans every status, so the three unsigned extras sit
-  // among a pile of signed and settled documents -- this card is just
-  // those, with the money still waiting for a signature as its total.
-  // Membership comes from isPendingChangeOrder rather than these
-  // statuses, which are listed for the shape of the row.
-  { key: "co_pending", label: "Change Orders", hint: "pending", statuses: ["Draft", "Sent", "Viewed"] },
+  // yet, with the money still waiting for a signature as its total.
+  { key: "co_pending", label: "Change Orders", hint: "pending" },
 ];
 
 const DEFAULT_ORDER = BUCKETS.map((b) => b.key);
@@ -196,13 +189,6 @@ export function EstimatesView({
     signersByEstimate.set(s.estimate_id, list);
   }
 
-  // An estimate past its expiry is treated as expired for counting and
-  // filtering even while the stored status still says Sent -- nothing
-  // sweeps the table on a timer, and a stale "awaiting signature" count is
-  // worse than none.
-  const effectiveStatus = (e: Estimate): EstimateStatus =>
-    estimateExpired(e) ? "Expired" : e.status;
-
   // Who this document's salesperson actually is. Not e.assigned_to: that
   // is stamped at creation and never moves, so a draft raised by the
   // dispatcher who took the call kept naming them long after the lead
@@ -214,38 +200,17 @@ export function EstimatesView({
       leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
     });
 
-  // One list or the other, never both. Each card counts only its own
-  // kind, so a change order cannot be tallied as a contract.
-  // isSellableKind rather than a hand-written kind check: the funnel, the
-  // commission base and the lead's value all ask the same question, and
-  // each of them got it wrong in turn when change orders arrived.
-  // Completion certificates are attachments to a contract too.
-  const inBucket = (e: Estimate, b: Bucket, statuses: EstimateStatus[]) =>
-    b === "co_pending"
-      ? isPendingChangeOrder(e)
-      : (b === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&
-        statuses.includes(effectiveStatus(e));
-
-  const counts = BUCKETS.map((b) => {
-    const rows = estimates.filter((e) => inBucket(e, b.key, b.statuses));
-    return {
-      ...b,
-      count: rows.length,
-      // Signed ones only for the change-order total. A draft is a
-      // proposal, and adding it here would report money nobody has
-      // agreed to as though the job had grown.
-      totalCents: rows
-        // Cancelled work is not money. Without this the Voided card would
-        // report the value of everything that was called off as though it
-        // were a pipeline worth chasing.
-        .filter((e) => effectiveStatus(e) !== "Void")
-        .filter((e) => b.key !== "changes" || effectiveStatus(e) === "Signed")
-        .reduce((sum, e) => sum + (e.total_cents || 0), 0),
-    };
-  });
+  // The cards answer for the same slice as the table under them: with a
+  // rep ticked they hold that rep's counts and money, not the whole
+  // company's -- a company-wide "$770,599 signed" above a filtered table
+  // reads as the rep's number, and somebody quotes it as theirs.
+  const counts = BUCKETS.map((b) => ({
+    ...b,
+    ...funnelCardStats(estimates, b.key, repFilter, repIdFor),
+  }));
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const inThisBucket = estimates.filter((e) => inBucket(e, active.key, active.statuses));
+  const inThisBucket = estimates.filter((e) => inFunnelBucket(e, active.key));
 
   // Options come from what is actually in the bucket, never from the
   // full list of reps or statuses.
@@ -264,14 +229,14 @@ export function EstimatesView({
     })
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const statusOptions = [...new Set(inThisBucket.map((e) => effectiveStatus(e)))]
+  const statusOptions = [...new Set(inThisBucket.map((e) => effectiveEstimateStatus(e)))]
     .sort()
     .map((s) => ({ id: s, label: s }));
 
   const rows = inThisBucket.filter(
     (e) =>
-      (repFilter.size === 0 || (() => { const id = repIdFor(e); return !!id && repFilter.has(id); })()) &&
-      (statusFilter.size === 0 || statusFilter.has(effectiveStatus(e)))
+      matchesRepFilter(repIdFor(e), repFilter) &&
+      (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
   );
 
   function customerName(e: Estimate) {
@@ -407,7 +372,7 @@ export function EstimatesView({
               const repId = repIdFor(e);
               const rep = repId ? repById.get(repId) : null;
               const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
-              const status = effectiveStatus(e);
+              const status = effectiveEstimateStatus(e);
               // Nobody owes a signature on a document that is over.
               // Expired belongs here too: the price lapsed, so a partial
               // signature on it is history rather than an outstanding ask.
