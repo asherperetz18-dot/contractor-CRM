@@ -1,42 +1,60 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createEstimate } from "@/lib/actions/estimates";
-import type { EstimateLead } from "./estimates-view";
+import { searchEstimateLeads, type EstimateLeadMatch } from "@/lib/actions/lead-search";
 
 // Mirrors the reference product's create flow, which starts by linking to
 // an existing lead and auto-filling the customer from it. Every estimate
 // belongs to a lead here -- there is no free-floating document.
+//
+// The lead search runs server-side (searchEstimateLeads): this dialog
+// used to filter an array of every lead in the company, which is why the
+// estimates page shipped 79k contacts to draw a few dozen documents.
+// Same debounce-and-discard idiom as the topbar's Search for Anything.
 export function NewEstimateDialog({
-  leads,
   onClose,
   onCreated,
 }: {
-  leads: EstimateLead[];
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<EstimateLead | null>(null);
+  const [matches, setMatches] = useState<EstimateLeadMatch[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<EstimateLeadMatch | null>(null);
   const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestIdRef = useRef(0);
 
-  const needle = query.trim().toLowerCase();
-  const matches = needle
-    ? leads
-        .filter((l) => {
-          const haystack = [l.first_name, l.last_name, l.email, l.address]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(needle);
-        })
-        .slice(0, 8)
-    : [];
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
-  function nameOf(l: EstimateLead) {
-    return [l.first_name, l.last_name].filter(Boolean).join(" ").trim() || "Unnamed lead";
+  function handleQuery(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    const q = value.trim();
+    if (q.length < 2) {
+      setSearching(false);
+      setMatches([]);
+      return;
+    }
+
+    setSearching(true);
+    const requestId = ++requestIdRef.current;
+    debounceRef.current = setTimeout(() => {
+      searchEstimateLeads(q).then((found) => {
+        if (requestIdRef.current !== requestId) return;
+        setMatches(found);
+        setSearching(false);
+      });
+    }, 300);
   }
 
   function submit() {
@@ -59,7 +77,7 @@ export function NewEstimateDialog({
         {selected ? (
           <div className="est-selected-lead">
             <div>
-              <div className="ur-name">{nameOf(selected)}</div>
+              <div className="ur-name">{selected.label}</div>
               <div className="ur-add-phone">{selected.address || selected.email || "—"}</div>
             </div>
             <button className="btn-ghost" onClick={() => setSelected(null)}>
@@ -73,15 +91,15 @@ export function NewEstimateDialog({
               autoFocus
               placeholder="Search leads by name, contact, or address…"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => handleQuery(e.target.value)}
             />
-            {needle && matches.length === 0 && (
+            {query.trim().length >= 2 && !searching && matches.length === 0 && (
               <p className="modal-sub">No leads match that.</p>
             )}
             <div className="est-lead-results">
               {matches.map((l) => (
                 <button key={l.id} className="est-lead-result" onClick={() => setSelected(l)}>
-                  <div className="ur-name">{nameOf(l)}</div>
+                  <div className="ur-name">{l.label}</div>
                   <div className="ur-add-phone">{l.address || l.email || "—"}</div>
                 </button>
               ))}

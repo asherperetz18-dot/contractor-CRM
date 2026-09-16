@@ -107,6 +107,8 @@ export function EstimatesView({
 }: {
   estimates: Estimate[];
   signers: EstimateSigner[];
+  /** Only the leads these documents reference, not the whole book --
+   *  the New Estimate dialog reaches everyone else server-side. */
   leads: EstimateLead[];
   reps: EstimateRep[];
   canCreate: boolean;
@@ -476,7 +478,6 @@ export function EstimatesView({
 
       {creating && (
         <NewEstimateDialog
-          leads={leads}
           onClose={() => setCreating(false)}
           onCreated={(id) => router.push(`/estimates/${id}`)}
         />
