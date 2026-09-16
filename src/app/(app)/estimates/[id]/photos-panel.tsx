@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { attachmentIsImage } from "@/lib/data/types";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import {
@@ -59,7 +59,9 @@ function Thumb({
  * conversation from a gallery at the end that the customer has to match
  * up themselves.
  */
-export function PhotosPanel({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const PhotosPanel = memo(function PhotosPanel({
   estimateId,
   leadId,
   items,
@@ -310,4 +312,4 @@ export function PhotosPanel({
       {error && <p className="error-note">{error}</p>}
     </section>
   );
-}
+});

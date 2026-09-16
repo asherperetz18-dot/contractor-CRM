@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, type CSSProperties } from "react";
+import { memo, useEffect, useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { moneyCents } from "@/lib/data/types";
 import {
@@ -17,7 +17,9 @@ import {
  * would invite someone to raise a change order against a document the
  * customer has not agreed to yet.
  */
-export function ChangeOrders({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const ChangeOrders = memo(function ChangeOrders({
   estimateId,
   contractTotalCents,
   canEdit,
@@ -150,7 +152,7 @@ export function ChangeOrders({
       )}
     </section>
   );
-}
+});
 
 function ChangeOrderTable({
   title,

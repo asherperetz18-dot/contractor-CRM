@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { memo, useState, useTransition } from "react";
 import {
   balanceAfterDepositCents,
   centsFromInput,
@@ -53,7 +53,9 @@ function toRow(p: EstimatePayment): Row {
   };
 }
 
-export function PaymentSchedule({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const PaymentSchedule = memo(function PaymentSchedule({
   estimateId,
   totalCents,
   depositPercentBp,
@@ -573,4 +575,4 @@ export function PaymentSchedule({
       )}
     </section>
   );
-}
+});

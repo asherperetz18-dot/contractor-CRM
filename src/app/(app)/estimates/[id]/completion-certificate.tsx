@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { memo, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createCompletionCertificate,
@@ -14,7 +14,9 @@ import {
  * Shown only on a signed contract, and only one exists per job -- two
  * would each claim to be the moment the warranty started.
  */
-export function CompletionCertificate({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const CompletionCertificate = memo(function CompletionCertificate({
   contractId,
   canEdit,
 }: {
@@ -151,4 +153,4 @@ export function CompletionCertificate({
       {error && !open && <p className="error-note">{error}</p>}
     </section>
   );
-}
+});

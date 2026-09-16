@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { memo, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   expensesByPhase,
@@ -44,7 +44,9 @@ const fmtDay = (s: string) =>
  * nobody chose, and the resulting percentages would look precise while
  * being invented.
  */
-export function JobCosts({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const JobCosts = memo(function JobCosts({
   leadId,
   jobLabel,
   payments,
@@ -451,4 +453,4 @@ export function JobCosts({
       {error && <p className="error-note">{error}</p>}
     </section>
   );
-}
+});

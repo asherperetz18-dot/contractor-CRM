@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { safeInternalPath } from "@/lib/safe-path";
@@ -119,13 +119,18 @@ function toRow(item: EstimateItem): Row {
   };
 }
 
+// One shared empty list, not a `= []` default: a fresh array per render
+// would read as a changed prop to the memoized PaymentSchedule and undo
+// its memo on documents with no change orders -- which is most of them.
+const NO_CHANGE_ORDER_BILLING: ChangeOrderBilling[] = [];
+
 export function EstimateBuilder({
   estimate,
   items,
   signers,
   payments,
   paid,
-  changeOrderBilling = [],
+  changeOrderBilling = NO_CHANGE_ORDER_BILLING,
   lead,
   canEdit,
   canSend = true,
@@ -221,18 +226,25 @@ export function EstimateBuilder({
   const sig = signatureProgress(signers);
 
   // Same computeEstimateTotals the server uses when it saves, so the number
-  // on screen and the number stored can't drift apart.
-  const parsed = rows.map((r) => ({
-    quantity: parseQuantity(r.quantity),
-    unit_price_cents: centsFromInput(r.unitPrice),
-    taxable: r.taxable,
-    // Blank means unknown, which is not the same as zero.
-    cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
-    // In the totals only once the customer ticks it, and a save resets
-    // any earlier tick -- so the total shown here is the un-ticked one,
-    // which is exactly what saving will store.
-    is_optional: r.optional,
-  }));
+  // on screen and the number stored can't drift apart. Memoized (like
+  // every derived figure below) because this component re-renders per
+  // keystroke -- including in the message/terms boxes and during drags,
+  // where none of these figures move.
+  const parsed = useMemo(
+    () =>
+      rows.map((r) => ({
+        quantity: parseQuantity(r.quantity),
+        unit_price_cents: centsFromInput(r.unitPrice),
+        taxable: r.taxable,
+        // Blank means unknown, which is not the same as zero.
+        cost_cents: r.unitCost.trim() === "" ? null : centsFromInput(r.unitCost),
+        // In the totals only once the customer ticks it, and a save resets
+        // any earlier tick -- so the total shown here is the un-ticked one,
+        // which is exactly what saving will store.
+        is_optional: r.optional,
+      })),
+    [rows]
+  );
   // The discount exactly as it will be saved, so the live total below
   // matches the stored one to the cent.
   const discountValue = discountOn
@@ -240,39 +252,57 @@ export function EstimateBuilder({
       ? Math.max(0, Math.min(10000, Math.round((Number(discountInput) || 0) * 100)))
       : centsFromInput(discountInput)
     : 0;
-  const discountForTotals =
-    discountOn && discountValue > 0 ? { type: discountType, value: discountValue } : null;
+  const discountForTotals = useMemo(
+    () =>
+      discountOn && discountValue > 0 ? { type: discountType, value: discountValue } : null,
+    [discountOn, discountType, discountValue]
+  );
 
-  const totals = computeEstimateTotals(parsed, estimate.tax_rate_bp, discountForTotals);
+  const totals = useMemo(
+    () => computeEstimateTotals(parsed, estimate.tax_rate_bp, discountForTotals),
+    [parsed, estimate.tax_rate_bp, discountForTotals]
+  );
 
   // Section totals from the rows on screen, not from what is saved. A
   // subtotal that lags behind the price typed a moment ago reads as a bug
   // even when the stored figure is right.
-  const sectionSubtotals = new Map<string, number>();
-  for (const r of rows) {
-    if (!r.groupId) continue;
-    // Matches the customer's copy, where an un-ticked option is out of
-    // the section subtotal too.
-    if (r.optional) continue;
-    const cents = lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice));
-    sectionSubtotals.set(r.groupId, (sectionSubtotals.get(r.groupId) ?? 0) + cents);
-  }
+  const sectionSubtotals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      if (!r.groupId) continue;
+      // Matches the customer's copy, where an un-ticked option is out of
+      // the section subtotal too.
+      if (r.optional) continue;
+      const cents = lineTotalCents(parseQuantity(r.quantity), centsFromInput(r.unitPrice));
+      map.set(r.groupId, (map.get(r.groupId) ?? 0) + cents);
+    }
+    return map;
+  }, [rows]);
 
   const reloadGroups = useCallback(() => {
     getEstimateGroups(estimate.id).then((res) => setGroups(res.groups ?? []));
   }, [estimate.id]);
+
+  // Stable references for the memoized panels below -- an inline arrow
+  // would quietly undo their memo on every render.
+  const refreshPage = useCallback(() => router.refresh(), [router]);
+  const openGenerateFor = useCallback((groupId: string) => {
+    setGenerateInto(groupId);
+    setGenerating(true);
+  }, []);
 
   useEffect(() => {
     reloadGroups();
   }, [reloadGroups]);
   // Optional lines sit out of the margin the same way they sit out of
   // the total: revenue the customer has not agreed to is not revenue.
-  const margin = estimateMargin(parsed.filter((p) => !p.is_optional));
-  const costsEntered = parsed.some((p) => p.cost_cents !== null);
+  const margin = useMemo(() => estimateMargin(parsed.filter((p) => !p.is_optional)), [parsed]);
+  const costsEntered = useMemo(() => parsed.some((p) => p.cost_cents !== null), [parsed]);
   // Named rows only: a blank starter row is not an unpriced line item.
-  const unpricedLines = rows.filter(
-    (r) => r.name.trim() && centsFromInput(r.unitPrice) === 0
-  ).length;
+  const unpricedLines = useMemo(
+    () => rows.filter((r) => r.name.trim() && centsFromInput(r.unitPrice) === 0).length,
+    [rows]
+  );
 
   function patch(key: string, changes: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...changes } : r)));
@@ -1046,10 +1076,7 @@ export function EstimateBuilder({
         subtotals={sectionSubtotals}
         locked={locked}
         onChanged={reloadGroups}
-        onGenerate={(groupId) => {
-          setGenerateInto(groupId);
-          setGenerating(true);
-        }}
+        onGenerate={openGenerateFor}
       />
 
       <div className="est-totals">
@@ -1247,7 +1274,7 @@ export function EstimateBuilder({
         paid={paid}
         changeOrderBilling={changeOrderBilling}
         locked={locked}
-        onChanged={() => router.refresh()}
+        onChanged={refreshPage}
       />
 
       {/* Costs are worth recording from the moment a job is real, which is

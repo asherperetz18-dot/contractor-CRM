@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { memo, useEffect, useState, useTransition } from "react";
 import { computeRepCommission, moneyCents } from "@/lib/data/types";
 import {
   getCommissionReps,
@@ -23,7 +23,9 @@ import { getJobExpenses } from "@/lib/actions/job-expenses";
  * comes out of net profit, so it is not knowable at signature, and a
  * number that pretended otherwise would have to be taken back later.
  */
-export function SalesTeamPanel({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const SalesTeamPanel = memo(function SalesTeamPanel({
   estimateId,
   leadId,
   contractCents,
@@ -358,4 +360,4 @@ export function SalesTeamPanel({
       )}
     </section>
   );
-}
+});
