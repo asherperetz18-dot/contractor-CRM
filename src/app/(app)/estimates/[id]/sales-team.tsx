@@ -12,6 +12,7 @@ import {
   type SalesTeamChangeRow,
 } from "@/lib/actions/rep-commission";
 import { repDropdownOptions } from "@/lib/data/rep-options";
+import { seatHoldersChanged } from "@/lib/data/sales-team-changes";
 import { getJobExpenses } from "@/lib/actions/job-expenses";
 
 /**
@@ -34,6 +35,9 @@ export function SalesTeamPanel({
   canEdit: boolean;
 }) {
   const [team, setTeam] = useState<SalesTeam | null>(null);
+  // The team as last loaded or saved, so Save can tell a seat moving to
+  // a different person from the numbers being tuned.
+  const [savedTeam, setSavedTeam] = useState<SalesTeam | null>(null);
   const [reps, setReps] = useState<CommissionRep[]>([]);
   const [expensesCents, setExpensesCents] = useState(0);
   const [hasCosts, setHasCosts] = useState(false);
@@ -55,6 +59,7 @@ export function SalesTeamPanel({
       if (cancelled) return;
       if (res.error) return setError(res.error);
       setTeam(res.team ?? null);
+      setSavedTeam(res.team ?? null);
       setReps(people);
       const rows = costs.expenses ?? [];
       setExpensesCents(rows.reduce((s, e) => s + e.amount_cents, 0));
@@ -295,16 +300,32 @@ export function SalesTeamPanel({
         <button
           className="btn-ghost est-add-row"
           disabled={pending}
-          onClick={() =>
+          onClick={() => {
+            // Moving a seat restates pay -- the old rep's line leaves the
+            // statement while this list and the document keep naming
+            // whoever sold the job. Said out loud before it happens,
+            // because it reads like a rename and isn't one.
+            if (
+              savedTeam &&
+              seatHoldersChanged(savedTeam, team) &&
+              !window.confirm(
+                "This changes who is PAID on this signed contract — the commission " +
+                  "line moves to the new person and off the old one's statement. " +
+                  "The document keeps naming whoever sold the job, and the change " +
+                  "is recorded in the history below. Move the pay?"
+              )
+            )
+              return;
             startTransition(async () => {
               setError("");
               const res = await saveSalesTeam(estimateId, team);
               if (res.error) return setError(res.error);
               setSaved("Sales team saved");
+              setSavedTeam(team);
               const log = await getSalesTeamChanges(estimateId);
               setChanges(log.changes ?? []);
-            })
-          }
+            });
+          }}
         >
           {pending ? "Saving…" : "Save sales team"}
         </button>

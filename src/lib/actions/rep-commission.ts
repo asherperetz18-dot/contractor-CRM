@@ -20,6 +20,7 @@ import {
 import {
   describeSalesTeamChange,
   salesTeamChanged,
+  seatChangeError,
   type SalesTeamSnapshot,
 } from "@/lib/data/sales-team-changes";
 
@@ -175,13 +176,14 @@ export async function saveSalesTeam(
   }
 
   const supabase = await createClient();
-  // The row as it stands, so the audit trail below can hold both sides.
+  // The row as it stands, so the audit trail below can hold both sides
+  // and the seat gate can see what a save would actually move.
   const { data: current } = await supabase
     .from("estimates")
-    .select(TEAM_COLUMNS)
+    .select(TEAM_COLUMNS + ", status")
     .eq("id", estimateId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<SalesTeamSnapshot>();
+    .maybeSingle<SalesTeamSnapshot & { status: string }>();
 
   const stored: SalesTeamSnapshot = {
     sales_rep_1: team.sales_rep_1 || null,
@@ -195,6 +197,19 @@ export async function saveSalesTeam(
     commission_rate_bp: Math.round(team.commission_rate_bp),
     lead_cost_bp: Math.round(team.lead_cost_bp),
   };
+
+  // Moving a seat to a different person on a signed contract restates
+  // pay, and the document keeps naming whoever sold the job -- so that
+  // move is the Admin's alone. Office keeps the shares and rates.
+  if (current) {
+    const held = seatChangeError({
+      status: current.status,
+      strictAdmin: isStrictAdmin(profile),
+      before: current,
+      after: stored,
+    });
+    if (held) return { error: held };
+  }
 
   const { data, error } = await supabase
     .from("estimates")
@@ -214,11 +229,14 @@ export async function saveSalesTeam(
   // as stored. If the row can't be written the save has already stood,
   // so the admin is told the history is short, not that saving failed.
   if (current && salesTeamChanged(current, stored)) {
+    // The snapshot holds the eight team columns only -- status came
+    // along for the seat gate and is not part of pay history.
+    const { status: _status, ...oldTeam } = current;
     const { error: logError } = await supabase.from("sales_team_changes").insert({
       company_id: profile.company_id,
       estimate_id: estimateId,
       changed_by: profile.id,
-      old_team: current,
+      old_team: oldTeam,
       new_team: stored,
     });
     if (logError) {
