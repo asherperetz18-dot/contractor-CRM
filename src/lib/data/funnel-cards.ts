@@ -65,6 +65,20 @@ export function matchesRepFilter(repId: string | null, repFilter: ReadonlySet<st
 }
 
 /**
+ * The ids the salesperson dropdown offers: everyone with a document on
+ * the current card, plus whoever is already ticked. The selection
+ * follows the reader across cards, so a ticked rep with nothing on this
+ * card must stay listed -- dropped from the list, the filter would still
+ * be applied with no visible tick to undo it.
+ */
+export function repOptionIds(
+  cardRepIds: (string | null)[],
+  ticked: ReadonlySet<string>
+): string[] {
+  return [...new Set([...cardRepIds.filter((id): id is string => !!id), ...ticked])];
+}
+
+/**
  * What one funnel card shows: how many documents and how much money.
  *
  * Takes the salesperson filter because the cards must answer for the

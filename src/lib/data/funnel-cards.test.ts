@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { funnelCardStats, matchesRepFilter } from "./funnel-cards.ts";
+import { funnelCardStats, matchesRepFilter, repOptionIds } from "./funnel-cards.ts";
 import type { EstimateStatus } from "./types.ts";
 
 /**
@@ -54,6 +54,17 @@ test("a document with no salesperson drops out when a rep is selected", () => {
   const docs = [doc({ rep: null })];
   assert.equal(funnelCardStats(docs, "drafts", nobody, repOf).count, 1);
   assert.equal(funnelCardStats(docs, "drafts", new Set(["asher"]), repOf).count, 0);
+});
+
+test("the dropdown offers the bucket's reps plus whoever is already ticked", () => {
+  // The salesperson selection follows the reader across cards now, so a
+  // ticked rep with nothing on this card must stay listed -- otherwise
+  // the filter is still applied with no visible tick to undo it.
+  assert.deepEqual(repOptionIds(["asher", "brendan", "asher"], nobody), ["asher", "brendan"]);
+  assert.deepEqual(repOptionIds(["brendan"], new Set(["asher"])), ["brendan", "asher"]);
+  // No double entry when the ticked rep also has documents here, and
+  // documents with no salesperson never become an option.
+  assert.deepEqual(repOptionIds(["asher", null], new Set(["asher"])), ["asher"]);
 });
 
 test("matchesRepFilter: empty filter admits everyone, a set filter needs a match", () => {
