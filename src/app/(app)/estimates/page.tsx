@@ -30,7 +30,7 @@ export default async function EstimatesPage() {
   // selectAll rather than a bare select: PostgREST silently truncates at
   // 1000 rows, which has already cost this app a broken search and a
   // broken dialer.
-  const [estimates, signers, leads, reps] = await Promise.all([
+  const [estimates, signers, reps] = await Promise.all([
     selectAll<Estimate>((from, to) =>
       supabase
         .from("estimates")
@@ -47,17 +47,28 @@ export default async function EstimatesPage() {
         .order("sort_order", { ascending: true })
         .range(from, to)
     ),
-    selectAll<EstimateLead>((from, to) =>
-      supabase
-        .from("leads")
-        .select("id, first_name, last_name, email, address, stage, assigned_to")
-        .eq("company_id", profile.company_id)
-        .range(from, to)
-    ),
     selectAll<EstimateRep>((from, to) =>
       supabase.from("profiles").select("id, name, email").range(from, to)
     ),
   ]);
+
+  // Only the leads these documents actually name -- not the company's
+  // whole contact book, which at 79k rows froze the browser for the
+  // several seconds it took to ship and hydrate a list that draws a few
+  // dozen documents (same cure as Contacts and the pipeline board,
+  // DECISIONS #019/#020). The New Estimate dialog reaches every lead
+  // through searchEstimateLeads instead of this array.
+  const leadIds = [...new Set(estimates.map((e) => e.lead_id).filter(Boolean))];
+  const leads = leadIds.length
+    ? await selectAll<EstimateLead>((from, to) =>
+        supabase
+          .from("leads")
+          .select("id, first_name, last_name, email, address, stage, assigned_to")
+          .eq("company_id", profile.company_id)
+          .in("id", leadIds)
+          .range(from, to)
+      )
+    : [];
 
   // Customer opens per document, newest first so [0] is the latest look.
   const views = await selectAll<{ estimate_id: string; viewed_at: string }>((from, to) =>
