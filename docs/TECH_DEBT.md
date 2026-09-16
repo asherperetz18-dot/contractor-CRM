@@ -4,6 +4,9 @@ Known shortcuts, deferred work, and things left deliberately unfinished — logg
 
 ---
 
+**The sales-team audit trail only sees `saveSalesTeam`.**
+What: `sales_team_changes` (0154) is written by the server action, so an edit to the seat columns that bypasses it — a direct SQL update in the Supabase console, or a future code path that writes `estimates.sales_rep_1` etc. itself — leaves no trail; the signature-time seeding trigger (0135/0153) also stamps seats without a row, so the trail starts at the first post-signature save. Why: the action is the only in-app path that edits these columns after signature, and a trigger-based capture runs on service-role paths where `auth.uid()` is null (024's constraint) — chosen simple and testable over airtight. Impact: none in normal use; an admin editing the database by hand is already outside every guard. A `before update` trigger on the eight columns would close it. Where: `src/lib/actions/rep-commission.ts` (`saveSalesTeam`), `supabase/migrations/0154_sales_team_changes.sql`.
+
 **Cobrowse batches ship as uncompressed JSON.**
 What: rrweb event batches cross Supabase Realtime as plain JSON chunks (`src/lib/cobrowse/wire.ts`); a full snapshot of a heavy page can be a couple dozen 50KB parts. Why: `CompressionStream` would cut that ~5-8x but adds async plumbing and a base64 step, and the first version favored a wire simple enough to unit-test exactly. Impact: none on wifi/LTE; on very weak site cellular the first snapshot may take a few seconds to land. Where: `src/lib/cobrowse/wire.ts`, `src/lib/cobrowse/recorder.ts`.
 

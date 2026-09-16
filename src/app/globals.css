@@ -6907,6 +6907,28 @@ a.portal-header-stars:hover {
   padding: 2px 8px;
   font-size: 12px;
 }
+.est-team-log {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.est-team-log-title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.est-team-log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.est-team-log-when {
+  color: var(--ink-soft);
+}
 
 /* Payment schedule (customer document) */
 .estdoc-schedule {

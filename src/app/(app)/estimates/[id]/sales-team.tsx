@@ -5,9 +5,11 @@ import { computeRepCommission, moneyCents } from "@/lib/data/types";
 import {
   getCommissionReps,
   getSalesTeam,
+  getSalesTeamChanges,
   saveSalesTeam,
   type CommissionRep,
   type SalesTeam,
+  type SalesTeamChangeRow,
 } from "@/lib/actions/rep-commission";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { getJobExpenses } from "@/lib/actions/job-expenses";
@@ -35,6 +37,7 @@ export function SalesTeamPanel({
   const [reps, setReps] = useState<CommissionRep[]>([]);
   const [expensesCents, setExpensesCents] = useState(0);
   const [hasCosts, setHasCosts] = useState(false);
+  const [changes, setChanges] = useState<SalesTeamChangeRow[]>([]);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [pending, startTransition] = useTransition();
@@ -42,10 +45,12 @@ export function SalesTeamPanel({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [res, people, costs] = await Promise.all([
+      const [res, people, costs, log] = await Promise.all([
         getSalesTeam(estimateId),
         getCommissionReps(),
         getJobExpenses(leadId),
+        // Pay history, so it rides the same gate as editing.
+        canEdit ? getSalesTeamChanges(estimateId) : Promise.resolve({ changes: [] }),
       ]);
       if (cancelled) return;
       if (res.error) return setError(res.error);
@@ -56,11 +61,12 @@ export function SalesTeamPanel({
       // Whether any cost exists at all, not whether they sum to zero --
       // the difference between a measured job and an unmeasured one.
       setHasCosts(rows.length > 0);
+      setChanges(log.changes ?? []);
     })();
     return () => {
       cancelled = true;
     };
-  }, [estimateId, leadId]);
+  }, [estimateId, leadId, canEdit]);
 
   if (error && !team) return <p className="error-note">{error}</p>;
   if (!team) return null;
@@ -295,11 +301,39 @@ export function SalesTeamPanel({
               const res = await saveSalesTeam(estimateId, team);
               if (res.error) return setError(res.error);
               setSaved("Sales team saved");
+              const log = await getSalesTeamChanges(estimateId);
+              setChanges(log.changes ?? []);
             })
           }
         >
           {pending ? "Saving…" : "Save sales team"}
         </button>
+      )}
+
+      {canEdit && changes.length > 0 && (
+        // Seats decide pay and the statement follows whoever holds them
+        // now, so every edit since signature is on the record here.
+        <div className="est-team-log">
+          <h3 className="est-team-log-title">Change history</h3>
+          <ul className="est-team-log-list">
+            {changes.map((c) => (
+              <li key={c.id}>
+                <span className="est-team-log-when">
+                  {new Date(c.changedAt).toLocaleString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                  {" · "}
+                  {c.changedByName}
+                </span>{" "}
+                {c.lines.join(" · ")}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );
