@@ -16,6 +16,7 @@ import {
   funnelCardStats,
   inFunnelBucket,
   matchesRepFilter,
+  repOptionIds,
 } from "@/lib/data/funnel-cards";
 import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funnel-order";
 import { saveFunnelOrder } from "@/lib/actions/funnel-order";
@@ -169,14 +170,15 @@ export function EstimatesView({
     void saveFunnelOrder(next);
   }
 
-  // Both filters clear when the card changes. Their options are drawn
-  // from the current bucket, so a rep carried across to a card they have
-  // no documents on would leave an empty table under a dropdown whose
-  // boxes are all unticked -- the filter still applied, with nothing on
-  // screen explaining why.
+  // The salesperson selection survives a card switch: the person reading
+  // one rep's funnel clicks from card to card, and re-ticking the rep on
+  // every click was the extra work the filter was meant to save. A card
+  // the rep has nothing on already reads $0.00, which is the explanation
+  // an empty table needs. The status filter still clears -- its options
+  // are the card's own statuses, so a carried one can flatly contradict
+  // the new card (Signed inside Drafts) with nothing on screen saying so.
   function pickBucket(next: Bucket) {
     setBucket(next);
-    setRepFilter(new Set());
     setStatusFilter(new Set());
   }
 
@@ -220,12 +222,13 @@ export function EstimatesView({
   // empty table -- the user then has to work out that the two controls
   // disagree. Derived this way the two cannot contradict each other:
   // Drafts offers only Draft, while Attached, which spans every status,
-  // offers the real spread. Same for the salesperson: only people who
-  // actually have a document here.
-  const repOptions = [...new Set(inThisBucket.map(repIdFor).filter(Boolean))]
+  // offers the real spread. Same for the salesperson: people who have a
+  // document here, plus anyone already ticked (the selection follows the
+  // reader across cards, and a tick must stay visible to be undone).
+  const repOptions = repOptionIds(inThisBucket.map(repIdFor), repFilter)
     .map((id) => {
-      const rep = repById.get(id as string);
-      return { id: id as string, label: rep?.name || rep?.email || "Unnamed" };
+      const rep = repById.get(id);
+      return { id, label: rep?.name || rep?.email || "Unnamed" };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
 
@@ -315,10 +318,12 @@ export function EstimatesView({
       {/* Only offered when there is something to choose between. A
           dropdown holding one option filters nothing, and on the Drafts
           card -- where every row is a draft by definition -- a Status
-          filter is exactly that. */}
-      {(repOptions.length > 1 || statusOptions.length > 1) && (
+          filter is exactly that. The one exception: while a rep is
+          ticked, the salesperson dropdown always renders, because it is
+          the only place the carried filter can be seen and undone. */}
+      {(repFilter.size > 0 || repOptions.length > 1 || statusOptions.length > 1) && (
         <div className="list-filters">
-          {repOptions.length > 1 && (
+          {(repFilter.size > 0 || repOptions.length > 1) && (
             <FilterSelect
               title="SALESPERSON"
               options={repOptions}
