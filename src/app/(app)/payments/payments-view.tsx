@@ -9,17 +9,20 @@ import {
   type PhaseState,
 } from "@/lib/data/types";
 import { ClientPicker } from "@/components/ui/client-picker";
-import { matchesClientRep } from "./payment-filters";
+import { matchesClientRep, paymentsSummary } from "./payment-filters";
 import { ManualPaymentTools } from "./manual-payment-tools";
 import { EditManualPayment } from "./edit-manual-payment";
 
 /**
- * The three tables on the Payments page, behind one set of filters.
+ * The stat cards and three tables on the Payments page, behind one set
+ * of filters.
  *
  * The same client and rep pickers as Money to Collect narrow every table
- * at once, and status chips cut the billed-progress list to just
- * Overdue / Billed / Paid. The stat cards above stay company-wide — the
- * headline numbers should never quietly mean "the filtered subset".
+ * AND the stat cards at once — pick a client and every box is that
+ * client's money, same as Money to Collect. Status chips and nothing
+ * else cut only the billed-progress list to Overdue / Billed / Paid;
+ * they never move the cards, so a chip can't quietly turn "Collected"
+ * into "collected, but only the overdue subset".
  */
 
 export type BilledPhaseRow = {
@@ -44,6 +47,13 @@ export type DepositChaseRow = {
   customer: string;
   totalCents: number;
   depositCents: number;
+};
+
+/** One signed contract's face value, for the Outstanding card. */
+export type ContractValueRow = {
+  leadId: string | null;
+  rep: string | null;
+  totalCents: number;
 };
 
 export type PaymentHistoryRow = {
@@ -83,16 +93,14 @@ export function PaymentsView({
   billed,
   chase,
   history,
-  overdueCount,
-  awaitingDepositCount,
+  contracts,
   showTools,
   canRemove,
 }: {
   billed: BilledPhaseRow[];
   chase: DepositChaseRow[];
   history: PaymentHistoryRow[];
-  overdueCount: number;
-  awaitingDepositCount: number;
+  contracts: ContractValueRow[];
   showTools: boolean;
   canRemove: boolean;
 }) {
@@ -151,6 +159,13 @@ export function PaymentsView({
   const shownChase = chase.filter((r) => matchesClientRep(scoped, r));
   const shownHistory = history.filter((r) => matchesClientRep(scoped, r));
 
+  // The cards over the same scope as the tables; the status chip stays a
+  // table concern. Section headers keep the company-wide counts — the
+  // "X of Y match" tail is what says a filter is on.
+  const s = paymentsSummary(scoped, { contracts, billed, chase, history });
+  const overdueCount = billed.filter((r) => r.state === "overdue").length;
+  const awaitingDepositCount = chase.length;
+
   // Chips only for states that actually exist under the client/rep
   // scope, so a company with nothing overdue never sees a dead
   // "Overdue" button.
@@ -164,6 +179,37 @@ export function PaymentsView({
 
   return (
     <div>
+      <div className="stat-grid stat-grid-6">
+        <div className={"stat-card stat-static" + (s.collectedCents > 0 ? " stat-card-won" : "")}>
+          <div className="stat-value mono">{moneyCents(s.collectedCents)}</div>
+          <div className="stat-label">Collected</div>
+        </div>
+        {/* Red only while something is actually late, so the colour never
+            means anything but "act on this". */}
+        <div className={"stat-card stat-static" + (s.overdueCents > 0 ? " stat-card-late" : "")}>
+          <div className="stat-value mono">{moneyCents(s.overdueCents)}</div>
+          <div className="stat-label">Overdue</div>
+        </div>
+        <div className={"stat-card stat-static" + (s.billedCents > 0 ? " stat-card-gold" : "")}>
+          <div className="stat-value mono">{moneyCents(s.billedCents)}</div>
+          <div className="stat-label">Billed, Unpaid</div>
+        </div>
+        <div className={"stat-card stat-static" + (s.outstandingCents > 0 ? " stat-card-gold" : "")}>
+          <div className="stat-value mono">{moneyCents(s.outstandingCents)}</div>
+          <div className="stat-label">Outstanding</div>
+        </div>
+        <div
+          className={"stat-card stat-static" + (s.awaitingDepositCents > 0 ? " stat-card-gold" : "")}
+        >
+          <div className="stat-value mono">{moneyCents(s.awaitingDepositCents)}</div>
+          <div className="stat-label">Deposits Not Paid</div>
+        </div>
+        <div className="stat-card stat-static">
+          <div className="stat-value mono">{moneyCents(s.clearingCents)}</div>
+          <div className="stat-label">Clearing (ACH)</div>
+        </div>
+      </div>
+
       <div className="filter-bar">
         {chips.length > 0 && (
           <>
