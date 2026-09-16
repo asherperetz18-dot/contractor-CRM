@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { getAnalyticsLeads, type AnalyticsLead } from "@/lib/actions/marketing-analytics";
 import {
   leadDisplayName,
   money,
@@ -21,26 +22,6 @@ const PRESETS = [
   { key: "all", label: "All Time" },
 ];
 
-/** The lead fields this page's funnel/source math reads -- the page
- *  fetches exactly these, never the 40-column row. */
-export type AnalyticsLead = Pick<
-  Lead,
-  | "id"
-  | "contact_type"
-  | "company_name"
-  | "first_name"
-  | "last_name"
-  | "source"
-  | "stage"
-  | "value"
-  | "created_at"
-  | "won_at"
-  | "has_appt"
-  | "assigned_to"
-  | "lead_cost"
-  | "phone"
->;
-
 export type SignedContract = {
   lead_id: string;
   status: string;
@@ -49,12 +30,14 @@ export type SignedContract = {
 };
 
 export function AnalyticsView({
-  leads,
+  initialLeads,
   reps,
   stages,
   signedContracts,
 }: {
-  leads: AnalyticsLead[];
+  /** The default window's slice, rendered with the page. Other ranges
+   *  are fetched on demand -- the whole 79k book stays server-side. */
+  initialLeads: AnalyticsLead[];
   reps: Profile[];
   stages: PipelineStageRow[];
   signedContracts: SignedContract[];
@@ -65,6 +48,33 @@ export function AnalyticsView({
   // user between re-renders, so the same list can come back different.
   const [now] = useState(() => new Date());
   const win = useMemo(() => resolveWindow(range, now), [range, now]);
+
+  // The leads the current window can use. The server rendered the
+  // default window's slice; picking any other range fetches that slice
+  // (created-or-won in it, prefiltered loose, still filtered exactly by
+  // withinWindow below). Stale answers are discarded by request id,
+  // same idiom as the topbar search.
+  const [leads, setLeads] = useState<AnalyticsLead[]>(initialLeads);
+  const [refreshing, setRefreshing] = useState(false);
+  const requestIdRef = useRef(0);
+  const firstWinRef = useRef(true);
+  useEffect(() => {
+    if (firstWinRef.current) {
+      firstWinRef.current = false;
+      return;
+    }
+    const requestId = ++requestIdRef.current;
+    setRefreshing(true);
+    getAnalyticsLeads(win)
+      .then((rows) => {
+        if (requestIdRef.current !== requestId) return;
+        setLeads(rows);
+        setRefreshing(false);
+      })
+      .catch(() => {
+        if (requestIdRef.current === requestId) setRefreshing(false);
+      });
+  }, [win]);
 
   // The per-rep report opens on whatever period is being looked at here.
   // Without the custom dates it would silently fall back to its own
@@ -199,6 +209,7 @@ export function AnalyticsView({
 
       <div className="chip-row">
         <DateRangeFilter presets={PRESETS} value={range} onChange={setRange} />
+        {refreshing && <span className="empty-hint">Updating…</span>}
       </div>
 
       <div className="stat-grid">

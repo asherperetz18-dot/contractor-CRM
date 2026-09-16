@@ -145,20 +145,13 @@ async function CrewProjects({ companyId }: { companyId: string }) {
     project_on_hold: boolean | null;
   };
 
-  const [estimates, leads, checklistRows, reps, rainEvents] = await Promise.all([
+  const [estimates, checklistRows, reps, rainEvents] = await Promise.all([
     selectAll<SlimEstimate>((from, to) =>
       admin
         .from("estimates")
         .select(
           "id, doc_number, title, lead_id, status, kind, parent_estimate_id, signed_at, completed_on, project_on_hold"
         )
-        .eq("company_id", companyId)
-        .range(from, to)
-    ),
-    selectAll<ProjectLead>((from, to) =>
-      admin
-        .from("leads")
-        .select("id, first_name, last_name, company_name, address, assigned_to")
         .eq("company_id", companyId)
         .range(from, to)
     ),
@@ -211,6 +204,21 @@ async function CrewProjects({ companyId }: { companyId: string }) {
   for (const r of (projectRain ?? []) as { id: string; rain_alert_pop: number | null }[]) {
     if (r.rain_alert_pop !== null) rainPopByEstimate.set(r.id, r.rain_alert_pop);
   }
+
+  // Only the leads these documents actually name -- not the company's
+  // whole 79k contact book (same cure as Estimates, #019/#020). Scoped
+  // by hand like every admin-client query above.
+  const leadIds = [...new Set(estimates.map((e) => e.lead_id).filter(Boolean))];
+  const leads = leadIds.length
+    ? await selectAll<ProjectLead>((from, to) =>
+        admin
+          .from("leads")
+          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .eq("company_id", companyId)
+          .in("id", leadIds)
+          .range(from, to)
+      )
+    : ([] as ProjectLead[]);
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
 

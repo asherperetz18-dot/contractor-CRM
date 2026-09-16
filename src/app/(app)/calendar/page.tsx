@@ -34,6 +34,16 @@ function withoutJoin(rows: LeadWithEvents[] | null): Lead[] {
   });
 }
 
+/** Same idea for tasks and notes: the inner join on leads(events) is a
+ *  filter, not data anyone reads -- strip it before the client. */
+function withoutLeadJoin<T extends { leads?: unknown }>(rows: T[] | null): Omit<T, "leads">[] {
+  return (rows ?? []).map((row) => {
+    const r = { ...row };
+    delete r.leads;
+    return r;
+  });
+}
+
 export default async function CalendarPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
@@ -97,21 +107,27 @@ export default async function CalendarPage() {
         .eq("company_id", companyId)
         .range(f, t)
     ),
-    selectAll<LeadTask>((f, t) =>
+    // Tasks and notes are read only inside the appointment window,
+    // filtered to that event's lead -- yet both used to arrive for
+    // every lead in the company (notes run to paragraphs; at 79k
+    // contacts that is the page's whole budget). The same inner join
+    // the leads query uses scopes them to leads that actually have an
+    // appointment, in one query that cannot outgrow the URL.
+    selectAll<LeadTask & { leads?: unknown }>((f, t) =>
       supabase
         .from("lead_tasks")
-        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at, leads!inner(events!inner(id))")
         .eq("company_id", companyId)
         .range(f, t)
-    ),
-    selectAll<LeadNote>((f, t) =>
+    ).then(withoutLeadJoin),
+    selectAll<LeadNote & { leads?: unknown }>((f, t) =>
       supabase
         .from("lead_notes")
-        .select("id, lead_id, author_id, body, event_id, created_at")
+        .select("id, lead_id, author_id, body, event_id, created_at, leads!inner(events!inner(id))")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .range(f, t)
-    ),
+    ).then(withoutLeadJoin),
     // The estimates table, not the legacy documents one. This tab used to
     // read documents where type = 'Estimate', which is a different feature
     // entirely -- so a lead with three real estimates against it showed

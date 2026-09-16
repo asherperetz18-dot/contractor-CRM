@@ -49,7 +49,7 @@ export default async function CollectPage() {
   const supabase = await createClient();
   const companyId = profile.company_id;
 
-  const [estimates, phases, paid, leads, members] = await Promise.all([
+  const [estimates, phases, paid, members] = await Promise.all([
     selectAll<Estimate>((f, t) =>
       supabase.from("estimates").select("*").eq("company_id", companyId).range(f, t)
     ),
@@ -67,13 +67,6 @@ export default async function CollectPage() {
         .eq("company_id", companyId)
         .range(f, t)
     ),
-    selectAll<SlimLead>((f, t) =>
-      supabase
-        .from("leads")
-        .select("id, first_name, last_name, company_name, address, assigned_to")
-        .eq("company_id", companyId)
-        .range(f, t)
-    ),
     supabase
       .from("company_members")
       .select("profile_id")
@@ -85,6 +78,21 @@ export default async function CollectPage() {
         return (data ?? []) as { id: string; name: string | null }[];
       }),
   ]);
+
+  // Only the leads these documents actually name -- not the company's
+  // whole 79k contact book, which is a multi-second fetch for a page
+  // that labels a few dozen rows (same cure as Estimates, #019/#020).
+  const leadIds = [...new Set(estimates.map((e) => e.lead_id).filter(Boolean))];
+  const leads = leadIds.length
+    ? await selectAll<SlimLead>((f, t) =>
+        supabase
+          .from("leads")
+          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .eq("company_id", companyId)
+          .in("id", leadIds)
+          .range(f, t)
+      )
+    : ([] as SlimLead[]);
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(members.map((m) => [m.id, m.name]));
