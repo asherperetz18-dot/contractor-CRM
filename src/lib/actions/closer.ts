@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole } from "@/lib/data/types";
+import { isAdminRole, type AppRole, type UserStatus } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 
 export type CloserOption = { id: string; name: string };
 
@@ -35,17 +36,35 @@ export async function getLeadCloserContext(leadId: string): Promise<CloserContex
   if (!lead) return null;
 
   const { data: people } = await supabase
-    .from("profiles")
-    .select("id, name, email")
+    .from("company_members")
+    .select("roles, status, profiles(id, name, email)")
     .eq("company_id", profile.company_id)
-    .order("name")
-    .returns<{ id: string; name: string | null; email: string | null }[]>();
+    .returns<
+      {
+        roles: AppRole[] | null;
+        status: UserStatus | null;
+        profiles: { id: string; name: string | null; email: string | null } | null;
+      }[]
+    >();
 
-  // Everyone in the company, not a filter on role. A dropdown that is
-  // mistakenly empty is unusable and gives no clue why; one that is
-  // longer than it needs to be is merely untidy. Where the role names
-  // are known for certain this can be narrowed.
-  const options = (people ?? [])
+  // Salespeople only -- a closer runs the appointment and writes the
+  // estimate, so the seat is a rep's. The current closer stays offered
+  // whatever their role, or an already-filled seat would render blank.
+  const options = repDropdownOptions(
+    (people ?? [])
+      .filter(
+        (row): row is (typeof row) & { profiles: NonNullable<(typeof row)["profiles"]> } =>
+          !!row.profiles
+      )
+      .map((row) => ({
+        id: row.profiles.id,
+        name: row.profiles.name,
+        email: row.profiles.email,
+        roles: row.roles,
+        status: row.status,
+      })),
+    [lead.closer_id]
+  )
     .filter((p) => p.id !== lead.assigned_to)
     .map((p) => ({ id: p.id, name: p.name || p.email || "Unknown" }));
 

@@ -46,6 +46,7 @@ import {
   getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
@@ -587,6 +588,15 @@ export function EventForm({
     textPhone(lead.phone, filled);
   }
 
+  // Salespeople only, but the stored assignee always stays offered --
+  // `reps` itself stays whole because names all over this form resolve
+  // from it.
+  const assignedOptions = repDropdownOptions(reps, [event?.assigned_to, form.assigned_to]);
+  const secondAssignedOptions = repDropdownOptions(reps, [
+    event?.second_assigned_to,
+    form.second_assigned_to,
+  ]);
+
   return (
     <Modal title={event ? "Edit Appointment" : "New Appointment"} onClose={requestClose} wide drawer>
       {lead && (
@@ -784,7 +794,7 @@ export function EventForm({
                 }}
               >
                 <option value="">Unassigned</option>
-                {reps.map((r) => (
+                {assignedOptions.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name || r.email}
                   </option>
@@ -828,7 +838,7 @@ export function EventForm({
                 }}
               >
                 <option value="">Unassigned</option>
-                {reps.map((r) => (
+                {secondAssignedOptions.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name || r.email}
                   </option>

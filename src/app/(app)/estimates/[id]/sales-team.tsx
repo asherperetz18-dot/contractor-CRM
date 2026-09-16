@@ -6,8 +6,10 @@ import {
   getCommissionReps,
   getSalesTeam,
   saveSalesTeam,
+  type CommissionRep,
   type SalesTeam,
 } from "@/lib/actions/rep-commission";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { getJobExpenses } from "@/lib/actions/job-expenses";
 
 /**
@@ -30,7 +32,7 @@ export function SalesTeamPanel({
   canEdit: boolean;
 }) {
   const [team, setTeam] = useState<SalesTeam | null>(null);
-  const [reps, setReps] = useState<{ id: string; name: string }[]>([]);
+  const [reps, setReps] = useState<CommissionRep[]>([]);
   const [expensesCents, setExpensesCents] = useState(0);
   const [hasCosts, setHasCosts] = useState(false);
   const [error, setError] = useState("");
@@ -127,7 +129,7 @@ export function SalesTeamPanel({
             onChange={(e) => set({ sales_rep_1: e.target.value || null })}
           >
             <option value="">— none —</option>
-            {reps.map((r) => (
+            {repDropdownOptions(reps, [team.sales_rep_1]).map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
               </option>
@@ -168,7 +170,7 @@ export function SalesTeamPanel({
             }}
           >
             <option value="">— none —</option>
-            {reps
+            {repDropdownOptions(reps, [team.sales_rep_2])
               .filter((r) => r.id !== team.sales_rep_1)
               .map((r) => (
                 <option key={r.id} value={r.id}>
@@ -204,7 +206,7 @@ export function SalesTeamPanel({
             onChange={(e) => set({ closer_id: e.target.value || null })}
           >
             <option value="">— none —</option>
-            {reps
+            {repDropdownOptions(reps, [team.closer_id])
               .filter((r) => r.id !== team.sales_rep_1 && r.id !== team.sales_rep_2)
               .map((r) => (
                 <option key={r.id} value={r.id}>

@@ -10,6 +10,7 @@ import {
   type Lead,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
 import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { bookAppointmentForLead, quickUpdateLead } from "@/lib/actions/leads";
@@ -372,7 +373,7 @@ export function DialSession({
             onChange={(e) => setBooking((b) => b && { ...b, assignedTo: e.target.value })}
           >
             <option value="">— choose —</option>
-            {reps.map((r) => (
+            {repDropdownOptions(reps, [booking.assignedTo]).map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name || r.email}
               </option>

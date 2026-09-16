@@ -19,6 +19,7 @@ import {
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { EventForm } from "../calendar/event-form";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { AppointmentWizard } from "./appointment-wizard";
@@ -179,7 +180,12 @@ export function ScheduleList({
             aria-label="Rep"
           >
             <option value="All">All Reps</option>
-            {reps.map((r) => (
+            {repDropdownOptions(
+              reps,
+              // Salespeople plus anyone actually holding an appointment,
+              // and the current tick so it stays visible to be undone.
+              events.flatMap((e) => [e.assigned_to, e.second_assigned_to]).concat(repFilter)
+            ).map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name || r.email}
               </option>

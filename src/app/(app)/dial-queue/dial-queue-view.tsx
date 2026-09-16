@@ -18,6 +18,7 @@ import {
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import { repDropdownOptions } from "@/lib/data/rep-options";
 import { deleteDialList, saveDialList } from "@/lib/actions/dial-lists";
 import { getDialSessionLeads, listDialContacts, matchDialCsvPhones } from "@/lib/actions/dial-contacts";
 import {
@@ -479,7 +480,9 @@ export function DialQueueView({
                   }}
                 >
                   <option value="All">All Reps</option>
-                  {reps.map((r) => (
+                  {/* Salespeople plus the current tick -- the rows are
+                      server-paginated, so their ids can't be read here. */}
+                  {repDropdownOptions(reps, [repFilter]).map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name || r.email}
                     </option>
