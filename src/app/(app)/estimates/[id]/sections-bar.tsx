@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { memo, useState, useTransition } from "react";
 import { moneyCents, type EstimateGroup } from "@/lib/data/types";
 import {
   createEstimateGroup,
@@ -16,7 +16,9 @@ import {
  * A section total that lags behind the line above it reads as a bug even
  * when the saved figure is right.
  */
-export function SectionsBar({
+// memo: the estimate builder re-renders on every keystroke; this panel's
+// props are stable then, so it sits those renders out.
+export const SectionsBar = memo(function SectionsBar({
   estimateId,
   groups,
   subtotals,
@@ -150,4 +152,4 @@ export function SectionsBar({
       {error && <p className="error-note">{error}</p>}
     </div>
   );
-}
+});
