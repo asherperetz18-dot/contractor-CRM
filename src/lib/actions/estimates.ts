@@ -15,6 +15,7 @@ import { finalizeSignedEstimate } from "@/lib/estimate-signing";
 import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
+import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import { defaultEstimateNarrative, paragraphsToHtml } from "@/lib/estimate-email-copy";
 import {
   balanceAfterDepositCents,
@@ -259,18 +260,71 @@ async function requireEstimateEditor(): Promise<
 const SEND_NOT_ALLOWED =
   "You can save this as a draft, but sending it is turned off for your account — ask the office to send it.";
 
-// An editor who also holds the Send Estimates switch. Guards everything
-// that takes a document out of Draft: texting or emailing it, marking it
-// sent, recording a paper signature. The send itself happens here on the
-// server, so this check -- not the hidden buttons -- is the permission.
-async function requireEstimateSender(): Promise<
-  { error: string } | { companyId: string; userId: string }
-> {
+/**
+ * The closer's hold on a document leaving Draft. Null when this user
+ * may send; otherwise the message to show them.
+ *
+ * Lives here, in the server actions, rather than as a trigger like the
+ * approval gate (0136): the actual send updates status through the
+ * service-role client, where auth.uid() is null and a trigger cannot
+ * tell a rep from the closer. Every path out of Draft already runs
+ * through these guards, so this is the choke point.
+ */
+async function closerHoldError(
+  profile: NonNullable<Awaited<ReturnType<typeof getCurrentProfile>>>,
+  estimateId: string
+): Promise<string | null> {
+  // Office and Admin are never held, and skipping the lookups keeps the
+  // common case (the office sends) at zero extra queries.
+  if (isAdminRole(profile)) return null;
+
+  const supabase = await createClient();
+  const { data: estimate } = await supabase
+    .from("estimates")
+    .select("id, lead_id, kind")
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; lead_id: string | null; kind: string | null }>();
+  if (!estimate?.lead_id) return null;
+
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("closer_id")
+    .eq("id", estimate.lead_id)
+    .maybeSingle<{ closer_id: string | null }>();
+
+  const held = closerHoldsSend({
+    closerId: lead?.closer_id ?? null,
+    userId: profile.id,
+    officeOrAdmin: false,
+    kind: estimate.kind,
+  });
+  if (!held) return null;
+
+  const { data: closer } = await supabase
+    .from("profiles")
+    .select("name, email")
+    .eq("id", lead!.closer_id!)
+    .maybeSingle<{ name: string | null; email: string | null }>();
+  return closerHoldMessage(closer?.name || closer?.email || null);
+}
+
+// An editor who also holds the Send Estimates switch, and -- on a lead
+// with a closer -- the closer themselves (or Office/Admin). Guards
+// everything that takes a document out of Draft: texting or emailing it,
+// marking it sent, recording a paper signature. The send itself happens
+// here on the server, so this check -- not the hidden buttons -- is the
+// permission.
+async function requireEstimateSender(
+  estimateId: string
+): Promise<{ error: string } | { companyId: string; userId: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canCreateEstimates(profile))
     return { error: "You don't have permission to create or edit estimates." };
   if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
+  const hold = await closerHoldError(profile, estimateId);
+  if (hold) return { error: hold };
   return { companyId: profile.company_id, userId: profile.id };
 }
 
@@ -759,7 +813,7 @@ export async function applyCompanyTaxRate(
 // rep leaderboard are all computed over almost nothing. Nobody fills in a
 // "value" field; everybody writes an estimate.
 export async function markEstimateSent(estimateId: string): Promise<{ error?: string }> {
-  const guard = await requireEstimateSender();
+  const guard = await requireEstimateSender(estimateId);
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
@@ -1026,7 +1080,7 @@ export async function sendEstimateToCustomer(
    *  either way. */
   recipients?: { to?: string; cc?: string; bcc?: string; narrative?: string }
 ): Promise<SendEstimateResult> {
-  const guard = await requireEstimateSender();
+  const guard = await requireEstimateSender(estimateId);
   if ("error" in guard) return guard;
 
   const admin = createAdminClient();
@@ -1322,7 +1376,7 @@ export async function sendEstimateToCustomer(
 export async function previewEstimateEmail(
   estimateId: string
 ): Promise<{ error?: string; subject?: string; narrative?: string }> {
-  const guard = await requireEstimateSender();
+  const guard = await requireEstimateSender(estimateId);
   if ("error" in guard) return guard;
 
   const admin = createAdminClient();
@@ -1756,8 +1810,10 @@ export async function markSignedOnPaper(
   }
   // A paper signature takes the document out of Draft without it ever
   // being sent -- the one way around "the office sends", so it needs the
-  // same switch.
+  // same switch, and the same closer hold.
   if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
+  const hold = await closerHoldError(profile, estimateId);
+  if (hold) return { error: hold };
 
   const signerName = input.signerName.trim();
   if (!signerName) return { error: "Enter the name as it was signed." };

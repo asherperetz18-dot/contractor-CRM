@@ -61,16 +61,18 @@ export async function getEstimateTeam(
   const frozen = status === "Signed" || status === "Void";
 
   // The closer, from whichever source is allowed to speak. Frozen
-  // documents read the contract's own second seat; live ones follow the
-  // lead, exactly as the rep name already does.
+  // documents read the contract's own closer seat (0153) -- falling
+  // back to rep seat two, where contracts signed before that migration
+  // carry their closer; live ones follow the lead, exactly as the rep
+  // name already does.
   let closerId: string | null = null;
   if (frozen) {
     const { data: contract } = await admin
       .from("estimates")
-      .select("sales_rep_2")
+      .select("closer_id, sales_rep_2")
       .eq("id", estimateId)
-      .maybeSingle<{ sales_rep_2: string | null }>();
-    closerId = contract?.sales_rep_2 ?? null;
+      .maybeSingle<{ closer_id: string | null; sales_rep_2: string | null }>();
+    closerId = contract?.closer_id ?? contract?.sales_rep_2 ?? null;
   } else {
     closerId = lead?.closer_id ?? null;
   }

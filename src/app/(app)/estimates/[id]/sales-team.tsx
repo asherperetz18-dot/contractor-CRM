@@ -71,6 +71,7 @@ export function SalesTeamPanel({
     hasCosts,
     rep1Bp: team.sales_rep_1_bp,
     rep2Bp: team.sales_rep_2 ? team.sales_rep_2_bp : 0,
+    closerPoolBp: team.closer_id ? team.closer_pool_bp : 0,
   });
 
   const set = (patch: Partial<SalesTeam>) => {
@@ -191,6 +192,39 @@ export function SalesTeamPanel({
         </label>
       </div>
 
+      {/* The closer's cut comes off the pool first; the rep shares
+          above split what is left, so editing here never rebalances
+          them. Seeded from the lead at signature, adjustable after. */}
+      <div className="form-row">
+        <label className="field">
+          <span className="field-label">Closer</span>
+          <select
+            value={team.closer_id ?? ""}
+            disabled={!canEdit || pending}
+            onChange={(e) => set({ closer_id: e.target.value || null })}
+          >
+            <option value="">— none —</option>
+            {reps
+              .filter((r) => r.id !== team.sales_rep_1 && r.id !== team.sales_rep_2)
+              .map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label className="field">
+          <span className="field-label">Share % of pool</span>
+          <input
+            className="est-item-price"
+            inputMode="decimal"
+            value={pct(team.closer_pool_bp)}
+            disabled={!canEdit || pending || !team.closer_id}
+            onChange={(e) => set({ closer_pool_bp: toBp(e.target.value) })}
+          />
+        </label>
+      </div>
+
       {detail.unmeasured ? (
         // A job with nothing spent on it is not maximally profitable, it
         // is unmeasured. Printing a figure here would promise a rep the
@@ -234,6 +268,12 @@ export function SalesTeamPanel({
               <>
                 {" · "}
                 {repName(team.sales_rep_2)} {moneyCents(detail.rep2Cents)}
+              </>
+            )}
+            {team.closer_id && (
+              <>
+                {" · "}
+                {repName(team.closer_id)} (closer) {moneyCents(detail.closerCents)}
               </>
             )}
             {detail.netProfitCents <= 0 && " · this job has not made money, so nothing is owed"}

@@ -129,6 +129,7 @@ export function EstimateBuilder({
   lead,
   canEdit,
   canSend = true,
+  sendHoldNote = null,
   canManageCosts,
   canManageBills,
   canVoid,
@@ -148,6 +149,9 @@ export function EstimateBuilder({
   /** The Send Estimates switch. Off = drafts only: Save stays, everything
    *  that would put the document in front of the customer goes. */
   canSend?: boolean;
+  /** Why sending is off when it is the closer's hold rather than the
+   *  switch -- names the closer, so the banner says who sends instead. */
+  sendHoldNote?: string | null;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
   /** Filing an UNPAID vendor bill from the job costs panel. */
@@ -597,9 +601,8 @@ export function EstimateBuilder({
 
       {!locked && !canSend && (
         <div className="est-locked-banner">
-          Drafts only: you can build and save this estimate, and preview or print it, but
-          sending it to the customer is done by the office. Ask an Office or Admin user to
-          send it — or to turn on Send Estimates for you in Users &amp; Roles.
+          {sendHoldNote ??
+            "Drafts only: you can build and save this estimate, and preview or print it, but sending it to the customer is done by the office. Ask an Office or Admin user to send it — or to turn on Send Estimates for you in Users & Roles."}
         </div>
       )}
 

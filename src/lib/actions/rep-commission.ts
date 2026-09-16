@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
+  closerPoolShareBp,
   computeRepCommission,
   isAdminRole,
   isStrictAdmin,
@@ -21,6 +22,12 @@ export type SalesTeam = {
   sales_rep_1_bp: number;
   sales_rep_2: string | null;
   sales_rep_2_bp: number;
+  /** The closer's own seat (0153). Their share comes off the pool
+   *  first; the two rep shares split what is left. Contracts signed
+   *  before 0153 carry their closer in sales_rep_2 instead, and these
+   *  stay null/0 there. */
+  closer_id: string | null;
+  closer_pool_bp: number;
   commission_rate_bp: number;
   lead_cost_bp: number;
 };
@@ -38,7 +45,7 @@ type EstimateRow = {
 } & SalesTeam;
 
 const TEAM_COLUMNS =
-  "sales_rep_1, sales_rep_1_bp, sales_rep_2, sales_rep_2_bp, commission_rate_bp, lead_cost_bp";
+  "sales_rep_1, sales_rep_1_bp, sales_rep_2, sales_rep_2_bp, closer_id, closer_pool_bp, commission_rate_bp, lead_cost_bp";
 
 /**
  * The sales team on one contract, with the company defaults filled in
@@ -64,22 +71,48 @@ export async function getSalesTeam(
       .maybeSingle<SalesTeam & { lead_id: string }>(),
     supabase
       .from("company_profile")
-      .select("sales_commission_bp, sales_lead_cost_bp")
+      .select("sales_commission_bp, sales_lead_cost_bp, default_closer_bp")
       .eq("company_id", profile.company_id)
-      .maybeSingle<{ sales_commission_bp: number; sales_lead_cost_bp: number }>(),
+      .maybeSingle<{
+        sales_commission_bp: number;
+        sales_lead_cost_bp: number;
+        default_closer_bp: number | null;
+      }>(),
   ]);
   if (!est) return { error: "Contract not found." };
 
-  // Falls back to whoever holds the lead, so the ordinary one-rep case
-  // needs nobody to fill anything in.
+  const rateBp = est.commission_rate_bp ?? settings?.sales_commission_bp ?? 5000;
+
+  // Falls back to whoever holds the lead, so the ordinary case needs
+  // nobody to fill anything in. The closer follows only while the whole
+  // team is unseeded: once anything is stamped (by the trigger at
+  // signature, or by hand), the stored seats are the decision -- a
+  // pre-0153 contract keeps its closer in seat two, and prefilling the
+  // closer seat on top of that would show the same person paid twice.
   let repOne = est.sales_rep_1;
-  if (!repOne) {
+  let closerId = est.closer_id;
+  let closerPoolBp = est.closer_pool_bp ?? 0;
+  const unseeded = !est.sales_rep_1 && !est.sales_rep_2 && !est.closer_id;
+  if (unseeded) {
     const { data: lead } = await supabase
       .from("leads")
-      .select("assigned_to")
+      .select("assigned_to, closer_id, closer_bp")
       .eq("id", est.lead_id)
-      .maybeSingle<{ assigned_to: string | null }>();
+      .maybeSingle<{
+        assigned_to: string | null;
+        closer_id: string | null;
+        closer_bp: number | null;
+      }>();
     repOne = lead?.assigned_to ?? null;
+    closerId = lead?.closer_id ?? null;
+    if (closerId) {
+      // The same conversion the trigger will run at signature, so the
+      // preview and the seeded figure cannot disagree.
+      closerPoolBp = closerPoolShareBp(
+        lead?.closer_bp ?? settings?.default_closer_bp ?? 500,
+        rateBp
+      );
+    }
   }
 
   return {
@@ -88,7 +121,9 @@ export async function getSalesTeam(
       sales_rep_1_bp: est.sales_rep_1_bp ?? 10000,
       sales_rep_2: est.sales_rep_2,
       sales_rep_2_bp: est.sales_rep_2_bp ?? 0,
-      commission_rate_bp: est.commission_rate_bp ?? settings?.sales_commission_bp ?? 5000,
+      closer_id: closerId,
+      closer_pool_bp: closerPoolBp,
+      commission_rate_bp: rateBp,
       lead_cost_bp: est.lead_cost_bp ?? settings?.sales_lead_cost_bp ?? 1500,
     },
   };
@@ -123,6 +158,16 @@ export async function saveSalesTeam(
     return { error: "That is the same person twice." };
   }
 
+  // The closer's cut comes off the pool before the reps split it, so a
+  // share past the whole pool would pay the reps out of nothing.
+  const closerBp = team.closer_id ? Math.round(team.closer_pool_bp) : 0;
+  if (closerBp < 0 || closerBp > 10000) {
+    return { error: "The closer's share must be between 0 and 100% of the pool." };
+  }
+  if (team.closer_id && (team.closer_id === team.sales_rep_1 || team.closer_id === team.sales_rep_2)) {
+    return { error: "The closer is already seated as a rep — one seat per person." };
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("estimates")
@@ -131,6 +176,8 @@ export async function saveSalesTeam(
       sales_rep_1_bp: oneBp,
       sales_rep_2: team.sales_rep_2 || null,
       sales_rep_2_bp: twoBp,
+      closer_id: team.closer_id || null,
+      closer_pool_bp: closerBp,
       // Stamped here rather than read at report time, so changing the
       // company rate later cannot restate what has already been paid.
       commission_rate_bp: Math.round(team.commission_rate_bp),
@@ -408,6 +455,9 @@ export async function getRepCommissions(opts?: {
       hasCosts: counted > 0,
       rep1Bp: c.sales_rep_1_bp ?? 10000,
       rep2Bp: c.sales_rep_2 ? c.sales_rep_2_bp : 0,
+      // Null on every pre-0153 contract, where the closer sits in seat
+      // two and is already paid through rep2Bp above.
+      closerPoolBp: c.closer_id ? (c.closer_pool_bp ?? 0) : 0,
     });
 
     // Earned when the job sells; paid when the job is finished and
@@ -429,6 +479,9 @@ export async function getRepCommissions(opts?: {
     for (const [repId, shareCents] of [
       [repOne, detail.rep1Cents],
       [c.sales_rep_2, detail.rep2Cents],
+      // The closer's own line, on the same report and under the same
+      // holds -- their money clears when the job does, like everyone's.
+      [c.closer_id, detail.closerCents],
     ] as [string | null, number][]) {
       if (!repId || shareCents <= 0) continue;
       if (!everyone && repId !== profile.id) continue;
