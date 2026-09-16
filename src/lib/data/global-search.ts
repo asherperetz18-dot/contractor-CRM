@@ -85,14 +85,42 @@ function shortDate(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+// Stored text is full of whitespace accidents -- doubled, trailing, or
+// non-breaking spaces from imports and copy/paste -- that HTML collapses
+// when the record renders, so the data looks clean while a contiguous
+// substring match fails. Fold every whitespace run to one space, and
+// match per word: each typed word must appear somewhere in the folded
+// haystack, in any order, across field boundaries. The SQL prefilter
+// (migration 0155) applies the same rule -- see DECISIONS #008.
+function fold(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function matchesEveryWord(words: string[], fields: (string | null | undefined)[]): boolean {
+  // Joined like SQL's concat_ws: empty fields dropped, single spaces,
+  // so a query spanning two fields matches here iff it matched there.
+  const hay = fold(fields.filter(Boolean).join(" "));
+  return words.every((w) => hay.includes(w));
+}
+
 // A note can run to paragraphs (AI call notes do); show the part around
-// the match, not the first line of a note whose hit is buried mid-body.
-function noteSnippet(body: string, q: string): string {
+// the first matched word, not the first line of a note whose hit is
+// buried mid-body.
+function noteSnippet(body: string, words: string[]): string {
   const text = body.replace(/\s+/g, " ").trim();
-  const at = text.toLowerCase().indexOf(q);
+  const lower = text.toLowerCase();
+  let at = -1;
+  let len = 0;
+  for (const w of words) {
+    const i = lower.indexOf(w);
+    if (i >= 0 && (at < 0 || i < at)) {
+      at = i;
+      len = w.length;
+    }
+  }
   if (at < 0) return text.slice(0, 80);
   const start = Math.max(0, at - 24);
-  const end = Math.min(text.length, at + q.length + 56);
+  const end = Math.min(text.length, at + len + 56);
   return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
 }
 
@@ -107,8 +135,9 @@ export function buildSearchGroups(
     notes: SearchableNote[];
   }
 ): GlobalSearchGroup[] {
-  const q = query.trim().toLowerCase();
+  const q = fold(query);
   if (q.length < 2) return [];
+  const words = q.split(" ");
 
   const leadById = new Map(input.leads.map((l) => [l.id, l]));
 
@@ -120,13 +149,7 @@ export function buildSearchGroups(
 
   const contactHits: GlobalHit[] = input.leads
     .filter((l) => {
-      // Joined like SQL's concat_ws: empty fields dropped, single spaces,
-      // so a query spanning two fields matches here iff it matched there.
-      const textMatch = [leadDisplayName(l), l.phone, l.address, l.email]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
+      const textMatch = matchesEveryWord(words, [leadDisplayName(l), l.phone, l.address, l.email]);
       const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
       return textMatch || phoneMatch;
     })
@@ -145,11 +168,12 @@ export function buildSearchGroups(
   const docHits: GlobalHit[] = input.estimates
     .filter((e) => {
       const client = e.lead_id ? leadById.get(e.lead_id) : undefined;
-      return [e.doc_number, e.title, e.job_address, client ? leadDisplayName(client) : null]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
+      return matchesEveryWord(words, [
+        e.doc_number,
+        e.title,
+        e.job_address,
+        client ? leadDisplayName(client) : null,
+      ]);
     })
     .slice(0, PER_GROUP)
     .map((e) => {
@@ -171,11 +195,12 @@ export function buildSearchGroups(
   const eventHits: GlobalHit[] = input.events
     .filter((ev) => {
       const client = ev.lead_id ? leadById.get(ev.lead_id) : undefined;
-      return [ev.title, ev.event_type, ev.notes, client ? leadDisplayName(client) : null]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
+      return matchesEveryWord(words, [
+        ev.title,
+        ev.event_type,
+        ev.notes,
+        client ? leadDisplayName(client) : null,
+      ]);
     })
     .slice(0, PER_GROUP)
     .map((ev) => {
@@ -198,14 +223,14 @@ export function buildSearchGroups(
   // every contact hit. A note whose lead this person cannot see (or that
   // lost its lead) has nowhere to link and no name to show -- skip it.
   const noteHits: GlobalHit[] = input.notes
-    .filter((n) => n.body.toLowerCase().includes(q) && !!leadById.get(n.lead_id))
+    .filter((n) => matchesEveryWord(words, [n.body]) && !!leadById.get(n.lead_id))
     .slice(0, PER_GROUP)
     .map((n) => {
       const client = leadById.get(n.lead_id)!;
       return {
         id: n.id,
         name: leadDisplayName(client),
-        sub: [noteSnippet(n.body, q), shortDate(n.created_at.slice(0, 10))].join(" · "),
+        sub: [noteSnippet(n.body, words), shortDate(n.created_at.slice(0, 10))].join(" · "),
         badge: "Note",
         color: NEUTRAL,
         href: `/contacts?openLead=${n.lead_id}`,
@@ -213,9 +238,7 @@ export function buildSearchGroups(
     });
 
   const billHits: GlobalHit[] = input.bills
-    .filter((b) =>
-      [b.vendor_name, b.reference, b.notes].filter(Boolean).join(" ").toLowerCase().includes(q)
-    )
+    .filter((b) => matchesEveryWord(words, [b.vendor_name, b.reference, b.notes]))
     .slice(0, PER_GROUP)
     .map((b) => ({
       id: b.id,

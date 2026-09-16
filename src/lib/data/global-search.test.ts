@@ -203,3 +203,63 @@ test("a search spanning two fields still matches when a field between them is em
   const groups = run("ibrahim 5420", { leads: [lead({ phone: null })] });
   assert.equal(group(groups, "Contacts")?.hits[0].name, "Nuha Ibrahim");
 });
+
+// Stored names arrive from imports, copy/paste and hurried typing with
+// doubled, trailing, or non-breaking spaces. HTML collapses them when the
+// record renders, so the contact LOOKS clean everywhere while a contiguous
+// substring match quietly fails -- a client visibly "in the CRM" that
+// search swears doesn't exist. Matching is per word on whitespace-folded
+// text, so none of these can hide a record.
+
+test("a stray double space inside a stored name cannot hide the contact or their contract", () => {
+  const peter = lead({
+    id: "lead-p",
+    first_name: "PETER ", // trailing space typed into the field
+    last_name: "BAHGAT IBRAHIM",
+    phone: null,
+    email: null,
+    address: "18606 Community St, Northridge, CA 91324, USA",
+  });
+  const groups = run("peter bahgat", {
+    leads: [peter],
+    estimates: [estimate({ lead_id: "lead-p", title: "ADU" })],
+    events: [],
+    notes: [],
+  });
+  assert.equal(group(groups, "Contacts")?.hits[0].name, "PETER  BAHGAT IBRAHIM");
+  assert.equal(group(groups, "Estimates & contracts")?.hits[0].name, "EST-1089 · ADU");
+});
+
+test("a non-breaking space pasted into a name still matches a plain-space query", () => {
+  const groups = run("bahgat ibrahim", {
+    leads: [lead({ first_name: "PETER", last_name: "BAHGAT IBRAHIM" })],
+  });
+  assert.equal(group(groups, "Contacts")?.hits.length, 1);
+});
+
+test("query words match in any order and may skip a middle name", () => {
+  const peter = lead({ first_name: "PETER", last_name: "BAHGAT IBRAHIM" });
+  assert.equal(group(run("ibrahim peter", { leads: [peter] }), "Contacts")?.hits.length, 1);
+  assert.equal(group(run("peter ibrahim", { leads: [peter] }), "Contacts")?.hits.length, 1);
+});
+
+test("query words may straddle fields in any order", () => {
+  // "northridge" lives in the address, "peter" in the name.
+  const peter = lead({
+    first_name: "PETER",
+    last_name: "BAHGAT IBRAHIM",
+    address: "18606 Community St, Northridge, CA 91324, USA",
+  });
+  assert.equal(group(run("northridge peter", { leads: [peter] }), "Contacts")?.hits.length, 1);
+});
+
+test("every query word must appear somewhere -- half a match is no match", () => {
+  const peter = lead({ first_name: "PETER", last_name: "BAHGAT IBRAHIM" });
+  assert.equal(group(run("peter jackson", { leads: [peter] }), "Contacts"), undefined);
+});
+
+test("non-adjacent words both inside a note find it, snippet anchored at the first", () => {
+  const hit = group(run("delivery friday"), "Notes")?.hits[0];
+  assert.ok(hit);
+  assert.ok(hit.sub?.includes("delivery"));
+});
