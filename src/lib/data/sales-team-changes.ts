@@ -66,3 +66,44 @@ export function describeSalesTeamChange(
 export function salesTeamChanged(before: SalesTeamSnapshot, after: SalesTeamSnapshot) {
   return describeSalesTeamChange(before, after, () => "").length > 0;
 }
+
+/** The three seats that decide WHO is paid, as opposed to how much. */
+export type SeatHolders = Pick<SalesTeamSnapshot, "sales_rep_1" | "sales_rep_2" | "closer_id">;
+
+export function seatHoldersChanged(before: SeatHolders, after: SeatHolders): boolean {
+  return (
+    before.sales_rep_1 !== after.sales_rep_1 ||
+    before.sales_rep_2 !== after.sales_rep_2 ||
+    before.closer_id !== after.closer_id
+  );
+}
+
+/**
+ * Who may change the seat holders on a signed contract: Admin only.
+ *
+ * The seats stay editable after signature by design (026) -- the office
+ * corrects a wrong seat, settles a handoff -- but a swap restates pay:
+ * the old rep's line leaves the statement while the document itself
+ * keeps naming whoever sold the job, and the two screens then disagree
+ * about the same contract. That is an owner's call, so Office keeps the
+ * shares and rates but moving a seat to a different person needs the
+ * Admin role. Filling a seat from empty counts too: adding someone to
+ * the pay is as much a pay decision as replacing them.
+ *
+ * A hold on top of the existing Office-or-Admin gate, never a widening,
+ * and enforced in the server action for 024's reason: saveSalesTeam is
+ * the only in-app path that edits these columns after signature.
+ */
+export function seatChangeError(input: {
+  /** estimates.status -- the hold exists for signed contracts only. */
+  status: string;
+  /** isStrictAdmin: the Admin role or the super admin, not Office. */
+  strictAdmin: boolean;
+  before: SeatHolders;
+  after: SeatHolders;
+}): string | null {
+  if (input.status !== "Signed") return null;
+  if (input.strictAdmin) return null;
+  if (!seatHoldersChanged(input.before, input.after)) return null;
+  return "Only an Admin can change who is paid on a signed contract. Shares and rates you can still adjust.";
+}

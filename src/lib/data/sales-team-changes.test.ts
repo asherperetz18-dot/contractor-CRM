@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   describeSalesTeamChange,
   salesTeamChanged,
+  seatHoldersChanged,
+  seatChangeError,
   type SalesTeamSnapshot,
 } from "./sales-team-changes.ts";
 
@@ -82,4 +84,69 @@ test("a seat the roster no longer resolves still describes through the caller's 
   assert.deepEqual(describeSalesTeamChange(base, after, name), [
     "Salesperson: Jonathan Wizman → Unnamed",
   ]);
+});
+
+/**
+ * The seat-holder gate: on a signed contract, only Admin may change WHO
+ * is paid. Shares and rates stay at the wider Office-or-Admin gate --
+ * the restriction is about moving money to a different person, not
+ * about tuning the numbers.
+ */
+
+test("seatHoldersChanged sees people moving, not numbers moving", () => {
+  const rebalanced: SalesTeamSnapshot = { ...base, sales_rep_1_bp: 6000, commission_rate_bp: 4000 };
+  assert.equal(seatHoldersChanged(base, { ...base }), false);
+  assert.equal(seatHoldersChanged(base, rebalanced), false);
+  assert.equal(seatHoldersChanged(base, { ...base, sales_rep_1: R2 }), true);
+  // A seat filled from empty is still a new person being paid.
+  assert.equal(seatHoldersChanged(base, { ...base, sales_rep_2: R2 }), true);
+  assert.equal(seatHoldersChanged(base, { ...base, closer_id: C1 }), true);
+});
+
+test("on a signed contract, a non-Admin moving a seat is refused", () => {
+  const err = seatChangeError({
+    status: "Signed",
+    strictAdmin: false,
+    before: base,
+    after: { ...base, sales_rep_1: R2 },
+  });
+  assert.equal(typeof err, "string");
+  assert.match(err!, /Admin/);
+});
+
+test("an Admin may still move a seat on a signed contract — someone must fix a wrong one", () => {
+  assert.equal(
+    seatChangeError({
+      status: "Signed",
+      strictAdmin: true,
+      before: base,
+      after: { ...base, sales_rep_1: R2 },
+    }),
+    null
+  );
+});
+
+test("shares and rates alone pass the gate — the seats are what it guards", () => {
+  const rebalanced: SalesTeamSnapshot = {
+    ...base,
+    sales_rep_1_bp: 6000,
+    sales_rep_2_bp: 4000,
+    lead_cost_bp: 1000,
+  };
+  assert.equal(
+    seatChangeError({ status: "Signed", strictAdmin: false, before: base, after: rebalanced }),
+    null
+  );
+});
+
+test("an unsigned document is not held — the restriction is about signed contracts", () => {
+  assert.equal(
+    seatChangeError({
+      status: "Sent",
+      strictAdmin: false,
+      before: base,
+      after: { ...base, sales_rep_1: R2 },
+    }),
+    null
+  );
 });
