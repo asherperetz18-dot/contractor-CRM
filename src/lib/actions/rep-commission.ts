@@ -23,6 +23,7 @@ import {
   seatChangeError,
   type SalesTeamSnapshot,
 } from "@/lib/data/sales-team-changes";
+import { type PayoutKind } from "@/lib/data/commission-payouts";
 
 export type SalesTeam = {
   sales_rep_1: string | null;
@@ -637,4 +638,239 @@ export async function getRepCommissions(opts?: {
 
   rows.sort((a, b) => (b.signedAt ?? "").localeCompare(a.signedAt ?? ""));
   return { rows, everyone };
+}
+
+// ── The payout ledger (0158): money actually handed to a rep ─────────
+
+export type CommissionPayoutRow = {
+  id: string;
+  repId: string;
+  repName: string;
+  estimateId: string | null;
+  /** Resolved for display; null when the payment wasn't tied to a job. */
+  docNumber: string | null;
+  jobTitle: string | null;
+  amountCents: number;
+  kind: PayoutKind;
+  /** The day the money moved, YYYY-MM-DD. */
+  paidOn: string;
+  note: string | null;
+};
+
+type PayoutDbRow = {
+  id: string;
+  rep_id: string;
+  estimate_id: string | null;
+  amount_cents: number;
+  kind: PayoutKind;
+  paid_on: string;
+  note: string | null;
+};
+
+/**
+ * Every commission payment recorded, newest first. A rep sees their
+ * own; Office/Admin see the company's -- the same boundary as the
+ * commission report, enforced here and again by RLS.
+ *
+ * ledgerReady is false while migration 0158 hasn't been run yet, so
+ * the page can keep showing earned/payable exactly as before instead
+ * of erroring -- the owner runs SQL by hand, sometimes days later.
+ */
+export async function getCommissionPayouts(opts?: {
+  /** Admins only; ignored for a rep, who always gets their own. */
+  repId?: string;
+}): Promise<{
+  error?: string;
+  payouts?: CommissionPayoutRow[];
+  ledgerReady?: boolean;
+  canRecord?: boolean;
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const everyone = isStrictAdmin(profile) || isAdminRole(profile);
+  const canRecord = isAdminRole(profile);
+  const supabase = await createClient();
+
+  // Is 0158 in yet? Asked outright, because selectAll flattens a query
+  // error into an empty list -- and a missing table must read as "not
+  // set up", never as "no payments were ever made". Same posture as the
+  // rollup fallbacks: degrade to the pre-ledger page, don't error.
+  const probe = await supabase
+    .from("rep_commission_payouts")
+    .select("id")
+    .eq("company_id", profile.company_id)
+    .limit(1);
+  if (probe.error) {
+    return { payouts: [], ledgerReady: false, canRecord };
+  }
+
+  const raw = await selectAll<PayoutDbRow>((from, to) => {
+    let q = supabase
+      .from("rep_commission_payouts")
+      .select("id, rep_id, estimate_id, amount_cents, kind, paid_on, note")
+      .eq("company_id", profile.company_id)
+      .order("paid_on", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (!everyone) q = q.eq("rep_id", profile.id);
+    else if (opts?.repId) q = q.eq("rep_id", opts.repId);
+    return q;
+  });
+
+  const estimateIds = [...new Set(raw.map((p) => p.estimate_id).filter((id): id is string => !!id))];
+  const [peopleRes, jobsRes] = await Promise.all([
+    // The whole roster, so a payment to somebody long archived still
+    // carries their name (AGENTS.md).
+    supabase
+      .from("profiles")
+      .select("id, name, email")
+      .returns<{ id: string; name: string | null; email: string | null }[]>(),
+    estimateIds.length
+      ? supabase
+          .from("estimates")
+          .select("id, doc_number, title")
+          .eq("company_id", profile.company_id)
+          .in("id", estimateIds)
+          .returns<{ id: string; doc_number: string; title: string | null }[]>()
+      : Promise.resolve({ data: [] as { id: string; doc_number: string; title: string | null }[] }),
+  ]);
+
+  const nameById = new Map((peopleRes.data ?? []).map((p) => [p.id, p.name || p.email || "Unnamed"]));
+  const jobById = new Map((jobsRes.data ?? []).map((j) => [j.id, j]));
+
+  return {
+    payouts: raw.map((p) => {
+      const job = p.estimate_id ? jobById.get(p.estimate_id) : undefined;
+      return {
+        id: p.id,
+        repId: p.rep_id,
+        repName: nameById.get(p.rep_id) ?? "Unnamed",
+        estimateId: p.estimate_id,
+        docNumber: job?.doc_number ?? null,
+        jobTitle: job?.title ?? null,
+        amountCents: p.amount_cents,
+        kind: p.kind,
+        paidOn: p.paid_on,
+        note: p.note,
+      };
+    }),
+    ledgerReady: true,
+    canRecord,
+  };
+}
+
+/**
+ * Record money handed to a rep: a commission payout, or an advance
+ * given before the job settled. This decides what pay history says, so
+ * it is Office/Admin -- the same people who hold the sales-team panel.
+ *
+ * Deliberately not idempotent: two identical cash advances in one week
+ * are a real thing. recorded_by (kept by the table) is what makes
+ * hand-entry safe to allow, same as manual customer payments.
+ */
+export async function recordCommissionPayout(input: {
+  repId: string;
+  amountCents: number;
+  kind: PayoutKind;
+  /** The day the money moved, YYYY-MM-DD. Today when omitted. */
+  paidOn?: string;
+  /** The job it was against, when there is one. */
+  estimateId?: string | null;
+  /** Cheque number, cash, Zelle -- whatever proves it later. */
+  note?: string;
+}): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) {
+    return { error: "Only Office or Admin can record a commission payment." };
+  }
+
+  const amountCents = Math.round(input.amountCents);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return { error: "Enter an amount greater than zero." };
+  }
+  if (input.kind !== "payout" && input.kind !== "advance") {
+    return { error: "Unknown payment type." };
+  }
+  if (input.paidOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.paidOn)) {
+    return { error: "Enter the date the money moved." };
+  }
+
+  const supabase = await createClient();
+
+  // The rep must be on this company's roster -- any status: a rep who
+  // left still gets their final commission. A wrong id would file pay
+  // against nobody.
+  const { data: member } = await supabase
+    .from("company_members")
+    .select("profile_id")
+    .eq("company_id", profile.company_id)
+    .eq("profile_id", input.repId)
+    .maybeSingle();
+  if (!member) return { error: "That person isn't on this company's roster." };
+
+  // A job, if named, must be this company's -- otherwise a payment
+  // could be filed against another company's contract.
+  if (input.estimateId) {
+    const { data: est } = await supabase
+      .from("estimates")
+      .select("id")
+      .eq("id", input.estimateId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!est) return { error: "That contract couldn't be found." };
+  }
+
+  const { data: inserted, error } = await supabase
+    .from("rep_commission_payouts")
+    .insert({
+      company_id: profile.company_id,
+      rep_id: input.repId,
+      estimate_id: input.estimateId || null,
+      amount_cents: amountCents,
+      kind: input.kind,
+      paid_on: input.paidOn || undefined,
+      note: input.note?.trim() || null,
+      recorded_by: profile.id,
+    })
+    .select("id");
+  if (error || !inserted?.length) {
+    // The one self-inflicted failure: 0158 hasn't been pasted yet.
+    if (error?.message.includes("rep_commission_payouts")) {
+      return {
+        error:
+          "Payment tracking isn't set up yet — paste supabase/migrations/0158_rep_commission_payouts.sql into the Supabase SQL editor (safe to run twice), then try again.",
+      };
+    }
+    return { error: error?.message || "Could not record the payment." };
+  }
+
+  revalidatePath("/sales-commission");
+  revalidatePath("/sales-commission/statement");
+  return { ok: true };
+}
+
+/** Undo a mis-keyed entry. Amounts are never edited in place -- remove
+ *  and re-record, the same discipline as manual customer payments. */
+export async function removeCommissionPayout(
+  payoutId: string
+): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can do that." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("rep_commission_payouts")
+    .delete()
+    .eq("id", payoutId)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That payment couldn't be removed." };
+
+  revalidatePath("/sales-commission");
+  revalidatePath("/sales-commission/statement");
+  return { ok: true };
 }

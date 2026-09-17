@@ -5,7 +5,9 @@ import { selectAll } from "@/lib/data/select-all";
 import {
   canManageBills,
   isAdminRole,
+  paidTotalCents,
   paymentMethodLabel,
+  phaseOwedCents,
   phaseState,
   type EstimatePayment,
   type PortalPayment,
@@ -156,6 +158,7 @@ export default async function PaymentsPage() {
   const billedRows: BilledPhaseRow[] = billedPhases
     .map((ph) => {
       const c = docOf(ph.estimate_id);
+      const on = payments.filter((p) => p.estimate_payment_id === ph.id);
       return {
         id: ph.id,
         estimateId: c?.id ?? null,
@@ -165,15 +168,20 @@ export default async function PaymentsPage() {
         customer: c ? nameOf(c.lead_id) : "",
         phase: ph.name || "Progress payment",
         dueDate: ph.due_date ?? null,
-        state: phaseState(
-          ph,
-          payments.filter((p) => p.estimate_payment_id === ph.id)
-        ),
+        state: phaseState(ph, on),
         amountCents: ph.amount_cents,
+        paidCents: paidTotalCents(on),
+        owedCents: phaseOwedCents(ph, on),
       };
     })
+    // A billed phase on a document that is no longer a live signed
+    // contract (voided after billing) is money the company is not
+    // getting; Projects refuses to count a cancelled job's bills, so
+    // this page's card must not either or the two stop agreeing.
+    .filter((r) => r.estimateId !== null)
     .sort((a, b) => {
-      const rank = (x: string) => (x === "overdue" ? 0 : x === "billed" ? 1 : 2);
+      const rank = (x: string) =>
+        x === "overdue" ? 0 : x === "partial" ? 1 : x === "billed" ? 2 : x === "clearing" ? 3 : 4;
       return rank(a.state) - rank(b.state) || (a.dueDate || "").localeCompare(b.dueDate || "");
     });
 

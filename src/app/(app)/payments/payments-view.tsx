@@ -35,7 +35,14 @@ export type BilledPhaseRow = {
   phase: string;
   dueDate: string | null;
   state: PhaseState;
+  /** The phase's face value on the schedule. */
   amountCents: number;
+  /** Settled money filed to this phase. */
+  paidCents: number;
+  /** amountCents less paidCents, never negative — what the Billed,
+   *  Unpaid and Overdue cards sum, so a partly paid phase counts its
+   *  remainder instead of vanishing. */
+  owedCents: number;
 };
 
 export type DepositChaseRow = {
@@ -172,8 +179,8 @@ export function PaymentsView({
   // "Overdue" button.
   const stateCounts = new Map<PhaseState, number>();
   for (const r of scopedBilled) stateCounts.set(r.state, (stateCounts.get(r.state) ?? 0) + 1);
-  const chips = (["overdue", "billed", "clearing", "paid"] as PhaseState[]).filter((s) =>
-    stateCounts.has(s)
+  const chips = (["overdue", "partial", "billed", "clearing", "paid"] as PhaseState[]).filter(
+    (s) => stateCounts.has(s)
   );
 
   const filtering = Boolean(clientId || rep) || chip !== "all";
@@ -342,7 +349,17 @@ export function PaymentsView({
                         {phaseStateLabel(r.state)}
                       </span>
                     </td>
-                    <td className="right mono">{moneyCents(r.amountCents)}</td>
+                    {/* Unpaid rows show what is still owed — the figure
+                        the cards sum — with the face value underneath
+                        once money has landed on the phase. */}
+                    <td className="right mono">
+                      {moneyCents(r.state === "paid" ? r.amountCents : r.owedCents)}
+                      {r.paidCents > 0 && r.owedCents > 0 && (
+                        <div className="est-tax-note">
+                          of {moneyCents(r.amountCents)} · {moneyCents(r.paidCents)} paid
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

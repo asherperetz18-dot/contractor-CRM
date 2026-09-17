@@ -355,9 +355,29 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Every webhook and cron run now has a duration, a correlation id, and — when it throws — a Sentry event with the redaction guarantees of `src/lib/observability/redact.ts`. The known soft spot is routes that catch their own failure and answer 200 so the sender stops retrying: those report "completed" and keep their inner `console.error` for now.
 
+## 032 — Commission payouts are a ledger, netted per rep
+
+**Date:** 2026-09-17
+
+**Context:** The rep commission report computes earned and payable live from the contracts (0086/0153), but nothing recorded that a rep was actually *paid* — a qualified commission read "payable" forever, and the only thing separating paid from unpaid was the statement's date range, which breaks the moment pay runs late, partial, or early. Advances — money handed over before a job settles, routine on long jobs — had no home at all, so at settlement the statement asked for the full share again: a double payment waiting to happen.
+
+**Decision:** One ledger, `rep_commission_payouts` (0158): every payment to a rep is a row — amount, the day it moved, an optional job, `kind` payout|advance, `recorded_by`. An advance is deliberately just a payment with a label, not its own scheme: it deducts like any payment, and the label exists because a statement must be able to say "less advance". Balance due is computed **per rep** — payable less paid, floored at zero, any excess shown as "advanced ahead" and netting against that rep's next qualifying job — and **never across reps**: `balanceTotals` sums per-rep dues, because netting one rep's advance against another's wages prints a payroll short (pinned in `commission-payouts.test.ts`). The statement closes like a bank statement — carried in + came due − paid = balance — per rep, with the same no-cross-netting rule on the all-salespeople print. Rows are insert-and-delete only (no update policy; a mis-key is removed and re-recorded, the manual-customer-payments discipline). Until the migration runs, the ledger reports itself not ready via a probe query — `selectAll` flattens errors into an empty list, and a missing table must read as "not set up", never "no payments" — and the page and statement render exactly as before.
+
+**Consequence:** `/sales-commission` now answers the payroll question it is opened for — Paid out and Balance due cards, a per-salesperson balance table, and a Payments & advances ledger — and the printable statement ends in the number to actually write the check for. The trades: removing a ledger row leaves no trail, and the dispatcher scheme still has no payment tracking (both in TECH_DEBT).
+
+## 033 — A partial payment leaves the rest of the invoice owed, everywhere
+
+**Date:** 2026-09-17
+
+**Context:** `phaseState` called a phase "paid" the moment ANY settled payment was filed to it, whatever the amount. Recording a partial payment — which `recordManualPayment` deliberately allows (warnings, not refusals) — made the remainder vanish from the Payments page: the phase moved to the Paid list and "Billed, Unpaid" dropped it entirely, while Projects' "Owed to you" and Money to Collect (per-phase remainders, #001) kept counting it. On the live book that read $61,400 against $66,000 with nothing explaining the $4,600 — a real invoice remainder nobody was being told to chase. The customer portal told the customer the same lie: "Paid" on an invoice they still owed money on.
+
+**Decision:** `phaseState` is amount-aware, with a new `partial` state ("Partially paid"): paid means the settled money covers the amount; clearing means money in flight covers the remainder (a token pending payment no longer hides lateness); a partially paid phase past its due date is overdue, because the remainder is late. The Billed, Unpaid and Overdue cards sum `phaseOwedCents` — the identical per-phase remainder `phaseReceivableCents` sums for Projects — pinned equal in `src/lib/data/phase-state.test.ts`, so the two pages can only ever say the same number. Money still clearing stays on Billed, Unpaid until it lands (the Clearing card names what is in flight). Billed phases on documents that are no longer live signed contracts are dropped from the page, matching Projects' refusal to count a cancelled job's bills.
+
+**Consequence:** A partly paid invoice reads "Partially paid" with its remainder on Payments, the contract schedule and the customer portal, and the remainder stays on the cards until settled. The portal shows no Pay button on such a phase — checkout only knows how to charge the full face amount (see TECH_DEBT: portal remainder checkout).
+
 ---
 
-## 032 — Chip colors state money direction, not document type
+## 034 — Chip colors state money direction, not document type
 
 **Date:** 2026-09-17
 
