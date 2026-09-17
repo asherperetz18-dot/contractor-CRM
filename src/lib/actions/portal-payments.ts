@@ -6,6 +6,7 @@ import { stripeClient } from "@/lib/stripe-env";
 import { getStripeForCompany } from "@/lib/stripe-company";
 import {
   depositCents,
+  phaseOwedCents,
   phaseState,
   type EstimatePayment,
   type EstimateStatus,
@@ -130,6 +131,9 @@ export type PortalPhase = {
   name: string;
   description: string | null;
   amountCents: number;
+  /** What is still owed on the phase. Less than amountCents once a
+   *  partial payment has been recorded against it. */
+  owedCents: number;
   dueDate: string | null;
   state: PhaseState;
   paidAt: string | null;
@@ -168,9 +172,11 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
       .returns<EstimatePayment[]>(),
     admin
       .from("portal_payments")
-      .select("id, estimate_payment_id, status, paid_at")
+      .select("id, estimate_payment_id, status, amount_cents, paid_at")
       .eq("estimate_id", estimateId)
-      .returns<Pick<PortalPayment, "id" | "estimate_payment_id" | "status" | "paid_at">[]>(),
+      .returns<
+        Pick<PortalPayment, "id" | "estimate_payment_id" | "status" | "amount_cents" | "paid_at">[]
+      >(),
   ]);
 
   return (phases ?? [])
@@ -183,6 +189,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         name: p.name,
         description: p.description,
         amountCents: p.amount_cents,
+        owedCents: phaseOwedCents(p, on),
         dueDate: p.due_date ?? null,
         state: phaseState(p, on),
         paidAt: settled?.paid_at ?? null,
