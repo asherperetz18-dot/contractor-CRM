@@ -178,8 +178,9 @@ export default async function ProjectsReportPage({
       cost: acc.cost + p.rollup.costCents,
       net: acc.net + p.rollup.netCashCents,
       unpaid: acc.unpaid + p.unpaidBillsCents,
+      commission: acc.commission + (p.rollup.commissionCents ?? 0),
     }),
-    { sold: 0, collected: 0, receivable: 0, cost: 0, net: 0, unpaid: 0 }
+    { sold: 0, collected: 0, receivable: 0, cost: 0, net: 0, unpaid: 0, commission: 0 }
   );
 
   // What the printed sheet says it covers. "Custom" alone would be
@@ -278,8 +279,14 @@ export default async function ProjectsReportPage({
                     <span className="mono">{moneyCents(totals.unpaid)}</span>
                   </div>
                 )}
+                {totals.commission > 0 && (
+                  <div className="estdoc-total-row">
+                    <span>Rep commission (already out of net cash)</span>
+                    <span className="mono">{moneyCents(totals.commission)}</span>
+                  </div>
+                )}
                 <div className="estdoc-total-row estdoc-grand">
-                  <span>Net cash (collected − spent)</span>
+                  <span>Net cash (collected − spent − commission)</span>
                   <span className="mono">{moneyCents(totals.net)}</span>
                 </div>
               </div>
@@ -338,6 +345,12 @@ export default async function ProjectsReportPage({
                         <div className="estdoc-total-row">
                           <span>Unpaid vendor bills</span>
                           <span className="mono">{moneyCents(p.unpaidBillsCents)}</span>
+                        </div>
+                      )}
+                      {(p.rollup.commissionCents ?? 0) > 0 && (
+                        <div className="estdoc-total-row">
+                          <span>Rep commission</span>
+                          <span className="mono">{moneyCents(p.rollup.commissionCents ?? 0)}</span>
                         </div>
                       )}
                       <div className="estdoc-total-row estdoc-grand">

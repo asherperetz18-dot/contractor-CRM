@@ -70,6 +70,8 @@ export function projectTotals(cards: ProjectCard[]): {
   receivable: number;
   net: number;
   unpaid: number;
+  /** The sales teams' cut across these jobs; unmeasured jobs add 0. */
+  commission: number;
 } {
   return cards.reduce(
     (acc, p) => ({
@@ -79,8 +81,9 @@ export function projectTotals(cards: ProjectCard[]): {
       receivable: acc.receivable + p.rollup.receivableCents,
       net: acc.net + p.rollup.netCashCents,
       unpaid: acc.unpaid + p.unpaidBillsCents,
+      commission: acc.commission + (p.rollup.commissionCents ?? 0),
     }),
-    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0, unpaid: 0 }
+    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0, unpaid: 0, commission: 0 }
   );
 }
 

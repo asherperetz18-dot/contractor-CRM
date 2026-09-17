@@ -425,7 +425,7 @@ export function ProjectsView({
           <h1 className="page-title">Projects</h1>
           <p className="page-sub">
             {active.length} sold job{active.length === 1 ? "" : "s"} · contract, collected
-            and what is left after costs
+            and what is left after costs and rep commission
           </p>
         </div>
         {canAddCosts && (
@@ -540,6 +540,9 @@ export function ProjectsView({
         >
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
+          {totals.commission > 0 && (
+            <div className="est-tax-note">after {moneyCents(totals.commission)} commission</div>
+          )}
         </button>
         <button
           type="button"
@@ -766,6 +769,7 @@ export function ProjectsView({
                 <th className="right">Collected</th>
                 <th className="right">Owed</th>
                 <th className="right">Spent</th>
+                <th className="right">Commission</th>
                 <th className="right">Net cash</th>
               </tr>
             </thead>
@@ -1039,6 +1043,12 @@ export function ProjectsView({
                     )}
                   </td>
                   <td className="right mono">
+                    {/* The sales team's cut of this job, already taken out
+                        of Net cash. Dash when unknowable: no costs recorded
+                        yet, or nobody seated to owe it to. */}
+                    {p.rollup.commissionCents ? moneyCents(p.rollup.commissionCents) : "—"}
+                  </td>
+                  <td className="right mono">
                     {/* Only coloured once something has actually been spent.
                         A job with no costs recorded is not profitable, it is
                         unmeasured, and green would say otherwise. */}
@@ -1053,7 +1063,7 @@ export function ProjectsView({
                 </tr>
                 {openChecklists.has(p.estimateId) && (
                   <tr className="proj-checklist-row">
-                    <td colSpan={7 + visibleColumns.size}>
+                    <td colSpan={8 + visibleColumns.size}>
                       <ProjectChecklist
                         estimateId={p.estimateId}
                         items={items}

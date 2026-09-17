@@ -6,6 +6,9 @@ import {
   computeProjectRollup,
   phaseReceivableCents,
   billRemainingCents,
+  computeRepCommission,
+  commissionOwedCents,
+  costsForContract,
   type Estimate,
   type EstimatePayment,
   type JobExpense,
@@ -41,7 +44,7 @@ export async function buildProjectCards(
 }> {
   // selectAll throughout: a bare select stops at 1000 rows in silence,
   // and a projects page that quietly omits jobs is worse than none.
-  const [estimates, payments, paid, expenses, reps, openBills, billPayments] = await Promise.all([
+  const [estimates, payments, paid, expenses, reps, openBills, billPayments, commissionDefaults] = await Promise.all([
     selectAll<Estimate>((from, to) =>
       supabase.from("estimates").select("*").eq("company_id", companyId).range(from, to)
     ),
@@ -101,6 +104,15 @@ export async function buildProjectCards(
         .eq("company_id", companyId)
         .range(from, to)
     ),
+    // The company's commission defaults, for contracts whose sales team
+    // was never saved -- the same fallback the commission page uses, so
+    // this page's figure and that page's lines can never disagree.
+    supabase
+      .from("company_profile")
+      .select("sales_commission_bp, sales_lead_cost_bp")
+      .eq("company_id", companyId)
+      .maybeSingle<{ sales_commission_bp: number; sales_lead_cost_bp: number }>()
+      .then((res) => res.data),
   ]);
 
   // What each job still owes its vendors: every live bill minus what
@@ -151,15 +163,18 @@ export async function buildProjectCards(
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r.name]));
   const phaseById = new Map(payments.map((p) => [p.id, p]));
+  const allPhaseIds = new Set(phaseById.keys());
 
   const cards: ProjectCard[] = contracts.map((contract) => {
     const changeOrders = estimates.filter((e) => e.parent_estimate_id === contract.id);
     const signedChangeOrders = changeOrders.filter((e) => e.status === "Signed");
+    const signedChangeOrderCents = signedChangeOrders.reduce((s, e) => s + e.total_cents, 0);
     // Every document the project's money can arrive against.
     const docIds = new Set([contract.id, ...changeOrders.map((e) => e.id)]);
 
     const ownPhases = payments.filter((p) => docIds.has(p.estimate_id));
     const ownPhaseIds = new Set(ownPhases.map((p) => p.id));
+    const ownsUnfiledCosts = (contractsPerLead.get(contract.lead_id) ?? 1) === 1;
 
     const leadExpenses = expenses.filter((e) => e.lead_id === contract.lead_id);
     const filedCostCents = leadExpenses
@@ -169,15 +184,52 @@ export async function buildProjectCards(
       .filter((e) => !e.estimate_payment_id || !phaseById.has(e.estimate_payment_id))
       .reduce((s, e) => s + e.amount_cents, 0);
 
+    const lead = leadById.get(contract.lead_id) ?? null;
+
+    // The sales team's cut, computed exactly as /sales-commission does
+    // it -- same cost attribution (costsForContract), same stamped-rate
+    // fallbacks, same assigned-rep fallback for a never-saved seat -- so
+    // this page and that one can never disagree about the same job.
+    // Null rather than a figure when it is unknowable: a cancelled job
+    // pays nobody, and an uncosted job's "commission" would be a share
+    // of the whole contract rather than of its margin.
+    const repOne = contract.sales_rep_1 ?? lead?.assigned_to ?? null;
+    const commissionCosts = costsForContract({
+      leadExpenses,
+      contractPhaseIds: ownPhaseIds,
+      allPhaseIds,
+      leadHasOneContract: ownsUnfiledCosts,
+    });
+    const commissionDetail = computeRepCommission({
+      contractCents: contract.total_cents + signedChangeOrderCents,
+      leadCostBp: contract.lead_cost_bp ?? commissionDefaults?.sales_lead_cost_bp ?? 1500,
+      commissionRateBp:
+        contract.commission_rate_bp ?? commissionDefaults?.sales_commission_bp ?? 5000,
+      expensesCents: commissionCosts.cents,
+      hasCosts: commissionCosts.counted > 0,
+      rep1Bp: contract.sales_rep_1_bp ?? 10000,
+      rep2Bp: contract.sales_rep_2 ? (contract.sales_rep_2_bp ?? 0) : 0,
+      closerPoolBp: contract.closer_id ? (contract.closer_pool_bp ?? 0) : 0,
+    });
+    const commissionCents =
+      contract.status !== "Signed" || commissionDetail.unmeasured
+        ? null
+        : commissionOwedCents(commissionDetail, {
+            rep1: !!repOne,
+            rep2: !!contract.sales_rep_2,
+            closer: !!contract.closer_id,
+          });
+
     const docPayments = paid.filter((p) => docIds.has(p.estimate_id));
     const rollup = computeProjectRollup({
       contractTotalCents: contract.total_cents,
-      signedChangeOrderCents: signedChangeOrders.reduce((s, e) => s + e.total_cents, 0),
+      signedChangeOrderCents,
       payments: docPayments,
       receivableCents: phaseReceivableCents(ownPhases, docPayments),
       filedCostCents,
       unfiledCostCents,
-      ownsUnfiledCosts: (contractsPerLead.get(contract.lead_id) ?? 1) === 1,
+      ownsUnfiledCosts,
+      commissionCents,
     });
 
     // Cancelled and Complete are derived from documents that already
@@ -194,7 +246,6 @@ export async function buildProjectCards(
             ? ("complete" as const)
             : ("in_progress" as const);
 
-    const lead = leadById.get(contract.lead_id) ?? null;
     return {
       status,
       estimateId: contract.id,
