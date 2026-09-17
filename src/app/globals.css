@@ -690,15 +690,6 @@ body {
 .stat-card:hover {
   border-color: var(--blueprint);
 }
-/* Cards that act (filter, jump, navigate) render as buttons; keep the
-   card's look instead of the browser's button chrome. */
-button.stat-card {
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  width: 100%;
-  display: block;
-}
 .stat-static {
   cursor: default;
 }

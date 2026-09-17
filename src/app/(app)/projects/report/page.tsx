@@ -47,7 +47,6 @@ const CHIP_LABEL: Record<ProjectChip, string> = {
   Cancelled: "Cancelled",
   Bleeding: "Negative net cash",
   Owed: "Owed money",
-  NewMonth: "New this month",
 };
 
 const STATUS_LABEL: Record<string, string> = {

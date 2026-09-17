@@ -17,8 +17,7 @@ export type ProjectChip =
   | "Complete"
   | "Cancelled"
   | "Bleeding"
-  | "Owed"
-  | "NewMonth";
+  | "Owed";
 
 export const PROJECT_CHIPS: ProjectChip[] = [
   "All",
@@ -28,7 +27,6 @@ export const PROJECT_CHIPS: ProjectChip[] = [
   "Cancelled",
   "Bleeding",
   "Owed",
-  "NewMonth",
 ];
 
 export type ProjectDateRange = "any" | "week" | "month" | "year" | "custom";
@@ -43,17 +41,10 @@ const CHIP_STATUS: Partial<Record<ProjectChip, ProjectStatus>> = {
 /** Whether a card belongs under a status chip. Every chip except
  *  Cancelled speaks only for live jobs -- folding a voided contract into
  *  "All" or "Owed" would report money the company is never getting. */
-export function chipMatches(p: ProjectCard, chip: ProjectChip, now: Date = new Date()): boolean {
+export function chipMatches(p: ProjectCard, chip: ProjectChip): boolean {
   if (chip === "Cancelled") return p.status === "cancelled";
   if (p.status === "cancelled") return false;
   if (chip === "All") return true;
-  // Signed this calendar month. The clock is a parameter so the rule is
-  // testable; the "New this month" stat card counts with this same rule.
-  if (chip === "NewMonth") {
-    if (!p.signedAt) return false;
-    const d = new Date(p.signedAt);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
   if (chip === "Bleeding") return p.rollup.netCashCents < 0;
   if (chip === "Owed") return p.rollup.receivableCents > 0;
   return p.status === CHIP_STATUS[chip];
