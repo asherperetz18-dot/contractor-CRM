@@ -2,6 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
+let bodyScrollLocks = 0;
+
+function lockBodyScroll() {
+  bodyScrollLocks += 1;
+  document.body.style.overflow = "hidden";
+}
+
+function unlockBodyScroll() {
+  bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
+  if (bodyScrollLocks === 0) document.body.style.overflow = "";
+}
+
 export function Modal({
   title,
   onClose,
@@ -31,12 +43,14 @@ export function Modal({
   // lock, a wheel gesture over the backdrop moved the page underneath
   // and the card stayed put -- which reads as "scrolling is broken"
   // until the cursor happens to drift onto the card.
+  //
+  // Counted, not saved-and-restored: with two modals up at once (a
+  // confirm on top of a drawer), whichever closed last used to restore
+  // the overflow it saw at mount -- "hidden", left on the body for
+  // good, a page that can't scroll and reads exactly like a freeze.
   useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
+    lockBodyScroll();
+    return unlockBodyScroll;
   }, []);
 
   return (
