@@ -13,6 +13,7 @@ import { JobReceipts } from "./job-receipts";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
 import {
+  chipMatches,
   dateRangeBounds,
   matchesProjectFilters,
   type ProjectChip,
@@ -302,14 +303,13 @@ export function ProjectsView({
   // don't count as new business, same scope "active" uses everywhere else
   // on this page.
   const now = new Date();
-  const newThisMonth = active.filter((p) => {
-    if (!p.signedAt) return false;
-    const d = new Date(p.signedAt);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }).length;
+  const newMonthProjects = active.filter((p) => chipMatches(p, "NewMonth", now));
+  const newThisMonth = newMonthProjects.length;
 
   const shown =
-    filter === "Bleeding"
+    filter === "NewMonth"
+      ? newMonthProjects
+      : filter === "Bleeding"
       ? bleeding
       : filter === "Owed"
         ? owed
@@ -482,34 +482,68 @@ export function ProjectsView({
         </Modal>
       )}
 
+      {/* Every card answers a click with the thing that itemizes its
+          number: two filter this page's own list, the rest open the page
+          the money detail lives on. stat-card already renders the pointer
+          cursor, so an inert card here read as broken. */}
       <div className="stat-grid stat-grid-6">
-        <div className="stat-card">
+        <button
+          type="button"
+          className="stat-card"
+          title="Open Estimates & Contracts"
+          onClick={() => router.push("/estimates")}
+        >
           <div className="stat-value mono">{moneyCents(totals.sold)}</div>
           <div className="stat-label">Sold</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button
+          type="button"
+          className="stat-card"
+          title="Open Payments"
+          onClick={() => router.push("/payments")}
+        >
           <div className="stat-value mono">{moneyCents(totals.collected)}</div>
           <div className="stat-label">Collected</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button
+          type="button"
+          className="stat-card"
+          title="Show the jobs owing money"
+          onClick={() => setFilter("Owed")}
+        >
           <div className="stat-value mono">{moneyCents(totals.receivable)}</div>
           <div className="stat-label">Owed to you</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button
+          type="button"
+          className="stat-card"
+          title="Open Profit & Loss"
+          onClick={() => router.push("/profit-loss")}
+        >
           <div className="stat-value mono">{moneyCents(totals.cost)}</div>
           <div className="stat-label">Spent</div>
           {totals.unpaid > 0 && (
             <div className="est-tax-note">+ {moneyCents(totals.unpaid)} in unpaid bills</div>
           )}
-        </div>
-        <div className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}>
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}
+          title="Open Profit & Loss"
+          onClick={() => router.push("/profit-loss")}
+        >
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
-        </div>
-        <div className="stat-card">
+        </button>
+        <button
+          type="button"
+          className="stat-card"
+          title="Show the jobs signed this month"
+          onClick={() => setFilter("NewMonth")}
+        >
           <div className="stat-value mono">{newThisMonth}</div>
           <div className="stat-label">New this month</div>
-        </div>
+        </button>
       </div>
 
       {bleeding.length > 0 && (
@@ -546,6 +580,7 @@ export function ProjectsView({
               ["Cancelled", `Cancelled ${cancelled.length}`, "dead", cancelled.length],
               ["Bleeding", `Negative net cash ${bleeding.length}`, "bleed", bleeding.length],
               ["Owed", `Owed money ${owed.length}`, "owed", owed.length],
+              ["NewMonth", `New this month ${newThisMonth}`, "prog", newThisMonth],
             ] as [Filter, string, string, number][]
           ).map(([f, label, tone, count]) => (
             <button

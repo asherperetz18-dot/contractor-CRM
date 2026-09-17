@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   moneyCents,
   phaseStateLabel,
@@ -105,6 +105,7 @@ export function PaymentsView({
   canRemove: boolean;
 }) {
   const params = useSearchParams();
+  const router = useRouter();
   const [chip, setChip] = useState<"all" | PhaseState>("all");
   // Which history row is open for editing. Only hand-recorded rows open:
   // a Stripe row's method and amount are Stripe's record, not ours.
@@ -177,37 +178,75 @@ export function PaymentsView({
 
   const filtering = Boolean(clientId || rep) || chip !== "all";
 
+  // A card's click lands on the thing that itemizes its number: the
+  // matching status chip and its table, the deposits-to-chase list, the
+  // payment history -- or Money to Collect, the page that breaks
+  // Outstanding down. A state with no rows falls back to All rather
+  // than presenting an empty table under a chip nobody pressed.
+  function jumpTo(sectionId: string, state?: PhaseState) {
+    if (state) setChip(stateCounts.has(state) ? state : "all");
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <div>
       <div className="stat-grid stat-grid-6">
-        <div className={"stat-card stat-static" + (s.collectedCents > 0 ? " stat-card-won" : "")}>
+        <button
+          type="button"
+          className={"stat-card" + (s.collectedCents > 0 ? " stat-card-won" : "")}
+          title="Jump to the payment history"
+          onClick={() => jumpTo("pay-history")}
+        >
           <div className="stat-value mono">{moneyCents(s.collectedCents)}</div>
           <div className="stat-label">Collected</div>
-        </div>
+        </button>
         {/* Red only while something is actually late, so the colour never
             means anything but "act on this". */}
-        <div className={"stat-card stat-static" + (s.overdueCents > 0 ? " stat-card-late" : "")}>
+        <button
+          type="button"
+          className={"stat-card" + (s.overdueCents > 0 ? " stat-card-late" : "")}
+          title="Show the overdue payments"
+          onClick={() => jumpTo("pay-billed", "overdue")}
+        >
           <div className="stat-value mono">{moneyCents(s.overdueCents)}</div>
           <div className="stat-label">Overdue</div>
-        </div>
-        <div className={"stat-card stat-static" + (s.billedCents > 0 ? " stat-card-gold" : "")}>
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (s.billedCents > 0 ? " stat-card-gold" : "")}
+          title="Show the billed, unpaid payments"
+          onClick={() => jumpTo("pay-billed", "billed")}
+        >
           <div className="stat-value mono">{moneyCents(s.billedCents)}</div>
           <div className="stat-label">Billed, Unpaid</div>
-        </div>
-        <div className={"stat-card stat-static" + (s.outstandingCents > 0 ? " stat-card-gold" : "")}>
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (s.outstandingCents > 0 ? " stat-card-gold" : "")}
+          title="Open Money to Collect, which breaks this down"
+          onClick={() => router.push("/collect")}
+        >
           <div className="stat-value mono">{moneyCents(s.outstandingCents)}</div>
           <div className="stat-label">Outstanding</div>
-        </div>
-        <div
-          className={"stat-card stat-static" + (s.awaitingDepositCents > 0 ? " stat-card-gold" : "")}
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (s.awaitingDepositCents > 0 ? " stat-card-gold" : "")}
+          title="Jump to the deposits to chase"
+          onClick={() => jumpTo("pay-chase")}
         >
           <div className="stat-value mono">{moneyCents(s.awaitingDepositCents)}</div>
           <div className="stat-label">Deposits Not Paid</div>
-        </div>
-        <div className="stat-card stat-static">
+        </button>
+        <button
+          type="button"
+          className="stat-card"
+          title="Show the payments clearing"
+          onClick={() => jumpTo("pay-billed", "clearing")}
+        >
           <div className="stat-value mono">{moneyCents(s.clearingCents)}</div>
           <div className="stat-label">Clearing (ACH)</div>
-        </div>
+        </button>
       </div>
 
       <div className="filter-bar">
@@ -264,7 +303,7 @@ export function PaymentsView({
       {/* Billed progress payments: money already asked for. Overdue first,
           because that is the list somebody has to work today. */}
       {billed.length > 0 && (
-        <section className="pay-section">
+        <section className="pay-section" id="pay-billed">
           <h2 className="pay-section-title">
             Billed progress payments
             {overdueCount > 0 ? ` — ${overdueCount} overdue` : ""}
@@ -315,7 +354,7 @@ export function PaymentsView({
       {/* The only figure on this page that is a to-do list rather than a
           number: these are signed jobs where the deposit never landed. */}
       {chase.length > 0 && (
-        <section className="pay-section">
+        <section className="pay-section" id="pay-chase">
           <h2 className="pay-section-title">
             Deposits to chase ({awaitingDepositCount})
             {filtering ? ` · ${shownChase.length} of ${chase.length} match` : ""}
@@ -352,7 +391,7 @@ export function PaymentsView({
         </section>
       )}
 
-      <section className="pay-section">
+      <section className="pay-section" id="pay-history">
         <h2 className="pay-section-title">
           Payment history
           {filtering ? ` · ${shownHistory.length} of ${history.length} match` : ""}
