@@ -40,6 +40,15 @@ test("money in is green, money out is red — and the two never share a class", 
   assert.doesNotMatch(jobChipClass("bills"), /proj-chip-in/);
 });
 
+test("the add-a-bill chip is an action, not a record: dashed on top of its red", () => {
+  // "+ Add bill" creates a bill, "Bills" opens the pile. Same money
+  // direction (both red), different affordance: the creator wears the
+  // dashed add border, the record stays solid.
+  assert.match(jobChipClass("addBill"), /proj-chip-add/);
+  assert.match(jobChipClass("addBill"), /proj-chip-out/);
+  assert.doesNotMatch(jobChipClass("bills"), /proj-chip-add/);
+});
+
 test("every chip shares the one pill shape", () => {
   for (const kind of ALL_KINDS) {
     assert.match(jobChipClass(kind), /^proj-check-chip( |$)/, `${kind} must start from the base pill`);

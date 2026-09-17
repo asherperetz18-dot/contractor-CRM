@@ -3,9 +3,9 @@
  * by what they mean so the row is scanned by color before it's read:
  *
  *   green  = money coming IN   (the contract, its change orders)
- *   red    = money going OUT   (+ Bill, the job's bills)
+ *   red    = money going OUT   (+ Add bill, the job's bills)
  *   blue   = progress          (the checklist)
- *   indigo = the paperwork pile (permits & contracts)
+ *   indigo = the paperwork pile (permits & files)
  *   purple = photos · rose = the client · slate = the printed report
  *
  * Both views read this map instead of hardcoding classes, so the office
@@ -54,7 +54,10 @@ const CHIP_COLOR: Record<JobChipKind, string> = {
   checklist: "",
   contract: "proj-chip-in",
   changeOrder: "proj-chip-in",
-  addBill: "proj-chip-out",
+  // The one chip that CREATES a record instead of opening one: same
+  // red as Bills (both are money out), but dashed — the add affordance
+  // — so "+ Add bill" and "Bills" can't be mistaken for twins.
+  addBill: "proj-chip-out proj-chip-add",
   bills: "proj-chip-out",
   permits: "proj-chip-paper",
   photos: "proj-photo-chip",

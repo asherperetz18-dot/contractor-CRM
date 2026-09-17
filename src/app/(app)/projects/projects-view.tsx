@@ -879,7 +879,7 @@ export function ProjectsView({
                             className={jobChipClass("addBill")}
                             onClick={() => setReceiptFor(p.leadId)}
                           >
-                            🧾 + Bill
+                            + Add bill
                           </button>
                         )}
                         {canSeeDocChips && (
@@ -903,7 +903,7 @@ export function ProjectsView({
                               setDocumentsFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })
                             }
                           >
-                            📄 Permits &amp; contracts
+                            📄 Permits &amp; files
                           </button>
                         )}
                         <button

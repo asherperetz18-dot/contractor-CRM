@@ -101,7 +101,7 @@ export function CrewProjectsView({
               className={jobChipClass("addBill")}
               onClick={() => setReceiptFor(j.leadId)}
             >
-              🧾 + Bill
+              + Add bill
             </button>
           )}
           <button

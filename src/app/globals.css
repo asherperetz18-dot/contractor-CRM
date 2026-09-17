@@ -4767,13 +4767,19 @@ a.portal-header-stars:hover {
   background: #e8f5ee;
   color: #2f855a;
 }
-/* Money going out is red: + Bill and the job's bills. */
+/* Money going out is red: + Add bill and the job's bills. */
 .proj-chip-out {
   border-color: #e2b4ae;
   background: #fdeeec;
   color: #c0392b;
 }
-/* The paperwork pile (permits & contracts) is indigo. */
+/* An add-action chip creates a record instead of opening one, so it
+   wears the dashed "add new" border on top of its meaning color —
+   that's how "+ Add bill" and "Bills" stop reading as twins. */
+.proj-chip-add {
+  border-style: dashed;
+}
+/* The paperwork pile (Permits & files) is indigo. */
 .proj-chip-paper {
   border-color: #bcc2ec;
   background: #eef0fc;

@@ -15,9 +15,9 @@ paperwork" without reading.
 | Meaning | Color | Class | Examples |
 |---|---|---|---|
 | Money coming **in** | **green** | `proj-chip-in` | Contract, Change orders |
-| Money going **out** | **red** | `proj-chip-out` | + Bill, Bills |
+| Money going **out** | **red** | `proj-chip-out` | + Add bill, Bills |
 | Progress / the plan | blue (base) | `proj-check-chip` | Checklist (`-done` green fill, `-overdue` bold red alarm) |
-| Paperwork pile | indigo | `proj-chip-paper` | Permits & contracts |
+| Paperwork pile | indigo | `proj-chip-paper` | Permits & files |
 | Media | purple | `proj-photo-chip` | Photos |
 | A person | rose | `proj-client-chip` | Client |
 | Print / report | slate | `proj-chip-report` | Report |
@@ -27,6 +27,21 @@ done/overdue states are the one grandfathered exception — done is a
 green fill on the blue chip, overdue is an alarm, not money). A new
 non-money chip picks a new idea-color; a new money-touching chip picks
 its direction first.
+
+**Action vs record** (owner, same day): a chip that *creates* a record
+must not read as a twin of the chip that *opens* the record. The
+creator leads with `+`, is labeled with a verb ("+ Add bill", never
+"+ Bill"), drops the shared emoji, and wears `proj-chip-add` (dashed
+border) on top of its meaning color; the record chip stays solid with
+the noun. Never solve the twin problem by merging the two — the
+one-click add ("receipt in one hand, job on this row") is deliberate.
+
+**No two chips share a noun** (owner, same day): the paperwork drawer
+was renamed "Permits & files" precisely because "Contract" is its own
+green chip — a label may not echo another chip's word, or the two read
+as the same thing. Don't split a drawer chip to fix an echo either
+(splitting Permits/Contracts would have needed every file categorized
+and put a second "Contracts" beside the green one); rename it.
 
 ## The mechanics
 
