@@ -354,3 +354,15 @@ Two things were verified directly rather than assumed, both load-bearing for how
 **Decision:** Wrap every external-facing route: both Stripe webhooks (the per-company one calls `runObserved` directly — the wrapper's signature can't pass a dynamic segment through), the SMS and inbound-email webhooks, the leads and Meta leadgen webhooks (verify handshake included), and all six cron jobs. `sendEmail` logs and captures its own failures, since callers turn them into a quiet on-screen note or, on a cron, into nothing. Deliberately excluded: the poll routes (`popup-alerts`, `notifications`, `screen-shares`, `device-touch`, `activity/ping`, `version`) — they fire every few seconds per open tab, and a "completed" log line per poll buries every signal worth reading; they stay observable the way `/api/activity/ping` chose at birth, by doing almost nothing. Server actions beyond `logCall` are the next slice, logged in TECH_DEBT.
 
 **Consequence:** Every webhook and cron run now has a duration, a correlation id, and — when it throws — a Sentry event with the redaction guarantees of `src/lib/observability/redact.ts`. The known soft spot is routes that catch their own failure and answer 200 so the sender stops retrying: those report "completed" and keep their inner `console.error` for now.
+
+---
+
+## 032 — Chip colors state money direction, not document type
+
+**Date:** 2026-09-17
+
+**Context:** The Projects row chips all wore one teal "document" color — Bills, Contract, Change orders, Permits & contracts and Report alike — so a row read as a wall of identical pills. The owner asked for colors that carry meaning ("$ in green, $ out red") and a shape that's scannable.
+
+**Decision:** Chips are colored by what they mean, with green and red reserved for money direction: the contract and its change orders are green because they *are* the money coming in (not "documents"), + Bill and Bills are red (money out), and every other idea keeps one color — blue checklist, indigo paperwork pile, purple photos, rose client, slate report. Chips cluster by meaning (progress → money in → money out → records) in a wrapping flex row, replacing the dot-separated text line. The mapping is one pure, tested module (`src/lib/job-chips.ts`) that both the office table and the crew cards read; the standing rule for any future chip row lives in `.claude/skills/semantic-chips/SKILL.md`.
+
+**Consequence:** A future chip picks its meaning before its color: money-touching chips take their direction's green or red, nothing else may take those two (the checklist's done fill and overdue alarm stay the grandfathered exception), and new chip surfaces read `jobChipClass` instead of hardcoding classes so the views can't drift.
