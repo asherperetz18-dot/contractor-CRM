@@ -6,7 +6,17 @@ import {
   COMMISSION_HOLD_LABEL,
   type CommissionHold,
 } from "@/lib/data/types";
-import { getRepCommissions, getCommissionReps } from "@/lib/actions/rep-commission";
+import {
+  getRepCommissions,
+  getCommissionReps,
+  getCommissionPayouts,
+} from "@/lib/actions/rep-commission";
+import {
+  periodBalance,
+  periodBalancesByRep,
+  type CommissionLineLike,
+  type PayoutLike,
+} from "@/lib/data/commission-payouts";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { PrintButton } from "@/components/print-button";
 import { StatementFilters } from "./statement-filters";
@@ -66,8 +76,9 @@ export default async function CommissionStatementPage({
   const from = sp.from || iso(new Date(now.getFullYear(), now.getMonth(), 1));
   const to = sp.to || iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
-  const [{ rows, everyone, error }, reps, { data: company }] = await Promise.all([
+  const [{ rows, everyone, error }, payoutsRes, reps, { data: company }] = await Promise.all([
     getRepCommissions({ repId: sp.rep }),
+    getCommissionPayouts({ repId: sp.rep }),
     getCommissionReps(),
     (await createClient())
       .from("company_profile")
@@ -106,6 +117,51 @@ export default async function CommissionStatementPage({
       ? "All salespeople"
       : (all[0]?.repName ?? profile.name ?? "");
   const oneRep = !!chosen || !everyone;
+
+  // The payout ledger (0158): what has actually been handed over, so
+  // the statement can close with a balance rather than re-asking for
+  // money already paid. Until the migration runs, ledgerReady is false
+  // and the statement prints exactly what it always did.
+  const ledgerReady = payoutsRes.ledgerReady === true;
+  const payouts = payoutsRes.payouts ?? [];
+  const periodPayouts = payouts.filter((p) => p.paidOn >= from && p.paidOn <= to);
+  const periodPaidTotal = periodPayouts.reduce((s, p) => s + p.amountCents, 0);
+
+  const lines: CommissionLineLike[] = all.map((r) => ({
+    repId: r.repId,
+    shareCents: r.shareCents,
+    payable: r.holds.length === 0,
+    qualifiedAt: r.qualifiedAt,
+    unmeasured: r.detail.unmeasured,
+  }));
+  const payoutLikes: PayoutLike[] = payouts.map((p) => ({
+    repId: p.repId,
+    amountCents: p.amountCents,
+    paidOn: p.paidOn,
+    kind: p.kind,
+  }));
+
+  // One rep reads like a bank statement; across reps each line is its
+  // own balance, because netting one rep's advance against another's
+  // wages would print a payroll short.
+  const balance = ledgerReady && oneRep ? periodBalance(lines, payoutLikes, from, to) : null;
+  const balancesByRep =
+    ledgerReady && !oneRep ? periodBalancesByRep(lines, payoutLikes, from, to) : null;
+
+  const repNameById = new Map<string, string>();
+  for (const r of reps) repNameById.set(r.id, r.name);
+  for (const r of all) repNameById.set(r.repId, r.repName);
+  for (const p of payouts) repNameById.set(p.repId, p.repName);
+
+  const balanceRows = balancesByRep
+    ? [...balancesByRep.entries()]
+        .filter(([, b]) => b.openingCents !== 0 || b.qualifiedCents !== 0 || b.paidCents !== 0)
+        .sort((a, b) => (repNameById.get(a[0]) ?? "").localeCompare(repNameById.get(b[0]) ?? ""))
+    : [];
+  const totalDue = balanceRows.reduce((s, [, b]) => s + Math.max(0, b.closingCents), 0);
+  const totalAhead = balanceRows.reduce((s, [, b]) => s + Math.max(0, -b.closingCents), 0);
+  // The number the statement is opened for: what to actually pay.
+  const headBalance = balance ? balance.closingCents : totalDue;
 
   return (
     <div>
@@ -165,8 +221,18 @@ export default async function CommissionStatementPage({
               <div className="estdoc-strong">{forWhom || "—"}</div>
             </div>
             <div>
-              <div className="estdoc-label">Payable this period</div>
-              <div className="estdoc-strong mono">{moneyCents(payableTotal)}</div>
+              {/* With the ledger in, the headline is what to actually
+                  write the cheque for -- payable less already paid. */}
+              <div className="estdoc-label">
+                {ledgerReady
+                  ? headBalance < 0
+                    ? "Advanced ahead"
+                    : "Balance due"
+                  : "Payable this period"}
+              </div>
+              <div className="estdoc-strong mono">
+                {ledgerReady ? moneyCents(Math.abs(headBalance)) : moneyCents(payableTotal)}
+              </div>
             </div>
           </div>
 
@@ -291,12 +357,148 @@ export default async function CommissionStatementPage({
             </>
           )}
 
+          {ledgerReady && (
+            <>
+              <h2 className="estdoc-terms-head">Paid &amp; advances this period</h2>
+              {periodPayouts.length === 0 ? (
+                <p className="estdoc-muted">
+                  No commission payments or advances were recorded between {longDate(from)} and{" "}
+                  {longDate(to)}.
+                </p>
+              ) : (
+                <>
+                  <table className="estdoc-items estdoc-schedule-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        {!oneRep && <th>Salesperson</th>}
+                        <th>Against</th>
+                        <th>Type</th>
+                        <th className="estdoc-num">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {periodPayouts.map((p) => (
+                        <tr key={p.id}>
+                          <td>{longDate(p.paidOn)}</td>
+                          {!oneRep && <td>{p.repName}</td>}
+                          <td>
+                            {p.docNumber ? (
+                              <>
+                                <strong>{p.docNumber}</strong>
+                                {p.jobTitle && <div className="estdoc-muted">{p.jobTitle}</div>}
+                              </>
+                            ) : (
+                              <span className="estdoc-muted">General</span>
+                            )}
+                            {p.note && <div className="estdoc-muted">{p.note}</div>}
+                          </td>
+                          <td>{p.kind === "advance" ? "Advance" : "Payout"}</td>
+                          <td className="estdoc-num">{moneyCents(p.amountCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="estdoc-totals">
+                    <div className="estdoc-total-row">
+                      <span>Paid this period</span>
+                      <span className="mono">{moneyCents(periodPaidTotal)}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <h2 className="estdoc-terms-head">Balance</h2>
+              {balance ? (
+                /* One salesperson: read like a bank statement. */
+                <div className="estdoc-totals">
+                  <div className="estdoc-total-row">
+                    <span>Balance carried in</span>
+                    <span className="mono">{moneyCents(balance.openingCents)}</span>
+                  </div>
+                  <div className="estdoc-total-row">
+                    <span>Came due this period</span>
+                    <span className="mono">{moneyCents(balance.qualifiedCents)}</span>
+                  </div>
+                  <div className="estdoc-total-row">
+                    <span>Paid this period</span>
+                    <span className="mono">&minus;{moneyCents(balance.paidCents)}</span>
+                  </div>
+                  <div className="estdoc-total-row estdoc-grand">
+                    <span>{balance.closingCents < 0 ? "Advanced ahead" : "Balance due"}</span>
+                    <span className="mono">{moneyCents(Math.abs(balance.closingCents))}</span>
+                  </div>
+                </div>
+              ) : balanceRows.length === 0 ? (
+                <p className="estdoc-muted">
+                  Nothing owed and nothing advanced as of {longDate(to)}.
+                </p>
+              ) : (
+                /* Every salesperson their own line -- one rep's advance
+                   never nets against another rep's wages. */
+                <>
+                  <table className="estdoc-items estdoc-schedule-table">
+                    <thead>
+                      <tr>
+                        <th>Salesperson</th>
+                        <th className="estdoc-num">Carried in</th>
+                        <th className="estdoc-num">Came due</th>
+                        <th className="estdoc-num">Paid</th>
+                        <th className="estdoc-num">Balance due</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {balanceRows.map(([repId, b]) => (
+                        <tr key={repId}>
+                          <td>{repNameById.get(repId) ?? "Unnamed"}</td>
+                          <td className="estdoc-num">{moneyCents(b.openingCents)}</td>
+                          <td className="estdoc-num">{moneyCents(b.qualifiedCents)}</td>
+                          <td className="estdoc-num">{moneyCents(b.paidCents)}</td>
+                          <td className="estdoc-num">
+                            {b.closingCents < 0 ? (
+                              <>
+                                {moneyCents(-b.closingCents)}
+                                <div className="estdoc-muted">ahead</div>
+                              </>
+                            ) : (
+                              moneyCents(b.closingCents)
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="estdoc-totals">
+                    <div className="estdoc-total-row estdoc-grand">
+                      <span>Total balance due</span>
+                      <span className="mono">{moneyCents(totalDue)}</span>
+                    </div>
+                    {totalAhead > 0 && (
+                      <div className="estdoc-total-row">
+                        <span>Advanced ahead, nets against future commission</span>
+                        <span className="mono">{moneyCents(totalAhead)}</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
           <div className="estdoc-terms">
             <p>
               Commission is a share of each job&rsquo;s net profit &mdash; the contract less the
               lead cost and the money actually spent on the work. It becomes payable when the
               job is paid in full and the customer has signed the completion certificate.
             </p>
+            {ledgerReady && (
+              <p>
+                Payments and advances are deducted from the balance due. An advance is money
+                given before its job settled; paid past what has qualified, it shows as
+                &ldquo;advanced ahead&rdquo; and nets against that salesperson&rsquo;s next
+                settled commission.
+              </p>
+            )}
             {/* A printed sheet outlives the screen it came from. Six
                 months on, nobody remembers the costs were still landing. */}
             <p>
