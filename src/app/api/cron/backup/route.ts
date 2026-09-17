@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCronSecret } from "@/lib/cron-env";
 import { buildBackup } from "@/lib/backup";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 /**
  * Full data export, for the nightly backup job.
@@ -10,7 +11,7 @@ import { buildBackup } from "@/lib/backup";
  * it. Responds with the JSON body so the caller can write it wherever it
  * keeps backups.
  */
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
@@ -38,3 +39,7 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.cron.backup", handlePost);

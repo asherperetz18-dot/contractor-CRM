@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripeForCompany } from "@/lib/stripe-company";
 import { handleStripeWebhook } from "@/lib/stripe/handle-webhook";
+import { resolveCorrelationId } from "@/lib/observability/context";
+import { runObserved } from "@/lib/observability/observe";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic";
  * what proves the request came from Stripe, and a wrong or invented id
  * simply fails to verify.
  */
-export async function POST(
+async function handlePost(
   req: NextRequest,
   { params }: { params: Promise<{ companyId: string }> }
 ) {
@@ -26,4 +28,18 @@ export async function POST(
 
   const env = await getStripeForCompany(companyId);
   return handleStripeWebhook(req, env, companyId);
+}
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, runObserved directly, since withRouteObservability cannot pass
+// the dynamic segment through -- otherwise same shape as the dialer path.
+export function POST(
+  req: NextRequest,
+  ctx: { params: Promise<{ companyId: string }> }
+) {
+  return runObserved({
+    name: "api.stripe.webhook.company",
+    correlationId: resolveCorrelationId(req.headers.get("x-correlation-id")),
+    fn: () => handlePost(req, ctx),
+  });
 }

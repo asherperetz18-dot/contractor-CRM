@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyNewLead } from "@/lib/notify-new-lead";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 const GRAPH_VERSION = "v21.0";
 
@@ -46,7 +47,7 @@ async function getMetaConfigByVerifyToken(token: string) {
 
 // Meta calls this once, when you register the webhook, to confirm you
 // control this URL. Must echo back hub.challenge as plain text.
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get("hub.mode");
   const token = req.nextUrl.searchParams.get("hub.verify_token");
   const challenge = req.nextUrl.searchParams.get("hub.challenge");
@@ -93,7 +94,7 @@ function splitName(name: string) {
   return { first: parts[0] || "", last: parts.slice(1).join(" ") || "" };
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const rawBody = await req.text();
 
   let payload: MetaWebhookPayload;
@@ -179,3 +180,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, created, alerted });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const GET = withRouteObservability("api.meta.leadgen.verify", handleGet);
+export const POST = withRouteObservability("api.meta.leadgen", handlePost);

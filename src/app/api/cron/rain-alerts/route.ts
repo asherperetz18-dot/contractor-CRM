@@ -4,12 +4,13 @@ import { getCronSecret } from "@/lib/cron-env";
 import { getWeatherUserAgent } from "@/lib/weather-env";
 import { processCompany } from "@/lib/rain-alerts-core";
 import { type CompanyProfile } from "@/lib/data/types";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 // Thin scheduled wrapper: the actual appointment + project rain passes
 // live in rain-alerts-core, shared with the Projects page's "Check rain
 // now" button.
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
@@ -48,3 +49,7 @@ export async function POST(req: NextRequest) {
     projectsUpdated,
   });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.cron.rain-alerts", handlePost);

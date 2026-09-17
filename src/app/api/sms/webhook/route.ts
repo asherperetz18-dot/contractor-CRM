@@ -6,6 +6,7 @@ import { phoneMatchIn, type LeadPhoneRow } from "@/lib/data/phone-match";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 const YES_WORDS = new Set(["yes", "y", "confirm", "confirmed", "ok", "okay", "yeah", "yep", "sure"]);
 const NO_WORDS = new Set(["no", "n", "cancel", "decline", "declined", "nope"]);
@@ -65,7 +66,7 @@ function pickNearest(rows: EventRow[]): EventRow | null {
   return past[0]?.row ?? null;
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
@@ -306,3 +307,7 @@ export async function POST(req: NextRequest) {
     headers: { "Content-Type": "text/xml" },
   });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.sms.webhook", handlePost);
