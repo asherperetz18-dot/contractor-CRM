@@ -88,12 +88,13 @@ test("the rollup carries the phase-computed figure through unchanged", () => {
 
 // ── Rep commission in the rollup ─────────────────────────────────────
 //
-// The rep's cut is a real cost of the job: a "complete" job that reads
-// as keeping $9,114 when $3,582 of it is the salesperson's is not a
-// figure the owner can spend. Passed in rather than computed here,
-// because only the caller knows the seats and the stamped rates.
+// Cash basis, by the owner's call: the figure is commission actually
+// PAID or advanced against the job (the payout ledger), never the
+// projected share -- which on a barely-costed job reads enormous and
+// sank net cash on jobs that were fine. Passed in rather than computed
+// here, because only the caller reads the ledger.
 
-test("commission comes out of net cash", () => {
+test("commission paid comes out of net cash", () => {
   const rollup = computeProjectRollup({
     contractTotalCents: 1300000,
     signedChangeOrderCents: 0,
@@ -125,7 +126,7 @@ test("a caller that does not track commission changes nothing", () => {
   assert.equal(rollup.netCashCents, 1300000 - 388600);
 });
 
-test("an unmeasured job's commission is unknown, and subtracts nothing", () => {
+test("an explicit null -- ledger not readable -- subtracts nothing", () => {
   const rollup = computeProjectRollup({
     contractTotalCents: 1300000,
     signedChangeOrderCents: 0,

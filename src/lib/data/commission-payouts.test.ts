@@ -5,6 +5,7 @@ import {
   balanceTotals,
   periodBalance,
   periodBalancesByRep,
+  paidCommissionByEstimate,
   type CommissionLineLike,
   type PayoutLike,
 } from "./commission-payouts.ts";
@@ -214,4 +215,31 @@ test("the by-rep period balances keep each rep's statement their own", () => {
     paidCents: 40_000,
     closingCents: 0,
   });
+});
+
+// ── Commission cash, job by job (the Projects page) ──────────────────
+//
+// Projects is a cash view: Collected and Spent are money that moved,
+// and unpaid bills sit beside Spent rather than in it. Commission
+// follows the same rule -- the page counts what was actually paid or
+// advanced against a job, never the projected share, which on a
+// barely-costed job reads enormous and sinks net cash that is fine.
+
+test("payments and advances tied to a job sum onto that job", () => {
+  const byJob = paidCommissionByEstimate([
+    { estimateId: "est-1", amountCents: 100_000 },
+    { estimateId: "est-1", amountCents: 50_000 },
+    { estimateId: "est-2", amountCents: 25_000 },
+  ]);
+  assert.equal(byJob.get("est-1"), 150_000);
+  assert.equal(byJob.get("est-2"), 25_000);
+});
+
+test("a general payment tied to no job lands on no job", () => {
+  const byJob = paidCommissionByEstimate([
+    { estimateId: null, amountCents: 999_999 },
+    { estimateId: "est-1", amountCents: 10_000 },
+  ]);
+  assert.equal(byJob.get("est-1"), 10_000);
+  assert.equal(byJob.size, 1);
 });

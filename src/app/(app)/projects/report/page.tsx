@@ -281,12 +281,12 @@ export default async function ProjectsReportPage({
                 )}
                 {totals.commission > 0 && (
                   <div className="estdoc-total-row">
-                    <span>Rep commission (already out of net cash)</span>
+                    <span>Commission paid (already out of net cash)</span>
                     <span className="mono">{moneyCents(totals.commission)}</span>
                   </div>
                 )}
                 <div className="estdoc-total-row estdoc-grand">
-                  <span>Net cash (collected − spent − commission)</span>
+                  <span>Net cash (collected − spent − commission paid)</span>
                   <span className="mono">{moneyCents(totals.net)}</span>
                 </div>
               </div>
@@ -349,7 +349,7 @@ export default async function ProjectsReportPage({
                       )}
                       {(p.rollup.commissionCents ?? 0) > 0 && (
                         <div className="estdoc-total-row">
-                          <span>Rep commission</span>
+                          <span>Commission paid</span>
                           <span className="mono">{moneyCents(p.rollup.commissionCents ?? 0)}</span>
                         </div>
                       )}

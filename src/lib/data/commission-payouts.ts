@@ -172,6 +172,28 @@ export function periodBalance(
   };
 }
 
+/**
+ * Commission cash by job, for the Projects page.
+ *
+ * Projects is a cash view -- Collected and Spent are money that moved,
+ * and unpaid bills sit beside Spent rather than in it -- so its
+ * Commission figure follows the same rule: only what was actually paid
+ * or advanced against a job, never the projected share (which on a
+ * barely-costed job reads enormous and sinks net cash that is fine).
+ * A payment tied to no job cannot honestly land on any row; it shows
+ * on /sales-commission, where balances are per rep.
+ */
+export function paidCommissionByEstimate(
+  payouts: readonly { estimateId: string | null; amountCents: number }[]
+): Map<string, number> {
+  const byJob = new Map<string, number>();
+  for (const p of payouts) {
+    if (!p.estimateId) continue;
+    byJob.set(p.estimateId, (byJob.get(p.estimateId) ?? 0) + p.amountCents);
+  }
+  return byJob;
+}
+
 /** periodBalance per rep, for the all-salespeople statement. */
 export function periodBalancesByRep(
   lines: readonly CommissionLineLike[],
