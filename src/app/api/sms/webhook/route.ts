@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { normalizePhone, type Lead } from "@/lib/data/types";
+import { normalizePhone } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
 import { phoneMatchIn, type LeadPhoneRow } from "@/lib/data/phone-match";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
