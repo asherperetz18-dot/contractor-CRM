@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { checkRainNow } from "@/lib/actions/rain-check";
 import { mapsUrl, moneyCents, projectTriageOrder, rainPopTier, type ProjectRollup } from "@/lib/data/types";
+import { jobChipClass } from "@/lib/job-chips";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
@@ -804,13 +805,18 @@ export function ProjectsView({
                       {p.changeOrderCount > 0 &&
                         ` · ${p.changeOrderCount} change order${p.changeOrderCount === 1 ? "" : "s"}`}
                       {p.repName && ` · ${p.repName}`}
-                      {checklistReady && (items.length > 0 || canEditChecklist) && (
-                        <>
-                          {" · "}
+                    </div>
+                    {/* The chips, clustered by meaning so the row is
+                        scanned by color: the plan, then money in (green),
+                        money out (red), then the job's records. Colors
+                        come from one tested map (src/lib/job-chips.ts). */}
+                    <div className="proj-chip-row">
+                      <span className="proj-chip-group">
+                        {checklistReady && (items.length > 0 || canEditChecklist) && (
                           <button
                             type="button"
                             className={
-                              "proj-check-chip" +
+                              jobChipClass("checklist") +
                               (items.length > 0 && doneCount === items.length
                                 ? " proj-check-chip-done"
                                 : "") +
@@ -829,113 +835,108 @@ export function ProjectsView({
                           >
                             ☑ {items.length > 0 ? `${doneCount}/${items.length}` : "Checklist"}
                           </button>
-                        </>
-                      )}
-                      {canAddCosts && p.status !== "cancelled" && (
-                        <>
-                          {" · "}
-                          {/* Straight into the modal with THIS job picked --
-                              the receipt is in one hand, the job is on this
-                              row, nobody re-answers a question the screen
-                              already knows. */}
-                          <button
-                            type="button"
-                            className="proj-check-chip proj-receipt-chip"
-                            onClick={() => setReceiptFor(p.leadId)}
-                          >
-                            🧾 + Bill
-                          </button>
-                        </>
-                      )}
-                      {" · "}
-                      <button
-                        type="button"
-                        className="proj-check-chip proj-photo-chip"
-                        onClick={() => setPhotosFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })}
-                      >
-                        📷 Photos
-                      </button>
-                      {canSeeDocChips && (
-                        <>
-                          {" · "}
-                          <button
-                            type="button"
-                            className="proj-check-chip proj-doc-chip"
-                            onClick={() =>
-                              setReceiptsFor({ leadId: p.leadId, label: p.customer })
-                            }
-                          >
-                            🧾 Bills
-                          </button>
-                          {" · "}
-                          {/* The customer's copy, one click away -- the same
-                              preview-as-customer render the portal serves. */}
-                          <a
-                            className="proj-check-chip proj-doc-chip"
-                            href={`/estimates/${p.estimateId}/preview`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            👁 Contract
-                          </a>
-                          {p.changeOrders.length === 1 && (
-                            <>
-                              {" · "}
+                        )}
+                      </span>
+                      <span className="proj-chip-group">
+                        {canSeeDocChips && (
+                          <>
+                            {/* The customer's copy, one click away -- the same
+                                preview-as-customer render the portal serves. */}
+                            <a
+                              className={jobChipClass("contract")}
+                              href={`/estimates/${p.estimateId}/preview`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              👁 Contract
+                            </a>
+                            {p.changeOrders.length === 1 && (
                               <a
-                                className="proj-check-chip proj-doc-chip"
+                                className={jobChipClass("changeOrder")}
                                 href={`/estimates/${p.changeOrders[0].id}/preview`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
                                 👁 Change order
                               </a>
-                            </>
-                          )}
-                          {p.changeOrders.length > 1 && (
-                            <>
-                              {" · "}
+                            )}
+                            {p.changeOrders.length > 1 && (
                               <button
                                 type="button"
-                                className="proj-check-chip proj-doc-chip"
+                                className={jobChipClass("changeOrder")}
                                 onClick={() => setChangeOrdersFor(p)}
                               >
                                 👁 Change orders ({p.changeOrders.length})
                               </button>
-                            </>
-                          )}
-                          {" · "}
+                            )}
+                          </>
+                        )}
+                      </span>
+                      <span className="proj-chip-group">
+                        {canAddCosts && p.status !== "cancelled" && (
+                          /* Straight into the modal with THIS job picked --
+                             the receipt is in one hand, the job is on this
+                             row, nobody re-answers a question the screen
+                             already knows. */
                           <button
                             type="button"
-                            className="proj-check-chip proj-doc-chip"
+                            className={jobChipClass("addBill")}
+                            onClick={() => setReceiptFor(p.leadId)}
+                          >
+                            + Add bill
+                          </button>
+                        )}
+                        {canSeeDocChips && (
+                          <button
+                            type="button"
+                            className={jobChipClass("bills")}
+                            onClick={() =>
+                              setReceiptsFor({ leadId: p.leadId, label: p.customer })
+                            }
+                          >
+                            🧾 Bills
+                          </button>
+                        )}
+                      </span>
+                      <span className="proj-chip-group">
+                        {canSeeDocChips && (
+                          <button
+                            type="button"
+                            className={jobChipClass("permits")}
                             onClick={() =>
                               setDocumentsFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })
                             }
                           >
-                            📄 Permits &amp; contracts
+                            📄 Permits &amp; files
                           </button>
-                        </>
-                      )}
-                      {" · "}
-                      {/* The person behind the job: the full client card on
-                          Contacts (calls, texts, appointments, files), via
-                          the same openLead deep link the reports and the
-                          dialer use -- its back button returns here. */}
-                      <Link
-                        className="proj-check-chip proj-client-chip"
-                        href={`/contacts?openLead=${p.leadId}&from=/projects`}
-                      >
-                        👤 Client
-                      </Link>
-                      {" · "}
-                      {/* One job on paper: contract and change orders,
-                          payment schedule, money and steps -- with a
-                          client-safe copy a click away on that page. */}
-                      <Link
-                        className="proj-check-chip proj-doc-chip"
-                        href={`/projects/${p.estimateId}/report`}
-                      >
-                        🖨 Report
-                      </Link>
+                        )}
+                        <button
+                          type="button"
+                          className={jobChipClass("photos")}
+                          onClick={() => setPhotosFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })}
+                        >
+                          📷 Photos
+                        </button>
+                        {/* The person behind the job: the full client card on
+                            Contacts (calls, texts, appointments, files), via
+                            the same openLead deep link the reports and the
+                            dialer use -- its back button returns here. */}
+                        <Link
+                          className={jobChipClass("client")}
+                          href={`/contacts?openLead=${p.leadId}&from=/projects`}
+                        >
+                          👤 Client
+                        </Link>
+                        {/* One job on paper: contract and change orders,
+                            payment schedule, money and steps -- with a
+                            client-safe copy a click away on that page. */}
+                        <Link
+                          className={jobChipClass("report")}
+                          href={`/projects/${p.estimateId}/report`}
+                        >
+                          🖨 Report
+                        </Link>
+                      </span>
                     </div>
                     {(STATUS_TAG[p.status] ||
                       (canManage && p.status !== "complete" && p.status !== "cancelled")) && (

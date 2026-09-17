@@ -2100,86 +2100,6 @@ export type SignedContract = {
   deposit_cents: number | null;
 };
 
-export type CollectionsSummary = {
-  /** Settled money, in the bank. */
-  collectedCents: number;
-  /** Face value of every signed contract. */
-  contractValueCents: number;
-  /** Signed but not yet collected. Never negative. */
-  outstandingCents: number;
-  /** ACH still clearing -- promised, not arrived. */
-  clearingCents: number;
-  /** Signed contracts whose deposit has not landed: the money to chase today. */
-  awaitingDepositCount: number;
-  awaitingDepositCents: number;
-  /** Progress phases billed and not yet paid. */
-  billedCents: number;
-  /** Billed, unpaid, and past its due date. */
-  overdueCents: number;
-  overdueCount: number;
-};
-
-/**
- * The money view over signed contracts.
- *
- * Only signed estimates count as contract value. A draft or a sent
- * estimate is a proposal; counting it as money owed would inflate the
- * figure with work nobody has agreed to.
- *
- * Overdue counts only phases the contractor actually billed. An unbilled
- * phase cannot be late however old the contract is -- the customer has
- * never been asked for it.
- */
-export function collectionsSummary(
-  contracts: SignedContract[],
-  payments: Pick<
-    PortalPayment,
-    "estimate_id" | "estimate_payment_id" | "kind" | "status" | "amount_cents"
-  >[],
-  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at" | "due_date">[] = [],
-  today = new Date()
-): CollectionsSummary {
-  const collectedCents = paidTotalCents(payments);
-  const contractValueCents = contracts.reduce((sum, c) => sum + (c.total_cents || 0), 0);
-
-  const clearingCents = payments
-    .filter((p) => p.status === "pending")
-    .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
-
-  const settledOn = new Set(
-    payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
-  );
-  const awaiting = contracts.filter((c) => (c.deposit_cents || 0) > 0 && !settledOn.has(c.id));
-
-  let billedCents = 0;
-  let overdueCents = 0;
-  let overdueCount = 0;
-  for (const phase of phases) {
-    const on = payments.filter((p) => p.estimate_payment_id === phase.id);
-    const state = phaseState(phase, on, today);
-    if (state === "billed" || state === "overdue") billedCents += phase.amount_cents || 0;
-    if (state === "overdue") {
-      overdueCents += phase.amount_cents || 0;
-      overdueCount += 1;
-    }
-  }
-
-  return {
-    collectedCents,
-    contractValueCents,
-    // Collected can exceed signed value if money landed against an
-    // estimate later revised downward; a negative "outstanding" would
-    // read as the company owing the customer, which it does not.
-    outstandingCents: Math.max(0, contractValueCents - collectedCents),
-    clearingCents,
-    awaitingDepositCount: awaiting.length,
-    awaitingDepositCents: awaiting.reduce((sum, c) => sum + (c.deposit_cents || 0), 0),
-    billedCents,
-    overdueCents,
-    overdueCount,
-  };
-}
-
 /** An ACH transfer still clearing -- worth showing, but it is not money yet. */
 export function pendingPayment(
   payments: Pick<PortalPayment, "status" | "amount_cents" | "method">[]
@@ -2635,35 +2555,63 @@ export function redistributePhases(input: {
   return out;
 }
 
-export type PhaseState = "unbilled" | "billed" | "overdue" | "clearing" | "paid";
+export type PhaseState = "unbilled" | "billed" | "partial" | "overdue" | "clearing" | "paid";
 
 /**
- * Where a single progress phase stands.
+ * Where a single progress phase stands, amounts included.
  *
- * Paid beats everything: money that has landed is not overdue no matter
- * what the due date said. Clearing (an ACH transfer in flight) is
- * likewise not overdue -- the customer has done their part and chasing
- * them for it would be wrong.
+ * Paid means the settled money covers the amount -- any settled payment
+ * used to flip the whole phase to "paid", so a partly paid invoice
+ * dropped off the Payments page while Projects and Money to Collect
+ * (per-phase remainders, DECISIONS #001) kept counting the rest.
+ * Money that has landed in full is not overdue no matter what the due
+ * date said, and a remainder covered by transfers in flight is clearing,
+ * not overdue -- the customer has done their part and chasing them for
+ * it would be wrong. A token pending payment that does NOT cover the
+ * remainder hides nothing: the phase stays billed and can turn overdue.
  */
 export function phaseState(
-  phase: Pick<EstimatePayment, "requested_at" | "due_date">,
-  payments: Pick<PortalPayment, "status">[],
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "due_date">,
+  payments: Pick<PortalPayment, "status" | "amount_cents">[],
   today = new Date()
 ): PhaseState {
-  if (payments.some((p) => p.status === "succeeded")) return "paid";
-  if (payments.some((p) => p.status === "pending")) return "clearing";
+  const amount = phase.amount_cents || 0;
+  const settled = paidTotalCents(payments);
+  const pending = payments
+    .filter((p) => p.status === "pending")
+    .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+  if (payments.some((p) => p.status === "succeeded") && settled >= amount) return "paid";
+  if (pending > 0 && settled + pending >= amount) return "clearing";
   if (!phase.requested_at) return "unbilled";
   if (phase.due_date) {
     // Date-only comparison: a payment due today is not late today.
     const due = new Date(`${phase.due_date}T23:59:59`);
     if (today > due) return "overdue";
   }
+  if (settled > 0) return "partial";
   return "billed";
+}
+
+/**
+ * What is still owed on one billed phase: its amount less the settled
+ * money filed to it, never negative. The same per-phase remainder that
+ * Projects' "Owed to you" and Money to Collect count (see
+ * phaseReceivableCents), so the Payments cards can only ever add up to
+ * the same number. An unbilled phase owes nothing yet, and pending
+ * money has not arrived.
+ */
+export function phaseOwedCents(
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at">,
+  payments: Pick<PortalPayment, "status" | "amount_cents">[]
+): number {
+  if (!phase.requested_at) return 0;
+  return Math.max(0, (phase.amount_cents || 0) - paidTotalCents(payments));
 }
 
 export function phaseStateLabel(state: PhaseState): string {
   if (state === "paid") return "Paid";
   if (state === "clearing") return "Clearing";
+  if (state === "partial") return "Partially paid";
   if (state === "overdue") return "Overdue";
   if (state === "billed") return "Billed";
   return "Not billed";

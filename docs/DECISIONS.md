@@ -365,7 +365,29 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** `/sales-commission` now answers the payroll question it is opened for — Paid out and Balance due cards, a per-salesperson balance table, and a Payments & advances ledger — and the printable statement ends in the number to actually write the check for. The trades: removing a ledger row leaves no trail, and the dispatcher scheme still has no payment tracking (both in TECH_DEBT).
 
-## 033 — Project net cash counts the rep's cut
+## 033 — A partial payment leaves the rest of the invoice owed, everywhere
+
+**Date:** 2026-09-17
+
+**Context:** `phaseState` called a phase "paid" the moment ANY settled payment was filed to it, whatever the amount. Recording a partial payment — which `recordManualPayment` deliberately allows (warnings, not refusals) — made the remainder vanish from the Payments page: the phase moved to the Paid list and "Billed, Unpaid" dropped it entirely, while Projects' "Owed to you" and Money to Collect (per-phase remainders, #001) kept counting it. On the live book that read $61,400 against $66,000 with nothing explaining the $4,600 — a real invoice remainder nobody was being told to chase. The customer portal told the customer the same lie: "Paid" on an invoice they still owed money on.
+
+**Decision:** `phaseState` is amount-aware, with a new `partial` state ("Partially paid"): paid means the settled money covers the amount; clearing means money in flight covers the remainder (a token pending payment no longer hides lateness); a partially paid phase past its due date is overdue, because the remainder is late. The Billed, Unpaid and Overdue cards sum `phaseOwedCents` — the identical per-phase remainder `phaseReceivableCents` sums for Projects — pinned equal in `src/lib/data/phase-state.test.ts`, so the two pages can only ever say the same number. Money still clearing stays on Billed, Unpaid until it lands (the Clearing card names what is in flight). Billed phases on documents that are no longer live signed contracts are dropped from the page, matching Projects' refusal to count a cancelled job's bills.
+
+**Consequence:** A partly paid invoice reads "Partially paid" with its remainder on Payments, the contract schedule and the customer portal, and the remainder stays on the cards until settled. The portal shows no Pay button on such a phase — checkout only knows how to charge the full face amount (see TECH_DEBT: portal remainder checkout).
+
+---
+
+## 034 — Chip colors state money direction, not document type
+
+**Date:** 2026-09-17
+
+**Context:** The Projects row chips all wore one teal "document" color — Bills, Contract, Change orders, Permits & contracts and Report alike — so a row read as a wall of identical pills. The owner asked for colors that carry meaning ("$ in green, $ out red") and a shape that's scannable.
+
+**Decision:** Chips are colored by what they mean, with green and red reserved for money direction: the contract and its change orders are green because they *are* the money coming in (not "documents"), + Bill and Bills are red (money out), and every other idea keeps one color — blue checklist, indigo paperwork pile, purple photos, rose client, slate report. Chips cluster by meaning (progress → money in → money out → records) in a wrapping flex row, replacing the dot-separated text line. The mapping is one pure, tested module (`src/lib/job-chips.ts`) that both the office table and the crew cards read; the standing rule for any future chip row lives in `.claude/skills/semantic-chips/SKILL.md`.
+
+**Consequence:** A future chip picks its meaning before its color: money-touching chips take their direction's green or red, nothing else may take those two (the checklist's done fill and overdue alarm stay the grandfathered exception), and new chip surfaces read `jobChipClass` instead of hardcoding classes so the views can't drift.
+
+## 035 — Project net cash counts the rep's cut
 
 **Date:** 2026-09-17
 
