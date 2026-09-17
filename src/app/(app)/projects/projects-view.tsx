@@ -314,27 +314,15 @@ export function ProjectsView({
   const complete = sorted.filter((p) => p.status === "complete");
 
   // Signed this calendar month, from every active job regardless of the
-  // selected chip -- "New this month" should read the same whether you're
-  // looking at All or just Complete, so it never looks like business
-  // slowed down just because you clicked a filter. Cancelled contracts
-  // don't count as new business, same scope "active" uses everywhere else
-  // on this page.
+  // selected chip -- the "New this month" chip should read the same
+  // whether you're looking at All or just Complete, so it never looks
+  // like business slowed down just because you clicked a filter.
+  // Cancelled contracts don't count as new business, same scope
+  // "active" uses everywhere else on this page. Chip only: its stat
+  // card gave way to Net accrual, the owner's call.
   const now = new Date();
   const newMonthProjects = active.filter((p) => chipMatches(p, "NewMonth", now));
   const newThisMonth = newMonthProjects.length;
-
-  // What the "New this month" CARD shows: the bucket, narrowed by the
-  // same rep/client/search/date filters as every other card. The chip's
-  // own label keeps the whole-bucket count, like every chip.
-  const filterScope = {
-    search,
-    client: clientFilter,
-    rep: repFilter,
-    bounds: dateRangeBounds(dateRange, customFrom, customTo),
-  };
-  const newThisMonthShown = newMonthProjects.filter((p) =>
-    matchesProjectFilters(p, filterScope)
-  ).length;
 
   const shown =
     filter === "NewMonth"
@@ -505,9 +493,9 @@ export function ProjectsView({
       )}
 
       {/* Every card answers a click with the thing that itemizes its
-          number: two filter this page's own list, the rest open the page
-          the money detail lives on. stat-card already renders the pointer
-          cursor, so an inert card here read as broken. */}
+          number: Owed filters this page's own list, the rest open the
+          page the money detail lives on. stat-card already renders the
+          pointer cursor, so an inert card here read as broken. */}
       <div className="stat-grid stat-grid-6">
         <button
           type="button"
@@ -550,36 +538,32 @@ export function ProjectsView({
         </button>
         <button
           type="button"
-          className={
-            "stat-card" +
-            // Urgent on the accrual figure too: unpaid bills that sink
-            // the book should colour the card before the cash leaves.
-            (totals.net < 0 || totals.net - totals.unpaid < 0 ? " digest-urgent" : "")
-          }
+          className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}
           title="Open Profit & Loss"
           onClick={() => router.push("/profit-loss")}
         >
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
-          {totals.unpaid > 0 && (
-            <div className="est-tax-note">
-              {moneyCents(totals.net - totals.unpaid)} accrual, after unpaid bills
-            </div>
-          )}
           {totals.commission > 0 && (
             <div className="est-tax-note">
               after {moneyCents(totals.commission)} commission paid
             </div>
           )}
         </button>
+        {/* In the "New this month" card's old seat, by the owner's call
+            -- that count still lives on its chip below. Urgent when the
+            book is underwater once committed money comes out. */}
         <button
           type="button"
-          className="stat-card"
-          title="Show the jobs signed this month"
-          onClick={() => setFilter("NewMonth")}
+          className={"stat-card" + (totals.net - totals.unpaid < 0 ? " digest-urgent" : "")}
+          title="Open Profit & Loss"
+          onClick={() => router.push("/profit-loss")}
         >
-          <div className="stat-value mono">{newThisMonthShown}</div>
-          <div className="stat-label">New this month</div>
+          <div className="stat-value mono">{moneyCents(totals.net - totals.unpaid)}</div>
+          <div className="stat-label">Net accrual</div>
+          {totals.unpaid > 0 && (
+            <div className="est-tax-note">after {moneyCents(totals.unpaid)} unpaid bills</div>
+          )}
         </button>
       </div>
 

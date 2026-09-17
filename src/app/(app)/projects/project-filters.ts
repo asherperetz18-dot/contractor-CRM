@@ -52,7 +52,7 @@ export function chipMatches(p: ProjectCard, chip: ProjectChip, now: Date = new D
   if (p.status === "cancelled") return false;
   if (chip === "All") return true;
   // Signed this calendar month. The clock is a parameter so the rule is
-  // testable; the "New this month" stat card counts with this same rule.
+  // testable; the "New this month" chip label counts with this same rule.
   if (chip === "NewMonth") {
     if (!p.signedAt) return false;
     const d = new Date(p.signedAt);
