@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCronSecret } from "@/lib/cron-env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { backfillCallRail } from "@/lib/callrail-sync";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 /**
  * Scheduled re-pull of recent CallRail calls for every connected
@@ -13,7 +14,7 @@ import { backfillCallRail } from "@/lib/callrail-sync";
 // default serverless budget cuts it off mid-import.
 export const maxDuration = 300;
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
@@ -39,3 +40,7 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ days, companies: Object.keys(results).length, results });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.cron.callrail-backfill", handlePost);

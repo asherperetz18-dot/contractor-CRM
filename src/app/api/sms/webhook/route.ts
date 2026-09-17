@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { normalizePhone, type Lead } from "@/lib/data/types";
+import { normalizePhone } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
+import { phoneMatchIn, type LeadPhoneRow } from "@/lib/data/phone-match";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 const YES_WORDS = new Set(["yes", "y", "confirm", "confirmed", "ok", "okay", "yeah", "yep", "sure"]);
 const NO_WORDS = new Set(["no", "n", "cancel", "decline", "declined", "nope"]);
@@ -64,7 +66,7 @@ function pickNearest(rows: EventRow[]): EventRow | null {
   return past[0]?.row ?? null;
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const form = await req.formData();
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
@@ -106,14 +108,14 @@ export async function POST(req: NextRequest) {
   // working phone numbers -- could text in and match nothing, so their
   // reply attached to no job and their YES never confirmed anything.
   const [leadRows, { data: profiles }] = await Promise.all([
-    selectAll<Pick<Lead, "id" | "phone" | "second_contact_phone"> & { company_id: string }>(
+    selectAll<LeadPhoneRow & { company_id: string }>(
       // Named rangeFrom/rangeTo deliberately: `from` and `to` in this
       // scope are the phone numbers on the message, and shadowing those
       // inside a query builder is a mistake waiting to be made.
       (rangeFrom, rangeTo) => {
         let q = admin
           .from("leads")
-          .select("id, company_id, phone, second_contact_phone")
+          .select("id, company_id, phone, phone2, phone3, second_contact_phone")
           .range(rangeFrom, rangeTo);
         if (inboundCompanyId) q = q.eq("company_id", inboundCompanyId);
         return q;
@@ -121,11 +123,19 @@ export async function POST(req: NextRequest) {
     ),
     admin.from("profiles").select("id, name, phone"),
   ]);
-  const matchedLead = leadRows.find(
-    (l) =>
-      (l.phone && normalizePhone(l.phone) === normalizedFrom) ||
-      (l.second_contact_phone && normalizePhone(l.second_contact_phone) === normalizedFrom)
-  );
+  // All four numbers a contact can be reached on (0150) -- the same
+  // matcher the call importer uses, so a text and a call from the same
+  // phone2 land on the same card. On an ambiguous number (several
+  // contacts hold it) the first match keeps today's behavior: thread it
+  // somewhere visible rather than nowhere.
+  const phoneMatch = phoneMatchIn(leadRows, from);
+  const matchedLeadId =
+    phoneMatch.kind === "one"
+      ? phoneMatch.leadId
+      : phoneMatch.kind === "many"
+        ? phoneMatch.leadIds[0]
+        : null;
+  const matchedLead = matchedLeadId ? leadRows.find((l) => l.id === matchedLeadId) : undefined;
 
   const profileRows = (profiles as { id: string; name: string | null; phone: string | null }[]) ?? [];
   const matchedRep = profileRows.find((p) => p.phone && normalizePhone(p.phone) === normalizedFrom);
@@ -297,3 +307,7 @@ export async function POST(req: NextRequest) {
     headers: { "Content-Type": "text/xml" },
   });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.sms.webhook", handlePost);

@@ -5,6 +5,7 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, leadDisplayName, type CompanyProfile, type Lead } from "@/lib/data/types";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 type TaskRow = {
   id: string;
@@ -84,7 +85,7 @@ async function processCompany(
   return { checked: rows.length, sent };
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const cronSecret = getCronSecret();
   if (!cronSecret) {
     return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
@@ -117,3 +118,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ companies: companyRows.length, checked, sent, skipped });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.cron.task-reminders", handlePost);

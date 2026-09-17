@@ -357,9 +357,24 @@ export function PipelineBoard({
     scrollElRef.current = node;
     if (!node) return;
     measureScroll(node);
-    const onScroll = () => measureScroll(node);
-    node.addEventListener("scroll", onScroll);
-    return () => node.removeEventListener("scroll", onScroll);
+    // One measurement per frame, not per scroll event: scroll fires far
+    // faster than frames paint, and every measurement is a setState that
+    // re-renders the whole board -- at this data size that read as jank
+    // the moment anyone dragged the board sideways. Passive, since the
+    // handler never preventDefaults.
+    let raf: number | null = null;
+    const onScroll = () => {
+      if (raf !== null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        measureScroll(node);
+      });
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf);
+      node.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   function scrollByAmount(delta: number) {

@@ -1,5 +1,7 @@
 import "server-only";
 import { withLegalFooter } from "./email-footer";
+import { logError } from "@/lib/observability/logger";
+import { captureError } from "@/lib/observability/sentry";
 
 // Same BOM defense as twilio-env.ts -- `vercel env add` has intermittently
 // prepended a UTF-8 BOM to piped-in values on this machine, and a BOM can
@@ -113,10 +115,18 @@ export async function sendEmail(
       | { id?: string; message?: string; name?: string }
       | null;
     if (!res.ok) {
-      return { error: json?.message || `Could not send the email (HTTP ${res.status}).` };
+      const error = json?.message || `Could not send the email (HTTP ${res.status}).`;
+      // Callers turn this into a quiet on-screen note (or nothing, on a
+      // cron); the send failure itself belongs in the log and Sentry, or
+      // "customers stopped getting emails" has no trail at all.
+      logError({ event: "email.send.failed", service: "email", extra: { status: res.status } });
+      captureError(new Error(error), { service: "email" });
+      return { error };
     }
     return { id: json?.id };
   } catch (e) {
+    logError({ event: "email.send.failed", service: "email" });
+    captureError(e, { service: "email" });
     return {
       error: e instanceof Error ? `Could not send the email: ${e.message}` : "Could not send the email.",
     };

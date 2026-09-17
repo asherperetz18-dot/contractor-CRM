@@ -5,7 +5,12 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { resolveWindow, withinWindow } from "@/lib/data/date-range";
-import { getAnalyticsLeads, type AnalyticsLead } from "@/lib/actions/marketing-analytics";
+import {
+  getAnalyticsLeads,
+  getAnalyticsRollup,
+  type AnalyticsLead,
+} from "@/lib/actions/marketing-analytics";
+import type { AnalyticsRollup } from "@/lib/data/analytics-rollup";
 import {
   leadDisplayName,
   money,
@@ -21,6 +26,10 @@ const PRESETS = [
   { key: "90", label: "Last 90 Days" },
   { key: "all", label: "All Time" },
 ];
+
+// Stable empty list: All Time never holds a windowed slice, and a fresh
+// [] per render would churn every memo below.
+const EMPTY_LEADS: AnalyticsLead[] = [];
 
 export type SignedContract = {
   lead_id: string;
@@ -48,6 +57,10 @@ export function AnalyticsView({
   // user between re-renders, so the same list can come back different.
   const [now] = useState(() => new Date());
   const win = useMemo(() => resolveWindow(range, now), [range, now]);
+  // All Time is served as aggregates (marketing_funnel_rollup, 0157)
+  // rather than as every lead in the book; only the windowed ranges
+  // fetch their slice of rows.
+  const allTime = !win.from && !win.to;
 
   // The leads the current window can use. The server rendered the
   // default window's slice; picking any other range fetches that slice
@@ -55,6 +68,8 @@ export function AnalyticsView({
   // withinWindow below). Stale answers are discarded by request id,
   // same idiom as the topbar search.
   const [leads, setLeads] = useState<AnalyticsLead[]>(initialLeads);
+  const [rollup, setRollup] = useState<AnalyticsRollup | null>(null);
+  const [repLeadsCache, setRepLeadsCache] = useState<Record<string, AnalyticsLead[]>>({});
   const [refreshing, setRefreshing] = useState(false);
   const requestIdRef = useRef(0);
   const firstWinRef = useRef(true);
@@ -65,16 +80,43 @@ export function AnalyticsView({
     }
     const requestId = ++requestIdRef.current;
     setRefreshing(true);
-    getAnalyticsLeads(win)
-      .then((rows) => {
-        if (requestIdRef.current !== requestId) return;
-        setLeads(rows);
-        setRefreshing(false);
-      })
-      .catch(() => {
-        if (requestIdRef.current === requestId) setRefreshing(false);
-      });
+    const finish = () => {
+      if (requestIdRef.current === requestId) setRefreshing(false);
+    };
+    if (!win.from && !win.to) {
+      getAnalyticsRollup()
+        .then((r) => {
+          if (requestIdRef.current !== requestId) return;
+          setRollup(r);
+          setRefreshing(false);
+        })
+        .catch(finish);
+    } else {
+      getAnalyticsLeads(win)
+        .then((rows) => {
+          if (requestIdRef.current !== requestId) return;
+          setLeads(rows);
+          setRefreshing(false);
+        })
+        .catch(finish);
+    }
   }, [win]);
+
+  // All Time drill-down: a rep's own leads arrive when their row is
+  // opened, never with the page.
+  useEffect(() => {
+    if (!allTime || !expandedRep || repLeadsCache[expandedRep]) return;
+    let dead = false;
+    const repId = expandedRep;
+    getAnalyticsLeads({ from: null, to: null }, repId)
+      .then((rows) => {
+        if (!dead) setRepLeadsCache((m) => ({ ...m, [repId]: rows }));
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [allTime, expandedRep, repLeadsCache]);
 
   // The per-rep report opens on whatever period is being looked at here.
   // Without the custom dates it would silently fall back to its own
@@ -89,13 +131,17 @@ export function AnalyticsView({
     return reps.find((r) => r.id === id)?.name || "Unassigned";
   }
 
+  // In All Time mode the row math runs on nothing -- the aggregates
+  // below are the data -- so a stale windowed slice can never flash up
+  // labeled as all-time numbers while the rollup loads.
+  const windowLeads = allTime ? EMPTY_LEADS : leads;
   const createdInRange = useMemo(
-    () => leads.filter((l) => withinWindow(l.created_at, win)),
-    [leads, win]
+    () => windowLeads.filter((l) => withinWindow(l.created_at, win)),
+    [windowLeads, win]
   );
   const wonInRange = useMemo(
-    () => leads.filter((l) => l.stage === "Won" && withinWindow(l.won_at, win)),
-    [leads, win]
+    () => windowLeads.filter((l) => l.stage === "Won" && withinWindow(l.won_at, win)),
+    [windowLeads, win]
   );
 
   const wonValue = wonInRange.reduce((s, l) => s + (Number(l.value) || 0), 0);
@@ -190,6 +236,65 @@ export function AnalyticsView({
       .filter((s) => s.count > 0);
   }, [createdInRange, stages]);
 
+  // Served-aggregate twins of the client-side figures above: All Time
+  // renders from these, the windowed ranges keep the client math over
+  // their slice. One bucket contract for both, pinned by
+  // analytics-rollup.test.ts.
+  const served = allTime ? rollup : null;
+  const totals = served
+    ? served.totals
+    : {
+        created: createdInRange.length,
+        createdValue: createdInRange.reduce((s, l) => s + (Number(l.value) || 0), 0),
+        won: wonInRange.length,
+        wonValue,
+      };
+  const sourceRows = useMemo(
+    () =>
+      served
+        ? served.bySource.map((v) => ({
+            ...v,
+            costPerLead: v.costKnown > 0 ? v.spend / v.costKnown : null,
+            costPerSale: v.spend > 0 && v.sold > 0 ? v.spend / v.sold : null,
+          }))
+        : bySource,
+    [served, bySource]
+  );
+  const repRows = useMemo(() => {
+    if (!served) return repStats;
+    const byId = new Map(served.byRep.map((r) => [r.assigned_to, r]));
+    return reps
+      .map((rep) => {
+        const row = byId.get(rep.id);
+        return {
+          rep,
+          count: row?.count ?? 0,
+          wonCount: row?.wonCount ?? 0,
+          wonVal: row?.wonValue ?? 0,
+          // Null until the row is expanded and its fetch lands.
+          assigned: (repLeadsCache[rep.id] ?? null) as AnalyticsLead[] | null,
+        };
+      })
+      .filter((r) => r.count > 0)
+      .sort((a, b) => b.wonVal - a.wonVal);
+  }, [served, repStats, reps, repLeadsCache]);
+  // The rollup's slim rows carry field-for-field what AnalyticsLead
+  // spells; the cast only bridges the two modules' type names.
+  const recentWonRows = served ? (served.recentWon as unknown as AnalyticsLead[]) : recentWon;
+  const stageRows = useMemo(() => {
+    if (!served) return byStage;
+    const m = new Map(served.byStage.map((x) => [x.stage, x]));
+    return stages
+      .map((s) => s.name)
+      .filter((s) => !["Won", "Lost", "DNC"].includes(s))
+      .map((stage) => ({
+        stage,
+        count: m.get(stage)?.count ?? 0,
+        value: m.get(stage)?.value ?? 0,
+      }))
+      .filter((s) => s.count > 0);
+  }, [served, byStage, stages]);
+
   function daysToClose(l: Pick<Lead, "won_at" | "created_at">) {
     if (!l.won_at) return null;
     return Math.max(
@@ -214,21 +319,19 @@ export function AnalyticsView({
 
       <div className="stat-grid">
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{wonInRange.length}</div>
+          <div className="stat-value mono">{totals.won}</div>
           <div className="stat-label">Won Deals</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{money(wonValue)}</div>
+          <div className="stat-value mono">{money(totals.wonValue)}</div>
           <div className="stat-label">Won Value</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{createdInRange.length}</div>
+          <div className="stat-value mono">{totals.created}</div>
           <div className="stat-label">Leads Created</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">
-            {money(createdInRange.reduce((s, l) => s + (Number(l.value) || 0), 0))}
-          </div>
+          <div className="stat-value mono">{money(totals.createdValue)}</div>
           <div className="stat-label">Pipeline Created</div>
         </div>
       </div>
@@ -236,7 +339,7 @@ export function AnalyticsView({
       <div className="dash-lower">
         <div className="dash-panel">
           <h3>Leads by Source</h3>
-          {bySource.length === 0 ? (
+          {sourceRows.length === 0 ? (
             <p className="empty-hint">No leads in this range.</p>
           ) : (
             <table className="data-table">
@@ -251,7 +354,7 @@ export function AnalyticsView({
                 </tr>
               </thead>
               <tbody>
-                {bySource.map((s) => (
+                {sourceRows.map((s) => (
                   <tr key={s.source}>
                     <td>{s.source}</td>
                     <td className="right mono">{s.count}</td>
@@ -307,7 +410,7 @@ export function AnalyticsView({
                 </tr>
               </thead>
               <tbody>
-                {repStats.map(({ rep, count, wonCount, wonVal, assigned }) => {
+                {repRows.map(({ rep, count, wonCount, wonVal, assigned }) => {
                   const open = expandedRep === rep.id;
                   return (
                     <Fragment key={rep.id}>
@@ -340,6 +443,9 @@ export function AnalyticsView({
                       {open && (
                         <tr className="value-breakdown-detail">
                           <td colSpan={4}>
+                            {!assigned ? (
+                              <p className="empty-hint">Loading…</p>
+                            ) : (
                             <div className="value-lead-list">
                               {[...assigned]
                                 .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
@@ -359,6 +465,7 @@ export function AnalyticsView({
                                   </a>
                                 ))}
                             </div>
+                            )}
                           </td>
                         </tr>
                       )}
@@ -375,7 +482,7 @@ export function AnalyticsView({
         <div className="settings-section-head">
           <span className="settings-section-title">RECENT WON DEALS</span>
         </div>
-        {recentWon.length === 0 ? (
+        {recentWonRows.length === 0 ? (
           <div className="empty-state">
             <p className="empty-label">No won deals in this range</p>
           </div>
@@ -390,7 +497,7 @@ export function AnalyticsView({
               </tr>
             </thead>
             <tbody>
-              {recentWon.map((l) => (
+              {recentWonRows.map((l) => (
                 <tr key={l.id}>
                   <td>{leadDisplayName(l)}</td>
                   <td>{repName(l.assigned_to)}</td>
@@ -408,11 +515,11 @@ export function AnalyticsView({
           <span className="settings-section-title">PIPELINE BY STAGE</span>
           <span className="settings-section-hint">Leads created in this range</span>
         </div>
-        {byStage.length === 0 ? (
+        {stageRows.length === 0 ? (
           <p className="empty-hint">No leads in this range.</p>
         ) : (
           <div className="chip-row">
-            {byStage.map((s) => (
+            {stageRows.map((s) => (
               <div key={s.stage} className="stat-card stat-static" style={{ minWidth: 140 }}>
                 <Badge color={stageColor(stages, s.stage)}>{s.stage}</Badge>
                 <div className="stat-value mono" style={{ fontSize: 18, marginTop: 6 }}>

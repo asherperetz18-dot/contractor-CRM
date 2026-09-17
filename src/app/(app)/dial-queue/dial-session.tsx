@@ -10,6 +10,7 @@ import {
   type Lead,
   type Profile,
 } from "@/lib/data/types";
+import { dialNumberOf } from "@/lib/data/phone-match";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
 import type { LeadCallInfo } from "@/lib/lead-call-info";
@@ -145,7 +146,7 @@ export function DialSession({
     const t = setTimeout(() => {
       if (countdown <= 1) {
         setCountdown(null);
-        if (lead?.phone) placeCall();
+        if (lead && dialNumberOf(lead)) placeCall();
       } else {
         setCountdown(countdown - 1);
       }
@@ -234,15 +235,16 @@ export function DialSession({
   }
 
   function placeCall() {
-    if (!lead?.phone) return;
+    // The contact's own numbers in order (0150) -- never the co-owner's.
+    if (!lead) return;
+    const phone = dialNumberOf(lead);
+    if (!phone) return;
     setCalling(true);
     setCallLogId(null);
     setChosen(null);
     chosenRef.current = null;
     setError("");
-    window.dispatchEvent(
-      new CustomEvent("crm:call", { detail: { phone: lead.phone, leadId: lead.id } })
-    );
+    window.dispatchEvent(new CustomEvent("crm:call", { detail: { phone, leadId: lead.id } }));
   }
 
   function advance(autoNext = false) {
@@ -399,7 +401,7 @@ export function DialSession({
         Contact {index + 1} of {leads.length}
       </div>
       <div className="dial-session-name">{leadDisplayName(shown)}</div>
-      <div className="dial-session-phone mono">{lead.phone}</div>
+      <div className="dial-session-phone mono">{dialNumberOf(lead)}</div>
 
       {shown.address && (
         <p className="hint-note" style={{ marginTop: -8 }}>

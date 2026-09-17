@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyNewLead } from "@/lib/notify-new-lead";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -21,7 +22,7 @@ async function parseBody(req: NextRequest): Promise<Record<string, string>> {
   return out;
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (!key) {
     return NextResponse.json({ error: "Missing ?key=" }, { status: 401 });
@@ -110,3 +111,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, id: (data as { id: string }).id, alerted: alert.sent });
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.leads.webhook", handlePost);

@@ -113,8 +113,19 @@ Configured in Sentry, separate from what gets recorded:
   literally named `middleware.ts`. It's also outside `withRouteObservability`'s
   reach today, since its own matcher excludes `/api/*` and it has no
   correlation id of its own yet.
-- Only the Twilio voice-calling path (this feature's proving case) is
-  instrumented so far. Stripe webhooks, SMS, email, AI requests, cron
-  jobs, uploads, and auth failures still use the ad hoc `console.error`
-  calls that predate this -- extending the same `withRouteObservability`/
-  `withActionObservability` pattern to them is the next slice of work.
+- Beyond the Twilio voice path (this feature's proving case), the
+  external-facing routes are now wrapped (#031): both Stripe webhooks,
+  the SMS and inbound-email webhooks, the leads and Meta leadgen
+  webhooks, and all six cron jobs run under `withRouteObservability`
+  (the per-company Stripe route calls `runObserved` directly, since the
+  wrapper can't pass its dynamic segment through), and `sendEmail`
+  failures log and reach Sentry instead of returning silently. Left out
+  on purpose: the high-frequency poll routes (`/api/popup-alerts`,
+  `/api/notifications`, `/api/screen-shares`, `/api/device-touch`,
+  `/api/activity/ping`, `/api/version`) — a log line every few seconds
+  per tab is noise that buries the signal. Still uninstrumented: server
+  actions beyond `logCall`, uploads, AI requests, and auth failures.
+- Wrapping catches thrown errors and times every run; a route that
+  catches its own failure and answers 200 (webhooks do, so the sender
+  stops retrying) still reports "completed" — its inner `console.error`
+  calls are unchanged and are the next refinement.

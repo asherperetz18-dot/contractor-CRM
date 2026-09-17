@@ -124,14 +124,21 @@ export async function getLeadMessages(
   const supabase = await createClient();
   const { data: leadRow } = await supabase
     .from("leads")
-    .select("phone, second_contact_phone")
+    .select("phone, phone2, phone3, second_contact_phone")
     .eq("id", leadId)
     .eq("company_id", profile.company_id)
     .maybeSingle();
   if (!leadRow) return { error: "Contact not found." };
 
-  const lead = leadRow as { phone: string | null; second_contact_phone: string | null };
-  const clientNumbers = [lead.phone, lead.second_contact_phone]
+  const lead = leadRow as {
+    phone: string | null;
+    phone2: string | null;
+    phone3: string | null;
+    second_contact_phone: string | null;
+  };
+  // Every number this contact can text from (0150): a reply sent from
+  // their phone2 belongs on this card, not filtered out as a stranger.
+  const clientNumbers = [lead.phone, lead.phone2, lead.phone3, lead.second_contact_phone]
     .filter((p): p is string => !!p)
     .map(normalizePhone);
 

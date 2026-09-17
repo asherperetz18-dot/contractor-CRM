@@ -5,6 +5,7 @@ import { getEmailEnv } from "@/lib/email-env";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { notifyNewLead } from "@/lib/notify-new-lead";
 import { parseLeadEmail } from "@/lib/inbound-email";
+import { withRouteObservability } from "@/lib/observability/observe";
 
 /**
  * Where forwarded lead emails become leads.
@@ -53,7 +54,7 @@ type ReceivedEvent = {
   };
 };
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
   const secret = process.env.RESEND_INBOUND_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "RESEND_INBOUND_SECRET not configured" }, { status: 500 });
@@ -202,3 +203,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "processing failed" }, { status: 500 });
   }
 }
+
+// Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
+// id, and Sentry capture for every run, same wrapper as the dialer path.
+export const POST = withRouteObservability("api.email.inbound", handlePost);
