@@ -59,6 +59,31 @@ export function chipMatches(p: ProjectCard, chip: ProjectChip, now: Date = new D
   return p.status === CHIP_STATUS[chip];
 }
 
+/** The money cards' sums over exactly the cards given. Pure and fed
+ *  the FILTERED list, so the cards always speak for what the table
+ *  shows -- an unfiltered card above a filtered table gets quoted as
+ *  the filtered number (the estimates funnel learned this first). */
+export function projectTotals(cards: ProjectCard[]): {
+  sold: number;
+  collected: number;
+  cost: number;
+  receivable: number;
+  net: number;
+  unpaid: number;
+} {
+  return cards.reduce(
+    (acc, p) => ({
+      sold: acc.sold + p.rollup.soldCents,
+      collected: acc.collected + p.rollup.collectedCents,
+      cost: acc.cost + p.rollup.costCents,
+      receivable: acc.receivable + p.rollup.receivableCents,
+      net: acc.net + p.rollup.netCashCents,
+      unpaid: acc.unpaid + p.unpaidBillsCents,
+    }),
+    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0, unpaid: 0 }
+  );
+}
+
 /** [start, end] ms bounds for "signed on" a job falls in, or null for no
  *  date filter at all. Custom leaves either side open when blank, so
  *  "from" alone means "since then" and "to" alone means "up to then". */
