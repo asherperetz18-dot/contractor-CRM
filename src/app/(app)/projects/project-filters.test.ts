@@ -50,7 +50,17 @@ test("projectTotals sums the money columns of exactly the cards it is given", ()
       unpaidBillsCents: 100 as any,
     });
   const totals = projectTotals([
-    money({ soldCents: 1000, collectedCents: 400, costCents: 50, receivableCents: 600, netCashCents: 350 }),
+    money({
+      soldCents: 1000,
+      collectedCents: 400,
+      costCents: 50,
+      receivableCents: 600,
+      // Net as the rollup computes it: collected − cost − commission.
+      commissionCents: 75,
+      netCashCents: 275,
+    }),
+    // An unmeasured job's commission is null and must sum as zero, not
+    // poison the total into NaN.
     money({ soldCents: 200, collectedCents: 200, netCashCents: 200 }),
   ]);
   assert.deepEqual(totals, {
@@ -58,8 +68,9 @@ test("projectTotals sums the money columns of exactly the cards it is given", ()
     collected: 600,
     cost: 50,
     receivable: 600,
-    net: 550,
+    net: 475,
     unpaid: 200,
+    commission: 75,
   });
   // The point of taking a list: hand it the filtered rows and the cards
   // speak for the filter, not the company.
@@ -70,5 +81,6 @@ test("projectTotals sums the money columns of exactly the cards it is given", ()
     receivable: 0,
     net: 0,
     unpaid: 0,
+    commission: 0,
   });
 });
