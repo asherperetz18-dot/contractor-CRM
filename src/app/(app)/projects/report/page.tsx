@@ -45,7 +45,7 @@ const CHIP_LABEL: Record<ProjectChip, string> = {
   OnHold: "On hold",
   Complete: "Complete",
   Cancelled: "Cancelled",
-  Bleeding: "Negative net cash",
+  Bleeding: "Negative net",
   Owed: "Owed money",
   NewMonth: "New this month",
 };
@@ -157,7 +157,7 @@ export default async function ProjectsReportPage({
           bounds,
         })
     )
-    .sort((a, b) => projectTriageOrder(a.rollup, b.rollup));
+    .sort((a, b) => projectTriageOrder(a, b));
 
   const memberNames = new Map(reps.map((r) => [r.id, r.name ?? ""]));
   const itemsByEstimate = new Map<string, ChecklistRow[]>();
@@ -289,6 +289,12 @@ export default async function ProjectsReportPage({
                   <span>Net cash (collected − spent − commission paid)</span>
                   <span className="mono">{moneyCents(totals.net)}</span>
                 </div>
+                {totals.unpaid > 0 && (
+                  <div className="estdoc-total-row">
+                    <span>Net accrual (net cash − unpaid bills)</span>
+                    <span className="mono">{moneyCents(totals.net - totals.unpaid)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Worst first, same triage order as the screen: bleeding
@@ -357,6 +363,14 @@ export default async function ProjectsReportPage({
                         <span>Net cash</span>
                         <span className="mono">{moneyCents(p.rollup.netCashCents)}</span>
                       </div>
+                      {p.unpaidBillsCents > 0 && (
+                        <div className="estdoc-total-row">
+                          <span>Net accrual (net cash − unpaid bills)</span>
+                          <span className="mono">
+                            {moneyCents(p.rollup.netCashCents - p.unpaidBillsCents)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {items.length > 0 && (
                       <>

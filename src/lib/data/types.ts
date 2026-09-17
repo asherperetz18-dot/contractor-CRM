@@ -2389,19 +2389,54 @@ export function computeProjectRollup(input: {
 }
 
 /**
+ * Net on an accrual basis: the job's position once the money it has
+ * committed to comes out.
+ *
+ * Net cash (which already nets off commission actually paid) less the
+ * bills filed against the job but not yet paid. Nothing else joins, by
+ * the owner's explicit rule: unpaid rep commission stays out, because
+ * the projected figure is just an estimate until every expense is on
+ * the project — a bill is a committed number, a projection is not.
+ */
+export function netAccrualCents(input: {
+  netCashCents: number;
+  unpaidBillsCents: number;
+}): number {
+  return input.netCashCents - input.unpaidBillsCents;
+}
+
+/** The money a triage decision needs: the rollup plus the bills that
+ *  have not left yet, which the rollup deliberately keeps apart. */
+export type ProjectTriageMoney = {
+  rollup: Pick<ProjectRollup, "netCashCents" | "receivableCents" | "soldCents">;
+  unpaidBillsCents: number;
+};
+
+/**
  * Worst first.
  *
  * A project list sorted by name or date is a filing cabinet. Sorted by
  * money going the wrong way, it is the thing you open in the morning:
  * jobs underwater, then jobs owed the most, then everything else by size.
+ * Underwater is judged on the ACCRUAL figure, so a job drowning in
+ * bills it hasn't paid yet surfaces before the cash actually leaves.
  */
-export function projectTriageOrder(a: ProjectRollup, b: ProjectRollup): number {
-  const aBleeding = a.netCashCents < 0;
-  const bBleeding = b.netCashCents < 0;
+export function projectTriageOrder(a: ProjectTriageMoney, b: ProjectTriageMoney): number {
+  const aNet = netAccrualCents({
+    netCashCents: a.rollup.netCashCents,
+    unpaidBillsCents: a.unpaidBillsCents,
+  });
+  const bNet = netAccrualCents({
+    netCashCents: b.rollup.netCashCents,
+    unpaidBillsCents: b.unpaidBillsCents,
+  });
+  const aBleeding = aNet < 0;
+  const bBleeding = bNet < 0;
   if (aBleeding !== bBleeding) return aBleeding ? -1 : 1;
-  if (aBleeding && bBleeding) return a.netCashCents - b.netCashCents;
-  if (a.receivableCents !== b.receivableCents) return b.receivableCents - a.receivableCents;
-  return b.soldCents - a.soldCents;
+  if (aBleeding && bBleeding) return aNet - bNet;
+  if (a.rollup.receivableCents !== b.rollup.receivableCents)
+    return b.rollup.receivableCents - a.rollup.receivableCents;
+  return b.rollup.soldCents - a.rollup.soldCents;
 }
 
 // ── Photos on documents ──────────────────────────────────────────────

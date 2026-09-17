@@ -5,7 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setProjectHold } from "@/lib/actions/estimates";
 import { checkRainNow } from "@/lib/actions/rain-check";
-import { mapsUrl, moneyCents, projectTriageOrder, rainPopTier, type ProjectRollup } from "@/lib/data/types";
+import {
+  mapsUrl,
+  moneyCents,
+  netAccrualCents,
+  projectTriageOrder,
+  rainPopTier,
+  type ProjectRollup,
+} from "@/lib/data/types";
 import { jobChipClass } from "@/lib/job-chips";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
@@ -288,11 +295,19 @@ export function ProjectsView({
   const cancelled = projects.filter((p) => p.status === "cancelled");
 
   const sorted = useMemo(
-    () => [...active].sort((a, b) => projectTriageOrder(a.rollup, b.rollup)),
+    () => [...active].sort((a, b) => projectTriageOrder(a, b)),
     [active]
   );
 
-  const bleeding = sorted.filter((p) => p.rollup.netCashCents < 0);
+  // Red on the accrual figure: bills filed but unpaid count against a
+  // job before the cash leaves. Same rule as the Bleeding chip.
+  const bleeding = sorted.filter(
+    (p) =>
+      netAccrualCents({
+        netCashCents: p.rollup.netCashCents,
+        unpaidBillsCents: p.unpaidBillsCents,
+      }) < 0
+  );
   const owed = sorted.filter((p) => p.rollup.receivableCents > 0);
   const inProgress = sorted.filter((p) => p.status === "in_progress");
   const onHold = sorted.filter((p) => p.status === "on_hold");
@@ -535,12 +550,22 @@ export function ProjectsView({
         </button>
         <button
           type="button"
-          className={"stat-card" + (totals.net < 0 ? " digest-urgent" : "")}
+          className={
+            "stat-card" +
+            // Urgent on the accrual figure too: unpaid bills that sink
+            // the book should colour the card before the cash leaves.
+            (totals.net < 0 || totals.net - totals.unpaid < 0 ? " digest-urgent" : "")
+          }
           title="Open Profit & Loss"
           onClick={() => router.push("/profit-loss")}
         >
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
+          {totals.unpaid > 0 && (
+            <div className="est-tax-note">
+              {moneyCents(totals.net - totals.unpaid)} accrual, after unpaid bills
+            </div>
+          )}
           {totals.commission > 0 && (
             <div className="est-tax-note">
               after {moneyCents(totals.commission)} commission paid
@@ -590,7 +615,7 @@ export function ProjectsView({
               ["OnHold", `On hold ${onHold.length}`, "hold", onHold.length],
               ["Complete", `Complete ${complete.length}`, "done", complete.length],
               ["Cancelled", `Cancelled ${cancelled.length}`, "dead", cancelled.length],
-              ["Bleeding", `Negative net cash ${bleeding.length}`, "bleed", bleeding.length],
+              ["Bleeding", `Negative net ${bleeding.length}`, "bleed", bleeding.length],
               ["Owed", `Owed money ${owed.length}`, "owed", owed.length],
               ["NewMonth", `New this month ${newThisMonth}`, "prog", newThisMonth],
             ] as [Filter, string, string, number][]
@@ -771,8 +796,10 @@ export function ProjectsView({
                 <th className="right">Sold</th>
                 <th className="right">Collected</th>
                 <th className="right">Owed</th>
+                <th className="right">Bills unpaid</th>
                 <th className="right">Spent</th>
                 <th className="right">Commission paid</th>
+                <th className="right">Net accrual</th>
                 <th className="right">Net cash</th>
               </tr>
             </thead>
@@ -1040,10 +1067,13 @@ export function ProjectsView({
                     {p.rollup.receivableCents ? moneyCents(p.rollup.receivableCents) : "—"}
                   </td>
                   <td className="right mono">
+                    {/* Filed against the job, money not yet out. Its own
+                        column (it used to be a note under Spent) because
+                        it is the difference between the two nets. */}
+                    {p.unpaidBillsCents ? moneyCents(p.unpaidBillsCents) : "—"}
+                  </td>
+                  <td className="right mono">
                     {p.rollup.costCents ? moneyCents(p.rollup.costCents) : "—"}
-                    {p.unpaidBillsCents > 0 && (
-                      <div className="est-tax-note">+ {moneyCents(p.unpaidBillsCents)} unpaid</div>
-                    )}
                   </td>
                   <td className="right mono">
                     {/* Commission actually paid or advanced on this job
@@ -1051,6 +1081,27 @@ export function ProjectsView({
                         only -- what is merely owed lives on Sales
                         Commission. Dash while nothing has been paid. */}
                     {p.rollup.commissionCents ? moneyCents(p.rollup.commissionCents) : "—"}
+                  </td>
+                  <td className="right mono">
+                    {/* Net once the unpaid bills come out too. Red before
+                        the cash leaves -- that is this column's job. No
+                        unpaid projected commission in here: an estimate
+                        until every expense is on the project. */}
+                    {p.rollup.costCents || p.rollup.collectedCents || p.unpaidBillsCents ? (
+                      (() => {
+                        const accrual = netAccrualCents({
+                          netCashCents: p.rollup.netCashCents,
+                          unpaidBillsCents: p.unpaidBillsCents,
+                        });
+                        return (
+                          <span className={accrual < 0 ? "stale-tag" : ""}>
+                            {moneyCents(accrual)}
+                          </span>
+                        );
+                      })()
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="right mono">
                     {/* Only coloured once something has actually been spent.
@@ -1067,7 +1118,7 @@ export function ProjectsView({
                 </tr>
                 {openChecklists.has(p.estimateId) && (
                   <tr className="proj-checklist-row">
-                    <td colSpan={8 + visibleColumns.size}>
+                    <td colSpan={10 + visibleColumns.size}>
                       <ProjectChecklist
                         estimateId={p.estimateId}
                         items={items}
