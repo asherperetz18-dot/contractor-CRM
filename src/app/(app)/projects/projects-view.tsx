@@ -493,9 +493,9 @@ export function ProjectsView({
       )}
 
       {/* Every card answers a click with the thing that itemizes its
-          number: two filter this page's own list, the rest open the page
-          the money detail lives on. stat-card already renders the pointer
-          cursor, so an inert card here read as broken. */}
+          number: Owed filters this page's own list, the rest open the
+          page the money detail lives on. stat-card already renders the
+          pointer cursor, so an inert card here read as broken. */}
       <div className="stat-grid stat-grid-6">
         <button
           type="button"
