@@ -84,3 +84,18 @@ test("projectTotals sums the money columns of exactly the cards it is given", ()
     commission: 0,
   });
 });
+
+test("the Bleeding chip fires on the accrual figure: unpaid bills count, before the cash leaves", () => {
+  const cashFineBillsNot = card({
+    rollup: { netCashCents: 100_000, receivableCents: 0 } as never,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    unpaidBillsCents: 700_000 as any,
+  });
+  assert.equal(chipMatches(cashFineBillsNot, "Bleeding", NOW), true);
+  const healthy = card({
+    rollup: { netCashCents: 100_000, receivableCents: 0 } as never,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    unpaidBillsCents: 0 as any,
+  });
+  assert.equal(chipMatches(healthy, "Bleeding", NOW), false);
+});

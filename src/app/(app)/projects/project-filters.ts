@@ -1,3 +1,7 @@
+// Relative and with the extension, not "@/...": this module runs under
+// node's test runner (via project-filters.test.ts), which resolves no
+// tsconfig path aliases -- same idiom as every *.test.ts import.
+import { netAccrualCents } from "../../../lib/data/types.ts";
 import type { ProjectCard, ProjectStatus } from "./projects-view";
 
 /**
@@ -54,7 +58,15 @@ export function chipMatches(p: ProjectCard, chip: ProjectChip, now: Date = new D
     const d = new Date(p.signedAt);
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   }
-  if (chip === "Bleeding") return p.rollup.netCashCents < 0;
+  // On the accrual figure: bills filed but unpaid count against the
+  // job, so it goes red before the cash actually leaves (owner's rule).
+  if (chip === "Bleeding")
+    return (
+      netAccrualCents({
+        netCashCents: p.rollup.netCashCents,
+        unpaidBillsCents: p.unpaidBillsCents ?? 0,
+      }) < 0
+    );
   if (chip === "Owed") return p.rollup.receivableCents > 0;
   return p.status === CHIP_STATUS[chip];
 }

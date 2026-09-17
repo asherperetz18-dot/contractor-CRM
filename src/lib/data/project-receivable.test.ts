@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeProjectRollup, phaseReceivableCents } from "./types.ts";
+import {
+  computeProjectRollup,
+  phaseReceivableCents,
+  netAccrualCents,
+  projectTriageOrder,
+  type ProjectRollup,
+} from "./types.ts";
 
 /**
  * Owed-to-you is per phase, matching the Money to Collect page. The bug
@@ -139,4 +145,48 @@ test("an explicit null -- ledger not readable -- subtracts nothing", () => {
   });
   assert.equal(rollup.commissionCents, null);
   assert.equal(rollup.netCashCents, 0);
+});
+
+// ── Net accrual: the position once committed money comes out ─────────
+//
+// The owner's rule, stated on the live book: a job must "still get the
+// red warning even if bills are not paid yet", and unpaid rep
+// commission stays OUT of it -- a projection is just an estimate until
+// every expense is on the project. So accrual = net cash less the
+// bills filed but not yet paid, and nothing else.
+
+test("net accrual is net cash less the bills not yet paid", () => {
+  assert.equal(
+    netAccrualCents({ netCashCents: 100_000, unpaidBillsCents: 60_000 }),
+    40_000
+  );
+  // No unpaid bills: the two bases agree.
+  assert.equal(netAccrualCents({ netCashCents: 77_903, unpaidBillsCents: 0 }), 77_903);
+});
+
+test("unpaid bills can turn a cash-positive job red", () => {
+  assert.ok(netAccrualCents({ netCashCents: 100_000, unpaidBillsCents: 600_000 }) < 0);
+});
+
+test("triage puts a job drowning in unpaid bills first, even with cash in hand", () => {
+  const healthy = {
+    rollup: {
+      netCashCents: 50_000,
+      receivableCents: 900_000,
+      soldCents: 1_000_000,
+    } as ProjectRollup,
+    unpaidBillsCents: 0,
+  };
+  const drowning = {
+    rollup: {
+      netCashCents: 100_000,
+      receivableCents: 0,
+      soldCents: 500_000,
+    } as ProjectRollup,
+    unpaidBillsCents: 700_000,
+  };
+  assert.ok(projectTriageOrder(drowning, healthy) < 0);
+  // Two underwater jobs: deepest first, on the accrual figure.
+  const deeper = { ...drowning, unpaidBillsCents: 900_000 };
+  assert.ok(projectTriageOrder(deeper, drowning) < 0);
 });
