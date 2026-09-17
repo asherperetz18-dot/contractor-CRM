@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   defaultDueDate,
   moneyCents,
+  paidTotalCents,
   phaseState,
   phaseStateLabel,
   type EstimatePayment,
@@ -20,6 +21,7 @@ import {
 const BADGE: Record<string, string> = {
   paid: "signed",
   clearing: "sent",
+  partial: "sent",
   overdue: "declined",
   billed: "sent",
   unbilled: "draft",
@@ -57,6 +59,7 @@ export function PhaseBilling({
 
   const on = payments.filter((p) => p.estimate_payment_id === phase.id);
   const state = phaseState(phase, on);
+  const settledOn = paidTotalCents(on);
 
   if (!signed) return null;
 
@@ -130,6 +133,16 @@ export function PhaseBilling({
       <span className={"est-badge est-badge-" + (BADGE[state] ?? "draft")}>
         {phaseStateLabel(state)}
       </span>
+
+      {/* Money landed but short of the amount: say how far along it is,
+          whatever else the state says -- a partly paid overdue phase is
+          chased for its remainder, not its face value. */}
+      {settledOn > 0 && state !== "paid" && (
+        <span className="est-phase-due-note">
+          {moneyCents(settledOn)} of {moneyCents(phase.amount_cents)} paid —{" "}
+          {moneyCents(Math.max(0, phase.amount_cents - settledOn))} still owed
+        </span>
+      )}
 
       {state === "unbilled" && !confirming && (
         <button className="btn-ghost" onClick={() => setConfirming(true)} disabled={pending}>

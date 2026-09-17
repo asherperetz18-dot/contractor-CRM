@@ -61,6 +61,12 @@ export function PhasePayments({
       <div className="pp-phases">
         {phases.map((p) => {
           const due = dueLabel(p.dueDate);
+          // Money landed but short of the amount. The online checkout
+          // only knows how to take the full phase amount, so the
+          // remainder is collected by the contractor -- what must NOT
+          // happen is a Pay button that would charge the face value on
+          // top of what was already paid.
+          const partlyPaid = p.owedCents > 0 && p.owedCents < p.amountCents;
           return (
             <div key={p.id} className={"pp-phase pp-phase-" + p.state}>
               <div className="pp-phase-main">
@@ -71,19 +77,29 @@ export function PhasePayments({
                     ? `Paid${p.paidAt ? " " + new Date(p.paidAt).toLocaleDateString("en-US") : ""}`
                     : p.state === "clearing"
                       ? "Bank transfer in progress — nothing more to do."
-                      : p.state === "overdue"
-                        ? `Was due ${due}`
-                        : due
-                          ? `Due ${due}`
-                          : ""}
+                      : partlyPaid
+                        ? `${moneyCents(p.amountCents - p.owedCents)} received — ${moneyCents(p.owedCents)} still due${
+                            p.state === "overdue" ? `, was due ${due}` : due ? `, due ${due}` : ""
+                          }`
+                        : p.state === "overdue"
+                          ? `Was due ${due}`
+                          : due
+                            ? `Due ${due}`
+                            : ""}
                 </div>
               </div>
               <div className="pp-phase-side">
-                <div className="pp-phase-amount mono">{moneyCents(p.amountCents)}</div>
+                <div className="pp-phase-amount mono">
+                  {moneyCents(
+                    p.state === "paid" || p.state === "clearing" ? p.amountCents : p.owedCents
+                  )}
+                </div>
                 {p.state === "paid" ? (
                   <span className="est-badge est-badge-signed">Paid</span>
                 ) : p.state === "clearing" ? (
                   <span className="est-badge est-badge-sent">Clearing</span>
+                ) : partlyPaid ? (
+                  <span className="est-badge est-badge-sent">Partially paid</span>
                 ) : invoicedSeparately ? (
                   <span className="est-badge est-badge-sent">Invoiced separately</span>
                 ) : (
