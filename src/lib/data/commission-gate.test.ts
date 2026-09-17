@@ -234,6 +234,62 @@ test("no closer means the maths of every older contract is untouched", () => {
   assert.equal(withField.rep1Cents, 1_400_000);
 });
 
+// ── What a job actually owes its sales team ──────────────────────────
+//
+// The pool is split by basis points whether or not a seat has a person
+// in it. An empty seat's share is not a debt -- the Projects page cost
+// figure must count only the shares somebody is actually owed.
+
+import { commissionOwedCents } from "./types.ts";
+
+test("only seated shares are owed", () => {
+  // A 60/40 split configured, but no second rep ever seated: the job
+  // owes the first rep's 60% and keeps the rest.
+  const detail = computeRepCommission({
+    contractCents: 8_000_000,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 4_000_000,
+    hasCosts: true,
+    rep1Bp: 6000,
+    rep2Bp: 4000,
+  });
+  assert.equal(
+    commissionOwedCents(detail, { rep1: true, rep2: false, closer: false }),
+    detail.rep1Cents
+  );
+});
+
+test("a full bench is owed the whole pool", () => {
+  const detail = computeRepCommission({
+    contractCents: 8_000_000,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 4_000_000,
+    hasCosts: true,
+    rep1Bp: 6000,
+    rep2Bp: 4000,
+    closerPoolBp: 1000,
+  });
+  assert.equal(
+    commissionOwedCents(detail, { rep1: true, rep2: true, closer: true }),
+    detail.poolCents
+  );
+});
+
+test("no salesperson at all means the job owes nothing", () => {
+  const detail = computeRepCommission({
+    contractCents: 8_000_000,
+    leadCostBp: 1500,
+    commissionRateBp: 5000,
+    expensesCents: 4_000_000,
+    hasCosts: true,
+    rep1Bp: 10000,
+    rep2Bp: 0,
+  });
+  assert.equal(commissionOwedCents(detail, { rep1: false, rep2: false, closer: false }), 0);
+});
+
 // ── Appointment delete permission ────────────────────────────────────
 //
 // Office and Admin only. An appointment is the evidence a trip was made

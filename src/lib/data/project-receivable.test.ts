@@ -85,3 +85,57 @@ test("the rollup carries the phase-computed figure through unchanged", () => {
   assert.equal(rollup.collectedCents, 100000);
   assert.equal(rollup.netCashCents, 100000 - 22097);
 });
+
+// ── Rep commission in the rollup ─────────────────────────────────────
+//
+// The rep's cut is a real cost of the job: a "complete" job that reads
+// as keeping $9,114 when $3,582 of it is the salesperson's is not a
+// figure the owner can spend. Passed in rather than computed here,
+// because only the caller knows the seats and the stamped rates.
+
+test("commission comes out of net cash", () => {
+  const rollup = computeProjectRollup({
+    contractTotalCents: 1300000,
+    signedChangeOrderCents: 0,
+    payments: [{ status: "succeeded", amount_cents: 1300000 }],
+    receivableCents: 0,
+    filedCostCents: 388600,
+    unfiledCostCents: 0,
+    ownsUnfiledCosts: true,
+    commissionCents: 358200,
+  });
+  assert.equal(rollup.commissionCents, 358200);
+  assert.equal(rollup.netCashCents, 1300000 - 388600 - 358200);
+});
+
+test("a caller that does not track commission changes nothing", () => {
+  // The single-project report can be shown to the customer, and pay
+  // never prints there -- so the input is optional and its absence
+  // leaves every figure exactly as it always was.
+  const rollup = computeProjectRollup({
+    contractTotalCents: 1300000,
+    signedChangeOrderCents: 0,
+    payments: [{ status: "succeeded", amount_cents: 1300000 }],
+    receivableCents: 0,
+    filedCostCents: 388600,
+    unfiledCostCents: 0,
+    ownsUnfiledCosts: true,
+  });
+  assert.equal(rollup.commissionCents, null);
+  assert.equal(rollup.netCashCents, 1300000 - 388600);
+});
+
+test("an unmeasured job's commission is unknown, and subtracts nothing", () => {
+  const rollup = computeProjectRollup({
+    contractTotalCents: 1300000,
+    signedChangeOrderCents: 0,
+    payments: [],
+    receivableCents: 0,
+    filedCostCents: 0,
+    unfiledCostCents: 0,
+    ownsUnfiledCosts: true,
+    commissionCents: null,
+  });
+  assert.equal(rollup.commissionCents, null);
+  assert.equal(rollup.netCashCents, 0);
+});
