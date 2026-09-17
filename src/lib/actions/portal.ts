@@ -40,15 +40,34 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   }
 
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("leads")
-    .select(
-      "id, company_id, first_name, last_name, company_name, contact_type, email, portal_access_expires_at"
-    )
-    .ilike("email", trimmed)
-    .limit(1);
-
-  const lead = (data as Lead[] | null)?.[0];
+  // The lead's own email first, then the co-owner's (the second contact
+  // of a joint-owner job): a sent estimate's one shared link (#022) is
+  // often opened by one owner before the other, and the other's way back
+  // in is typing their email here -- which used to match nothing and
+  // silently send nothing. Two indexed lookups rather than one or():
+  // the or() string syntax would need the typed email escaped against
+  // its own separators.
+  type MatchRow = {
+    id: string;
+    company_id: string;
+    first_name: string | null;
+    second_contact_first_name: string | null;
+    portal_access_expires_at: string | null;
+  };
+  const fields =
+    "id, company_id, first_name, second_contact_first_name, portal_access_expires_at";
+  const primary = await admin.from("leads").select(fields).ilike("email", trimmed).limit(1);
+  let lead = (primary.data as MatchRow[] | null)?.[0];
+  let greeting = lead?.first_name ?? null;
+  if (!lead) {
+    const second = await admin
+      .from("leads")
+      .select(fields)
+      .ilike("second_contact_email", trimmed)
+      .limit(1);
+    lead = (second.data as MatchRow[] | null)?.[0];
+    greeting = lead?.second_contact_first_name ?? null;
+  }
   if (!lead) return { sent: true };
 
   // Self-service can't reopen expired access -- that's the office's call.
@@ -67,7 +86,7 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   const companyName = (companyRow as { name: string | null } | null)?.name || "your contractor";
 
   const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
-  const mail = buildPortalEmail(lead.first_name, companyName, link);
+  const mail = buildPortalEmail(greeting, companyName, link);
 
   const emailEnv = await getEmailForCompany(lead.company_id);
   const result = await sendEmail(trimmed, mail.subject, mail.html, mail.text, {
