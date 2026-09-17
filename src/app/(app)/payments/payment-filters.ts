@@ -36,9 +36,9 @@ export type PaymentsSummary = {
 };
 
 /**
- * The six stat cards, recomputed under the client/rep scope — the same
- * numbers collectionsSummary produces company-wide, but derived from the
- * rows the tables render so the cards and the rows can never disagree.
+ * The six stat cards, recomputed under the client/rep scope — derived
+ * from the rows the tables render so the cards and the rows can never
+ * disagree.
  * Collected counts only succeeded payments and clearing only pending;
  * billed counts billed + overdue phases (clearing and paid phases are no
  * longer owed on a bill); outstanding is signed contract value minus

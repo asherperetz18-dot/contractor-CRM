@@ -51,7 +51,7 @@ type EstimateRow = {
  * Written into portal_payments rather than a table of its own. Five
  * places already read that table to answer "what has this job been
  * paid": the Payments page, the PAID stamp on the contract, progress
- * phase state, the lead card, and collectionsSummary. A second home for
+ * phase state, the lead card, and the projects rollup. A second home for
  * cash would mean five places to reconcile and five chances to disagree
  * about money.
  *
