@@ -70,7 +70,7 @@ export function projectTotals(cards: ProjectCard[]): {
   receivable: number;
   net: number;
   unpaid: number;
-  /** The sales teams' cut across these jobs; unmeasured jobs add 0. */
+  /** Commission actually paid or advanced across these jobs. */
   commission: number;
 } {
   return cards.reduce(

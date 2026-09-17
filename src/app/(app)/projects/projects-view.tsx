@@ -426,7 +426,7 @@ export function ProjectsView({
           <h1 className="page-title">Projects</h1>
           <p className="page-sub">
             {active.length} sold job{active.length === 1 ? "" : "s"} · contract, collected
-            and what is left after costs and rep commission
+            and what is left after costs and commission paid
           </p>
         </div>
         {canAddCosts && (
@@ -542,7 +542,9 @@ export function ProjectsView({
           <div className="stat-value mono">{moneyCents(totals.net)}</div>
           <div className="stat-label">Net cash</div>
           {totals.commission > 0 && (
-            <div className="est-tax-note">after {moneyCents(totals.commission)} commission</div>
+            <div className="est-tax-note">
+              after {moneyCents(totals.commission)} commission paid
+            </div>
           )}
         </button>
         <button
@@ -770,7 +772,7 @@ export function ProjectsView({
                 <th className="right">Collected</th>
                 <th className="right">Owed</th>
                 <th className="right">Spent</th>
-                <th className="right">Commission</th>
+                <th className="right">Commission paid</th>
                 <th className="right">Net cash</th>
               </tr>
             </thead>
@@ -1044,9 +1046,10 @@ export function ProjectsView({
                     )}
                   </td>
                   <td className="right mono">
-                    {/* The sales team's cut of this job, already taken out
-                        of Net cash. Dash when unknowable: no costs recorded
-                        yet, or nobody seated to owe it to. */}
+                    {/* Commission actually paid or advanced on this job
+                        (the payout ledger), already out of Net cash. Cash
+                        only -- what is merely owed lives on Sales
+                        Commission. Dash while nothing has been paid. */}
                     {p.rollup.commissionCents ? moneyCents(p.rollup.commissionCents) : "—"}
                   </td>
                   <td className="right mono">

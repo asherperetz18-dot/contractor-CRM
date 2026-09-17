@@ -1832,17 +1832,6 @@ export type Estimate = {
    *  Kept apart from completion_notes so it stays clear later who said a
    *  thing was outstanding. */
   completion_customer_items?: string | null;
-  /** The sales team seats and stamped rates (0086/0153). Optional on
-   *  the type because constructed rows in tests predate them; a real
-   *  select("*") row always carries them. */
-  sales_rep_1?: string | null;
-  sales_rep_1_bp?: number;
-  sales_rep_2?: string | null;
-  sales_rep_2_bp?: number;
-  closer_id?: string | null;
-  closer_pool_bp?: number;
-  commission_rate_bp?: number | null;
-  lead_cost_bp?: number | null;
   tax_rate_bp: number;
   subtotal_cents: number;
   /** 'percent' | 'amount'; null means no discount on this document. */
@@ -2309,12 +2298,14 @@ export type ProjectRollup = {
    *  invoice it was never for. */
   receivableCents: number;
   costCents: number;
-  /** What the sales team is owed on this job (commissionOwedCents), or
-   *  null when the caller doesn't track it or the job is unmeasured.
-   *  Kept apart from costCents so Spent keeps meaning vendor money. */
+  /** Commission actually PAID or advanced against this job (the 0158
+   *  ledger) -- cash that left, never the projected share, by the
+   *  owner's call: a projection on a barely-costed job reads enormous.
+   *  Null when the caller doesn't track it. Kept apart from costCents
+   *  so Spent keeps meaning vendor money. */
   commissionCents: number | null;
-  /** Collected less spent, less the sales team's cut. The figure that
-   *  says whether a job is bleeding. */
+  /** Collected less spent, less commission paid. The figure that says
+   *  whether a job is bleeding. */
   netCashCents: number;
   /** Costs on this customer that no phase claims. Excluded from the
    *  figures above when the customer has more than one contract, since
@@ -2372,11 +2363,10 @@ export function computeProjectRollup(input: {
   /** False when the customer has other signed contracts, in which case
    *  unfiled costs could belong to any of them. */
   ownsUnfiledCosts: boolean;
-  /** The sales team's cut of this job (commissionOwedCents). Optional
-   *  because not every caller may say it: the single-project report can
-   *  be shown to the customer, and pay never prints there. Null also
-   *  means "unknowable" -- an unmeasured job's commission would be a
-   *  share of the whole contract, not of its margin. */
+  /** Commission actually paid or advanced against this job, from the
+   *  payout ledger. Optional because not every caller may say it: the
+   *  single-project report can be shown to the customer, and pay never
+   *  prints there. */
   commissionCents?: number | null;
 }): ProjectRollup {
   const soldCents = input.contractTotalCents + input.signedChangeOrderCents;
@@ -2390,8 +2380,8 @@ export function computeProjectRollup(input: {
     receivableCents: Math.max(0, input.receivableCents),
     costCents,
     commissionCents,
-    // The rep's cut is a real cost of the job: net cash that ignores it
-    // reads as money the owner can spend when part of it is payroll.
+    // Cash out like any cost: money already handed to the sales team
+    // is not money the owner can spend.
     netCashCents: collectedCents - costCents - (commissionCents ?? 0),
     unattributedCostCents: unattributed,
     collectedPct: soldCents ? (collectedCents / soldCents) * 100 : null,
@@ -2965,25 +2955,6 @@ export function computeRepCommission(input: {
     rep2Cents,
     unmeasured: !input.hasCosts,
   };
-}
-
-/**
- * What a job actually owes its sales team: the seated shares only.
- *
- * The pool divides by basis points whether or not a seat has a person
- * in it, and an empty seat's share is not a debt -- the company keeps
- * it. The Projects page subtracts this from net cash, so it must never
- * count money nobody is owed.
- */
-export function commissionOwedCents(
-  detail: Pick<RepCommission, "rep1Cents" | "rep2Cents" | "closerCents">,
-  seats: { rep1: boolean; rep2: boolean; closer: boolean }
-): number {
-  return (
-    (seats.rep1 ? detail.rep1Cents : 0) +
-    (seats.rep2 ? detail.rep2Cents : 0) +
-    (seats.closer ? detail.closerCents : 0)
-  );
 }
 
 /**
