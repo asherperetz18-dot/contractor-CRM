@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chipMatches } from "./project-filters.ts";
+import { chipMatches, projectTotals } from "./project-filters.ts";
 import type { ProjectCard } from "./projects-view";
 
 /**
@@ -32,4 +32,43 @@ test("a cancelled contract is never new business, same as the card's count", () 
     chipMatches(card({ signedAt: "2026-09-02T10:00:00Z", status: "cancelled" }), "NewMonth", NOW),
     false
   );
+});
+
+test("projectTotals sums the money columns of exactly the cards it is given", () => {
+  const money = (over: Record<string, number>) =>
+    card({
+      rollup: {
+        soldCents: 0,
+        collectedCents: 0,
+        costCents: 0,
+        receivableCents: 0,
+        netCashCents: 0,
+        ...over,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      unpaidBillsCents: 100 as any,
+    });
+  const totals = projectTotals([
+    money({ soldCents: 1000, collectedCents: 400, costCents: 50, receivableCents: 600, netCashCents: 350 }),
+    money({ soldCents: 200, collectedCents: 200, netCashCents: 200 }),
+  ]);
+  assert.deepEqual(totals, {
+    sold: 1200,
+    collected: 600,
+    cost: 50,
+    receivable: 600,
+    net: 550,
+    unpaid: 200,
+  });
+  // The point of taking a list: hand it the filtered rows and the cards
+  // speak for the filter, not the company.
+  assert.deepEqual(projectTotals([]), {
+    sold: 0,
+    collected: 0,
+    cost: 0,
+    receivable: 0,
+    net: 0,
+    unpaid: 0,
+  });
 });

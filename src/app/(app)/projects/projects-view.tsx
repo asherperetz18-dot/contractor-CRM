@@ -16,6 +16,7 @@ import {
   chipMatches,
   dateRangeBounds,
   matchesProjectFilters,
+  projectTotals,
   type ProjectChip,
   type ProjectDateRange,
 } from "./project-filters";
@@ -306,6 +307,19 @@ export function ProjectsView({
   const newMonthProjects = active.filter((p) => chipMatches(p, "NewMonth", now));
   const newThisMonth = newMonthProjects.length;
 
+  // What the "New this month" CARD shows: the bucket, narrowed by the
+  // same rep/client/search/date filters as every other card. The chip's
+  // own label keeps the whole-bucket count, like every chip.
+  const filterScope = {
+    search,
+    client: clientFilter,
+    rep: repFilter,
+    bounds: dateRangeBounds(dateRange, customFrom, customTo),
+  };
+  const newThisMonthShown = newMonthProjects.filter((p) =>
+    matchesProjectFilters(p, filterScope)
+  ).length;
+
   const shown =
     filter === "NewMonth"
       ? newMonthProjects
@@ -367,20 +381,12 @@ export function ProjectsView({
   const reportQs = reportParams.toString();
   const reportHref = "/projects/report" + (reportQs ? `?${reportQs}` : "");
 
-  // The money cards follow the selected chip: pick "Complete" and the
-  // figures speak for finished work; pick "Cancelled" and Sold becomes
-  // "how much business fell through". The chip itself names the scope.
-  const totals = shown.reduce(
-    (acc, p) => ({
-      sold: acc.sold + p.rollup.soldCents,
-      collected: acc.collected + p.rollup.collectedCents,
-      cost: acc.cost + p.rollup.costCents,
-      receivable: acc.receivable + p.rollup.receivableCents,
-      net: acc.net + p.rollup.netCashCents,
-      unpaid: acc.unpaid + p.unpaidBillsCents,
-    }),
-    { sold: 0, collected: 0, cost: 0, receivable: 0, net: 0, unpaid: 0 }
-  );
+  // The money cards answer for exactly the list on screen: the chip
+  // names the scope AND the rep/client/search/date filters narrow it,
+  // same rule as Payments' cards and the estimates funnel. A company-
+  // wide $976,799 above one rep's single $13,000 job reads as that
+  // rep's number, and somebody quotes it as theirs.
+  const totals = projectTotals(searched);
 
   // Costs nobody can attribute, because the customer has more than one
   // signed contract. Surfaced rather than folded into a job, so the
@@ -541,7 +547,7 @@ export function ProjectsView({
           title="Show the jobs signed this month"
           onClick={() => setFilter("NewMonth")}
         >
-          <div className="stat-value mono">{newThisMonth}</div>
+          <div className="stat-value mono">{newThisMonthShown}</div>
           <div className="stat-label">New this month</div>
         </button>
       </div>

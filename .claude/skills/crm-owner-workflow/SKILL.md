@@ -59,6 +59,20 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   (Admin-only, confirmed, audited — DECISIONS #026/#028). Don't
   "fix" the frozen column; it's the record of who sold the job.
 
+## Product rules the owner keeps asking for
+
+- **Summary cards follow the page's filters, always.** The estimates
+  funnel, Payments' cards, and Projects' cards each recompute over the
+  rep/client/search/date-filtered rows (whether a status chip also
+  scopes them is each page's documented call). Wire any new stat card
+  to the filtered list from day one: an unfiltered card above a
+  filtered table gets quoted as the filtered number. Patterns:
+  `funnelCardStats`, `paymentsSummary`, `projectTotals`.
+- **Stat cards do something on click**: land on whatever itemizes the
+  number — a chip/filter on the same page, or the page that breaks the
+  figure down (#184). A card with the default pointer cursor that does
+  nothing reads as broken.
+
 ## Small conventions that bit before
 
 - `.stat-card` renders a pointer cursor and hover ring by default — a
