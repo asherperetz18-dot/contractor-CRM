@@ -99,7 +99,7 @@ export function JobDocuments({
   );
 
   return (
-    <Modal title={`Permits & contracts — ${jobLabel}`} onClose={onClose}>
+    <Modal title={`Permits & files — ${jobLabel}`} onClose={onClose}>
       {error && <p className="error-note">{error}</p>}
       {filed === null ? (
         <p className="empty-hint">Loading documents…</p>

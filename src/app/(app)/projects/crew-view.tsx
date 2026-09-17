@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { mapsUrl, rainAlertLabel } from "@/lib/data/types";
+import { jobChipClass } from "@/lib/job-chips";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
@@ -84,7 +85,7 @@ export function CrewProjectsView({
             <button
               type="button"
               className={
-                "proj-check-chip" +
+                jobChipClass("checklist") +
                 (doneCount === items.length ? " proj-check-chip-done" : "")
               }
               onClick={() =>
@@ -97,15 +98,15 @@ export function CrewProjectsView({
           {j.status !== "complete" && (
             <button
               type="button"
-              className="proj-check-chip proj-receipt-chip"
+              className={jobChipClass("addBill")}
               onClick={() => setReceiptFor(j.leadId)}
             >
-              🧾 + Bill
+              + Add bill
             </button>
           )}
           <button
             type="button"
-            className="proj-check-chip proj-photo-chip"
+            className={jobChipClass("photos")}
             onClick={() =>
               setPhotosFor({ leadId: j.leadId, estimateId: j.estimateId, label: j.customer })
             }
