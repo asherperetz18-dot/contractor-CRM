@@ -30,6 +30,7 @@ import {
 import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { DialSession } from "./dial-session";
 import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
+import { dialNumberOf } from "@/lib/data/phone-match";
 
 type Tab = "contact" | "lead";
 type LeadStatus = "Open" | "Won" | "Lost";
@@ -221,9 +222,11 @@ export function DialQueueView({
   }
 
   function callLead(lead: DialContactRow) {
-    window.dispatchEvent(
-      new CustomEvent("crm:call", { detail: { phone: lead.phone, leadId: lead.id } })
-    );
+    // Falls through to phone2/phone3 (0150) -- the queue now lists
+    // contacts whose only working number lives there.
+    const phone = dialNumberOf(lead);
+    if (!phone) return;
+    window.dispatchEvent(new CustomEvent("crm:call", { detail: { phone, leadId: lead.id } }));
   }
 
   const [startingSession, setStartingSession] = useState(false);
@@ -590,7 +593,7 @@ export function DialQueueView({
                             {leadDisplayName(l)}
                           </a>
                         </td>
-                        <td className="mono">{l.phone}</td>
+                        <td className="mono">{dialNumberOf(l)}</td>
                       </>
                     ) : (
                       <>
@@ -601,7 +604,7 @@ export function DialQueueView({
                           </a>
                         </td>
                         <td>{leadDisplayName(l)}</td>
-                        <td className="mono">{l.phone}</td>
+                        <td className="mono">{dialNumberOf(l)}</td>
                         <td>{leadStatus(l)}</td>
                         <td>{l.stage}</td>
                         <td>{repById.get(l.assigned_to ?? "")?.name || "—"}</td>

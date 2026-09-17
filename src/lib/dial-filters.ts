@@ -23,6 +23,8 @@ export type DialContactRow = {
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
+  phone2: string | null;
+  phone3: string | null;
   project_type: string | null;
   stage: string;
   assigned_to: string | null;

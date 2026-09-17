@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  dialNumberOf,
   phoneIndex,
   phoneKey,
   phoneMatchIn,
@@ -116,4 +117,15 @@ test("soleLeadId keeps the old one-or-nothing behaviour", () => {
   assert.equal(soleLeadId(phoneMatchIn(rows, "3238067609")), "thelma");
   assert.equal(soleLeadId(phoneMatchIn(rows, "8182687398")), null);
   assert.equal(soleLeadId(phoneMatchIn(rows, "310-555-0199")), null);
+});
+
+test("the number to dial: primary first, then phone2, then phone3 — never the co-owner's", () => {
+  const base = { phone: null, phone2: null, phone3: null, second_contact_phone: "555-000-1111" };
+  assert.equal(dialNumberOf({ ...base, phone: "111", phone2: "222" }), "111");
+  assert.equal(dialNumberOf({ ...base, phone2: "222", phone3: "333" }), "222");
+  assert.equal(dialNumberOf({ ...base, phone3: "333" }), "333");
+  // Blank strings are not numbers — fall through past them.
+  assert.equal(dialNumberOf({ ...base, phone: "  ", phone2: "222" }), "222");
+  // Only the co-owner's number on file: this contact has nothing to dial.
+  assert.equal(dialNumberOf(base), null);
 });

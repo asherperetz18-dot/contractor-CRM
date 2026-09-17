@@ -111,3 +111,22 @@ export function rememberInIndex(
 export function soleLeadId(match: PhoneMatch): string | null {
   return match.kind === "one" ? match.leadId : null;
 }
+
+/**
+ * The number the dialer should place a call to, for a contact that may
+ * keep their real number in phone2 or phone3 (bought lists do). Primary
+ * first, then phone2, then phone3; never second_contact_phone -- that
+ * is a different person, and "calling the customer" must not quietly
+ * ring their co-owner. Null means this contact has nothing to dial.
+ */
+export function dialNumberOf(row: {
+  phone?: string | null;
+  /** Optional because rows read before migration 0150 lack the columns. */
+  phone2?: string | null;
+  phone3?: string | null;
+}): string | null {
+  for (const raw of [row.phone, row.phone2, row.phone3]) {
+    if (raw && raw.trim()) return raw;
+  }
+  return null;
+}

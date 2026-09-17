@@ -31,7 +31,7 @@ import {
  */
 
 const ROW_COLUMNS =
-  "id, contact_type, company_name, first_name, last_name, phone, project_type, stage, assigned_to, address_type, created_at";
+  "id, contact_type, company_name, first_name, last_name, phone, phone2, phone3, project_type, stage, assigned_to, address_type, created_at";
 
 /** PostgREST puts an .in() list in the request; keep each one bounded. */
 const IN_CHUNK = 150;
@@ -75,10 +75,18 @@ function searchClause(search: string): string | null {
     `first_name.ilike.${term}`,
     `last_name.ilike.${term}`,
     `company_name.ilike.${term}`,
-    `phone.ilike.${term}`,
   ];
+  // All three of the contact's own numbers -- bought lists park the
+  // number that answers in phone2 or phone3 (0150).
+  for (const col of ["phone", "phone2", "phone3"]) {
+    parts.push(`${col}.ilike.${term}`);
+  }
   const digits = digitsSearchPattern(q);
-  if (digits) parts.push(`phone.ilike.${digits}`);
+  if (digits) {
+    for (const col of ["phone", "phone2", "phone3"]) {
+      parts.push(`${col}.ilike.${digits}`);
+    }
+  }
   return parts.join(",");
 }
 
@@ -95,7 +103,14 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
   // Filters shared by every query this function issues, so the page,
   // the total, and the exclusion arithmetic agree on what "matches".
   function applyBaseFilters(q: LeadsQuery): LeadsQuery {
-    let out = q.eq("company_id", companyId).not("phone", "is", null).neq("phone", "");
+    // "Has a number to dial" now means any of the contact's own three
+    // (0150): a lead whose only working number sits in phone2 used to
+    // vanish from the queue entirely.
+    let out = q
+      .eq("company_id", companyId)
+      .or(
+        "and(phone.not.is.null,phone.neq.),and(phone2.not.is.null,phone2.neq.),and(phone3.not.is.null,phone3.neq.)"
+      );
     if (or) out = out.or(or);
     if (input.tab === "contact") {
       if (input.addressTypeFilter !== "All") out = out.eq("address_type", input.addressTypeFilter);
