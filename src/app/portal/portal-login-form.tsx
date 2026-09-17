@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { requestPortalLink } from "@/lib/actions/portal";
+import type { LoginNotice } from "@/lib/portal/login-notice";
 
-export function PortalLoginForm() {
+export function PortalLoginForm({ notice }: { notice?: LoginNotice | null }) {
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -33,6 +34,12 @@ export function PortalLoginForm() {
     <div className="portal-auth-wrap">
       <div className="portal-auth-card">
         <h1 className="portal-auth-title">Your Project Portal</h1>
+
+        {notice && !sent && (
+          <p className="error-note">
+            {notice.message} {notice.hint}
+          </p>
+        )}
 
         {sent ? (
           <>
