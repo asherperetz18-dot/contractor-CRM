@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { repDropdownOptions } from "./rep-options.ts";
+import { repDisplayName, repDropdownOptions } from "./rep-options.ts";
 import type { AppRole, UserStatus } from "./types.ts";
 
 /**
@@ -91,4 +91,27 @@ test("a member without roles or status fields is treated as not a rep", () => {
     options.map((o) => o.id),
     ["a"]
   );
+});
+
+// The appointment panel's read-only "Customer's Rep" line: whoever a
+// stored id points at, named -- never a blank. Same fallbacks as the
+// board's name lookups (name, then email, then "Unnamed"), and an
+// unassigned contact says so rather than rendering an empty cell.
+test("repDisplayName names the stored id, whatever their role or status", () => {
+  const roster = [
+    member("a", "Asher"),
+    member("b", null, ["Office"], "Active", "office@x.com"),
+    member("c", null, ["Sales"], "Archived"),
+  ];
+  assert.equal(repDisplayName("a", roster), "Asher");
+  assert.equal(repDisplayName("b", roster), "office@x.com");
+  assert.equal(repDisplayName("c", roster), "Unnamed");
+});
+
+test("repDisplayName says Unassigned for no id and Unnamed for an id off the roster", () => {
+  const roster = [member("a", "Asher")];
+  assert.equal(repDisplayName(null, roster), "Unassigned");
+  assert.equal(repDisplayName(undefined, roster), "Unassigned");
+  assert.equal(repDisplayName("", roster), "Unassigned");
+  assert.equal(repDisplayName("gone-from-roster", roster), "Unnamed");
 });

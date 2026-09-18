@@ -187,7 +187,7 @@ export function cleanSpeechInput(raw: string): string {
   return raw.replace(/\s+/g, " ").trim().slice(0, MAX_SPEECH_CHARS);
 }
 
-/** Explicit true only: until migration 0159 runs, the column is missing
+/** Explicit true only: until migration 0160 runs, the column is missing
  *  and every call keeps today's voicemail behavior. */
 export function receptionistAvailable(
   row: { ai_receptionist_enabled?: boolean | null } | null

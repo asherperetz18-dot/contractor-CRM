@@ -176,13 +176,13 @@ export async function saveAiReceptionistSettings(input: {
     .eq("company_id", profile.company_id)
     .select("company_id");
   if (error) {
-    // The columns arrive with migration 0159; saving before it has run
+    // The columns arrive with migration 0160; saving before it has run
     // is the one predictable failure, so it gets plain words instead of
     // a Postgres message.
     if (/ai_receptionist/i.test(error.message)) {
       return {
         error:
-          "Run supabase/migrations/0159_ai_receptionist.sql in the Supabase SQL editor first, then save again.",
+          "Run supabase/migrations/0160_ai_receptionist.sql in the Supabase SQL editor first, then save again.",
       };
     }
     return { error: error.message };

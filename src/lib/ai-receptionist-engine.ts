@@ -105,7 +105,7 @@ function textOf(response: Anthropic.Message): string {
 /**
  * Whether this company's receptionist answers, plus what it knows.
  * Two selects on purpose: name and call_script exist today, the AI
- * columns arrive with migration 0159 — combined, a pre-migration select
+ * columns arrive with migration 0160 — combined, a pre-migration select
  * errors and would take the company name down with it.
  */
 async function receptionistState(
@@ -142,7 +142,7 @@ async function receptionistState(
  * Take over a call nobody answered. Returns the greeting TwiML, or null
  * when the receptionist shouldn't (or can't) answer — the caller then
  * keeps today's voicemail/missed-you behavior, including when the
- * session table doesn't exist because 0159 hasn't been run yet.
+ * session table doesn't exist because 0160 hasn't been run yet.
  */
 export async function maybeStartReceptionist(
   admin: Admin,
@@ -160,7 +160,7 @@ export async function maybeStartReceptionist(
   });
   // A duplicate CallSid is a Twilio webhook retry -- the session exists,
   // greet again. Anything else (most likely the table missing before
-  // 0159 ran) means we cannot hold a conversation: fall back.
+  // 0160 ran) means we cannot hold a conversation: fall back.
   if (error && error.code !== "23505") return null;
 
   return gatherTwiml({

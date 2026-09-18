@@ -13,7 +13,7 @@ type Row = {
 export default async function AiReceptionistSettingsPage() {
   const profile = await getCurrentProfile();
   const supabase = await createClient();
-  // Selecting only the 0159 columns: before that migration runs this
+  // Selecting only the 0160 columns: before that migration runs this
   // errors, data stays null, and the form says exactly which file to
   // paste instead of rendering a switch that can't save.
   const { data, error } = await supabase

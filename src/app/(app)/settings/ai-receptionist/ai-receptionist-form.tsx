@@ -63,7 +63,7 @@ export function AiReceptionistForm({
       {migrationPending && (
         <p className="error-note">
           <strong>
-            Run <code>supabase/migrations/0159_ai_receptionist.sql</code> in the Supabase SQL
+            Run <code>supabase/migrations/0160_ai_receptionist.sql</code> in the Supabase SQL
             editor first
           </strong>{" "}
           — until then the receptionist can&apos;t store its calls, and this switch won&apos;t
