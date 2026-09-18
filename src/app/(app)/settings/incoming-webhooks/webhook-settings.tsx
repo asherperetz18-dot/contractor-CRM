@@ -140,6 +140,36 @@ export function WebhookSettings({
           New leads land in the &quot;Unsorted&quot; stage of your Pipeline,
           tagged with their source.
         </p>
+
+        <div className="cp-divider" />
+        <div className="cp-card-head">📞 Dialers (ViciDial web form)</div>
+        <p className="cp-card-sub">
+          The same URL also accepts a lead written into the link itself (a
+          GET request), which is how dialer &quot;web form&quot; buttons
+          send data. In ViciDial, paste this into the campaign&apos;s{" "}
+          <strong>Web Form</strong> field:
+        </p>
+        <pre
+          className="mono"
+          style={{
+            background: "#F0EDE4",
+            padding: 12,
+            borderRadius: 6,
+            fontSize: 12,
+            overflowX: "auto",
+          }}
+        >
+          {`${url ?? "<generate a URL above>"}&source=Vicidial`}
+        </pre>
+        <p className="cp-card-sub">
+          When the agent clicks WEB FORM, ViciDial adds the caller&apos;s
+          details (first/last name, phone, address, city/state/zip, email,
+          comments) to the end of the link on its own, the lead is saved,
+          and the agent sees a &quot;Lead added&quot; confirmation page. The
+          same link works in ViciDial&apos;s <strong>Dispo Call URL</strong>{" "}
+          field if you&apos;d rather every dispositioned call file the lead
+          automatically, without a button click.
+        </p>
       </div>
     </div>
   );
