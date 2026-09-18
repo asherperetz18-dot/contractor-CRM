@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  aiFailureMessage,
   encodeAssistantEvent,
   createAssistantEventParser,
   sanitizeHistory,
@@ -109,4 +110,35 @@ test("history keeps only the most recent turns", () => {
 test("a pasted novel is cut at the message cap instead of shipping whole", () => {
   const clean = sanitizeHistory([{ role: "user", content: "x".repeat(MAX_MESSAGE_CHARS + 500) }]);
   assert.equal(clean[0].content.length, MAX_MESSAGE_CHARS);
+});
+
+// ── aiFailureMessage ─────────────────────────────────────────────────
+// One generic line hid a production failure behind "temporarily
+// unavailable"; the owner could not tell a bad API key from a timeout.
+// Every failure now names its category, and unknown ones carry the
+// HTTP status so "send Claude that number" is a real diagnostic.
+
+test("an auth failure says the server's key is the problem", () => {
+  for (const status of [401, 403]) {
+    const msg = aiFailureMessage(status);
+    assert.ok(/key/i.test(msg), `${status} should point at the API key`);
+    assert.ok(/ANTHROPIC_API_KEY/.test(msg), "names the exact setting to check");
+  }
+});
+
+test("rate limits and overloads say try again, not broken", () => {
+  assert.ok(/moment|minute|busy/i.test(aiFailureMessage(429)));
+  assert.ok(/moment|minute|busy/i.test(aiFailureMessage(529)));
+});
+
+test("an unknown status is carried in the message for diagnosis", () => {
+  assert.ok(aiFailureMessage(504).includes("504"));
+  assert.ok(aiFailureMessage(418).includes("418"));
+});
+
+test("a connection failure and a no-status failure each still read as plain words", () => {
+  assert.ok(/reach|connect/i.test(aiFailureMessage(undefined, true)));
+  const generic = aiFailureMessage(undefined);
+  assert.ok(generic.length > 10);
+  assert.ok(!generic.includes("undefined"));
 });

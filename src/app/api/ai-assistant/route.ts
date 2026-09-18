@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { withRouteObservability } from "@/lib/observability/observe";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
@@ -25,6 +27,7 @@ import {
   type AssistantTask,
 } from "@/lib/data/assistant-context";
 import {
+  aiFailureMessage,
   encodeAssistantEvent,
   sanitizeHistory,
   type AssistantStreamEvent,
@@ -198,6 +201,8 @@ function proposalTargetCount(
   return leadIds.length;
 }
 
+const CALL_FETCH_CAP = 3000;
+
 function isoDaysFromNow(days: number) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -296,15 +301,25 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
         .is("completed_at", null)
         .range(rangeFrom, rangeTo)
     ),
-    selectAll<AssistantCall>((rangeFrom, rangeTo) =>
-      supabase
-        .from("call_logs")
-        .select("created_at, direction, disposition, status, duration_seconds, rep_id, lead_id")
-        .eq("company_id", companyId)
-        .gte("created_at", callWindowStart)
-        .order("created_at", { ascending: false })
-        .range(rangeFrom, rangeTo)
-    ),
+    // Capped, newest first — a power-dialer month is tens of thousands
+    // of rows, and an unbounded fetch here is pure latency for counts
+    // the summary will honestly label as "most recent N" anyway.
+    (async () => {
+      const rows: AssistantCall[] = [];
+      for (let from = 0; from < CALL_FETCH_CAP; from += 1000) {
+        const { data, error } = await supabase
+          .from("call_logs")
+          .select("created_at, direction, disposition, status, duration_seconds, rep_id, lead_id")
+          .eq("company_id", companyId)
+          .gte("created_at", callWindowStart)
+          .order("created_at", { ascending: false })
+          .range(from, from + 999);
+        if (error || !data) break;
+        rows.push(...(data as AssistantCall[]));
+        if (data.length < 1000) break;
+      }
+      return rows;
+    })(),
   ]);
 
   const team = members.map((m) => ({ id: m.id, name: m.name || m.email || "Unnamed" }));
@@ -380,11 +395,12 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     checklists,
     calls,
     callWindowDays: CALL_WINDOW_DAYS,
+    callsCapped: calls.length >= CALL_FETCH_CAP,
     extraLeadNames,
   });
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: NextRequest) {
   const profile = await getCurrentProfile();
   if (!profile) {
     return Response.json({ error: "Not signed in." }, { status: 401 });
@@ -539,11 +555,13 @@ export async function POST(request: Request) {
           send({ type: "proposals", proposals });
         }
         send({ type: "done" });
-      } catch {
-        send({
-          type: "error",
-          message: "The AI assistant is temporarily unavailable. Try again shortly.",
-        });
+      } catch (error) {
+        // The category reaches the person; the full error reaches the
+        // logs. One generic line hid a production failure completely.
+        console.error("[ai-assistant] stream failed", error);
+        const connection = error instanceof Anthropic.APIConnectionError;
+        const status = error instanceof Anthropic.APIError ? error.status : undefined;
+        send({ type: "error", message: aiFailureMessage(status, connection) });
       } finally {
         controller.close();
       }
@@ -557,3 +575,5 @@ export async function POST(request: Request) {
     },
   });
 }
+
+export const POST = withRouteObservability("api.ai-assistant", handlePost);

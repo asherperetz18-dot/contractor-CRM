@@ -280,6 +280,18 @@ test("call summary counts the whole window while lines stay capped", () => {
   assert.equal(lines.length, MAX_CALLS_IN_CONTEXT);
 });
 
+test("a capped call fetch says so instead of passing a wrong total off as exact", () => {
+  const capped = buildAssistantContext(
+    baseInput({ calls: [call(), call(), call()], callsCapped: true })
+  );
+  assert.ok(capped.includes("3+ calls"), "a capped count reads as at-least");
+  assert.ok(/most recent .* counted/i.test(capped));
+
+  const exact = buildAssistantContext(baseInput({ calls: [call(), call()] }));
+  assert.ok(exact.includes("2 calls"));
+  assert.ok(!exact.includes("2+ calls"));
+});
+
 test("call durations read like a clock", () => {
   assert.equal(formatCallDuration(45), "0:45");
   assert.equal(formatCallDuration(225), "3:45");
