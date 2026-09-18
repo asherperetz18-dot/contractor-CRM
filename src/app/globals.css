@@ -2833,6 +2833,31 @@ tr.row-link:hover {
   font-family: var(--font-body);
   font-size: 14px;
 }
+.ai-chat-voice-btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  width: 38px;
+  height: 38px;
+  font-size: 16px;
+  flex: none;
+}
+/* Off is visibly off, or the speaker reads as decoration. */
+.ai-chat-speaker[aria-pressed="false"] {
+  opacity: 0.4;
+}
+.ai-chat-mic.listening {
+  background: var(--blueprint);
+  animation: ai-chat-mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ai-chat-mic-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
 .dup-pair-list {
   display: flex;
   flex-direction: column;
