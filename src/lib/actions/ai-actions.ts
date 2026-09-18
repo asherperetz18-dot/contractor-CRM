@@ -3,11 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, leadDisplayName, type Lead, type Profile } from "@/lib/data/types";
+import {
+  canEditChecklists,
+  isAdminRole,
+  leadDisplayName,
+  type Lead,
+  type Profile,
+} from "@/lib/data/types";
 import {
   AI_ACTION_TYPES,
   MAX_TARGETS_PER_PROPOSAL,
   PROPOSAL_STALE_DAYS,
+  parseChecklistAddParams,
+  parseChecklistCheckParams,
   proposalIsStale,
   type AiActionType,
   type ProposalRow,
@@ -44,18 +52,51 @@ export async function describeProposalTargets(
   if (!row) return { names: [], missing: 0, error: "Proposal not found." };
 
   const ids = asStringArray(row.params.lead_ids);
-  if (ids.length === 0) return { names: [], missing: 0 };
+  if (ids.length > 0) {
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("company_id", profile.company_id)
+      .in("id", ids);
+    const rows = (leads as Lead[]) ?? [];
+    return {
+      names: rows.map((l) => leadDisplayName(l)),
+      missing: ids.length - rows.length,
+    };
+  }
 
-  const { data: leads } = await supabase
-    .from("leads")
-    .select("*")
-    .eq("company_id", profile.company_id)
-    .in("id", ids);
-  const rows = (leads as Lead[]) ?? [];
-  return {
-    names: rows.map((l) => leadDisplayName(l)),
-    missing: ids.length - rows.length,
-  };
+  // Check-off proposals name their steps, resolved fresh so a step
+  // someone already completed or removed shows up as missing.
+  const itemIds = asStringArray(row.params.item_ids);
+  if (itemIds.length > 0) {
+    const { data: items } = await supabase
+      .from("project_checklist_items")
+      .select("label")
+      .eq("company_id", profile.company_id)
+      .is("completed_at", null)
+      .in("id", itemIds);
+    const labels = ((items as { label: string }[]) ?? []).map((i) => i.label);
+    return { names: labels, missing: itemIds.length - labels.length };
+  }
+
+  // Add proposals carry their steps in the params; the project's doc
+  // number is looked up so the card says which job gets them.
+  const addParsed = parseChecklistAddParams(row.params);
+  if (addParsed) {
+    const { data: estimate } = await supabase
+      .from("estimates")
+      .select("doc_number")
+      .eq("company_id", profile.company_id)
+      .eq("id", addParsed.estimateId)
+      .maybeSingle();
+    const doc = (estimate as { doc_number: string } | null)?.doc_number;
+    return {
+      names: addParsed.items.map((it) => (doc ? `${doc}: ${it.label}` : it.label)),
+      missing: doc ? 0 : 1,
+    };
+  }
+
+  return { names: [], missing: 0 };
 }
 
 export async function listProposals(limit = 20): Promise<ProposalRow[]> {
@@ -222,6 +263,74 @@ export async function applyProposal(
           else changed = ids.length;
         }
       }
+    } else if (proposal.action_type === "add_checklist_items") {
+      const parsed = parseChecklistAddParams(params);
+      if (!parsed) {
+        failure = "That suggestion is malformed.";
+      } else if (!canEditChecklists(profile)) {
+        // The approver is Office/Admin today, but the page's own gate is
+        // restated here so a future approver role can't slip past it.
+        failure = "Only Office, Admin or Production users can change the list.";
+      } else {
+        const { data: estimate } = await supabase
+          .from("estimates")
+          .select("id")
+          .eq("company_id", companyId)
+          .eq("id", parsed.estimateId)
+          .maybeSingle();
+        if (!estimate) {
+          failure = "That project isn't in this company.";
+        } else {
+          // Same dedupe-and-append discipline as adding a step by hand.
+          const { data: existing } = await supabase
+            .from("project_checklist_items")
+            .select("label, sort_order")
+            .eq("estimate_id", parsed.estimateId)
+            .returns<{ label: string; sort_order: number }[]>();
+          const have = new Set((existing ?? []).map((i) => i.label.trim().toLowerCase()));
+          let sort = Math.max(-1, ...(existing ?? []).map((i) => i.sort_order)) + 1;
+          const rows = parsed.items
+            .filter((it) => !have.has(it.label.trim().toLowerCase()))
+            .map((it) => ({
+              company_id: companyId,
+              estimate_id: parsed.estimateId,
+              label: it.label,
+              sort_order: sort++,
+              due_date: it.dueDate,
+            }));
+          skipped = parsed.items.length - rows.length;
+          if (rows.length) {
+            const { error } = await supabase.from("project_checklist_items").insert(rows);
+            if (error) failure = error.message;
+            else changed = rows.length;
+          }
+        }
+      }
+    } else if (proposal.action_type === "check_checklist_items") {
+      const parsed = parseChecklistCheckParams(params);
+      if (!parsed) {
+        failure = "That suggestion is malformed.";
+      } else {
+        // Only open steps that really belong to this company survive; a
+        // hallucinated id or an already-done step drops out as skipped.
+        const { data: rows } = await supabase
+          .from("project_checklist_items")
+          .select("id")
+          .eq("company_id", companyId)
+          .is("completed_at", null)
+          .in("id", parsed.itemIds);
+        const owned = ((rows as { id: string }[]) ?? []).map((r) => r.id);
+        skipped = parsed.itemIds.length - owned.length;
+        if (owned.length) {
+          const { error } = await supabase
+            .from("project_checklist_items")
+            .update({ completed_at: new Date().toISOString(), completed_by: profile!.id })
+            .eq("company_id", companyId)
+            .in("id", owned);
+          if (error) failure = error.message;
+          else changed = owned.length;
+        }
+      }
     }
   } catch (e) {
     failure = e instanceof Error ? e.message : "Something went wrong applying that change.";
@@ -242,6 +351,7 @@ export async function applyProposal(
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
+  revalidatePath("/projects");
   revalidatePath("/");
   return { changed, skipped };
 }

@@ -7,6 +7,8 @@ import {
   MAX_LEADS_IN_CONTEXT,
   MAX_PROJECTS_IN_CONTEXT,
   MAX_CALLS_IN_CONTEXT,
+  MAX_CHECKLIST_ITEMS_IN_CONTEXT,
+  type AssistantChecklistItem,
   type AssistantContextInput,
   type AssistantEstimate,
   type AssistantProject,
@@ -36,6 +38,7 @@ function baseInput(over: Partial<AssistantContextInput> = {}): AssistantContextI
     tasks: [],
     estimates: [],
     projects: [],
+    checklists: [],
     calls: [],
     callWindowDays: 30,
     extraLeadNames: new Map(),
@@ -63,6 +66,7 @@ function estimate(over: Partial<AssistantEstimate> = {}): AssistantEstimate {
 
 function project(over: Partial<AssistantProject> = {}): AssistantProject {
   return {
+    estimateId: "est-1001",
     docNumber: "EST-1001",
     title: "Roof replacement",
     customer: "Bob Smith",
@@ -281,6 +285,61 @@ test("call durations read like a clock", () => {
   assert.equal(formatCallDuration(225), "3:45");
   assert.equal(formatCallDuration(3661), "1:01:01");
   assert.equal(formatCallDuration(0), "0:00");
+});
+
+// ── Project checklists ───────────────────────────────────────────────
+
+function checklistItem(over: Partial<AssistantChecklistItem> = {}): AssistantChecklistItem {
+  return {
+    id: `chk-${Math.random().toString(36).slice(2)}`,
+    estimate_id: "est-1001",
+    label: "Order materials",
+    due_date: null,
+    assigned_to: null,
+    ...over,
+  };
+}
+
+test("project lines carry the id a proposal must name", () => {
+  const text = buildAssistantContext(
+    baseInput({ projects: [project({ estimateId: "est-77", docNumber: "EST-77" })] })
+  );
+  assert.ok(text.includes("- id: est-77 | EST-77"));
+});
+
+test("open checklist steps list item ids, most urgent first, capped with true counts", () => {
+  const items = Array.from({ length: MAX_CHECKLIST_ITEMS_IN_CONTEXT + 5 }, (_, i) =>
+    checklistItem({ id: `chk-${i}`, due_date: "2026-09-25" })
+  );
+  items.push(checklistItem({ id: "chk-late", label: "Pull permit", due_date: "2026-09-01" }));
+  const text = buildAssistantContext(
+    baseInput({
+      projects: [project({ estimateId: "est-1001", docNumber: "EST-1001" })],
+      checklists: items,
+    })
+  );
+  const section = text.slice(text.indexOf("PROJECT CHECKLISTS"), text.indexOf("MONEY TO COLLECT"));
+  const lines = section.split("\n").filter((l) => l.startsWith("- "));
+  assert.equal(lines.length, MAX_CHECKLIST_ITEMS_IN_CONTEXT);
+  // The step already overdue outranks every merely-scheduled one.
+  assert.ok(lines[0].includes("chk-late"));
+  assert.ok(lines[0].includes("(OVERDUE)"));
+  assert.ok(lines[0].includes("EST-1001"), "steps name their project's document");
+  // The true count, not the capped list's length.
+  assert.ok(section.includes(`${MAX_CHECKLIST_ITEMS_IN_CONTEXT + 6} open steps`));
+});
+
+test("a checklist step never shows a dollar figure, so every role may see it", () => {
+  const text = buildAssistantContext(
+    baseInput({
+      access: { canViewEstimates: false, canViewFinancials: false },
+      projects: [project()],
+      checklists: [checklistItem({ label: "Final walkthrough" })],
+    })
+  );
+  const section = text.slice(text.indexOf("PROJECT CHECKLISTS"));
+  assert.ok(section.includes("Final walkthrough"));
+  assert.ok(!section.includes("$"));
 });
 
 // ── Names ────────────────────────────────────────────────────────────

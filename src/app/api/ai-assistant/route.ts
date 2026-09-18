@@ -18,6 +18,7 @@ import {
   MAX_CALLS_IN_CONTEXT,
   MAX_LEADS_IN_CONTEXT,
   type AssistantCall,
+  type AssistantChecklistItem,
   type AssistantEstimate,
   type AssistantEvent,
   type AssistantLead,
@@ -30,6 +31,9 @@ import {
 } from "@/lib/data/assistant-stream";
 import {
   MAX_TARGETS_PER_PROPOSAL,
+  MAX_CHECKLIST_ITEMS_PER_PROPOSAL,
+  parseChecklistAddParams,
+  parseChecklistCheckParams,
   type AiActionType,
   type ProposalRow,
 } from "@/lib/data/ai-proposals";
@@ -115,13 +119,84 @@ const PROPOSAL_TOOLS: Anthropic.Tool[] = [
       required: ["lead_ids", "title", "due_date", "summary"],
     },
   },
+  {
+    name: "propose_add_checklist_items",
+    description:
+      "Propose adding steps to a project's checklist. This does NOT change anything — it creates a suggestion the user must approve first.",
+    input_schema: {
+      type: "object",
+      properties: {
+        project_id: {
+          type: "string",
+          description: "Exact project id copied from the PROJECTS list.",
+        },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              label: { type: "string", description: "The step, e.g. 'Order shingles'." },
+              due_date: {
+                type: "string",
+                description: "Due date as YYYY-MM-DD; omit when the user didn't give one.",
+              },
+            },
+            required: ["label"],
+          },
+          description: `The steps to add, at most ${MAX_CHECKLIST_ITEMS_PER_PROPOSAL}.`,
+        },
+        summary: { type: "string", description: "One plain sentence describing the change." },
+      },
+      required: ["project_id", "items", "summary"],
+    },
+  },
+  {
+    name: "propose_check_checklist_items",
+    description:
+      "Propose marking checklist steps as done. This does NOT change anything — it creates a suggestion the user must approve first.",
+    input_schema: {
+      type: "object",
+      properties: {
+        item_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: "Exact item ids copied from the PROJECT CHECKLISTS data.",
+        },
+        summary: { type: "string", description: "One plain sentence describing the change." },
+      },
+      required: ["item_ids", "summary"],
+    },
+  },
 ];
 
 const TOOL_TO_ACTION: Record<string, AiActionType> = {
   propose_move_lead_stage: "move_lead_stage",
   propose_assign_leads: "assign_leads",
   propose_create_tasks: "create_tasks",
+  propose_add_checklist_items: "add_checklist_items",
+  propose_check_checklist_items: "check_checklist_items",
 };
+
+/** How many records a proposal touches, per action — or null when the
+ *  params don't survive validation and no card should be created. */
+function proposalTargetCount(
+  actionType: AiActionType,
+  input: Record<string, unknown>
+): number | null {
+  if (actionType === "add_checklist_items") {
+    const parsed = parseChecklistAddParams(input);
+    return parsed ? parsed.items.length : null;
+  }
+  if (actionType === "check_checklist_items") {
+    const parsed = parseChecklistCheckParams(input);
+    return parsed ? parsed.itemIds.length : null;
+  }
+  const leadIds = Array.isArray(input.lead_ids)
+    ? input.lead_ids.filter((v): v is string => typeof v === "string")
+    : [];
+  if (leadIds.length === 0 || leadIds.length > MAX_TARGETS_PER_PROPOSAL) return null;
+  return leadIds.length;
+}
 
 function isoDaysFromNow(days: number) {
   const d = new Date();
@@ -146,6 +221,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     { data: tasks },
     estimates,
     projectCards,
+    checklists,
     calls,
   ] = await Promise.all([
     supabase.from("company_profile").select("name").eq("company_id", companyId).single(),
@@ -211,6 +287,15 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     // the page. RLS hands a role without cost access empty bills and
     // expenses, and those figures simply read lower for them.
     buildProjectCards(supabase, companyId),
+    // Open checklist steps carry no dollars, so every role reads them.
+    selectAll<AssistantChecklistItem>((rangeFrom, rangeTo) =>
+      supabase
+        .from("project_checklist_items")
+        .select("id, estimate_id, label, due_date, assigned_to")
+        .eq("company_id", companyId)
+        .is("completed_at", null)
+        .range(rangeFrom, rangeTo)
+    ),
     selectAll<AssistantCall>((rangeFrom, rangeTo) =>
       supabase
         .from("call_logs")
@@ -275,6 +360,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     tasks: ((tasks ?? []) as AssistantTask[]) ?? [],
     estimates,
     projects: projectCards.cards.map((card) => ({
+      estimateId: card.estimateId,
       docNumber: card.docNumber,
       title: card.title,
       customer: card.customer,
@@ -291,6 +377,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
       netCashCents: card.rollup.netCashCents,
       unpaidBillsCents: card.unpaidBillsCents,
     })),
+    checklists,
     calls,
     callWindowDays: CALL_WINDOW_DAYS,
     extraLeadNames,
@@ -345,9 +432,9 @@ export async function POST(request: Request) {
     "If the data below doesn't contain the answer (or the section for it isn't present), say so plainly instead of guessing.",
     mayPropose
       ? [
-          "You cannot change anything directly. You CAN suggest a change using the propose_* tools, which creates a suggestion the user must review and approve before it takes effect.",
+          "You cannot change anything directly. You CAN suggest a change using the propose_* tools — move leads between pipeline stages, assign leads to a rep, create follow-up tasks, add steps to a project's checklist, or check checklist steps off. Each creates a suggestion the user must review and approve before it takes effect.",
           `Only propose a change when the user clearly asks for one. Never propose speculatively, and never propose more than ${MAX_TARGETS_PER_PROPOSAL} records at once.`,
-          "Copy lead and rep ids exactly from the data below — never invent one.",
+          "Copy lead, rep, project and checklist item ids exactly from the data below — never invent one.",
           "When you propose something, also say in plain text what you proposed and that it needs their approval.",
         ].join("\n")
       : "You cannot take actions (create, edit, or delete anything) — you can only answer questions. If asked to perform an action, explain that and suggest where in the app to do it.",
@@ -404,10 +491,8 @@ export async function POST(request: Request) {
             const actionType = TOOL_TO_ACTION[use.name];
             if (!actionType) continue;
             const input = (use.input ?? {}) as Record<string, unknown>;
-            const leadIds = Array.isArray(input.lead_ids)
-              ? input.lead_ids.filter((v): v is string => typeof v === "string")
-              : [];
-            if (leadIds.length === 0 || leadIds.length > MAX_TARGETS_PER_PROPOSAL) continue;
+            const targetCount = proposalTargetCount(actionType, input);
+            if (targetCount === null) continue;
 
             const summary =
               typeof input.summary === "string" && input.summary.trim()
@@ -422,7 +507,7 @@ export async function POST(request: Request) {
                 action_type: actionType,
                 params: input,
                 summary,
-                target_count: leadIds.length,
+                target_count: targetCount,
               })
               .select(
                 "id, action_type, params, summary, target_count, status, result, error, created_at, decided_at"
