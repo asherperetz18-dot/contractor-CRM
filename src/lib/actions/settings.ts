@@ -158,6 +158,41 @@ export async function saveAiAnalysisSettings(input: {
   return {};
 }
 
+export async function saveAiReceptionistSettings(input: {
+  enabled: boolean;
+  greeting: string;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({
+      ai_receptionist_enabled: input.enabled,
+      ai_receptionist_greeting: input.greeting.trim().slice(0, 400) || null,
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) {
+    // The columns arrive with migration 0159; saving before it has run
+    // is the one predictable failure, so it gets plain words instead of
+    // a Postgres message.
+    if (/ai_receptionist/i.test(error.message)) {
+      return {
+        error:
+          "Run supabase/migrations/0159_ai_receptionist.sql in the Supabase SQL editor first, then save again.",
+      };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/ai-receptionist");
+  return {};
+}
+
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
 

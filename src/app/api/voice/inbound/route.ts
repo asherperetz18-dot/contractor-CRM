@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { recordingNoticeSay } from "@/lib/voice-notice";
+import { maybeStartReceptionist, sweepReceptionistCalls } from "@/lib/ai-receptionist-engine";
 
 function xmlEscape(value: string): string {
   return value
@@ -113,7 +115,35 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Every inbound call also sweeps receptionist sessions whose caller
+  // hung up mid-conversation -- Twilio sends no webhook for that, so the
+  // next call (and the cron floor) files their leads. after() keeps it
+  // off this call's answer time.
+  if (company) {
+    after(async () => {
+      try {
+        await sweepReceptionistCalls(createAdminClient());
+      } catch (error) {
+        console.error("[ai-receptionist] sweep on inbound failed", error);
+      }
+    });
+  }
+
   if (!forwardTo) {
+    // No forwarding number means nobody was ever going to pick up: the
+    // AI receptionist's clearest case. Falls through to voicemail when
+    // it's disabled -- or can't run because 0159 hasn't been applied.
+    if (company) {
+      const aiTwiml = await maybeStartReceptionist(admin, {
+        companyId: company.company_id,
+        callSid,
+        from,
+        to,
+        origin: new URL(req.url).origin,
+      });
+      if (aiTwiml) return twiml(aiTwiml);
+    }
+
     // There was no <Record> here. The caller was told to leave a message
     // after the tone, then got no tone, no beep and a dead line -- the
     // system promising something it did not do, to the customer, in their

@@ -1,0 +1,15 @@
+name: AI Receptionist Finalize
+
+on:
+  schedule:
+    - cron: "13 */2 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sweep unfinished AI receptionist calls
+        run: |
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/ai-receptionist-finalize" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

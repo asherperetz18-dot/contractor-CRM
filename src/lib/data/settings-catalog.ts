@@ -354,6 +354,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       href: "/settings/ai-analysis",
     },
       {
+        title: "AI Receptionist",
+        desc: "The AI answers missed and after-hours calls, takes the caller's details, and files the lead",
+        icon: "📞",
+        href: "/settings/ai-receptionist",
+      },
+      {
         title: "AI Activity Log",
         desc: "Every change the AI assistant suggested, who approved or dismissed it, and what it changed",
         icon: "📋",
