@@ -136,6 +136,20 @@ test("an unknown status is carried in the message for diagnosis", () => {
   assert.ok(aiFailureMessage(418).includes("418"));
 });
 
+test("a rejected request carries the API's own reason, first line only, capped", () => {
+  const msg = aiFailureMessage(400, false, "system.0.cache_control: not permitted\nsecond line ignored");
+  assert.ok(msg.includes("400"));
+  assert.ok(msg.includes("system.0.cache_control: not permitted"));
+  assert.ok(!msg.includes("second line"));
+  assert.ok(aiFailureMessage(400, false, "x".repeat(500)).length < 320);
+});
+
+test("detail decorates the generic branch, never the key message", () => {
+  const msg = aiFailureMessage(401, false, "irrelevant detail");
+  assert.ok(/ANTHROPIC_API_KEY/.test(msg));
+  assert.ok(!msg.includes("irrelevant"));
+});
+
 test("a connection failure and a no-status failure each still read as plain words", () => {
   assert.ok(/reach|connect/i.test(aiFailureMessage(undefined, true)));
   const generic = aiFailureMessage(undefined);

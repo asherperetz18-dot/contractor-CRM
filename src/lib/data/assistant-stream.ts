@@ -81,7 +81,11 @@ export function createAssistantEventParser() {
  * API key from a timeout. Categories get plain words; anything unknown
  * carries its HTTP status so it can be quoted back for diagnosis.
  */
-export function aiFailureMessage(status?: number, connectionIssue = false): string {
+export function aiFailureMessage(
+  status?: number,
+  connectionIssue = false,
+  detail?: string
+): string {
   if (connectionIssue) {
     return "The AI service couldn't be reached from the server — likely a temporary network problem. Try again.";
   }
@@ -92,7 +96,10 @@ export function aiFailureMessage(status?: number, connectionIssue = false): stri
     return "The AI service is busy right now — try again in a minute.";
   }
   if (typeof status === "number") {
-    return `The AI assistant hit a server error (HTTP ${status}). Try again — if it keeps happening, send Claude that number.`;
+    // The API's own reason names the offending field — first line only,
+    // capped, because it's a diagnostic to quote, not an essay.
+    const line = detail?.split("\n")[0]?.trim().slice(0, 160);
+    return `The AI assistant hit a server error (HTTP ${status}${line ? `: ${line}` : ""}). Try again — if it keeps happening, send Claude that message.`;
   }
   return "The AI assistant is temporarily unavailable. Try again shortly.";
 }
