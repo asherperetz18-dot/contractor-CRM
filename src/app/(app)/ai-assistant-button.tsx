@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from "react";
 import { Modal } from "@/components/ui/modal";
 import {
+  aiFailureMessage,
   createAssistantEventParser,
   type AssistantStreamEvent,
   type ChatMessage,
@@ -232,7 +233,9 @@ export function AiAssistantButton() {
       });
       if (!res.ok || !res.body) {
         const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        setError(data?.error || "The AI assistant is temporarily unavailable. Try again shortly.");
+        // No JSON error body means the platform answered, not the
+        // route (a timeout page, a crash) — surface the status code.
+        setError(data?.error || aiFailureMessage(res.status));
         return;
       }
 

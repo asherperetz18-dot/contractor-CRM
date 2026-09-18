@@ -75,6 +75,28 @@ export function createAssistantEventParser() {
  * turns kept. Anything else is dropped, and a request that isn't even
  * an array validates to [] (the route answers 400).
  */
+/**
+ * What a failed AI call says to the person. One generic line hid a
+ * production failure completely — the owner couldn't tell a rejected
+ * API key from a timeout. Categories get plain words; anything unknown
+ * carries its HTTP status so it can be quoted back for diagnosis.
+ */
+export function aiFailureMessage(status?: number, connectionIssue = false): string {
+  if (connectionIssue) {
+    return "The AI service couldn't be reached from the server — likely a temporary network problem. Try again.";
+  }
+  if (status === 401 || status === 403) {
+    return "The AI service rejected the server's key — check ANTHROPIC_API_KEY in the Vercel project settings.";
+  }
+  if (status === 429 || status === 529) {
+    return "The AI service is busy right now — try again in a minute.";
+  }
+  if (typeof status === "number") {
+    return `The AI assistant hit a server error (HTTP ${status}). Try again — if it keeps happening, send Claude that number.`;
+  }
+  return "The AI assistant is temporarily unavailable. Try again shortly.";
+}
+
 export function sanitizeHistory(raw: unknown): ChatMessage[] {
   if (!Array.isArray(raw)) return [];
   const clean: ChatMessage[] = [];

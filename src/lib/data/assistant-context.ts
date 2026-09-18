@@ -152,9 +152,12 @@ export type AssistantContextInput = {
   projects: AssistantProject[];
   /** Every OPEN checklist step across the company's projects. */
   checklists: AssistantChecklistItem[];
-  /** Every call inside the window. */
+  /** Every call inside the window, or the most recent slice of it. */
   calls: AssistantCall[];
   callWindowDays: number;
+  /** True when the fetch hit its cap — the summary then reads as
+   *  "N+" instead of passing a floor off as an exact count. */
+  callsCapped?: boolean;
   /** Names for lead ids referenced by documents/calls but too old for
    *  the detail roster -- a signed job's customer must never read as
    *  "Unnamed" just because the lead is years old. */
@@ -409,7 +412,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
     sections.push(
       [
         `CALLS (last ${input.callWindowDays} days):`,
-        `${input.calls.length} calls in the last ${input.callWindowDays} days (${outbound} outbound, ${input.calls.length - outbound} inbound), total talk time ${formatCallDuration(totalTalk)}.${outcomes ? ` By outcome: ${outcomes}.` : ""}`,
+        `${input.calls.length}${input.callsCapped ? "+" : ""} calls in the last ${input.callWindowDays} days (${outbound} outbound, ${input.calls.length - outbound} inbound), total talk time ${formatCallDuration(totalTalk)}.${outcomes ? ` By outcome: ${outcomes}.` : ""}${input.callsCapped ? ` Only the most recent ${input.calls.length} calls are counted here.` : ""}`,
         `Recent calls -- most recent ${recent.length} of ${input.calls.length}:`,
         lines.length ? lines.join("\n") : "(none)",
       ].join("\n")
