@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { captureError } from "@/lib/observability/sentry";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
@@ -457,9 +458,13 @@ async function handlePost(request: NextRequest) {
   ].join("\n");
 
   const client = new Anthropic({ apiKey });
-  const stream = client.messages.stream({
+  const apiMessages = history.map((m) => ({ role: m.role, content: m.content }));
+
+  type StreamParams = Parameters<Anthropic["messages"]["stream"]>[0];
+
+  const fullRequest: StreamParams = {
     model: "claude-opus-5",
-    max_tokens: 1024,
+    max_tokens: 4096,
     system: [
       { type: "text", text: instructions, cache_control: { type: "ephemeral" } },
       {
@@ -470,8 +475,23 @@ async function handlePost(request: NextRequest) {
     ],
     output_config: { effort: "low" },
     ...(mayPropose ? { tools: PROPOSAL_TOOLS } : {}),
-    messages: history.map((m) => ({ role: m.role, content: m.content })),
-  });
+    messages: apiMessages,
+  };
+
+  // The same call minus the two newest request features. If the full
+  // shape is rejected upfront (HTTP 400), this one still answers the
+  // person while Sentry records which shape failed -- the RPC-with-a-
+  // fallback discipline, applied to the model call.
+  const conservativeRequest: StreamParams = {
+    model: "claude-opus-5",
+    max_tokens: 4096,
+    system: [
+      { type: "text", text: instructions },
+      { type: "text", text: "=== CURRENT DATA ===\n" + context },
+    ],
+    ...(mayPropose ? { tools: PROPOSAL_TOOLS } : {}),
+    messages: apiMessages,
+  };
 
   const encoder = new TextEncoder();
   const responseBody = new ReadableStream<Uint8Array>({
@@ -480,13 +500,30 @@ async function handlePost(request: NextRequest) {
         controller.enqueue(encoder.encode(encodeAssistantEvent(event)));
       try {
         let streamedChars = 0;
-        for await (const event of stream) {
-          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-            streamedChars += event.delta.text.length;
-            send({ type: "text", text: event.delta.text });
+        const runAttempt = async (params: StreamParams) => {
+          const stream = client.messages.stream(params);
+          for await (const event of stream) {
+            if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+              streamedChars += event.delta.text.length;
+              send({ type: "text", text: event.delta.text });
+            }
           }
+          return stream.finalMessage();
+        };
+
+        let response: Anthropic.Message;
+        try {
+          response = await runAttempt(fullRequest);
+        } catch (error) {
+          // Retry only a clean upfront rejection -- after any streamed
+          // text a second attempt would double what the person read.
+          const rejected =
+            error instanceof Anthropic.APIError && error.status === 400 && streamedChars === 0;
+          if (!rejected) throw error;
+          captureError(error, { route: "api.ai-assistant", service: "anthropic-full-shape" });
+          console.error("[ai-assistant] full request shape rejected, retrying plain", error);
+          response = await runAttempt(conservativeRequest);
         }
-        const response = await stream.finalMessage();
 
         if (response.stop_reason === "refusal") {
           send({ type: "error", message: "The assistant couldn't answer that question." });
@@ -556,12 +593,15 @@ async function handlePost(request: NextRequest) {
         }
         send({ type: "done" });
       } catch (error) {
-        // The category reaches the person; the full error reaches the
-        // logs. One generic line hid a production failure completely.
+        // The category (and, for a rejected request, the API's own
+        // reason) reaches the person; the full error reaches Sentry.
+        // One generic line hid a production failure completely.
         console.error("[ai-assistant] stream failed", error);
+        captureError(error, { route: "api.ai-assistant", service: "anthropic" });
         const connection = error instanceof Anthropic.APIConnectionError;
         const status = error instanceof Anthropic.APIError ? error.status : undefined;
-        send({ type: "error", message: aiFailureMessage(status, connection) });
+        const detail = error instanceof Anthropic.APIError ? error.message : undefined;
+        send({ type: "error", message: aiFailureMessage(status, connection, detail) });
       } finally {
         controller.close();
       }
