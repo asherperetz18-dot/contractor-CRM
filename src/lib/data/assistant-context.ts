@@ -29,6 +29,7 @@ import { funnelCardStats, effectiveEstimateStatus } from "./funnel-cards.ts";
 export const MAX_LEADS_IN_CONTEXT = 400;
 export const MAX_ESTIMATES_IN_CONTEXT = 150;
 export const MAX_PROJECTS_IN_CONTEXT = 100;
+export const MAX_CHECKLIST_ITEMS_IN_CONTEXT = 150;
 export const MAX_CALLS_IN_CONTEXT = 100;
 export const MAX_COLLECT_LINES = 25;
 export const CALL_WINDOW_DAYS = 30;
@@ -96,6 +97,8 @@ export type AssistantEstimate = Pick<
  *  the route from buildProjectCards, so these figures are the Projects
  *  page's own. */
 export type AssistantProject = {
+  /** The signed contract's id — what a checklist proposal must name. */
+  estimateId: string;
   docNumber: string;
   title: string;
   customer: string;
@@ -111,6 +114,14 @@ export type AssistantProject = {
   costCents: number;
   netCashCents: number;
   unpaidBillsCents: number;
+};
+
+export type AssistantChecklistItem = {
+  id: string;
+  estimate_id: string;
+  label: string;
+  due_date: string | null;
+  assigned_to: string | null;
 };
 
 export type AssistantCall = {
@@ -139,6 +150,8 @@ export type AssistantContextInput = {
   estimates: AssistantEstimate[];
   /** Every project card. */
   projects: AssistantProject[];
+  /** Every OPEN checklist step across the company's projects. */
+  checklists: AssistantChecklistItem[];
   /** Every call inside the window. */
   calls: AssistantCall[];
   callWindowDays: number;
@@ -302,7 +315,9 @@ export function buildAssistantContext(input: AssistantContextInput): string {
       return aSigned < bSigned ? 1 : aSigned > bSigned ? -1 : 0;
     });
     const lines = ordered.slice(0, MAX_PROJECTS_IN_CONTEXT).map((p) => {
-      const base = `- ${p.docNumber} | ${p.customer} | ${p.address || "—"} | ${PROJECT_STATUS_LABEL[p.status]} | rep: ${p.repName || "—"}`;
+      // The id is included so a checklist proposal can name the exact
+      // project; it is re-validated against this company before apply.
+      const base = `- id: ${p.estimateId} | ${p.docNumber} | ${p.customer} | ${p.address || "—"} | ${PROJECT_STATUS_LABEL[p.status]} | rep: ${p.repName || "—"}`;
       if (!input.access.canViewEstimates) return base;
       const pct = p.soldCents > 0 ? ` (${Math.round((p.collectedCents / p.soldCents) * 100)}%)` : "";
       return `${base} | sold ${moneyCents(p.soldCents)} | collected ${moneyCents(p.collectedCents)}${pct} | owed ${moneyCents(p.receivableCents)} | net cash ${moneyCents(p.netCashCents)}`;
@@ -317,6 +332,35 @@ export function buildAssistantContext(input: AssistantContextInput): string {
           ? [`Detail rows below are the ${MAX_PROJECTS_IN_CONTEXT} most relevant (active first); use the lines above for totals.`]
           : []),
         lines.length ? lines.join("\n") : "(none)",
+      ].join("\n")
+    );
+  }
+
+  // ── Project checklists: no dollars on a step, so every role sees ──
+  {
+    const projectById = new Map(input.projects.map((p) => [p.estimateId, p]));
+    const overdueCount = input.checklists.filter(
+      (c) => c.due_date && c.due_date < input.todayISO
+    ).length;
+    const projectsWithOpen = new Set(input.checklists.map((c) => c.estimate_id)).size;
+
+    // Most urgent first: overdue, then nearest due date, then undated.
+    const ordered = [...input.checklists].sort((a, b) => {
+      const aDue = a.due_date ?? "9999-99-99";
+      const bDue = b.due_date ?? "9999-99-99";
+      return aDue < bDue ? -1 : aDue > bDue ? 1 : 0;
+    });
+    const lines = ordered.slice(0, MAX_CHECKLIST_ITEMS_IN_CONTEXT).map((c) => {
+      const proj = projectById.get(c.estimate_id);
+      const overdue = c.due_date && c.due_date < input.todayISO ? " (OVERDUE)" : "";
+      return `- item: ${c.id} | ${proj ? `${proj.docNumber} ${proj.customer}` : "—"} | ${c.label} | due: ${c.due_date ?? "—"}${overdue} | owner: ${rep(c.assigned_to)}`;
+    });
+
+    sections.push(
+      [
+        `PROJECT CHECKLISTS (open steps):`,
+        `${input.checklists.length} open steps across ${projectsWithOpen} projects (${overdueCount} overdue). Lines below are the ${lines.length} most urgent; copy item ids to propose checking steps off, and project ids from PROJECTS to propose adding steps.`,
+        lines.length ? lines.join("\n") : "(none open)",
       ].join("\n")
     );
   }

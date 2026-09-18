@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
-import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
+import {
+  companyForAccountSid,
+  companyForInboundNumber,
+  getTwilioForCompany,
+} from "@/lib/twilio-company";
+import { maybeStartReceptionist } from "@/lib/ai-receptionist-engine";
 
 function twiml(body: string): NextResponse {
   return new NextResponse(`<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`, {
@@ -62,9 +67,23 @@ export async function POST(req: NextRequest) {
       .eq("direction", "inbound");
   }
 
-  // Nobody picked up: say so rather than dropping the caller into
-  // silence, which reads as a broken line.
+  // Nobody picked up: the AI receptionist takes over when the company
+  // switched it on; otherwise say so rather than dropping the caller
+  // into silence, which reads as a broken line.
   if (dialStatus && dialStatus !== "completed" && dialStatus !== "answered") {
+    // AccountSid resolves companies on their own Twilio; on the shared
+    // platform account it's null, and the number dialled answers it.
+    const aiCompanyId = companyId ?? (await companyForInboundNumber(params.To || ""));
+    if (aiCompanyId && callSid) {
+      const aiTwiml = await maybeStartReceptionist(createAdminClient(), {
+        companyId: aiCompanyId,
+        callSid,
+        from: params.From || "",
+        to: params.To || "",
+        origin: new URL(req.url).origin,
+      });
+      if (aiTwiml) return twiml(aiTwiml);
+    }
     return twiml(
       `<Say voice="alice">Sorry we missed you. Please leave a message or send us a text, and we'll get right back to you.</Say>`
     );
