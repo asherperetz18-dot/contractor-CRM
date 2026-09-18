@@ -1030,6 +1030,10 @@ export function LeadForm({
                 </option>
               ))}
             </select>
+            <p className="est-tax-note">
+              Whose customer this is — they see this contact and all its appointments, and
+              it counts on their leaderboard. Who drives out is set per appointment.
+            </p>
           </Field>
         </div>
 

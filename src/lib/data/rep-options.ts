@@ -25,6 +25,22 @@ export type RepPickable = {
  * the ids in their data plus the current selection (the estimates
  * funnel's `repOptionIds` is the same idea for id-only lists).
  */
+/**
+ * A stored person id, named for a read-only line -- the appointment
+ * panel's "Customer's Rep". Reads the whole roster it is given, whatever
+ * the person's role or status, because the id is already on the record:
+ * name, then email, then "Unnamed" (the board's own fallbacks), and
+ * "Unassigned" when the record points at nobody.
+ */
+export function repDisplayName(
+  id: string | null | undefined,
+  members: readonly RepPickable[]
+): string {
+  if (!id) return "Unassigned";
+  const m = members.find((x) => x.id === id);
+  return m?.name || m?.email || "Unnamed";
+}
+
 export function repDropdownOptions<T extends RepPickable>(
   members: readonly T[],
   keep?: Iterable<string | null | undefined>

@@ -46,7 +46,7 @@ import {
   getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
-import { repDropdownOptions } from "@/lib/data/rep-options";
+import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
@@ -903,7 +903,19 @@ export function EventForm({
                 readOnly={readOnly}
                 bootstrap={dispatcherPicker}
               />
-              <div />
+              {/* Read-only on purpose: whose customer this is lives on
+                  the contact (its Assigned Rep box), not per appointment.
+                  Shown here because it is the grant that decides who can
+                  see this appointment at all -- without it, a name on
+                  someone's calendar looks unexplainable ("how come Simon
+                  can see this?" when Simon is on no seat below). */}
+              <Field label="Customer's Rep">
+                <div>{repDisplayName(lead.assigned_to, reps)}</div>
+                <p className="est-tax-note">
+                  Whose customer this is — they see this appointment whoever is booked on
+                  it. Change it on the contact (Assigned Rep).
+                </p>
+              </Field>
             </div>
           )}
 
