@@ -5,9 +5,11 @@ import {
   MAX_AI_TURNS,
   MAX_SPEECH_CHARS,
   aiGreetingText,
+  appointmentFromExtraction,
   cleanSpeechInput,
   confirmationSms,
   forceWrapUp,
+  friendlyApptLine,
   gatherTwiml,
   parseExtraction,
   parseTurnReply,
@@ -17,6 +19,7 @@ import {
   sayTwiml,
   shouldSendConfirmationSms,
   turnMessages,
+  type ExtractedLead,
   type ReceptionistTurn,
 } from "./ai-receptionist.ts";
 
@@ -32,7 +35,23 @@ const FACTS = {
   companyName: "Ace Roofing",
   greeting: null as string | null,
   callScript: null as string | null,
+  todayISO: "2026-09-19",
+  todayLabel: "Saturday, September 19, 2026",
 };
+
+function extraction(over: Partial<ExtractedLead> = {}): ExtractedLead {
+  return {
+    first_name: "",
+    last_name: "",
+    project_type: "",
+    address: "",
+    callback_time: "",
+    summary: "",
+    appointment_date: "",
+    appointment_time: "",
+    ...over,
+  };
+}
 
 // ── TwiML rendering ──────────────────────────────────────────────────
 
@@ -91,6 +110,14 @@ test("the system prompt carries the hard rules and the company's own script", ()
 test("a giant call script is capped instead of swallowing the prompt", () => {
   const prompt = receptionistSystemPrompt({ ...FACTS, callScript: "x".repeat(9000) });
   assert.ok(prompt.length < 8000);
+});
+
+test("the prompt knows today and books in pencil, never in ink", () => {
+  const prompt = receptionistSystemPrompt(FACTS);
+  // "Tuesday" from a caller means nothing without an anchor date.
+  assert.ok(prompt.includes("2026-09-19"));
+  assert.ok(prompt.includes("Saturday, September 19, 2026"));
+  assert.ok(/pencil/i.test(prompt), "the offer is a penciled slot with a text to confirm");
 });
 
 // ── Turn mapping ─────────────────────────────────────────────────────
@@ -152,6 +179,77 @@ test("extraction fills what it heard and defaults what it didn't", () => {
   assert.equal(parsed.callback_time, "after 3pm");
 });
 
+test("extraction carries an agreed slot and defaults it empty when none was", () => {
+  const parsed = parseExtraction(
+    '{"first_name":"Bob","summary":"Leak.","appointment_date":"2026-09-23","appointment_time":"14:00"}'
+  );
+  assert.ok(parsed);
+  assert.equal(parsed.appointment_date, "2026-09-23");
+  assert.equal(parsed.appointment_time, "14:00");
+  const bare = parseExtraction('{"summary":"Leak."}');
+  assert.ok(bare);
+  assert.equal(bare.appointment_date, "");
+});
+
+// ── The penciled appointment ─────────────────────────────────────────
+
+test("a concrete agreed slot books; garbage, the past, and the far future don't", () => {
+  const today = "2026-09-19";
+  assert.deepEqual(
+    appointmentFromExtraction(extraction({ appointment_date: "2026-09-23", appointment_time: "14:00" }), today),
+    { date: "2026-09-23", time: "14:00" }
+  );
+  assert.equal(appointmentFromExtraction(null, today), null);
+  assert.equal(appointmentFromExtraction(extraction(), today), null);
+  assert.equal(appointmentFromExtraction(extraction({ appointment_date: "next Tuesday" }), today), null);
+  // Yesterday isn't a booking, and "sometime next spring" isn't either.
+  assert.equal(appointmentFromExtraction(extraction({ appointment_date: "2026-09-18" }), today), null);
+  assert.equal(appointmentFromExtraction(extraction({ appointment_date: "2026-12-25" }), today), null);
+  // Today itself is fine -- "can someone come this afternoon" is real.
+  assert.ok(appointmentFromExtraction(extraction({ appointment_date: "2026-09-19", appointment_time: "16:00" }), today));
+});
+
+test("a missing or absurd time lands mid-morning instead of failing the booking", () => {
+  const today = "2026-09-19";
+  assert.equal(
+    appointmentFromExtraction(extraction({ appointment_date: "2026-09-23" }), today)?.time,
+    "10:00"
+  );
+  assert.equal(
+    appointmentFromExtraction(extraction({ appointment_date: "2026-09-23", appointment_time: "03:00" }), today)?.time,
+    "10:00"
+  );
+  assert.equal(
+    appointmentFromExtraction(extraction({ appointment_date: "2026-09-23", appointment_time: "18:30" }), today)?.time,
+    "18:30"
+  );
+});
+
+test("the penciled slot reads like a person wrote it", () => {
+  assert.equal(friendlyApptLine("2026-09-23", "14:00"), "Wed, Sep 23 at 2:00 PM");
+  assert.equal(friendlyApptLine("2026-10-04", "09:05"), "Sun, Oct 4 at 9:05 AM");
+  assert.equal(friendlyApptLine("2026-09-21", "12:30"), "Mon, Sep 21 at 12:30 PM");
+});
+
+test("the confirmation text names the slot and asks for the YES", () => {
+  const sms = confirmationSms("Ace Roofing", { date: "2026-09-23", time: "14:00" });
+  assert.ok(sms.includes("Ace Roofing"));
+  assert.ok(sms.includes("Wed, Sep 23 at 2:00 PM"));
+  assert.ok(/reply yes/i.test(sms));
+  // Without a slot, the plain callback promise stands unchanged.
+  assert.ok(!/reply yes/i.test(confirmationSms("Ace Roofing")));
+});
+
+test("the note records the penciled slot for the office", () => {
+  const note = receptionistNote(
+    extraction({ summary: "Leak over garage.", appointment_date: "2026-09-23" }),
+    [{ role: "caller", text: "my roof is leaking" }],
+    { date: "2026-09-23", time: "14:00" }
+  );
+  assert.ok(note.includes("Penciled in: Wed, Sep 23 at 2:00 PM"));
+  assert.ok(/assign/i.test(note), "the office's next move is named");
+});
+
 test("extraction garbage degrades to null, and long fields are capped", () => {
   assert.equal(parseExtraction("no json here"), null);
   const parsed = parseExtraction(JSON.stringify({ first_name: "x".repeat(300), summary: "y".repeat(2000) }));
@@ -186,14 +284,14 @@ test("the receptionist answers only on an explicit true", () => {
 
 test("the call note carries the summary and the whole exchange", () => {
   const note = receptionistNote(
-    {
+    extraction({
       first_name: "Bob",
       last_name: "Smith",
       project_type: "Roof replacement",
       address: "123 Main St",
       callback_time: "after 3pm",
       summary: "Leak over garage.",
-    },
+    }),
     [
       { role: "caller", text: "my roof is leaking" },
       { role: "assistant", text: "Sorry to hear that — what's your name?" },
@@ -210,10 +308,9 @@ test("confirmation text names the company and only sends when there is something
   assert.ok(sms.includes("Ace Roofing"));
   assert.ok(sms.length <= 320);
 
-  const good = { first_name: "Bob", last_name: "", project_type: "", address: "", callback_time: "", summary: "Roof leak" };
+  const good = extraction({ first_name: "Bob", summary: "Roof leak" });
   assert.equal(shouldSendConfirmationSms(good, "+18183008242"), true);
   // Nothing captured means nothing to confirm -- a text would be spam.
-  const empty = { first_name: "", last_name: "", project_type: "", address: "", callback_time: "", summary: "" };
-  assert.equal(shouldSendConfirmationSms(empty, "+18183008242"), false);
+  assert.equal(shouldSendConfirmationSms(extraction(), "+18183008242"), false);
   assert.equal(shouldSendConfirmationSms(good, ""), false);
 });
