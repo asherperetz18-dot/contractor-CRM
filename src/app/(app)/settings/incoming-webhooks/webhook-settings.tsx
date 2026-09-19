@@ -102,13 +102,16 @@ export function WebhookSettings({
             <code className="mono">last_name</code>
           </li>
           <li>
-            <code className="mono">phone</code>
+            <code className="mono">phone</code> ·{" "}
+            <code className="mono">phone2</code> ·{" "}
+            <code className="mono">phone3</code>
           </li>
           <li>
             <code className="mono">email</code>
           </li>
           <li>
-            <code className="mono">address</code>
+            <code className="mono">address</code> ·{" "}
+            <code className="mono">zip</code>
           </li>
           <li>
             <code className="mono">project_type</code>
@@ -159,16 +162,22 @@ export function WebhookSettings({
             overflowX: "auto",
           }}
         >
-          {`${url ?? "<generate a URL above>"}&source=Vicidial`}
+          {`${url ?? "<generate a URL above>"}&source=Vicidial&review=1`}
         </pre>
         <p className="cp-card-sub">
-          When the agent clicks WEB FORM, ViciDial adds the caller&apos;s
-          details (first/last name, phone, address, city/state/zip, email,
-          comments) to the end of the link on its own, the lead is saved,
-          and the agent sees a &quot;Lead added&quot; confirmation page. The
-          same link works in ViciDial&apos;s <strong>Dispo Call URL</strong>{" "}
-          field if you&apos;d rather every dispositioned call file the lead
-          automatically, without a button click.
+          When the agent clicks WEB FORM mid-call, ViciDial fills the link
+          with the caller&apos;s details (name, phones, address,
+          city/state/zip, email, comments) and the agent gets a
+          check-and-save form: fix anything the dialer got wrong, pick the
+          project type (your own list from Settings › Project Types), add
+          an estimated value and notes, then <strong>Save lead</strong>.
+        </p>
+        <p className="cp-card-sub">
+          Drop the <code className="mono">&amp;review=1</code> to skip the
+          form and save instantly on open — that variant belongs in
+          ViciDial&apos;s <strong>Dispo Call URL</strong> field, where every
+          dispositioned call files its lead automatically with no one there
+          to press Save.
         </p>
       </div>
     </div>
