@@ -5,9 +5,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
-import { toE164 } from "@/lib/data/types";
+import { PRE_APPOINTMENT_STAGES, TIMEZONE_IANA, toE164, type PipelineStage } from "@/lib/data/types";
+import { nowInZone } from "@/lib/timezone";
 import {
   aiGreetingText,
+  appointmentFromExtraction,
   cleanSpeechInput,
   confirmationSms,
   forceWrapUp,
@@ -21,6 +23,7 @@ import {
   shouldSendConfirmationSms,
   turnMessages,
   type ExtractedLead,
+  type PenciledAppointment,
   type ReceptionistFacts,
   type ReceptionistTurn,
 } from "@/lib/ai-receptionist";
@@ -64,12 +67,15 @@ export function failsafeTwiml(): string {
   );
 }
 
-const EXTRACT_SYSTEM = [
-  "You extract CRM fields from the transcript of an AI receptionist phone call for a contracting company.",
-  'Reply ONLY with JSON on one line: {"first_name":"","last_name":"","project_type":"","address":"","callback_time":"","summary":""}.',
-  "Every value is a string; use an empty string when the transcript doesn't say. Never invent details.",
-  "summary: one or two plain sentences on why they called and what they need.",
-].join("\n");
+function extractSystem(facts: ReceptionistFacts): string {
+  return [
+    "You extract CRM fields from the transcript of an AI receptionist phone call for a contracting company.",
+    'Reply ONLY with JSON on one line: {"first_name":"","last_name":"","project_type":"","address":"","callback_time":"","summary":"","appointment_date":"","appointment_time":""}.',
+    "Every value is a string; use an empty string when the transcript doesn't say. Never invent details.",
+    "summary: one or two plain sentences on why they called and what they need.",
+    `appointment_date/appointment_time: ONLY when the caller agreed to a specific visit day (and time) — YYYY-MM-DD and 24-hour HH:MM, resolving relative days from today, ${facts.todayLabel} (${facts.todayISO}). A vague "call me back afternoons" belongs in callback_time, not here.`,
+  ].join("\n");
+}
 
 function turnUrl(origin: string): string {
   return `${origin}/api/voice/ai/turn`;
@@ -115,9 +121,9 @@ async function receptionistState(
   const [baseRes, aiRes] = await Promise.all([
     admin
       .from("company_profile")
-      .select("name, call_script")
+      .select("name, call_script, timezone")
       .eq("company_id", companyId)
-      .maybeSingle<{ name: string | null; call_script: string | null }>(),
+      .maybeSingle<{ name: string | null; call_script: string | null; timezone: string | null }>(),
     admin
       .from("company_profile")
       .select("ai_receptionist_enabled, ai_receptionist_greeting")
@@ -128,12 +134,27 @@ async function receptionistState(
       }>(),
   ]);
 
+  // "Tuesday" from a caller is anchored to the company's own clock, not
+  // the server's -- at 11pm Pacific the two disagree about what day it is.
+  const zone = TIMEZONE_IANA[baseRes.data?.timezone ?? ""] ?? "America/Los_Angeles";
+  const wallClock = nowInZone(zone);
+  const todayISO = wallClock.toISOString().slice(0, 10);
+  const todayLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(wallClock);
+
   return {
     enabled: !aiRes.error && receptionistAvailable(aiRes.data),
     facts: {
       companyName: baseRes.data?.name || "our company",
       greeting: aiRes.data?.ai_receptionist_greeting ?? null,
       callScript: baseRes.data?.call_script ?? null,
+      todayISO,
+      todayLabel,
     },
   };
 }
@@ -343,6 +364,7 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
     .maybeSingle<SessionRow & { call_sid: string }>();
   if (!claimed) return;
 
+  const state = await receptionistState(admin, claimed.company_id);
   const turns = normalizeTurns(claimed.turns);
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -354,7 +376,7 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
         model: MODEL,
         max_tokens: 400,
         output_config: { effort: "low" },
-        system: EXTRACT_SYSTEM,
+        system: extractSystem(state.facts),
         messages: [{ role: "user", content: transcriptText(turns) }],
       });
       if (response.stop_reason !== "refusal") extraction = parseExtraction(textOf(response));
@@ -385,11 +407,58 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
     }
   }
 
+  // The penciled appointment: a real event, unassigned and unconfirmed,
+  // so it shows on the schedule, the office assigns who drives out, and
+  // the caller's YES (matched by the SMS webhook) confirms it.
+  let booked: PenciledAppointment | null = null;
+  const slot = appointmentFromExtraction(extraction, state.facts.todayISO);
+  if (slot && leadId) {
+    const { error: eventError } = await admin.from("events").insert({
+      title: "Estimate visit — penciled by AI receptionist",
+      date: slot.date,
+      time: slot.time,
+      event_type: "Estimate",
+      assigned_to: null,
+      notes:
+        "Penciled in by the AI receptionist from a missed-call conversation. Assign a rep — the caller was told a text would confirm the time, and the reminder texts only run once someone is assigned.",
+      lead_id: leadId,
+      created_by: null,
+      company_id: claimed.company_id,
+      customer_confirmed: false,
+    });
+    if (eventError) {
+      // The lead and the note still land; the requested time survives
+      // in both, so the office can book it by hand.
+      console.error("[ai-receptionist] penciling the appointment failed", eventError);
+    } else {
+      booked = slot;
+      // Mirror bookAppointmentForLead: the lead now has an appointment,
+      // and a pre-appointment stage advances to Appointment Scheduled.
+      const { data: leadRow } = await admin
+        .from("leads")
+        .select("stage")
+        .eq("id", leadId)
+        .eq("company_id", claimed.company_id)
+        .maybeSingle<{ stage: PipelineStage }>();
+      const stage = leadRow?.stage;
+      await admin
+        .from("leads")
+        .update({
+          has_appt: true,
+          ...(stage && PRE_APPOINTMENT_STAGES.includes(stage)
+            ? { stage: "Appointment Scheduled" }
+            : {}),
+        })
+        .eq("id", leadId)
+        .eq("company_id", claimed.company_id);
+    }
+  }
+
   if (leadId && turns.length > 0) {
     await admin.from("lead_notes").insert({
       lead_id: leadId,
       author_id: null,
-      body: `🤖 ${receptionistNote(extraction, turns)}`,
+      body: `🤖 ${receptionistNote(extraction, turns, booked)}`,
       company_id: claimed.company_id,
     });
   }
@@ -408,16 +477,15 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
       .eq("direction", "inbound");
   }
 
-  if (shouldSendConfirmationSms(extraction, toE164(claimed.from_number))) {
+  // A booking always earns its text -- the "reply YES to confirm" is
+  // half the feature -- while a plain details-taken call keeps the old
+  // "worth confirming at all" rule.
+  const smsTo = toE164(claimed.from_number);
+  if (smsTo && (booked || shouldSendConfirmationSms(extraction, smsTo))) {
     try {
       const twilioEnv = await getTwilioForCompany(claimed.company_id);
-      const state = await receptionistState(admin, claimed.company_id);
       if (twilioEnv) {
-        await sendTwilioSms(
-          toE164(claimed.from_number),
-          confirmationSms(state.facts.companyName),
-          twilioEnv
-        );
+        await sendTwilioSms(smsTo, confirmationSms(state.facts.companyName, booked), twilioEnv);
       }
     } catch {
       // The lead and the note are the record; the text is a courtesy.

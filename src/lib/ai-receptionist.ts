@@ -18,6 +18,10 @@ export type ReceptionistFacts = {
   greeting: string | null;
   /** The company's call script, used as background knowledge only. */
   callScript: string | null;
+  /** Today in the company's own timezone — "Tuesday" from a caller
+   *  means nothing without an anchor date. */
+  todayISO: string;
+  todayLabel: string;
 };
 
 export type TurnReply = { say: string; done: boolean };
@@ -29,7 +33,14 @@ export type ExtractedLead = {
   address: string;
   callback_time: string;
   summary: string;
+  /** The visit day the caller AGREED to, YYYY-MM-DD; "" when the call
+   *  only produced a vague callback window. */
+  appointment_date: string;
+  /** 24h HH:MM when a time was agreed; "" otherwise. */
+  appointment_time: string;
 };
+
+export type PenciledAppointment = { date: string; time: string };
 
 /** Amazon Polly neural voice — on every Twilio account, no add-on, and
  *  far closer to human than the basic "alice" the notices use. */
@@ -88,11 +99,13 @@ export function receptionistSystemPrompt(facts: ReceptionistFacts): string {
     "- Speakable text only: no markdown, no emoji, no lists, no URLs.",
     "- The caller's words come from speech recognition and may be garbled — ask again rather than guess.",
     "",
-    "What to collect, in order, skipping what they already said: their name; what the project or problem is; the property address; when is good for a call back. Their phone number is already on file from caller ID — confirm it only if they offer a different one.",
+    `Today is ${facts.todayLabel} (${facts.todayISO}). Resolve every relative day the caller says — "tomorrow", "Tuesday", "next week" — from that date.`,
+    "",
+    "What to collect, in order, skipping what they already said: their name; what the project or problem is; the property address; then offer to pencil in a visit — a day within the next two months plus a morning (10:00) or afternoon (14:00) slot, or the exact time they ask for, between 7 AM and 7 PM. Their phone number is already on file from caller ID — confirm it only if they offer a different one.",
     "",
     "Hard rules:",
-    "- Never give a price, a quote, a discount, or any dollar figure — pricing is always for the team to discuss on the callback.",
-    "- Never promise a firm appointment time; someone from the office will call to confirm.",
+    "- Never give a price, a quote, a discount, or any dollar figure — pricing is always for the team to discuss.",
+    "- A booking is only ever penciled in, never final: say they'll get a text to confirm, and never claim to have checked a calendar or promise who will come.",
     "- If they ask something you don't know from the company notes, say you'll pass the question to the team.",
     "- If it's clearly a wrong number or spam, wrap up politely.",
     "",
@@ -176,7 +189,51 @@ export function parseExtraction(raw: string): ExtractedLead | null {
     address: extractedField(p.address, 160),
     callback_time: extractedField(p.callback_time, 80),
     summary: extractedField(p.summary, 500),
+    appointment_date: extractedField(p.appointment_date, 10),
+    appointment_time: extractedField(p.appointment_time, 5),
   };
+}
+
+// ── The penciled appointment ─────────────────────────────────────────
+
+const BOOKING_HORIZON_DAYS = 60;
+
+function plusDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days, 12)).toISOString().slice(0, 10);
+}
+
+/**
+ * The slot a real event may be created for: a well-formed date from
+ * today through the horizon (yesterday isn't a booking, "next spring"
+ * isn't either), with an absurd or missing time landing mid-morning
+ * rather than failing the booking — the day is the commitment, the
+ * clock is a suggestion the office confirms anyway.
+ */
+export function appointmentFromExtraction(
+  extraction: Pick<ExtractedLead, "appointment_date" | "appointment_time"> | null,
+  todayISO: string
+): PenciledAppointment | null {
+  const date = extraction?.appointment_date ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (date < todayISO || date > plusDays(todayISO, BOOKING_HORIZON_DAYS)) return null;
+  const time = extraction?.appointment_time ?? "";
+  const wellFormed = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+  const hour = wellFormed ? Number(time.slice(0, 2)) : -1;
+  return { date, time: wellFormed && hour >= 6 && hour < 20 ? time : "10:00" };
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "2026-09-23" + "14:00" → "Wed, Sep 23 at 2:00 PM" — date components
+ *  only, anchored to UTC noon so no server timezone can shift the day. */
+export function friendlyApptLine(date: string, time: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const [hh, mm] = time.split(":").map(Number);
+  const noon = new Date(Date.UTC(y, m - 1, d, 12));
+  const h12 = ((hh + 11) % 12) + 1;
+  return `${WEEKDAYS[noon.getUTCDay()]}, ${MONTHS[m - 1]} ${d} at ${h12}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`;
 }
 
 export function forceWrapUp(assistantTurns: number): boolean {
@@ -199,13 +256,19 @@ export function receptionistAvailable(
  *  exchange — the transcript IS the record, since nothing is recorded. */
 export function receptionistNote(
   extraction: ExtractedLead | null,
-  turns: ReceptionistTurn[]
+  turns: ReceptionistTurn[],
+  appointment?: PenciledAppointment | null
 ): string {
   const lines: string[] = ["AI receptionist answered this call."];
   if (extraction?.summary) lines.push(`Summary: ${extraction.summary}`);
   if (extraction?.project_type) lines.push(`Project: ${extraction.project_type}`);
   if (extraction?.address) lines.push(`Address: ${extraction.address}`);
   if (extraction?.callback_time) lines.push(`Callback: ${extraction.callback_time}`);
+  if (appointment) {
+    lines.push(
+      `Penciled in: ${friendlyApptLine(appointment.date, appointment.time)} (unconfirmed — assign a rep and the reminder texts take it from there).`
+    );
+  }
   lines.push("", "Transcript:");
   for (const turn of turns) {
     lines.push(`${turn.role === "caller" ? "Caller" : "AI"}: ${turn.text}`);
@@ -213,7 +276,15 @@ export function receptionistNote(
   return lines.join("\n").slice(0, MAX_NOTE_CHARS);
 }
 
-export function confirmationSms(companyName: string): string {
+export function confirmationSms(
+  companyName: string,
+  appointment?: PenciledAppointment | null
+): string {
+  if (appointment) {
+    // "Reply YES" is a real promise: the SMS webhook matches a YES from
+    // the lead's number to their appointment and confirms it.
+    return `Thanks for calling ${companyName}! We've penciled you in for ${friendlyApptLine(appointment.date, appointment.time)}. Reply YES to confirm, or call us to change it.`;
+  }
   return `Thanks for calling ${companyName}! We got your details and someone from our team will call you back shortly.`;
 }
 
