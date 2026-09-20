@@ -427,7 +427,8 @@ export type PageKey =
   | "sales-commission"
   | "calendar"
   | "schedule"
-  | "contracts";
+  | "contracts"
+  | "estimate-status";
 
 // Registry entries carrying this group are not a collapsible sidebar
 // section -- they render as top-level links, in registry order. Role
@@ -504,6 +505,15 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // rather than "Invoices" because a signed estimate becomes a contract --
   // invoicing is a separate lifecycle and is not built yet.
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
+  // The rep-side mirror of the admin's Approvals screen: where each of
+  // my documents stands, and who it is waiting on. Sits beside the
+  // module it reports on.
+  {
+    key: "estimate-status",
+    label: "Estimate Status",
+    href: "/estimate-status",
+    group: "General",
+  },
   // Two separate schemes, two separate screens. The dispatcher earns a
   // percentage of the gross sale for bringing the lead in; the rep earns
   // a share of what the job actually made. One page showing both invites

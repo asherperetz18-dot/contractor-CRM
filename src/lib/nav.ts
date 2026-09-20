@@ -48,6 +48,11 @@ export function filterNavForProfile(
     if (href === "/estimates") {
       return canViewEstimates(profile) && canSeePage(profile, "documents", overrides);
     }
+    // Same person-level switch as the module it reports on: a viewer
+    // who cannot open estimates has no status to read.
+    if (href === "/estimate-status") {
+      return canViewEstimates(profile) && canSeePage(profile, "estimate-status", overrides);
+    }
     // The Accounting pages work the same way: the person-level switch
     // (accounting-access) on TOP of role visibility. The pages enforce
     // it themselves either way -- this only keeps the menu from showing
@@ -93,6 +98,7 @@ const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   dashboard: "◎",
   "marketing-analytics": "📈",
   documents: "📄",
+  "estimate-status": "⏳",
   payments: "💵",
   commissions: "🧾",
   calendar: "📅",
