@@ -34,6 +34,12 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   mirror of the SQL doubles as the fallback and pins the SQL's buckets).
 - In the PR and in chat, name the exact file to paste and say it's safe
   to run twice. After a merge, remind once.
+- **Paste the SQL itself into chat as one copy-paste code block** (owner
+  request, 2026-09-20) — every time a migration needs running, the full
+  file contents go inline in the reply, ready to select-all and paste
+  into the Supabase SQL editor. A filename, repo path, or file
+  attachment alone is not enough; attach the file too if you like, but
+  the inline block is the deliverable.
 - **Migration numbers race.** Several Claude sessions ship in parallel
   here, and two of them once claimed 0159 in the same afternoon — the
   loser renamed to 0160 and had to chase the number through nine files
