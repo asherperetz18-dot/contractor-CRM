@@ -5,6 +5,7 @@ import {
   isoDay,
   monthToDate,
   presetWindow,
+  prevWindow,
   resolveWindow,
   withinWindow,
 } from "./date-range.ts";
@@ -93,6 +94,48 @@ test("month to date starts on the first", () => {
     from: "2026-08-01",
     to: "2026-08-15",
   });
+});
+
+test("calendar presets: this month, this quarter, last 12 months", () => {
+  const now = new Date("2026-08-15T12:00:00");
+  assert.deepEqual(presetWindow("month", now), { from: "2026-08-01", to: null });
+  assert.deepEqual(presetWindow("quarter", now), { from: "2026-07-01", to: null });
+  assert.deepEqual(presetWindow("12m", now), { from: "2025-09-01", to: null });
+  // A quarter's first month is its own start.
+  assert.deepEqual(presetWindow("quarter", new Date("2026-01-10T12:00:00")), {
+    from: "2026-01-01",
+    to: null,
+  });
+});
+
+test("prevWindow: month-to-date compares to the same span of last month", () => {
+  const now = new Date(2026, 8, 20, 12);
+  assert.deepEqual(prevWindow({ from: "2026-09-01", to: null }, now), {
+    from: "2026-08-01",
+    to: "2026-08-20",
+  });
+  // At a month's edge the day clamps -- February 31st does not exist.
+  assert.deepEqual(prevWindow({ from: "2026-03-01", to: null }, new Date(2026, 2, 31, 9)), {
+    from: "2026-02-01",
+    to: "2026-02-28",
+  });
+});
+
+test("prevWindow: any other window compares to the equal span right before it", () => {
+  const now = new Date(2026, 8, 20, 12);
+  // Last 30 days (Aug 21 - Sep 20, 31 days inclusive) vs the 31 before.
+  assert.deepEqual(prevWindow({ from: "2026-08-21", to: null }, now), {
+    from: "2026-07-21",
+    to: "2026-08-20",
+  });
+  assert.deepEqual(prevWindow({ from: "2026-03-01", to: "2026-03-31" }, now), {
+    from: "2026-01-29",
+    to: "2026-02-28",
+  });
+});
+
+test("prevWindow: all time has no previous period", () => {
+  assert.equal(prevWindow({ from: null, to: null }, new Date(2026, 8, 20)), null);
 });
 
 const LABELS = { "7": "Last 7 days", "30": "Last 30 days", all: "All time" };
