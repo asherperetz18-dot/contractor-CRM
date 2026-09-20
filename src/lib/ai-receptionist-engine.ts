@@ -53,7 +53,13 @@ type SessionRow = {
   status: string;
 };
 
-const MODEL = "claude-opus-5";
+// Two models on purpose (decision #045). The caller is holding a live
+// phone through every turn, so turns run on the fast model — it takes
+// no effort/thinking params, which is also why the turn request sends
+// none. Extraction runs after the hangup, where nobody is waiting, so
+// it keeps the heavyweight model.
+const TURN_MODEL = "claude-haiku-4-5";
+const EXTRACT_MODEL = "claude-opus-5";
 
 const RETRY_SAY = "Sorry, I didn't quite catch that — could you say it once more?";
 const STILL_THERE_SAY = "Sorry — are you still there? How can I help?";
@@ -295,9 +301,8 @@ export async function runReceptionistTurn(
     try {
       const client = new Anthropic({ apiKey });
       const response = await client.messages.create({
-        model: MODEL,
+        model: TURN_MODEL,
         max_tokens: 300,
-        output_config: { effort: "low" },
         system:
           receptionistSystemPrompt(state.facts) +
           (wrapUp
@@ -493,7 +498,7 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
     try {
       const client = new Anthropic({ apiKey });
       const response = await client.messages.create({
-        model: MODEL,
+        model: EXTRACT_MODEL,
         max_tokens: 400,
         output_config: { effort: "low" },
         system: extractSystem(state.facts),
