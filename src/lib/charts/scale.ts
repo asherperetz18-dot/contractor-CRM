@@ -24,6 +24,25 @@ export function niceTicks(maxValue: number, target = 4): { max: number; ticks: n
   return { max: Math.round(max), ticks };
 }
 
+/**
+ * An axis that can dip below zero: the same clean step as niceTicks,
+ * carried down to a clean floor under the lowest value. A profit chart
+ * needs this the month the company loses money -- clamping the axis at
+ * zero would draw that month as nothing at all.
+ */
+export function signedTicks(
+  minValue: number,
+  maxValue: number,
+  target = 4
+): { floor: number; top: number; ticks: number[] } {
+  const { max: top, ticks } = niceTicks(Math.max(0, maxValue), target);
+  const step = ticks.length > 1 ? ticks[1] - ticks[0] : top || 1;
+  const floor = minValue < 0 ? Math.floor(minValue / step) * step : 0;
+  const all: number[] = [];
+  for (let v = floor; v <= top + step / 2; v += step) all.push(Math.round(v));
+  return { floor: Math.round(floor), top, ticks: all };
+}
+
 /** Cents as a compact axis label: $0, $500, $1.5K, $400K, $1.25M. */
 export function moneyTickLabel(cents: number): string {
   const dollars = (Number(cents) || 0) / 100;

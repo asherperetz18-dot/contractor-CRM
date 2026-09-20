@@ -3,10 +3,14 @@
 import { useMemo, useState } from "react";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { moneyCents } from "@/lib/data/types";
+import { PLJobBars, PLMonthlyChart, PLWaterfall } from "@/components/charts/profit-loss-charts";
 import {
   PL_PERIODS,
+  jobBarRows,
   plPeriodWindow,
   profitLoss,
+  profitLossByMonth,
+  uncostedJobs,
   type PLBasis,
   type PLBill,
   type PLBillPayment,
@@ -68,6 +72,24 @@ export function ProfitLossView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [basis, window.from, window.to, contracts, phases, payments, expenses, bills, billPayments]
   );
+  const months = useMemo(
+    () =>
+      profitLossByMonth(basis, window, {
+        contracts,
+        phases,
+        payments,
+        expenses,
+        bills,
+        billPayments,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [basis, window.from, window.to, contracts, phases, payments, expenses, bills, billPayments]
+  );
+  const jobName = (leadId: string | null) =>
+    leadId ? (jobInfo.get(leadId)?.name ?? "Unnamed job") : "Not tied to a job";
+  const barRows = jobBarRows(report.jobs, jobName);
+  const uncosted = uncostedJobs(report.jobs);
+  const earning = report.jobs.filter((j) => j.incomeCents > 0).length;
 
   const pct = (part: number, whole: number) =>
     whole > 0 ? `${((part / whole) * 100).toFixed(1)}%` : "—";
@@ -157,6 +179,68 @@ export function ProfitLossView({
         </div>
       ) : (
         <>
+          <div className="pl-panels">
+            {months.length >= 2 && (
+              <section className="dash-panel pl-panel-wide">
+                <div className="pl-panel-head">
+                  <h3>Month by month</h3>
+                  <span className="dash-panel-sub">{basis} basis</span>
+                  <span className="dash-legend">
+                    <span className="dash-key">
+                      <i style={{ background: "var(--pl-income)" }} /> Income
+                    </span>
+                    <span className="dash-key">
+                      <i style={{ background: "var(--pl-spend)" }} /> Job costs + overhead
+                    </span>
+                    <span className="dash-key">
+                      <i className="dash-key-line" style={{ background: "var(--pl-profit)" }} />{" "}
+                      Net profit
+                    </span>
+                  </span>
+                </div>
+                <PLMonthlyChart months={months} />
+                <p className="dash-note">
+                  Bars are what came in and what went out each month; the line is what was left.
+                </p>
+              </section>
+            )}
+            <section className="dash-panel">
+              <div className="pl-panel-head">
+                <h3>Where the money went</h3>
+                <span className="dash-panel-sub">each step as a share of income</span>
+              </div>
+              <PLWaterfall
+                incomeCents={report.incomeCents}
+                jobCostCents={report.jobCostCents}
+                overheadCents={report.overheadCents}
+                netProfitCents={report.netProfitCents}
+              />
+            </section>
+            <section className="dash-panel">
+              <div className="pl-panel-head">
+                <h3>Profit by job</h3>
+                <span className="dash-panel-sub">biggest income first</span>
+                <span className="dash-legend">
+                  <span className="dash-key">
+                    <i style={{ background: "var(--pl-spend)" }} /> Costs
+                  </span>
+                  <span className="dash-key">
+                    <i style={{ background: "var(--pl-profit)" }} /> Profit
+                  </span>
+                </span>
+              </div>
+              <PLJobBars rows={barRows} />
+              {uncosted > 0 && (
+                <p className="dash-note">
+                  {uncosted} of {earning} job{earning === 1 ? "" : "s"} with income{" "}
+                  {uncosted === 1 ? "has" : "have"} no costs recorded, so{" "}
+                  {uncosted === 1 ? "its" : "their"} margin reads 100%. Enter receipts and
+                  bills against the job and the real margin shows here.
+                </p>
+              )}
+            </section>
+          </div>
+
           <section className="pay-section">
             <h2 className="pay-section-title">By job</h2>
             <div className="table-scroll">

@@ -55,3 +55,81 @@
 .pl-net-banner-loss .pl-net-figure {
   color: #b3261e;
 }
+
+/* ── Graphs ──────────────────────────────────────────────────────────
+   One color per idea, the same in every panel: blue is money in, orange
+   money out, green what was kept; red only for a genuine loss. The
+   blue/orange/green trio is validated for color-blind separation on
+   the white card (the green/orange pair sits in the warn band, so every
+   panel also carries a legend, a direct label or a 2px surface gap). */
+:root {
+  --pl-income: var(--dash-chart-blue);
+  --pl-spend: var(--safety);
+  --pl-profit: var(--dash-chart-green);
+  --pl-loss: #b3261e;
+  --pl-hover-band: #f6f4ee;
+}
+
+.pl-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+@media (max-width: 1100px) {
+  .pl-panels {
+    grid-template-columns: 1fr;
+  }
+}
+.pl-panel-wide {
+  grid-column: 1 / -1;
+}
+.pl-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+.pl-panel-head h3 {
+  font-family: var(--font-headers);
+  font-size: 14px;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pl-waterfall {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pl-wf-value {
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+
+/* Job bars: cost then profit, end to end, a 2px surface gap between
+   the two fills instead of a border. */
+.pl-jobbars .dash-hbar-row {
+  grid-template-columns: 150px 1fr 150px;
+}
+.pl-hbar-cost {
+  background: var(--pl-spend);
+  border-radius: 0;
+  margin-right: 2px;
+}
+.pl-hbar-cost.pl-hbar-only {
+  border-radius: 0 4px 4px 0;
+  margin-right: 0;
+}
+.pl-hbar-profit {
+  background: var(--pl-profit);
+}
+@media (max-width: 700px) {
+  .pl-jobbars .dash-hbar-row {
+    grid-template-columns: 110px 1fr 120px;
+  }
+}
