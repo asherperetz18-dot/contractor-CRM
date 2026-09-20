@@ -4,6 +4,7 @@ import { portalBaseUrl } from "@/lib/portal/session";
 import { notifyRepOfSignature } from "@/lib/portal/rep-signed-notification";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
 import { applyAutoChecklist } from "@/lib/checklist-auto";
+import { productionJobRow } from "@/lib/production-job";
 import { sendEmail } from "@/lib/email-env";
 import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateStatus } from "@/lib/data/types";
@@ -60,6 +61,51 @@ export async function reportSignatureToRep(
     console.error(
       `[estimate ${estimate.id}] rep sign-notification not sent (${result.outcome}${detail})`
     );
+  }
+}
+
+/**
+ * Puts a newly signed contract's job on the Production Board.
+ *
+ * Never throws: by the time this runs the signature is already
+ * committed, and a board-sync hiccup must not read back to the customer
+ * as a failed signing. The decision of whether a job is due (and its
+ * shape) lives in productionJobRow, pure and tested; this wrapper only
+ * supplies what exists and inserts what it returns.
+ */
+async function ensureProductionJob(
+  admin: ReturnType<typeof createAdminClient>,
+  estimate: SignableEstimate
+): Promise<void> {
+  try {
+    if (!estimate.lead_id) return;
+    const [{ data: existing }, { data: lead }] = await Promise.all([
+      admin.from("jobs").select("id").eq("lead_id", estimate.lead_id).limit(1),
+      admin
+        .from("leads")
+        .select("first_name, last_name, address")
+        .eq("id", estimate.lead_id)
+        .maybeSingle<{ first_name: string | null; last_name: string | null; address: string | null }>(),
+    ]);
+    const row = productionJobRow(
+      {
+        kind: estimate.kind,
+        lead_id: estimate.lead_id,
+        company_id: estimate.company_id,
+        title: estimate.title,
+      },
+      lead ?? null,
+      (existing?.length ?? 0) > 0
+    );
+    if (!row) return;
+    const { error } = await admin.from("jobs").insert(row);
+    if (error) {
+      console.error(`[estimate ${estimate.id}] production job not created: ${error.message}`);
+      return;
+    }
+    revalidatePath("/production");
+  } catch (e) {
+    console.error(`[estimate ${estimate.id}] production job creation threw`, e);
   }
 }
 
@@ -190,6 +236,12 @@ export async function finalizeSignedEstimate(
     // signature the offsets run from the paper date, which is when the
     // clock actually started. Never throws.
     await applyAutoChecklist(admin, estimate.company_id, estimate.id, signedAtIso);
+
+    // The signed job goes on the Production Board by itself -- left to a
+    // hand-run "convert to job" the board starves while Projects fills
+    // up. One job per lead (a re-signed revision or a second contract
+    // never stacks a duplicate card); crew assignment stays a human call.
+    await ensureProductionJob(admin, estimate);
   }
 
   // A signed contract is won work, whatever the board still says. Left

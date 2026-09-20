@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chipMatches, projectTotals } from "./project-filters.ts";
+import { chipMatches, matchesProjectFilters, projectTotals } from "./project-filters.ts";
 import type { ProjectCard } from "./projects-view";
 
 /**
@@ -99,4 +99,14 @@ test("the Bleeding chip fires on the accrual figure: unpaid bills count, before 
     unpaidBillsCents: 0 as any,
   });
   assert.equal(chipMatches(healthy, "Bleeding", NOW), false);
+});
+
+test("a focus id keeps exactly the one project the link named", () => {
+  const target = card({ estimateId: "est-1" });
+  const other = card({ estimateId: "est-2" });
+  const noFilters = { search: "", client: "", rep: "", bounds: null };
+  assert.equal(matchesProjectFilters(target, { ...noFilters, focusId: "est-1" }), true);
+  assert.equal(matchesProjectFilters(other, { ...noFilters, focusId: "est-1" }), false);
+  // No focus in the URL: nothing changes.
+  assert.equal(matchesProjectFilters(other, noFilters), true);
 });
