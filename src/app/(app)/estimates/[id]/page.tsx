@@ -89,6 +89,10 @@ export default async function EstimateDetailPage({
   // happening. Drafts only for the approval hold: a document already
   // out has passed the gate, whatever the switch says today.
   let sendHold: string | null = null;
+  // True when the hold is the approval gate AND this viewer is an Admin:
+  // the note then carries its own Approve button instead of sending them
+  // to the Approvals screen.
+  let sendHoldApprovable = false;
   if (canSendEstimates(profile) && estimate.status === "Draft") {
     const { data: gate } = await supabase
       .from("company_profile")
@@ -100,7 +104,8 @@ export default async function EstimateDetailPage({
       approvedAt: estimate.approved_at,
     });
     if (held) {
-      sendHold = approvalHoldMessage(estimate.doc_number, { canApprove: isStrictAdmin(profile) });
+      sendHoldApprovable = isStrictAdmin(profile);
+      sendHold = approvalHoldMessage(estimate.doc_number, { canApprove: sendHoldApprovable });
     }
   }
   if (!sendHold && estimate.lead_id && canSendEstimates(profile) && !isAdminRole(profile)) {
@@ -184,6 +189,7 @@ export default async function EstimateDetailPage({
       // hold on a closer-led lead.
       canSend={canSendEstimates(profile) && !sendHold}
       sendHoldNote={sendHold}
+      sendHoldApprovable={sendHoldApprovable}
       // Separate from canEdit on purpose. A bookkeeper records what the
       // job cost without being able to touch the contract it is recorded
       // against -- which is the whole reason the Bookkeeping role exists.

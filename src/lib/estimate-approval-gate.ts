@@ -24,14 +24,16 @@ export function approvalHoldsSend(input: {
 }
 
 /** What the held person reads -- says what to do, not what rule fired.
- *  An admin can approve it themselves; everyone else asks one. */
+ *  An admin can approve it themselves -- and meets this text beside an
+ *  Approve button (ApproveEstimateButton), so "here" is literal; everyone
+ *  else asks one. */
 export function approvalHoldMessage(
   docNumber: string | null,
   viewer: { canApprove: boolean }
 ): string {
   const doc = docNumber || "it";
   const next = viewer.canApprove
-    ? `Approve ${doc} on the Estimate Approvals screen, then send it.`
+    ? `Approve ${doc} here or on the Estimate Approvals screen, then send it.`
     : `Ask an admin to approve ${doc} on the Estimate Approvals screen.`;
   return `This document needs to be approved before it can go out. ${next}`;
 }

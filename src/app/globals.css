@@ -2382,6 +2382,15 @@ a.stat-card {
   white-space: nowrap;
 }
 
+/* A status chip with its action beside it (Estimate Status: the
+   "Waiting for admin approval" chip and the admin's Approve button). */
+.est-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -6377,6 +6386,13 @@ a.portal-header-stars:hover {
   color: #7a5a00;
   font-size: 13px;
   margin-bottom: 14px;
+}
+
+/* The hold note's own action (an admin's Approve button). */
+.est-banner-action {
+  display: inline-block;
+  margin-left: 10px;
+  vertical-align: middle;
 }
 .est-meta-grid {
   display: grid;

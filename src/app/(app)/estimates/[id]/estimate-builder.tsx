@@ -37,6 +37,7 @@ import {
   type SendEstimateResult,
 } from "@/lib/actions/estimates";
 import { EstimateSendPanel } from "./estimate-send-panel";
+import { ApproveEstimateButton } from "@/components/approve-estimate-button";
 import { createEstimateRevision } from "@/lib/actions/estimate-revisions";
 import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
@@ -135,6 +136,7 @@ export function EstimateBuilder({
   canEdit,
   canSend = true,
   sendHoldNote = null,
+  sendHoldApprovable = false,
   canManageCosts,
   canManageBills,
   canVoid,
@@ -157,6 +159,10 @@ export function EstimateBuilder({
   /** Why sending is off when it is the closer's hold rather than the
    *  switch -- names the closer, so the banner says who sends instead. */
   sendHoldNote?: string | null;
+  /** The hold is the approval gate and this viewer may clear it: the
+   *  note carries an Approve button, and the Send controls appear once
+   *  it is pressed. */
+  sendHoldApprovable?: boolean;
   /** Recording costs, which Bookkeeping holds without contract editing. */
   canManageCosts: boolean;
   /** Filing an UNPAID vendor bill from the job costs panel. */
@@ -633,6 +639,14 @@ export function EstimateBuilder({
         <div className="est-locked-banner">
           {sendHoldNote ??
             "Drafts only: you can build and save this estimate, and preview or print it, but sending it to the customer is done by the office. Ask an Office or Admin user to send it — or to turn on Send Estimates for you in Users & Roles."}
+          {sendHoldApprovable && (
+            <span className="est-banner-action">
+              <ApproveEstimateButton
+                estimateId={estimate.id}
+                label={`Approve ${estimate.doc_number}`}
+              />
+            </span>
+          )}
         </div>
       )}
 
