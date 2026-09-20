@@ -2,7 +2,6 @@
 
 import { Fragment, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
@@ -294,14 +293,6 @@ export function UsersRolesTable({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Users &amp; Roles</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Users &amp; Roles</h1>

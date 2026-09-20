@@ -577,7 +577,18 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A graph on this page cannot show a number the tables don't; adding a fourth reading of the ledger (say, by salesperson) is one more reducer, not a new date engine. The nudge about uncosted jobs is the page telling the owner the truth about its own inputs. Commissions are still not on the statement (TECH_DEBT), so net profit remains overstated by payouts until that line is added.
 
-## 053 — A send asks every gate before the message leaves
+
+## 053 — The Settings crumb comes from the layout, not from each page
+
+**Date:** 2026-09-20
+
+**Context:** Eighteen settings pages carried a hand-written "⚙ Settings › Page" link back to the grid and twenty did not, Commission & Lead Cost Defaults among them — the owner landed on one and had no way back but the sidebar. A rule that says "remember the crumb" had already been forgotten twenty times.
+
+**Decision:** `src/app/(app)/settings/layout.tsx` renders the crumb once for every route under `/settings/`, and nothing for the grid itself. The page name is read from the page's tile in `settings-catalog.ts` (the first tile when two share a route), so the crumb says exactly what was clicked and there is one list of settings pages, not two. A test walks the settings route folders and fails when one has no tile — the only thing a new page still has to remember.
+
+**Consequence:** The eighteen hand-written crumbs are gone, and adding one by hand now shows two. A settings page missing from the catalog is unreachable from the grid *and* fails the suite, so it cannot ship quietly. The standing rule is in `AGENTS.md`.
+
+## 054 — A send asks every gate before the message leaves
 
 **Date:** 2026-09-20
 
@@ -587,7 +598,7 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A held document can't be half-sent any more; the held person is told who approves. Existing half-sent documents need no SQL: approving and sending them again replaces the stray signatures and moves them to Sent. The trade is two extra reads on every send, on an action that already sends email.
 
-## 054 — Signature evidence prints in the company's clock, labelled
+## 055 — Signature evidence prints in the company's clock, labelled
 
 **Date:** 2026-09-20
 

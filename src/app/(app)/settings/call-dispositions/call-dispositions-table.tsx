@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import type { CallDispositionRow } from "@/lib/data/types";
@@ -131,14 +130,6 @@ export function CallDispositionsTable({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Call Dispositions</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Call Dispositions</h1>
