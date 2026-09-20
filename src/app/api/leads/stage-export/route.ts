@@ -34,7 +34,8 @@ export async function GET(request: Request) {
   // even before the explicit company_id filter below.
   const supabase = await createClient();
   const companyId = profile.company_id;
-  const columns = STAGE_EXPORT_COLUMNS.map((c) => c.key).join(", ");
+  // id rides along for the keyset cursor; it is not a CSV column.
+  const columns = ["id", ...STAGE_EXPORT_COLUMNS.map((c) => c.key)].join(", ");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -43,20 +44,29 @@ export async function GET(request: Request) {
         controller.enqueue(
           encoder.encode(STAGE_EXPORT_COLUMNS.map((c) => c.header).join(","))
         );
-        for (let from = 0; ; from += PAGE) {
-          const { data, error } = await supabase
+        // Keyset pagination ("id past the last one seen"), not offsets:
+        // OFFSET re-scans everything it skips, which over a 66k-row
+        // stage turns 66 pages into quadratic work — and a row inserted
+        // or deleted mid-export shifts every later offset, silently
+        // dropping or doubling rows in the one file that is the backup.
+        let lastId = "";
+        for (;;) {
+          let query = supabase
             .from("leads")
             .select(columns)
             .eq("company_id", companyId)
             .eq("stage", stage)
             .order("id")
-            .range(from, from + PAGE - 1);
+            .limit(PAGE);
+          if (lastId) query = query.gt("id", lastId);
+          const { data, error } = await query;
           if (error) throw new Error(error.message);
-          const rows = (data as unknown as StageExportLead[]) ?? [];
+          const rows = (data as unknown as (StageExportLead & { id: string })[]) ?? [];
           if (rows.length > 0) {
             controller.enqueue(
               encoder.encode("\n" + rows.map(csvLine).join("\n"))
             );
+            lastId = rows[rows.length - 1].id;
           }
           if (rows.length < PAGE) break;
         }
