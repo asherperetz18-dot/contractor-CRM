@@ -587,3 +587,14 @@ Two things were verified directly rather than assumed, both load-bearing for how
 **Decision:** `src/app/(app)/settings/layout.tsx` renders the crumb once for every route under `/settings/`, and nothing for the grid itself. The page name is read from the page's tile in `settings-catalog.ts` (the first tile when two share a route), so the crumb says exactly what was clicked and there is one list of settings pages, not two. A test walks the settings route folders and fails when one has no tile — the only thing a new page still has to remember.
 
 **Consequence:** The eighteen hand-written crumbs are gone, and adding one by hand now shows two. A settings page missing from the catalog is unreachable from the grid *and* fails the suite, so it cannot ship quietly. The standing rule is in `AGENTS.md`.
+
+## 054 — Lead cost by source is priced in the insert trigger, matched by name, in dollars
+
+**Date:** 2026-09-20
+
+**Context:** Every new lead was priced at the one company default ($375, 0089) unless somebody typed a figure, so a referral or a website enquiry carried the same spend as a bought Facebook lead, and cost-per-sale by source in Marketing Analytics could not be trusted. The owner asked where to control what each source costs. There was nowhere — the company default itself had no screen and lived only in SQL.
+
+**Decision:** `lead_sources.default_lead_cost` (nullable) is edited per row on Settings › Lead Sources, with the company default on the same page. The pricing stays in the 0089 trigger, extended to try the source's figure first: leads arrive by five paths and the trigger is the one place they all pass through, so no call site has to remember. Matched by source *name* (case- and space-insensitive) because `leads.source` stores the name, not an id, and renaming a source already repoints its leads. Blank and 0 are different answers — blank is "no figure of its own, use the company default", 0 is "free" — and `lead-source-cost.test.ts` pins that. The column is dollars, not cents, because it feeds `leads.lead_cost`, dollars since 0023 (TECH_DEBT).
+
+**Consequence:** No code path prices a lead; the app only edits the two figures, and every intake path is covered including ones added later. Changing a source's price affects new leads only — what an existing lead cost is a recorded fact. Until 0164 is pasted the page still loads (the column reads blank) and a save says which migration to run.
+
