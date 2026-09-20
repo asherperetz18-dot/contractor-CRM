@@ -43,12 +43,28 @@ export default async function EstimateStatusPage() {
 
   const supabase = await createClient();
 
+  // A status board shows the live pipeline: completion certificates are
+  // paperwork after the sale, and a signature older than a month is the
+  // archive's business. Both exclusions happen IN the query, before the
+  // row cap -- filtering after `.limit()` would let a pile of old signed
+  // documents push genuine in-flight drafts out of the window.
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 30);
+  const cutoff = cutoffDate.toISOString();
+
   const [{ data: docs }, { data: companyRow }] = await Promise.all([
     supabase
       .from("estimates")
       .select("id, doc_number, title, status, kind, total_cents, lead_id, approved_at, signed_at, updated_at")
       .eq("company_id", profile.company_id)
       .in("status", ["Draft", "Sent", "Viewed", "Signed"])
+      .or("kind.is.null,kind.neq.completion")
+      // Signed rows only while fresh; a Signed row missing signed_at
+      // (older data) falls back to its updated_at, same as the paper
+      // trail would read it.
+      .or(
+        `status.neq.Signed,signed_at.gte.${cutoff},and(signed_at.is.null,updated_at.gte.${cutoff})`
+      )
       .order("updated_at", { ascending: false })
       .limit(250)
       .returns<
@@ -73,18 +89,7 @@ export default async function EstimateStatusPage() {
   ]);
 
   const approvalRequired = companyRow?.require_estimate_approval === true;
-
-  // A status board shows the live pipeline: completion certificates are
-  // paperwork after the sale, and a signature older than a month is the
-  // archive's business.
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - 30);
-  const cutoff = cutoffDate.toISOString();
-  const rows = (docs ?? []).filter(
-    (d) =>
-      d.kind !== "completion" &&
-      (d.status !== "Signed" || (d.signed_at ?? d.updated_at ?? "") >= cutoff)
-  );
+  const rows = docs ?? [];
 
   // Only the leads these rows reference -- never the book.
   const leadIds = [...new Set(rows.map((r) => r.lead_id).filter(Boolean))] as string[];
