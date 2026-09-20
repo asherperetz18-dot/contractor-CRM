@@ -116,7 +116,7 @@ export default async function CalendarPage() {
     selectAll<LeadTask & { leads?: unknown }>((f, t) =>
       supabase
         .from("lead_tasks")
-        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at, leads!inner(events!inner(id))")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_by, created_at, leads!inner(events!inner(id))")
         .eq("company_id", companyId)
         .range(f, t)
     ).then(withoutLeadJoin),

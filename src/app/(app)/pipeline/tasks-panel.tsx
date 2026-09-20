@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Field } from "@/components/ui/field";
 import type { LeadTask, Profile } from "@/lib/data/types";
-import { repDropdownOptions } from "@/lib/data/rep-options";
+import { repBylineName, repDropdownOptions } from "@/lib/data/rep-options";
 import { completeLeadTask, createLeadTask, deleteLeadTask } from "@/lib/actions/leads";
 
 function todayISO() {
@@ -107,7 +107,9 @@ export function TasksPanel({
 
       {open.length > 0 && (
         <ul className="dash-list">
-          {open.map((t) => (
+          {open.map((t) => {
+            const addedBy = repBylineName(t.created_by, reps);
+            return (
             <li key={t.id}>
               {!readOnly && (
                 <button
@@ -123,6 +125,7 @@ export function TasksPanel({
               <span style={{ flex: 1 }}>
                 {t.title}
                 {repName(t.assigned_to) && ` — ${repName(t.assigned_to)}`}
+                {addedBy && <span className="task-byline">Added by {addedBy}</span>}
               </span>
               <span className="mono">
                 {formatDueDate(t.due_date)}
@@ -140,7 +143,8 @@ export function TasksPanel({
                 </button>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
@@ -184,11 +188,13 @@ export function TasksPanel({
             />
           </Field>
           <Field label="Assigned To">
+            {/* Blank saves as the person adding it (createLeadTask), so
+                a task can no longer land on nobody's plate. */}
             <select
               value={form.assigned_to}
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
             >
-              <option value="">Unassigned</option>
+              <option value="">Me — assign to myself</option>
               {repDropdownOptions(reps, [form.assigned_to]).map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name || r.email}

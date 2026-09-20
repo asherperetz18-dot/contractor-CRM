@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { repDisplayName, repDropdownOptions } from "./rep-options.ts";
+import { repBylineName, repDisplayName, repDropdownOptions } from "./rep-options.ts";
 import type { AppRole, UserStatus } from "./types.ts";
 
 /**
@@ -114,4 +114,25 @@ test("repDisplayName says Unassigned for no id and Unnamed for an id off the ros
   assert.equal(repDisplayName(undefined, roster), "Unassigned");
   assert.equal(repDisplayName("", roster), "Unassigned");
   assert.equal(repDisplayName("gone-from-roster", roster), "Unnamed");
+});
+
+// A byline ("Added by …") is optional metadata, not a field with a
+// stored value behind it: when nobody can be named the line is dropped,
+// never filled with "Unassigned"/"Unnamed" -- on a byline those read as
+// bugs, not answers.
+test("repBylineName names the person, falling back to email", () => {
+  const roster = [
+    member("a", "Asher"),
+    member("b", null, ["Office"], "Active", "office@x.com"),
+  ];
+  assert.equal(repBylineName("a", roster), "Asher");
+  assert.equal(repBylineName("b", roster), "office@x.com");
+});
+
+test("repBylineName stays silent for system-created rows and ids off the roster", () => {
+  const roster = [member("a", "Asher")];
+  assert.equal(repBylineName(null, roster), null);
+  assert.equal(repBylineName(undefined, roster), null);
+  assert.equal(repBylineName("", roster), null);
+  assert.equal(repBylineName("gone-from-roster", roster), null);
 });

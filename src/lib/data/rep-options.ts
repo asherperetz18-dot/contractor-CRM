@@ -41,6 +41,22 @@ export function repDisplayName(
   return m?.name || m?.email || "Unnamed";
 }
 
+/**
+ * A person named on a byline -- "Added by …" on a follow-up task. Unlike
+ * repDisplayName this is optional metadata, not a field: when nobody can
+ * be named (a system-created row, or an id the given roster no longer
+ * carries) the answer is null and the caller drops the line, because
+ * "Unnamed"/"Unassigned" on a byline reads as a bug, not an answer.
+ */
+export function repBylineName(
+  id: string | null | undefined,
+  members: readonly RepPickable[]
+): string | null {
+  if (!id) return null;
+  const m = members.find((x) => x.id === id);
+  return m?.name || m?.email || null;
+}
+
 export function repDropdownOptions<T extends RepPickable>(
   members: readonly T[],
   keep?: Iterable<string | null | undefined>

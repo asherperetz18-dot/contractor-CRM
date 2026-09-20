@@ -1494,6 +1494,10 @@ export type LeadTask = {
   due_time: string | null;
   completed_at: string | null;
   assigned_to: string | null;
+  // Stored since 0002 but only fetched where the panel shows the
+  // "Added by" byline; null on system-created tasks (portal reschedule
+  // requests, the no-show cron) and rows a lighter select left it off.
+  created_by?: string | null;
   created_at: string;
 };
 
