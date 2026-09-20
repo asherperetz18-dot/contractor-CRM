@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { saveCallScript } from "@/lib/actions/settings";
 
 export function CallScriptForm({ initialScript }: { initialScript: string }) {
@@ -26,14 +25,6 @@ export function CallScriptForm({ initialScript }: { initialScript: string }) {
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Call Scripts</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Call Scripts</h1>

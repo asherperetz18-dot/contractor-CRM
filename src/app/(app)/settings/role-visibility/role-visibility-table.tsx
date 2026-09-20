@@ -2,7 +2,6 @@
 
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   PAGE_REGISTRY,
   VISIBILITY_MANAGED_ROLES,
@@ -120,14 +119,6 @@ export function RoleVisibilityTable({ overrides }: { overrides: RolePageVisibili
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Role Visibility</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Role Visibility</h1>

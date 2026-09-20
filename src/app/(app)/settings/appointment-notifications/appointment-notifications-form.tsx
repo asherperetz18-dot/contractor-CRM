@@ -165,14 +165,6 @@ export function AppointmentNotificationsForm({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Appointment Notifications</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Appointment Notifications</h1>

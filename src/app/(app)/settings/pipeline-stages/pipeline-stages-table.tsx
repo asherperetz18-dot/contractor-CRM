@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import type { PipelineStageRow } from "@/lib/data/types";
@@ -159,14 +158,6 @@ export function PipelineStagesTable({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Pipeline Stages</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Pipeline Stages</h1>

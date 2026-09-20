@@ -54,3 +54,15 @@ shows. Any new or touched people dropdown gets this without being asked:
   everywhere.
 - Name lookups (`repById`, `repName`) keep reading the **whole** roster
   — narrowing those turns historical assignees into "Unnamed".
+
+# Settings pages — standing rule (always, automatic)
+
+Every page under `/settings/` shows the "⚙ Settings › Page" crumb back
+to the Settings grid. It is rendered once by
+`src/app/(app)/settings/layout.tsx` (`SettingsBreadcrumb`), never by
+the page — never hand-write a `ur-breadcrumb` block in a settings page
+again, or it shows twice. The page's name in the crumb is the title of
+its tile in `src/lib/data/settings-catalog.ts`, so a new settings page
+needs a tile there carrying its `href`; `src/lib/settings-crumb.test.ts`
+fails when a page has none. Before finishing any settings work, check
+every page under `/settings/` still has its way back.
