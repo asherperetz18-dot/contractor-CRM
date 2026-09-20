@@ -81,6 +81,14 @@ export function reportOnlyCsp(nonce: string): string {
     // staged-rollout rationale and the checklist to clear before this
     // policy goes enforcing.
     `connect-src 'self'${supabase ? ` ${supabase.https} ${supabase.wss}` : ""} https://*.twilio.com wss://*.twilio.com`,
+    // The file-preview lightbox (src/components/ui/file-preview.tsx)
+    // frames bucket PDFs (the browser's own viewer) and Drive files
+    // (drive.google.com/file/d/<id>/preview -- the only embeddable
+    // form), and plays bucket videos in a <video> tag. Without these,
+    // frame-src and media-src fall back to default-src 'self' and
+    // every preview would be a violation once this policy enforces.
+    `frame-src 'self'${supabase ? ` ${supabase.https}` : ""} https://drive.google.com`,
+    `media-src 'self' blob:${supabase ? ` ${supabase.https}` : ""}`,
     `object-src 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,

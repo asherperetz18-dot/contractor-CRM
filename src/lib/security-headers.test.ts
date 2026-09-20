@@ -74,6 +74,27 @@ test("img-src allows Google Drive thumbnails and the Street View static image, p
   assert.match(imgSrc!, /https:\/\/maps\.googleapis\.com/);
 });
 
+test("frame-src and media-src cover the file-preview lightbox: framed bucket PDFs, Drive's embeddable viewer, playable bucket videos", () => {
+  // Without explicit directives both fall back to default-src 'self',
+  // and every full-screen preview would be a violation the day this
+  // policy enforces.
+  const prior = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://abcxyz123.supabase.co";
+  try {
+    const csp = reportOnlyCsp(NONCE);
+    const frameSrc = csp.split(";").find((d) => d.trim().startsWith("frame-src"));
+    assert.ok(frameSrc, "frame-src directive is present");
+    assert.match(frameSrc!, /https:\/\/abcxyz123\.supabase\.co/);
+    assert.match(frameSrc!, /https:\/\/drive\.google\.com/);
+    const mediaSrc = csp.split(";").find((d) => d.trim().startsWith("media-src"));
+    assert.ok(mediaSrc, "media-src directive is present");
+    assert.match(mediaSrc!, /https:\/\/abcxyz123\.supabase\.co/);
+  } finally {
+    if (prior === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = prior;
+  }
+});
+
 test("locks down the directives that never need a runtime allowlist", () => {
   const csp = reportOnlyCsp(NONCE);
   assert.match(csp, /object-src 'none'/);

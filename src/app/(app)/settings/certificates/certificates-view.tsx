@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useFileDrop } from "@/components/uploads/file-drop";
+import { FilePreview } from "@/components/ui/file-preview";
 import {
   deleteCompanyDocument,
   getCompanyDocuments,
@@ -175,9 +176,11 @@ export function CertificatesView() {
               return (
                 <tr key={d.id} className={gone ? "rv-cell-dirty" : ""}>
                   <td>
-                    <a href={d.file_url} target="_blank" rel="noopener noreferrer">
+                    <FilePreview
+                      file={{ url: d.file_url, name: d.file_name, contentType: d.content_type }}
+                    >
                       {d.title}
-                    </a>
+                    </FilePreview>
                     <div className="est-tax-note">
                       {d.file_name} {fileSize(d.file_size)}
                     </div>

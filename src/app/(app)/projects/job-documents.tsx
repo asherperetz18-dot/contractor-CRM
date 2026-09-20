@@ -3,20 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJobDocuments, fileDocumentUnderJob } from "@/lib/actions/estimate-files";
 import { Modal } from "@/components/ui/modal";
-import { PeekLink } from "@/components/ui/receipt-peek";
-import { leadPhotoThumbUrl, type LeadPhoto } from "@/lib/data/types";
-
-/**
- * What a hover can show for this file. Drive renders a thumbnail for
- * images AND the first page of a PDF; a bucket image is its own
- * preview; a bucket PDF has no thumbnail anywhere and gets the
- * "click to open" card.
- */
-function docPeekSrc(d: LeadPhoto): string | null {
-  if (d.storage_provider === "google_drive" && d.file_path) return leadPhotoThumbUrl(d);
-  if (d.content_type?.startsWith("image/")) return d.file_url;
-  return null;
-}
+import { FilePreview } from "@/components/ui/file-preview";
+import { driveFileId } from "@/lib/files/preview";
+import { type LeadPhoto } from "@/lib/data/types";
 
 /**
  * ONE job's paperwork: permits, plans, the signed contract scan --
@@ -74,9 +63,16 @@ export function JobDocuments({
 
   const row = (d: LeadPhoto, action: "file" | "unfile") => (
     <li key={d.id}>
-      <PeekLink url={d.file_url} src={docPeekSrc(d)}>
+      <FilePreview
+        file={{
+          url: d.file_url,
+          name: d.file_name,
+          contentType: d.content_type,
+          driveId: driveFileId(d),
+        }}
+      >
         📄 {d.file_name}
-      </PeekLink>{" "}
+      </FilePreview>{" "}
       <span className="est-tax-note">
         {new Date(d.created_at).toLocaleDateString(undefined, {
           month: "short",

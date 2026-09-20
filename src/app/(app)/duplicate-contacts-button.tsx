@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { FilePreview } from "@/components/ui/file-preview";
 import {
   dismissDuplicatePair,
   findDuplicateLeads,
@@ -72,9 +73,9 @@ function SidePreview({ label, side }: { label: string; side: MergePreviewSide | 
               <div className="dup-preview-group-label">Files ({side.files.length})</div>
               {side.files.map((f) => (
                 <div key={f.id} className="dup-preview-item">
-                  <a href={f.file_url} target="_blank" rel="noreferrer">
+                  <FilePreview file={{ url: f.file_url, name: f.file_name }}>
                     {f.file_name}
-                  </a>{" "}
+                  </FilePreview>{" "}
                   <span className="ur-add-phone">({fmtDate(f.created_at)})</span>
                 </div>
               ))}

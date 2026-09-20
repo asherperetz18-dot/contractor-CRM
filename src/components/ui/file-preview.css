@@ -1,0 +1,115 @@
+/* The full-screen file preview (see FilePreview). Lives here rather
+   than in globals.css, same as receipt-thumb.css; Next bundles it the
+   same way. The hover peek reuses .receipt-peek from globals.css. */
+
+/* Grid tiles (job photos, estimate attachments, visit media) size
+   their thumbnails with width: 100%, which needs a block chain from
+   the cell down to the <img> — the default inline-block wrapper would
+   shrink-wrap small photos instead. */
+/* Chained with .receipt-peek-wrap (inline-block in globals.css) so the
+   override never depends on which stylesheet the bundler emits first. */
+.receipt-peek-wrap.file-preview-block {
+  display: block;
+}
+.receipt-peek-wrap.file-preview-block > a {
+  display: block;
+}
+
+/* The peek bubble renders inside photo grids whose own img rules
+   (.jp-grid img sits later in globals.css than .receipt-peek img)
+   would otherwise stretch the peek to tile size. Two classes outrank
+   one, wherever the rules land in the bundle. */
+.receipt-peek-wrap .receipt-peek img {
+  width: 240px;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+  border: 0;
+  border-radius: 6px;
+  background: #f6f5f2;
+}
+
+.file-lightbox {
+  position: fixed;
+  inset: 0;
+  /* Above modals (50) and the hover peek (80): a preview opened from
+     inside the job-photos modal must cover it. */
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 32, 0.88);
+  animation: text-toast-in 0.15s ease-out;
+}
+
+.file-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(15, 23, 32, 0.6);
+}
+
+.file-lightbox-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.file-lightbox-bar .btn-ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+  flex: 0 0 auto;
+}
+
+.file-lightbox-bar .icon-btn {
+  color: #fff;
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.file-lightbox-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.file-lightbox-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.file-lightbox-body iframe {
+  width: min(1100px, 100%);
+  height: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.file-lightbox-body video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 6px;
+  background: #000;
+}
+
+.file-lightbox-fallback {
+  background: var(--paper, #fff);
+  border-radius: 10px;
+  padding: 24px 28px;
+  text-align: center;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
