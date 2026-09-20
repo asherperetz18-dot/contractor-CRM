@@ -2,23 +2,21 @@
 
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
-import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { HBarRows } from "@/components/charts/hbar-rows";
+import { Sparkline } from "@/components/charts/sparkline";
+import { WeekColumns } from "@/components/charts/week-columns";
+import { describeWindow, resolveWindow } from "@/lib/data/date-range";
 import {
   getAnalyticsLeads,
-  getAnalyticsRollup,
+  getMarketingAnalytics,
+  getWonWithoutContract,
   type AnalyticsLead,
+  type MarketingAnalytics,
 } from "@/lib/actions/marketing-analytics";
-import type { AnalyticsRollup } from "@/lib/data/analytics-rollup";
-import {
-  leadDisplayName,
-  money,
-  stageColor,
-  type Lead,
-  type PipelineStageRow,
-  type Profile,
-} from "@/lib/data/types";
+import { sourceCost } from "@/lib/data/marketing-spend";
+import type { RepRow, SourceRow } from "@/lib/data/marketing-rollup";
+import { leadDisplayName, money, stageColor, type PipelineStageRow } from "@/lib/data/types";
 
 const PRESETS = [
   { key: "7", label: "Last 7 Days" },
@@ -26,511 +24,756 @@ const PRESETS = [
   { key: "90", label: "Last 90 Days" },
   { key: "all", label: "All Time" },
 ];
+const PRESET_LABELS: Record<string, string> = Object.fromEntries(
+  PRESETS.map((p) => [p.key, p.label])
+);
+const CLOSED = new Set(["Won", "Lost", "DNC"]);
 
-// Stable empty list: All Time never holds a windowed slice, and a fresh
-// [] per render would churn every memo below.
-const EMPTY_LEADS: AnalyticsLead[] = [];
+/**
+ * Change against the previous period, colored by direction (every
+ * headline here is up-is-good). All Time has no previous period, so no
+ * delta; a brand-new number says so instead of an infinite percent.
+ */
+function Delta({ cur, prev }: { cur: number; prev: number | null }) {
+  if (prev === null) return null;
+  if (prev <= 0) return <span className="dash-delta muted">{cur > 0 ? "new" : "—"}</span>;
+  const pct = Math.round(((cur - prev) / prev) * 100);
+  if (pct === 0) return <span className="dash-delta muted">±0%</span>;
+  return (
+    <span className={"dash-delta " + (pct > 0 ? "up" : "down")} title="vs. the previous period">
+      {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}%
+    </span>
+  );
+}
 
-export type SignedContract = {
-  lead_id: string;
-  status: string;
-  kind: string | null;
-  total_cents: number;
-};
+/** A share with the precision it needs: 27%, 6.5%, 0.16%. */
+function share(n: number, d: number): string {
+  if (!d) return "0%";
+  const v = (n / d) * 100;
+  if (v >= 10) return `${Math.round(v)}%`;
+  if (v >= 1) return `${v.toFixed(1)}%`;
+  return `${v.toFixed(2)}%`;
+}
+
+const fmtInt = (n: number) => n.toLocaleString("en-US");
+/** Whole dollars from cents -- the app's money() rounding, as the dashboard shows it. */
+const cents = (v: number) => money(v / 100);
+
+/** A plain YYYY-MM-DD is read as a local day; a timestamp as itself. */
+function shortDate(value: string | null): string {
+  if (!value) return "—";
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));
+}
+
+function contactName(c: {
+  contact_type: string | null;
+  company_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+}): string {
+  const person = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  if (c.contact_type === "Company" && c.company_name) return c.company_name;
+  return person || c.company_name || "Unnamed";
+}
 
 export function AnalyticsView({
-  initialLeads,
-  reps,
+  initial,
+  repNames,
   stages,
-  signedContracts,
+  canManageSpend,
 }: {
-  /** The default window's slice, rendered with the page. Other ranges
-   *  are fetched on demand -- the whole 79k book stays server-side. */
-  initialLeads: AnalyticsLead[];
-  reps: Profile[];
+  /** The default window's numbers, rendered with the page. */
+  initial: MarketingAnalytics;
+  repNames: Record<string, string>;
   stages: PipelineStageRow[];
-  signedContracts: SignedContract[];
+  /** Office/Admin: may enter spend, so the empty cost tile links there. */
+  canManageSpend: boolean;
 }) {
   const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
-  const [expandedRep, setExpandedRep] = useState<string | null>(null);
+  const [excludeBought, setExcludeBought] = useState(false);
   // Fixed at mount. A "now" read during render moves the window under the
   // user between re-renders, so the same list can come back different.
   const [now] = useState(() => new Date());
   const win = useMemo(() => resolveWindow(range, now), [range, now]);
-  // All Time is served as aggregates (marketing_funnel_rollup, 0157)
-  // rather than as every lead in the book; only the windowed ranges
-  // fetch their slice of rows.
   const allTime = !win.from && !win.to;
 
-  // The leads the current window can use. The server rendered the
-  // default window's slice; picking any other range fetches that slice
-  // (created-or-won in it, prefiltered loose, still filtered exactly by
-  // withinWindow below). Stale answers are discarded by request id,
-  // same idiom as the topbar search.
-  const [leads, setLeads] = useState<AnalyticsLead[]>(initialLeads);
-  const [rollup, setRollup] = useState<AnalyticsRollup | null>(null);
-  const [repLeadsCache, setRepLeadsCache] = useState<Record<string, AnalyticsLead[]>>({});
+  // The server rendered the default window; any other range or toggle
+  // asks again. Stale answers are discarded by request id, the topbar
+  // search's idiom. Drill-downs belong to the window they were opened
+  // on, so they reset with it.
+  const [data, setData] = useState<MarketingAnalytics>(initial);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedRep, setExpandedRep] = useState<string | null>(null);
+  const [repLeads, setRepLeads] = useState<Record<string, AnalyticsLead[]>>({});
+  const [wonOpen, setWonOpen] = useState(false);
+  const [wonList, setWonList] = useState<AnalyticsLead[] | null>(null);
   const requestIdRef = useRef(0);
-  const firstWinRef = useRef(true);
+  const firstRef = useRef(true);
   useEffect(() => {
-    if (firstWinRef.current) {
-      firstWinRef.current = false;
+    if (firstRef.current) {
+      firstRef.current = false;
       return;
     }
     const requestId = ++requestIdRef.current;
     setRefreshing(true);
-    const finish = () => {
-      if (requestIdRef.current === requestId) setRefreshing(false);
-    };
-    if (!win.from && !win.to) {
-      getAnalyticsRollup()
-        .then((r) => {
-          if (requestIdRef.current !== requestId) return;
-          setRollup(r);
-          setRefreshing(false);
-        })
-        .catch(finish);
-    } else {
-      getAnalyticsLeads(win)
-        .then((rows) => {
-          if (requestIdRef.current !== requestId) return;
-          setLeads(rows);
-          setRefreshing(false);
-        })
-        .catch(finish);
-    }
-  }, [win]);
+    setRepLeads({});
+    setExpandedRep(null);
+    setWonList(null);
+    setWonOpen(false);
+    getMarketingAnalytics(win, { excludeBoughtLists: excludeBought })
+      .then((next) => {
+        if (requestIdRef.current !== requestId) return;
+        setData(next);
+        setRefreshing(false);
+      })
+      .catch(() => {
+        if (requestIdRef.current === requestId) setRefreshing(false);
+      });
+  }, [win, excludeBought]);
 
-  // All Time drill-down: a rep's own leads arrive when their row is
-  // opened, never with the page.
+  // A rep's leads arrive when their row is opened, never with the page.
   useEffect(() => {
-    if (!allTime || !expandedRep || repLeadsCache[expandedRep]) return;
+    if (!expandedRep || repLeads[expandedRep]) return;
     let dead = false;
     const repId = expandedRep;
-    getAnalyticsLeads({ from: null, to: null }, repId)
+    getAnalyticsLeads(win, repId)
       .then((rows) => {
-        if (!dead) setRepLeadsCache((m) => ({ ...m, [repId]: rows }));
+        if (!dead) setRepLeads((m) => ({ ...m, [repId]: rows }));
       })
       .catch(() => {});
     return () => {
       dead = true;
     };
-  }, [allTime, expandedRep, repLeadsCache]);
+  }, [expandedRep, repLeads, win]);
+
+  useEffect(() => {
+    if (!wonOpen || wonList) return;
+    let dead = false;
+    getWonWithoutContract(win, { excludeBoughtLists: excludeBought })
+      .then((rows) => {
+        if (!dead) setWonList(rows);
+      })
+      .catch(() => {});
+    return () => {
+      dead = true;
+    };
+  }, [wonOpen, wonList, win, excludeBought]);
+
+  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const sourcesRef = useRef<HTMLElement | null>(null);
+  const scrollToSources = () =>
+    sourcesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const R = data.rollup;
+  const T = R.totals;
+  const P = R.prev;
+  const excluded = useMemo(
+    () => new Set(excludeBought ? data.boughtListSources : []),
+    [excludeBought, data.boughtListSources]
+  );
 
   // The per-rep report opens on whatever period is being looked at here.
-  // Without the custom dates it would silently fall back to its own
-  // default, and the two pages would disagree about the same rep.
   const rangeQuery =
-    range.from || range.to
-      ? `from=${range.from}&to=${range.to}`
-      : `days=${range.preset}`;
+    range.from || range.to ? `from=${range.from}&to=${range.to}` : `days=${range.preset}`;
+  const periodLabel = describeWindow(range, PRESET_LABELS);
+  const repName = (id: string | null) => (id ? repNames[id] || "Unnamed" : "Unassigned");
 
-  function repName(id: string | null) {
-    if (!id) return "Unassigned";
-    return reps.find((r) => r.id === id)?.name || "Unassigned";
-  }
+  // Sources: the ones that did something this period on top; the tail
+  // that produced neither an appointment, an estimate nor a sale folds
+  // under one line, so the source that sells is never row nine.
+  const alive = (s: SourceRow) => s.signed > 0 || s.withAppt > 0 || s.estimated > 0;
+  const liveSources = R.bySource.filter(alive);
+  const quietSources = R.bySource.filter((s) => !alive(s));
+  const quietLeads = quietSources.reduce((s, x) => s + x.count, 0);
+  const maxLeads = Math.max(1, ...R.bySource.map((s) => s.count));
 
-  // In All Time mode the row math runs on nothing -- the aggregates
-  // below are the data -- so a stale windowed slice can never flash up
-  // labeled as all-time numbers while the rollup loads.
-  const windowLeads = allTime ? EMPTY_LEADS : leads;
-  const createdInRange = useMemo(
-    () => windowLeads.filter((l) => withinWindow(l.created_at, win)),
-    [windowLeads, win]
-  );
-  const wonInRange = useMemo(
-    () => windowLeads.filter((l) => l.stage === "Won" && withinWindow(l.won_at, win)),
-    [windowLeads, win]
-  );
+  // Team: reps who only hold leads fold the same way.
+  const active = (r: RepRow) => r.appts > 0 || r.estimates > 0 || r.signed > 0;
+  const liveReps = R.byRep.filter(active);
+  const quietReps = R.byRep.filter((r) => !active(r));
 
-  const wonValue = wonInRange.reduce((s, l) => s + (Number(l.value) || 0), 0);
+  // Stages in pipeline order; the closed ones summarized underneath.
+  const stageOrder = new Map(stages.map((s, i) => [s.name, i]));
+  const openStages = R.byStage
+    .filter((s) => !CLOSED.has(s.stage))
+    .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99));
+  const maxStage = Math.max(1, ...openStages.map((s) => s.count));
+  const closedCount = (name: string) => R.byStage.find((s) => s.stage === name)?.count ?? 0;
 
-  /**
-   * What each source costs and what it sells.
-   *
-   * This is where cost per lead earns its place: it is a fact about the
-   * source, not about a salesperson, and the decision it informs -- keep
-   * buying from here, or stop -- is made by comparing spend against the
-   * contracts it produced. On a rep report the same number would read
-   * $375 on every one of them and say nothing about anybody.
-   *
-   * Sold counts leads with a signed contract rather than a "Won" stage,
-   * so a source is credited with revenue somebody actually committed to.
-   */
-  const bySource = useMemo(() => {
-    const signedByLead = new Map<string, number>();
-    for (const c of signedContracts) {
-      if ((c.kind ?? "contract") !== "contract") continue;
-      signedByLead.set(c.lead_id, (signedByLead.get(c.lead_id) ?? 0) + (c.total_cents || 0));
-    }
+  const spendTracked = data.spendTotalCents > 0;
+  const costPerSale = spendTracked && T.signed > 0 ? Math.round(data.spendTotalCents / T.signed) : null;
+  const winRate = T.leads ? (T.signed / T.leads) * 100 : 0;
+  const prevLabel =
+    P && data.boundaries.prevFrom && data.boundaries.prevTo
+      ? `${shortDate(data.boundaries.prevFrom)} – ${shortDate(data.boundaries.prevTo)}`
+      : null;
 
-    const map = new Map<
-      string,
-      { count: number; withAppt: number; spend: number; costKnown: number; sold: number; revenue: number }
-    >();
-    for (const l of createdInRange) {
-      const key = l.source || "Unknown";
-      const entry =
-        map.get(key) ?? { count: 0, withAppt: 0, spend: 0, costKnown: 0, sold: 0, revenue: 0 };
-      entry.count += 1;
-      if (l.has_appt) entry.withAppt += 1;
-      const cost = Number(l.lead_cost) || 0;
-      if (cost > 0) {
-        entry.spend += cost;
-        entry.costKnown += 1;
-      }
-      const signed = signedByLead.get(l.id) ?? 0;
-      if (signed > 0) {
-        entry.sold += 1;
-        entry.revenue += signed;
-      }
-      map.set(key, entry);
-    }
-    return Array.from(map.entries())
-      .map(([source, v]) => ({
-        source,
-        ...v,
-        // Averaged over the leads that carry a cost, never over all of
-        // them: dividing recorded spend by every lead would read a few
-        // dollars and look like a cheap source rather than an unfilled
-        // field.
-        costPerLead: v.costKnown > 0 ? v.spend / v.costKnown : null,
-        costPerSale: v.spend > 0 && v.sold > 0 ? v.spend / v.sold : null,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [createdInRange, signedContracts]);
-
-  const repStats = useMemo(() => {
-    return reps
-      .map((rep) => {
-        const assigned = createdInRange.filter((l) => l.assigned_to === rep.id);
-        const won = assigned.filter((l) => l.stage === "Won");
-        const wonVal = won.reduce((s, l) => s + (Number(l.value) || 0), 0);
-        return { rep, count: assigned.length, wonCount: won.length, wonVal, assigned };
-      })
-      .filter((r) => r.count > 0)
-      .sort((a, b) => b.wonVal - a.wonVal);
-  }, [reps, createdInRange]);
-
-  const recentWon = useMemo(
-    () =>
-      [...wonInRange]
-        .sort((a, b) => (b.won_at ?? "").localeCompare(a.won_at ?? ""))
-        .slice(0, 8),
-    [wonInRange]
-  );
-
-  const byStage = useMemo(() => {
-    return stages
-      .map((s) => s.name)
-      .filter((s) => !["Won", "Lost", "DNC"].includes(s))
-      .map((stage) => {
-        const items = createdInRange.filter((l) => l.stage === stage);
-        return {
-          stage,
-          count: items.length,
-          value: items.reduce((s, l) => s + (Number(l.value) || 0), 0),
-        };
-      })
-      .filter((s) => s.count > 0);
-  }, [createdInRange, stages]);
-
-  // Served-aggregate twins of the client-side figures above: All Time
-  // renders from these, the windowed ranges keep the client math over
-  // their slice. One bucket contract for both, pinned by
-  // analytics-rollup.test.ts.
-  const served = allTime ? rollup : null;
-  const totals = served
-    ? served.totals
-    : {
-        created: createdInRange.length,
-        createdValue: createdInRange.reduce((s, l) => s + (Number(l.value) || 0), 0),
-        won: wonInRange.length,
-        wonValue,
-      };
-  const sourceRows = useMemo(
-    () =>
-      served
-        ? served.bySource.map((v) => ({
-            ...v,
-            costPerLead: v.costKnown > 0 ? v.spend / v.costKnown : null,
-            costPerSale: v.spend > 0 && v.sold > 0 ? v.spend / v.sold : null,
-          }))
-        : bySource,
-    [served, bySource]
-  );
-  const repRows = useMemo(() => {
-    if (!served) return repStats;
-    const byId = new Map(served.byRep.map((r) => [r.assigned_to, r]));
-    return reps
-      .map((rep) => {
-        const row = byId.get(rep.id);
-        return {
-          rep,
-          count: row?.count ?? 0,
-          wonCount: row?.wonCount ?? 0,
-          wonVal: row?.wonValue ?? 0,
-          // Null until the row is expanded and its fetch lands.
-          assigned: (repLeadsCache[rep.id] ?? null) as AnalyticsLead[] | null,
-        };
-      })
-      .filter((r) => r.count > 0)
-      .sort((a, b) => b.wonVal - a.wonVal);
-  }, [served, repStats, reps, repLeadsCache]);
-  // The rollup's slim rows carry field-for-field what AnalyticsLead
-  // spells; the cast only bridges the two modules' type names.
-  const recentWonRows = served ? (served.recentWon as unknown as AnalyticsLead[]) : recentWon;
-  const stageRows = useMemo(() => {
-    if (!served) return byStage;
-    const m = new Map(served.byStage.map((x) => [x.stage, x]));
-    return stages
-      .map((s) => s.name)
-      .filter((s) => !["Won", "Lost", "DNC"].includes(s))
-      .map((stage) => ({
-        stage,
-        count: m.get(stage)?.count ?? 0,
-        value: m.get(stage)?.value ?? 0,
-      }))
-      .filter((s) => s.count > 0);
-  }, [served, byStage, stages]);
-
-  function daysToClose(l: Pick<Lead, "won_at" | "created_at">) {
-    if (!l.won_at) return null;
-    return Math.max(
-      0,
-      Math.round((new Date(l.won_at).getTime() - new Date(l.created_at).getTime()) / 86400000)
+  function renderSource(s: SourceRow, quiet: boolean) {
+    const spendCents = data.spendBySource[s.source] ?? 0;
+    const cost = sourceCost({
+      spendCents,
+      leads: s.count,
+      signed: s.signed,
+      leadCostDollars: s.spend,
+      costKnown: s.costKnown,
+      atDefault: s.atDefault,
+    });
+    let costNote: string | null = null;
+    if (cost.basis === "spend") costNote = `from ${cents(spendCents)} spend`;
+    else if (cost.basis === "lead_cost")
+      costNote =
+        s.atDefault > 0
+          ? `${s.costKnown - s.atDefault} of ${s.count} priced by hand`
+          : s.costKnown < s.count
+            ? `${s.costKnown} of ${s.count} priced`
+            : "priced by hand";
+    return (
+      <tr key={s.source} className={quiet ? "mkt-quiet" : undefined}>
+        <td className={quiet ? undefined : "mkt-source"}>{s.source}</td>
+        <td className="right mono">
+          {fmtInt(s.count)}
+          <span
+            className="mkt-lead-bar"
+            style={{ width: `${Math.max(1, (s.count / maxLeads) * 100)}%` }}
+            aria-hidden="true"
+          />
+        </td>
+        <td className="right mono">
+          {s.withAppt}
+          <span className="mkt-pct">{share(s.withAppt, s.count)}</span>
+        </td>
+        <td className="right mono">{s.estimated}</td>
+        <td className="right mono">{s.signed > 0 ? <b>{s.signed}</b> : s.signed}</td>
+        <td className="right mono">{s.signedCents > 0 ? <b>{cents(s.signedCents)}</b> : "—"}</td>
+        <td className="right mono">
+          {cost.costPerSaleCents === null ? (
+            "—"
+          ) : (
+            <>
+              {cents(cost.costPerSaleCents)}
+              {cost.basis === "default" && <span className="mkt-pct">on default cost</span>}
+            </>
+          )}
+        </td>
+        <td className="right mono">
+          {cost.basis === "none" || cost.costPerLeadCents === null ? (
+            <span className="mkt-cost-default">no cost set</span>
+          ) : cost.basis === "default" ? (
+            <span className="mkt-cost-default">{cents(cost.costPerLeadCents)} default</span>
+          ) : (
+            <>
+              {cents(cost.costPerLeadCents)}
+              {costNote && <span className="mkt-pct">{costNote}</span>}
+            </>
+          )}
+        </td>
+      </tr>
     );
   }
+
+  function renderRep(r: RepRow) {
+    const open = expandedRep === r.rep;
+    const rows = repLeads[r.rep];
+    const shown = rows ? rows.filter((l) => !excluded.has(l.source || "Unknown")) : null;
+    const decided = r.attended + r.noShow;
+    return (
+      <Fragment key={r.rep}>
+        <tr
+          className={"value-breakdown-row" + (open ? " is-open" : "")}
+          onClick={() => setExpandedRep(open ? null : r.rep)}
+          title={open ? "Hide these leads" : `Show ${repName(r.rep)}'s ${r.leads} leads`}
+        >
+          <td>
+            <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span> {repName(r.rep)}
+          </td>
+          <td className="right mono">{r.leads}</td>
+          <td className="right mono">{r.appts}</td>
+          <td className="right mono">
+            {r.attended}
+            {decided > 0 ? (
+              <span className="mkt-pct">{share(r.attended, decided)} show</span>
+            ) : r.noOutcome > 0 ? (
+              <span className="mkt-pct">
+                {r.noOutcome} no result
+              </span>
+            ) : null}
+          </td>
+          <td className="right mono">{r.estimates}</td>
+          <td className="right mono">{r.signed > 0 ? <b>{r.signed}</b> : r.signed}</td>
+          <td className="right mono">{r.signed > 0 ? <b>{cents(r.signedCents)}</b> : "—"}</td>
+          <td className="right mono">
+            {r.signed > 0 ? cents(Math.round(r.signedCents / r.signed)) : "—"}
+          </td>
+          <td className="right">
+            {/* Carries the period already chosen above. stopPropagation
+                because the row itself is the expand toggle. */}
+            <Link
+              href={`/marketing-analytics/rep-report?rep=${r.rep}&${rangeQuery}`}
+              className="rep-report-link"
+              onClick={(e) => e.stopPropagation()}
+              title="Open the printable funnel report for this rep"
+            >
+              Report →
+            </Link>
+          </td>
+        </tr>
+        {open && (
+          <tr className="value-breakdown-detail">
+            <td colSpan={9}>
+              {!shown ? (
+                <p className="empty-hint">Loading…</p>
+              ) : shown.length === 0 ? (
+                <p className="empty-hint">No leads created in this range.</p>
+              ) : (
+                <div className="value-lead-list">
+                  {[...shown]
+                    .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
+                    .map((l) => (
+                      <a
+                        key={l.id}
+                        className="value-lead-row"
+                        href={`/contacts?openLead=${l.id}&from=/marketing-analytics`}
+                        title="Open this contact"
+                      >
+                        <span className="value-lead-name">{leadDisplayName(l)}</span>
+                        <span className="value-lead-meta">
+                          {l.phone || "no phone"} · {l.stage}
+                          {l.source ? ` · ${l.source}` : ""}
+                        </span>
+                        <span className="mono value-lead-value">{money(l.value)}</span>
+                      </a>
+                    ))}
+                </div>
+              )}
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  }
+
+  const costEmptyNote = (
+    <>
+      Spend isn&apos;t tracked yet
+      {T.atDefault > 0 && data.defaultCost
+        ? `. ${fmtInt(T.atDefault)} of ${fmtInt(T.leads)} leads carry the ${money(data.defaultCost)} default`
+        : ""}
+      .
+    </>
+  );
 
   return (
     <div>
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Marketing Analytics</h1>
-          <p className="module-sub">Lead sources, rep performance, and won deals</p>
+          <p className="module-sub">Where leads come from, what they cost, and what they turned into</p>
         </div>
       </div>
 
-      <div className="chip-row">
+      <div className="dash-filter-row">
         <DateRangeFilter presets={PRESETS} value={range} onChange={setRange} />
+        {data.boughtListSources.length > 0 && (
+          <button
+            type="button"
+            className={"chip" + (excludeBought ? " chip-active" : "")}
+            aria-pressed={excludeBought}
+            onClick={() => setExcludeBought((v) => !v)}
+            title={`Bought lists: ${data.boughtListSources.join(", ")}`}
+          >
+            Exclude bought lists
+          </button>
+        )}
+        <span className="mkt-period-note">
+          {periodLabel}
+          {prevLabel ? ` · compared with ${prevLabel}` : ""}
+        </span>
         {refreshing && <span className="empty-hint">Updating…</span>}
       </div>
 
-      <div className="stat-grid">
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{totals.won}</div>
-          <div className="stat-label">Won Deals</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{money(totals.wonValue)}</div>
-          <div className="stat-label">Won Value</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{totals.created}</div>
-          <div className="stat-label">Leads Created</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{money(totals.createdValue)}</div>
-          <div className="stat-label">Pipeline Created</div>
-        </div>
+      <div className="stat-grid stat-grid-5 mkt-kpis">
+        <button type="button" className="stat-card" onClick={scrollToSources} title="See these leads by source">
+          <div className="stat-value">{fmtInt(T.leads)}</div>
+          <div className="stat-label">Leads created</div>
+          <div className="dash-kpi-foot">
+            <Delta cur={T.leads} prev={P ? P.leads : null} />
+            <span className="mkt-kpi-note">{money(T.leadValue)} estimated pipeline</span>
+          </div>
+        </button>
+        <Link href="/schedule" className="stat-card" title="Open the schedule">
+          <div className="stat-value">{fmtInt(T.withAppt)}</div>
+          <div className="stat-label">Appointments booked</div>
+          <div className="dash-kpi-foot">
+            <Delta cur={T.withAppt} prev={P ? P.withAppt : null} />
+            <span className="mkt-kpi-note">{share(T.withAppt, T.leads)} of leads</span>
+          </div>
+        </Link>
+        <Link href="/estimates" className="stat-card" title="Open Estimates & Contracts">
+          <div className="stat-value">
+            {cents(T.signedCents)}
+            <small>· {T.signed}</small>
+          </div>
+          <div className="stat-label">Signed contracts</div>
+          <div className="dash-kpi-foot">
+            <Delta cur={T.signedCents} prev={P ? P.signedCents : null} />
+            <Sparkline values={R.weeks.map((w) => w.signedCents)} />
+          </div>
+        </Link>
+        {spendTracked ? (
+          <button type="button" className="stat-card" onClick={scrollToSources} title="See cost by source">
+            <div className="stat-value">{costPerSale === null ? "—" : cents(costPerSale)}</div>
+            <div className="stat-label">Cost per signed job</div>
+            <div className="dash-kpi-foot">
+              <span className="mkt-kpi-note">
+                {cents(data.spendTotalCents)} spend{allTime ? "" : " this period"}
+                {costPerSale === null ? " · no signed contract yet" : ""}
+              </span>
+            </div>
+          </button>
+        ) : canManageSpend ? (
+          <Link href="/settings/lead-sources" className="stat-card" title="Enter spend by source">
+            <div className="stat-value mkt-empty-value">—</div>
+            <div className="stat-label">Cost per signed job</div>
+            <div className="dash-kpi-foot">
+              <span className="mkt-kpi-note">
+                {costEmptyNote} <u>Enter spend by source</u>
+              </span>
+            </div>
+          </Link>
+        ) : (
+          <div className="stat-card stat-static">
+            <div className="stat-value mkt-empty-value">—</div>
+            <div className="stat-label">Cost per signed job</div>
+            <div className="dash-kpi-foot">
+              <span className="mkt-kpi-note">{costEmptyNote} The office enters spend by source.</span>
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          className="stat-card"
+          onClick={() => (T.wonNoContract > 0 ? setWonOpen((v) => !v) : scrollToSources())}
+          title={
+            T.wonNoContract > 0
+              ? "Show the Won leads that have no signed contract"
+              : "See the sources behind this rate"
+          }
+        >
+          <div className="stat-value">
+            {winRate >= 10 ? winRate.toFixed(0) : winRate >= 1 ? winRate.toFixed(1) : winRate.toFixed(2)}%
+          </div>
+          <div className="stat-label">Win rate</div>
+          <div className="dash-kpi-foot">
+            <span className="dash-delta muted">
+              {fmtInt(T.signed)} signed of {fmtInt(T.leads)}
+            </span>
+            {T.wonNoContract > 0 && (
+              <span className="mkt-flag">{fmtInt(T.wonNoContract)} at Won, no contract</span>
+            )}
+          </div>
+        </button>
       </div>
 
-      <div className="dash-lower">
-        <div className="dash-panel">
-          <h3>Leads by Source</h3>
-          {sourceRows.length === 0 ? (
+      {wonOpen && (
+        <section className="dash-panel mkt-won-panel" aria-labelledby="mkt-won">
+          <div className="dash-panel-head">
+            <h3 id="mkt-won">At Won with no signed contract</h3>
+            <span className="dash-panel-sub">
+              {periodLabel.toLowerCase()} · a stage set by hand, or a contract never entered
+            </span>
+            <button type="button" className="btn-ghost small mkt-head-btn" onClick={() => setWonOpen(false)}>
+              Close
+            </button>
+          </div>
+          {!wonList ? (
+            <p className="empty-hint">Loading…</p>
+          ) : wonList.length === 0 ? (
+            <p className="empty-hint">Every Won lead in this period has a signed contract.</p>
+          ) : (
+            <div className="value-lead-list">
+              {wonList.map((l) => (
+                <a
+                  key={l.id}
+                  className="value-lead-row"
+                  href={`/contacts?openLead=${l.id}&from=/marketing-analytics`}
+                  title="Open this contact"
+                >
+                  <span className="value-lead-name">{leadDisplayName(l)}</span>
+                  <span className="value-lead-meta">
+                    {repName(l.assigned_to)}
+                    {l.source ? ` · ${l.source}` : ""}
+                    {l.won_at ? ` · won ${shortDate(l.won_at)}` : ""}
+                  </span>
+                  <span className="mono value-lead-value">{money(l.value)}</span>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="mkt-grid">
+        <section className="dash-panel" ref={sourcesRef} aria-labelledby="mkt-sources">
+          <div className="dash-panel-head">
+            <h3 id="mkt-sources">Sources</h3>
+            <span className="dash-panel-sub">
+              ranked by signed dollars, then appointments · revenue is signed contracts, change orders
+              excluded
+            </span>
+          </div>
+          {R.bySource.length === 0 ? (
             <p className="empty-hint">No leads in this range.</p>
           ) : (
-            <table className="data-table">
+            <div className="mkt-table-scroll">
+              <table className="data-table mkt-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th className="right">Leads</th>
+                    <th className="right">Appts</th>
+                    <th className="right">Estimates</th>
+                    <th className="right">Signed</th>
+                    <th className="right">Signed $</th>
+                    <th className="right">Cost / sale</th>
+                    <th className="right">Cost / lead</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveSources.map((s) => renderSource(s, false))}
+                  {quietSources.length > 0 && (
+                    <tr className="mkt-fold">
+                      <td colSpan={8}>
+                        <button
+                          type="button"
+                          className="mkt-fold-btn"
+                          onClick={() => setSourcesOpen((v) => !v)}
+                          aria-expanded={sourcesOpen}
+                        >
+                          <span className="mkt-caret">{sourcesOpen ? "▾" : "▸"}</span>{" "}
+                          {liveSources.length === 0 ? "" : `${quietSources.length} more `}
+                          {liveSources.length === 0 ? `${quietSources.length} ` : ""}
+                          source{quietSources.length === 1 ? "" : "s"} with no appointment, estimate or
+                          sale · {fmtInt(quietLeads)} lead{quietLeads === 1 ? "" : "s"}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {sourcesOpen && quietSources.map((s) => renderSource(s, true))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="dash-note">
+            Lead bars are scaled to the biggest source, so the sources that sell read as small as they
+            are. A dashed cost is the company default nobody overrode.
+            {data.boughtListSources.length === 0 && canManageSpend && (
+              <>
+                {" "}
+                Flag bought lists in <Link href="/settings/lead-sources">Settings › Lead sources</Link> to
+                compare inbound alone.
+              </>
+            )}
+          </p>
+        </section>
+
+        <section className="dash-panel" aria-labelledby="mkt-weeks">
+          <div className="dash-panel-head">
+            <h3 id="mkt-weeks">Week by week</h3>
+            <span className="dash-panel-sub">
+              last 12 weeks, Mondays{excludeBought ? " · bought lists excluded" : ""}
+            </span>
+          </div>
+          <div className="mkt-chart-block">
+            <div className="mkt-chart-title">
+              <b>Leads created</b> <span>per week</span>
+            </div>
+            <WeekColumns
+              points={R.weeks.map((w) => ({ week: w.week, value: w.leads }))}
+              color="var(--dash-chart-blue)"
+              lightColor="var(--dash-ramp-1)"
+              unit="leads"
+              label="Leads created per week, last 12 weeks"
+            />
+          </div>
+          <div className="mkt-chart-block">
+            <div className="mkt-chart-title">
+              <b>Contracts signed</b> <span>per week, by signed date</span>
+            </div>
+            <WeekColumns
+              points={R.weeks.map((w) => ({
+                week: w.week,
+                value: w.signed,
+                detail: w.signedCents > 0 ? cents(w.signedCents) : undefined,
+              }))}
+              color="var(--dash-chart-green)"
+              lightColor="#9cc7ae"
+              unit="signed"
+              label="Contracts signed per week, last 12 weeks"
+            />
+          </div>
+          <p className="dash-note">
+            The last column is the week in progress. Hover or tab to a column for its number.
+          </p>
+        </section>
+      </div>
+
+      <div className="mkt-grid">
+        <section className="dash-panel" aria-labelledby="mkt-team">
+          <div className="dash-panel-head">
+            <h3 id="mkt-team">Sales team</h3>
+            <span className="dash-panel-sub">
+              this period&apos;s leads by assigned rep · appointments and contracts dated in it, credited
+              as on the rep report
+            </span>
+          </div>
+          {R.byRep.length === 0 ? (
+            <p className="empty-hint">No assigned leads, appointments or contracts in this range.</p>
+          ) : (
+            <div className="mkt-table-scroll">
+              <table className="data-table mkt-table mkt-team">
+                <thead>
+                  <tr>
+                    <th>Rep</th>
+                    <th className="right">Leads</th>
+                    <th className="right">Appts</th>
+                    <th className="right">Showed</th>
+                    <th className="right">Estimates</th>
+                    <th className="right">Signed</th>
+                    <th className="right">Signed $</th>
+                    <th className="right">Avg job</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveReps.map(renderRep)}
+                  {quietReps.length > 0 && (
+                    <tr className="mkt-fold">
+                      <td colSpan={9}>
+                        <button
+                          type="button"
+                          className="mkt-fold-btn"
+                          onClick={() => setTeamOpen((v) => !v)}
+                          aria-expanded={teamOpen}
+                        >
+                          <span className="mkt-caret">{teamOpen ? "▾" : "▸"}</span>{" "}
+                          {liveReps.length === 0 ? "" : `${quietReps.length} more `}
+                          {liveReps.length === 0 ? `${quietReps.length} ` : ""}
+                          rep{quietReps.length === 1 ? "" : "s"} with leads but no appointment, estimate or
+                          contract
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {teamOpen && quietReps.map(renderRep)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="dash-panel" aria-labelledby="mkt-stages">
+          <div className="dash-panel-head">
+            <h3 id="mkt-stages">Where this period&apos;s leads sit now</h3>
+          </div>
+          {openStages.length === 0 ? (
+            <p className="empty-hint">Nothing open from this range.</p>
+          ) : (
+            <HBarRows
+              rows={openStages.map((s) => ({
+                key: s.stage,
+                label: (
+                  <>
+                    <span className="dash-stage-dot" style={{ background: stageColor(stages, s.stage) }} />
+                    {s.stage}
+                  </>
+                ),
+                frac: s.count / maxStage,
+                color: "var(--dash-chart-blue)",
+                right: (
+                  <>
+                    {fmtInt(s.count)} <small>· {share(s.count, T.leads)}</small>
+                  </>
+                ),
+              }))}
+            />
+          )}
+          <p className="dash-note">
+            Closed: <b>{fmtInt(closedCount("Won"))} Won</b> ({money(T.wonStageValue)} lead value) ·{" "}
+            {fmtInt(closedCount("Lost"))} Lost · {fmtInt(closedCount("DNC"))} DNC.
+            {T.wonNoContract > 0 && (
+              <>
+                {" "}
+                {fmtInt(T.wonNoContract)} of the Won leads have no signed contract —{" "}
+                <button type="button" className="mkt-link-btn" onClick={() => setWonOpen(true)}>
+                  open those
+                </button>
+                .
+              </>
+            )}
+          </p>
+          <p className="dash-note">
+            <Link href="/pipeline">Open the pipeline board →</Link>
+          </p>
+        </section>
+      </div>
+
+      <section className="dash-panel" aria-labelledby="mkt-signed">
+        <div className="dash-panel-head">
+          <h3 id="mkt-signed">Latest signed contracts</h3>
+          <span className="dash-panel-sub">
+            this period&apos;s leads, newest first · days to close counts from the lead&apos;s creation
+          </span>
+          <span className="dash-legend">
+            <Link href="/estimates">All signed documents →</Link>
+          </span>
+        </div>
+        {R.recentSigned.length === 0 ? (
+          <div className="empty-state">
+            <p className="empty-label">No signed contracts from this period&apos;s leads</p>
+          </div>
+        ) : (
+          <div className="mkt-table-scroll">
+            <table className="data-table mkt-table">
               <thead>
                 <tr>
+                  <th>Contact</th>
                   <th>Source</th>
-                  <th className="right">Leads</th>
-                  <th className="right">With Appt</th>
-                  <th className="right">Cost / lead</th>
-                  <th className="right">Sold</th>
-                  <th className="right">Cost / sale</th>
+                  <th>Rep</th>
+                  <th className="right">Signed</th>
+                  <th className="right">Contract</th>
+                  <th className="right">Days to close</th>
                 </tr>
               </thead>
               <tbody>
-                {sourceRows.map((s) => (
-                  <tr key={s.source}>
-                    <td>{s.source}</td>
-                    <td className="right mono">{s.count}</td>
-                    <td className="right mono">
-                      {s.count ? Math.round((s.withAppt / s.count) * 100) : 0}%
+                {R.recentSigned.map((c) => (
+                  <tr key={c.estimateId}>
+                    <td>
+                      <a
+                        className="mkt-contact-link"
+                        href={`/contacts?openLead=${c.leadId}&from=/marketing-analytics`}
+                        title="Open this contact"
+                      >
+                        {contactName(c)}
+                      </a>
                     </td>
-                    <td className="right mono">
-                      {s.costPerLead === null ? (
-                        <span className="ur-add-phone">no cost set</span>
-                      ) : (
-                        <>
-                          {money(s.costPerLead)}
-                          {/* Says how much of the source the average
-                              actually covers. Without it, one priced lead
-                              out of two hundred reads as the price of the
-                              whole source. */}
-                          {s.costKnown < s.count && (
-                            <div className="ur-add-phone">
-                              {s.costKnown} of {s.count} priced
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </td>
-                    <td className="right mono">
-                      {s.sold}
-                      {s.revenue > 0 && (
-                        <div className="ur-add-phone">{money(s.revenue / 100)}</div>
-                      )}
-                    </td>
-                    <td className="right mono">
-                      {s.costPerSale === null ? "—" : money(s.costPerSale)}
-                    </td>
+                    <td className="mkt-muted">{c.source}</td>
+                    <td>{repName(c.rep)}</td>
+                    <td className="right mono">{shortDate(c.signedAt)}</td>
+                    <td className="right mono">{cents(c.totalCents)}</td>
+                    <td className="right mono">{daysBetween(c.createdAt, c.signedAt)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
-
-        <div className="dash-panel">
-          <h3>Sales Rep Performance</h3>
-          {repStats.length === 0 ? (
-            <p className="empty-hint">No assigned leads in this range.</p>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Rep</th>
-                  <th className="right">Leads</th>
-                  <th className="right">Won</th>
-                  <th className="right">Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {repRows.map(({ rep, count, wonCount, wonVal, assigned }) => {
-                  const open = expandedRep === rep.id;
-                  return (
-                    <Fragment key={rep.id}>
-                      <tr
-                        className={"value-breakdown-row" + (open ? " is-open" : "")}
-                        onClick={() => setExpandedRep(open ? null : rep.id)}
-                        title={open ? "Hide these leads" : `Show ${rep.name || rep.email}s ${count} leads`}
-                      >
-                        <td>
-                          <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
-                          {rep.name || rep.email}
-                          {/* Carries the period already chosen above, so
-                              the report opens on the same window being
-                              looked at rather than its own default.
-                              stopPropagation because the row itself is
-                              the expand toggle. */}
-                          <Link
-                            href={`/marketing-analytics/rep-report?rep=${rep.id}&${rangeQuery}`}
-                            className="rep-report-link"
-                            onClick={(e) => e.stopPropagation()}
-                            title="Open the printable funnel report for this rep"
-                          >
-                            Report →
-                          </Link>
-                        </td>
-                        <td className="right mono">{count}</td>
-                        <td className="right mono">{wonCount}</td>
-                        <td className="right mono">{money(wonVal)}</td>
-                      </tr>
-                      {open && (
-                        <tr className="value-breakdown-detail">
-                          <td colSpan={4}>
-                            {!assigned ? (
-                              <p className="empty-hint">Loading…</p>
-                            ) : (
-                            <div className="value-lead-list">
-                              {[...assigned]
-                                .sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))
-                                .map((l) => (
-                                  <a
-                                    key={l.id}
-                                    className="value-lead-row"
-                                    href={`/contacts?openLead=${l.id}&from=/marketing-analytics`}
-                                    title="Open this contact"
-                                  >
-                                    <span className="value-lead-name">{leadDisplayName(l)}</span>
-                                    <span className="value-lead-meta">
-                                      {l.phone || "no phone"} · {l.stage}
-                                      {l.source ? ` · ${l.source}` : ""}
-                                    </span>
-                                    <span className="mono value-lead-value">{money(l.value)}</span>
-                                  </a>
-                                ))}
-                            </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="settings-section">
-        <div className="settings-section-head">
-          <span className="settings-section-title">RECENT WON DEALS</span>
-        </div>
-        {recentWonRows.length === 0 ? (
-          <div className="empty-state">
-            <p className="empty-label">No won deals in this range</p>
-          </div>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Contact</th>
-                <th>Rep</th>
-                <th className="right">Value</th>
-                <th className="right">Days to Close</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentWonRows.map((l) => (
-                <tr key={l.id}>
-                  <td>{leadDisplayName(l)}</td>
-                  <td>{repName(l.assigned_to)}</td>
-                  <td className="right mono">{money(l.value)}</td>
-                  <td className="right mono">{daysToClose(l) ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      <div className="settings-section">
-        <div className="settings-section-head">
-          <span className="settings-section-title">PIPELINE BY STAGE</span>
-          <span className="settings-section-hint">Leads created in this range</span>
-        </div>
-        {stageRows.length === 0 ? (
-          <p className="empty-hint">No leads in this range.</p>
-        ) : (
-          <div className="chip-row">
-            {stageRows.map((s) => (
-              <div key={s.stage} className="stat-card stat-static" style={{ minWidth: 140 }}>
-                <Badge color={stageColor(stages, s.stage)}>{s.stage}</Badge>
-                <div className="stat-value mono" style={{ fontSize: 18, marginTop: 6 }}>
-                  {s.count}
-                </div>
-                <div className="stat-label">{money(s.value)}</div>
-              </div>
-            ))}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
