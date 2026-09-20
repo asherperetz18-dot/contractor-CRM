@@ -2,6 +2,7 @@
 
 What exists, split by domain since the full inventory is too large for one file. Each linked file is a table: feature, status (`shipped` / `partial` / `planned`), a grounded description, and where it lives in the code.
 
+- [Dashboard](features/dashboard.md) — the date-filtered overview page: headline numbers, graphs, needs-attention strip, drag-arrangeable boxes.
 - [Sales Pipeline & Leads](features/sales-pipeline-leads.md) — the pipeline board, dialer, CSV import, refunds, contacts.
 - [Estimates, Contracts & Projects](features/estimates-contracts-projects.md) — estimate builder, e-signature, payment schedules, change orders, completion certificates, the project/production board.
 - [Billing, Payments & Commissions](features/billing-payments-commissions.md) — bills to pay, collections, P&L, dispatcher and sales-rep commissions, Stripe.

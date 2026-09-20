@@ -487,7 +487,27 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** An urgent caller can reach a person when one is reachable, and still ends as a filed lead when one isn't; the owner tunes rings-before-AI from either page and both stay in sync because there is only one number. The trades: DialCallStatus "completed" is trusted as "a human handled it" — a transfer answered then instantly hung up still ends the AI session (the transcript note shows the attempt, and the caller can ring back); and the transfer number is dialed as given, with no is-it-really-a-human validation beyond E.164 normalization.
 
-## 045 — The receptionist's live turns run on the fast model; the paperwork keeps the big one
+## 045 — The dashboard is one reduced call, and its clock arrives as parameters
+
+**Date:** 2026-09-20
+
+**Context:** The old dashboard paged every open lead through the server on every load (~72k rows) just to sum one headline figure, and showed no trends, no money, no team — while Dashboard 2.0 needs a dozen aggregates (KPIs with deltas, a 12-month series, funnel, stages, sources, receivables aging, team, calls, production) over a user-picked date window. Computing "today", the window, the comparison window and the touch cutoffs in two places (SQL and TypeScript) is how two halves of one feature drift apart.
+
+**Decision:** One `dashboard_rollup` function (0162, `security invoker` so RLS scopes it exactly like the page's own fetches), returning everything as jsonb — with **every clock-dependent edge passed in as a parameter**: `rollupBoundaries` computes today, from/to, the previous window, the 30/60/90-day cutoffs, the month floor and the 14-day call strip start once in TypeScript, and both the SQL and its pure, tested mirror (`buildDashboardRollup`, the 0156/0157 posture — also the fallback until the migration is pasted) consume the same dates. Deltas compare month-to-date against the same span of last month, and any other window against the equal span right before it (`prevWindow`, pinned in tests). The funnel is the window's cohort — of leads created in it, who got an appointment, saw a contract, signed — and a sale everywhere means a signed true contract, the Marketing Analytics rule. The receivables buckets run the Payments page's own phase math (`phaseState`/`phaseOwedCents` imported, not re-implemented). Panel arrangement rides `profiles.dashboard_panel_order`, the #010 pattern exactly.
+
+**Consequence:** Once 0162 runs, the dashboard costs one aggregate call instead of a book scan, and every graph agrees with the page it links to because the rules were imported rather than approximated. Until then the fallback computes identical numbers the slow way (TECH_DEBT). The SQL can never disagree with its mirror about what day it is, because neither owns a clock.
+
+## 046 — Dashboard pipeline-by-stage counts leads worked recently, with the cutoff a visible choice
+
+**Date:** 2026-09-20
+
+**Context:** The old headline pair — "72,412 open leads / $4.4M pipeline" — counted every lead ever imported that wasn't Won or Lost. At a 79k-contact book that number never moves and means nothing, yet it read as the state of the business.
+
+**Decision:** The stage panel buckets open-stage leads by `updated_at` (maintained by the leads trigger, so any edit or stage move counts as "worked") under a dropdown the owner asked for: worked in the last 30 / 60 / 90 days (default 90) or all open. All four buckets come back in the same rollup, so switching is instant with no refetch. The old open-leads/pipeline-value headline cards are gone in favor of this panel plus the window-scoped KPI row.
+
+**Consequence:** The pipeline figure can finally be believed — and the old reading is still one dropdown away under "All open leads". The trade: `updated_at` is a proxy (a bulk edit "works" a lead; a call logged without touching the row doesn't), accepted for being trigger-maintained and index-cheap rather than inventing a new activity column.
+
+## 047 — The receptionist's live turns run on the fast model; the paperwork keeps the big one
 
 **Date:** 2026-09-20
 

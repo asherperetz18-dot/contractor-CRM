@@ -1,20 +1,13 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { leadDisplayName, money as moneyFmt, type RolePageVisibilityRow } from "@/lib/data/types";
-import type { Event, Lead } from "@/lib/data/types";
+import { getCompanyMembers } from "@/lib/data/company";
+import { canViewFinancials } from "@/lib/data/accounting-access";
+import { presetWindow } from "@/lib/data/date-range";
+import { getDashboardRollup } from "@/lib/actions/dashboard";
+import type { Event, Lead, PipelineStageRow, RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile } from "@/lib/nav";
 import { MobileDashboard, type MobileModule } from "./mobile-dashboard";
-import { UpcomingAppointments } from "./upcoming-appointments";
-
-function money(n: number) {
-  return (Number(n) || 0).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
+import { DashboardView } from "./dashboard-view";
 
 function toISODate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -37,13 +30,17 @@ export default async function DashboardPage() {
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const last48hISO = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
+  // The desktop dashboard is served by one reduced call (dashboard_
+  // rollup, 0162, with a tested fallback) -- the old page summed its
+  // headline by paging every open lead through the server on each
+  // load. The remaining queries feed the two list panels and the
+  // phone dashboard, which keeps its own shape.
   const [
-    openLeads,
-    jobsInProgress,
-    upcomingEvents,
-    pipelineValue,
+    rollup,
     recentLeads,
     nextEvents,
+    stagesRes,
+    members,
     openTasks,
     overdueTasks,
     callLogs48h,
@@ -51,31 +48,7 @@ export default async function DashboardPage() {
     eventsThisMonth,
     visibilityRows,
   ] = await Promise.all([
-    supabase
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("company_id", companyId)
-      .not("stage", "in", "(Won,Lost)"),
-    supabase
-      .from("jobs")
-      .select("id", { count: "exact", head: true })
-      .eq("company_id", companyId)
-      .eq("status", "In Progress"),
-    supabase
-      .from("events")
-      .select("id", { count: "exact", head: true })
-      .eq("company_id", companyId)
-      .gte("date", todayISO),
-    // Paginated: this sums every open lead's value, and the 1000-row cap
-    // would silently understate the headline pipeline figure.
-    selectAll<{ value: number | null }>((f, t) =>
-      supabase
-        .from("leads")
-        .select("value")
-        .eq("company_id", companyId)
-        .not("stage", "in", "(Won,Lost)")
-        .range(f, t)
-    ),
+    getDashboardRollup(presetWindow("month")),
     supabase
       .from("leads")
       .select("*")
@@ -90,6 +63,12 @@ export default async function DashboardPage() {
       .order("date", { ascending: true })
       .order("time", { ascending: true })
       .limit(5),
+    supabase
+      .from("pipeline_stages")
+      .select("*")
+      .eq("company_id", companyId)
+      .order("sort_order", { ascending: true }),
+    profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase
       .from("lead_tasks")
       .select("id", { count: "exact", head: true })
@@ -123,11 +102,6 @@ export default async function DashboardPage() {
       .select("id, role, page_key, visible")
       .eq("company_id", companyId),
   ]);
-
-  const totalPipelineValue = pipelineValue.reduce(
-    (sum: number, row: Record<string, unknown>) => sum + (Number(row.value) || 0),
-    0
-  );
 
   const callRows = (callLogs48h.data ?? []) as { duration_seconds: number; disposition: string }[];
   const callActivity = {
@@ -170,6 +144,12 @@ export default async function DashboardPage() {
     }
   }
 
+  // Name lookups read the whole roster on purpose -- narrowing them
+  // turns historical assignees into "Unnamed".
+  const repNames = Object.fromEntries(
+    members.map((m) => [m.id, m.name || m.email || "Unnamed"])
+  ) as Record<string, string>;
+
   return (
     <>
       <div className="module-toolbar">
@@ -179,54 +159,15 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      <div className="dash-desktop">
-        <div className="stat-grid">
-          <div className="stat-card stat-static">
-            <div className="stat-value">{money(totalPipelineValue)}</div>
-            <div className="stat-label">Open pipeline value</div>
-          </div>
-          <div className="stat-card stat-static">
-            <div className="stat-value">{openLeads.count ?? 0}</div>
-            <div className="stat-label">Open leads</div>
-          </div>
-          <div className="stat-card stat-static">
-            <div className="stat-value">{jobsInProgress.count ?? 0}</div>
-            <div className="stat-label">Jobs in progress</div>
-          </div>
-          <div className="stat-card stat-static">
-            <div className="stat-value">{upcomingEvents.count ?? 0}</div>
-            <div className="stat-label">Upcoming appointments</div>
-          </div>
-        </div>
-
-        <div className="dash-lower">
-          <div className="dash-panel">
-            <h3>Recent leads</h3>
-            {(recentLeads.data as Lead[] | null)?.length ? (
-              <ul className="dash-list">
-                {(recentLeads.data as Lead[]).map((l) => (
-                  <li key={l.id}>
-                    <span style={{ flex: 1 }}>{leadDisplayName(l)}</span>
-                    <span className="mono">{moneyFmt(l.value)}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="empty-hint">Nothing here yet.</p>
-            )}
-            <Link href="/pipeline" className="btn-ghost small" style={{ display: "inline-block" }}>
-              View Pipeline
-            </Link>
-          </div>
-          <div className="dash-panel">
-            <h3>Upcoming appointments</h3>
-            <UpcomingAppointments events={(nextEvents.data as Event[] | null) ?? []} />
-            <Link href="/schedule" className="btn-ghost small" style={{ display: "inline-block" }}>
-              View Schedule
-            </Link>
-          </div>
-        </div>
-      </div>
+      <DashboardView
+        initialRollup={rollup}
+        savedPanelOrder={profile?.dashboard_panel_order ?? null}
+        canMoney={canViewFinancials(profile)}
+        stages={(stagesRes.data as PipelineStageRow[]) ?? []}
+        repNames={repNames}
+        recentLeads={(recentLeads.data as Lead[] | null) ?? []}
+        nextEvents={(nextEvents.data as Event[] | null) ?? []}
+      />
 
       <MobileDashboard
         openTasksCount={openTasks.count ?? 0}

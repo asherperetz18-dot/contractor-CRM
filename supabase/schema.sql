@@ -58,6 +58,9 @@ create table profiles (
   -- 0145: the person's dragged order of the Estimates funnel cards.
   -- Null = never arranged. A preference, not a role -- see DECISIONS #010.
   estimate_funnel_order text[],
+  -- 0162: the person's dragged order of the dashboard's boxes.
+  -- Same pattern as estimate_funnel_order.
+  dashboard_panel_order text[],
   created_at timestamptz not null default now()
 );
 

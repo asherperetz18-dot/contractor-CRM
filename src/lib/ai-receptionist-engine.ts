@@ -53,7 +53,7 @@ type SessionRow = {
   status: string;
 };
 
-// Two models on purpose (decision #045). The caller is holding a live
+// Two models on purpose (decision #047). The caller is holding a live
 // phone through every turn, so turns run on the fast model — it takes
 // no effort/thinking params, which is also why the turn request sends
 // none. Extraction runs after the hangup, where nobody is waiting, so
