@@ -94,7 +94,7 @@ export default async function SchedulePage() {
     selectAll<LeadTask>((f, t) =>
       supabase
         .from("lead_tasks")
-        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_at")
+        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_by, created_at")
         .eq("company_id", companyId)
         .range(f, t)
     ),
@@ -122,6 +122,7 @@ export default async function SchedulePage() {
       events={events}
       jobs={jobs}
       reps={reps}
+      allMembers={allReps}
       leads={[...withoutJoin(leads), ...behindAppointments.leads]}
       stages={(stages as PipelineStageRow[]) ?? []}
       leadTasks={leadTasks}

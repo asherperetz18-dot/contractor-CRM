@@ -92,6 +92,7 @@ export function CalendarBoard({
   events,
   jobs,
   reps,
+  allMembers,
   filterReps,
   leads,
   leadTasks,
@@ -111,6 +112,9 @@ export function CalendarBoard({
   jobs: Job[];
   /** Every active member: name lookups and the assignee picker. */
   reps: Profile[];
+  /** The whole roster, deactivated included -- the tasks panel's name
+   *  lookups only. */
+  allMembers?: Profile[];
   /** Just the salespeople, for the rep filter. */
   filterReps: Profile[];
   leads: Lead[];
@@ -782,6 +786,7 @@ export function CalendarBoard({
           event={editing}
           jobs={jobs}
           reps={reps}
+          allMembers={allMembers}
           leads={leads}
           leadTasks={leadTasks}
           leadNotes={leadNotes}

@@ -140,6 +140,7 @@ export function EventForm({
   initialDate,
   jobs,
   reps,
+  allMembers,
   leads,
   leadTasks,
   leadNotes,
@@ -161,6 +162,8 @@ export function EventForm({
   initialDate?: string;
   jobs: Job[];
   reps: Profile[];
+  /** Whole roster, deactivated included -- name lookups only. */
+  allMembers?: Profile[];
   leads?: Lead[];
   leadTasks?: LeadTask[];
   leadNotes?: LeadNote[];
@@ -1105,6 +1108,7 @@ export function EventForm({
           leadId={lead.id}
           tasks={linkedTasks}
           reps={reps}
+          members={allMembers}
           readOnly={readOnly}
           onChanged={() => router.refresh()}
         />

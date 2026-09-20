@@ -173,6 +173,7 @@ export default async function CalendarPage() {
       events={events}
       jobs={jobs}
       reps={reps}
+      allMembers={allReps}
       filterReps={filterReps}
       canDeleteEvents={canDeleteAppointments(profile)}
       canAddNotes={canWriteLeadNotes(profile)}

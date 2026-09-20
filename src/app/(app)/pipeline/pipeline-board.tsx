@@ -1083,6 +1083,7 @@ export function PipelineBoard({
       {showNew && canCreateLeads && (
         <LeadForm
           reps={reps}
+          allMembers={allMembers}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}
@@ -1101,6 +1102,7 @@ export function PipelineBoard({
         <LeadForm
           lead={editing.lead}
           reps={reps}
+          allMembers={allMembers}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}

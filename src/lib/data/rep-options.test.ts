@@ -136,3 +136,11 @@ test("repBylineName stays silent for system-created rows and ids off the roster"
   assert.equal(repBylineName("", roster), null);
   assert.equal(repBylineName("gone-from-roster", roster), null);
 });
+
+// The panel hands this the WHOLE roster, not the Active-only list its
+// dropdown uses -- so a task entered by somebody who has since left
+// keeps their name instead of reading as system-created.
+test("repBylineName names a deactivated member when given the whole roster", () => {
+  const roster = [member("a", "Asher"), member("g", "Gone Rep", ["Sales"], "Archived")];
+  assert.equal(repBylineName("g", roster), "Gone Rep");
+});

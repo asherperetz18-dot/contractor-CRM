@@ -34,12 +34,19 @@ export function TasksPanel({
   leadId,
   tasks,
   reps,
+  members,
   readOnly,
   onChanged,
 }: {
   leadId: string;
   tasks: LeadTask[];
   reps: Profile[];
+  // The whole roster, deactivated members included. Name lookups (the
+  // assignee suffix, the "Added by" byline) read this, never `reps` --
+  // the Active-only list would strip the name off a task entered or
+  // held by somebody who has since left. Falls back to `reps` only for
+  // a host that has nothing wider to give.
+  members?: Profile[];
   readOnly?: boolean;
   onChanged: () => void;
 }) {
@@ -51,9 +58,11 @@ export function TasksPanel({
   const open = tasks.filter((t) => !t.completed_at);
   const done = tasks.filter((t) => t.completed_at);
 
+  const roster = members ?? reps;
+
   function repName(id: string | null) {
     if (!id) return null;
-    return reps.find((r) => r.id === id)?.name || null;
+    return roster.find((r) => r.id === id)?.name || null;
   }
 
   async function handleAdd() {
@@ -108,7 +117,7 @@ export function TasksPanel({
       {open.length > 0 && (
         <ul className="dash-list">
           {open.map((t) => {
-            const addedBy = repBylineName(t.created_by, reps);
+            const addedBy = repBylineName(t.created_by, roster);
             return (
             <li key={t.id}>
               {!readOnly && (
