@@ -499,6 +499,21 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   { key: "bills", label: "Bills to Pay", href: "/bills", group: "Accounting" },
   { key: "collect", label: "Money to Collect", href: "/collect", group: "Accounting" },
   { key: "payments", label: "Payments", href: "/payments", group: "Accounting" },
+  // Commission is money the company owes out, so both screens sit here
+  // with the rest of the money rather than as loose links at the bottom
+  // of the menu -- above Profit & Loss, which stays last as the net.
+  // They remain two separate screens: the dispatcher earns a percentage
+  // of the gross sale for bringing the lead in; the rep earns a share of
+  // what the job actually made. One page showing both invites them to
+  // be read as a single figure. Keys unchanged, so saved Role Visibility
+  // overrides and the routes are untouched.
+  { key: "commissions", label: "Dispatch Commission", href: "/commissions", group: "Accounting" },
+  {
+    key: "sales-commission",
+    label: "Sales Commission",
+    href: "/sales-commission",
+    group: "Accounting",
+  },
   { key: "profit-loss", label: "Profit & Loss", href: "/profit-loss", group: "Accounting" },
   // Key stays "documents" so existing role_page_visibility overrides keep
   // pointing at it; only the label and route move. Named "Contracts"
@@ -512,17 +527,6 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     key: "estimate-status",
     label: "Estimate Status",
     href: "/estimate-status",
-    group: "General",
-  },
-  // Two separate schemes, two separate screens. The dispatcher earns a
-  // percentage of the gross sale for bringing the lead in; the rep earns
-  // a share of what the job actually made. One page showing both invites
-  // them to be read as a single figure.
-  { key: "commissions", label: "Dispatch Commission", href: "/commissions", group: "General" },
-  {
-    key: "sales-commission",
-    label: "Sales Commission",
-    href: "/sales-commission",
     group: "General",
   },
   { key: "calendar", label: "Calendar", href: "/calendar", group: "General" },
