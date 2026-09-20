@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
@@ -9,8 +9,54 @@ import {
   SETTINGS_SECTIONS,
   type SettingsCardDef,
 } from "@/lib/data/settings-catalog";
+import { pushRecent, recentId, resolveRecents } from "@/lib/settings-recents";
 import { removeLogo, uploadLogo } from "@/lib/actions/settings";
 import { useFileDrop } from "@/components/uploads/file-drop";
+
+// Per browser, not per account — same store shape as popup-prefs. The
+// list logic is in settings-recents.ts where it is tested; this is only
+// the storage, and losing it (private mode) just means an empty row.
+const RECENTS_KEY = "crm:settings-recents";
+
+function loadRecents(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? "[]");
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    // private mode etc. — the row just starts empty.
+  }
+  return [];
+}
+
+// One cached snapshot, per popup-prefs: useSyncExternalStore needs the
+// same reference back while nothing changed, or it re-renders forever.
+let recentsSnapshot: string[] | null = null;
+const recentsListeners = new Set<() => void>();
+
+function currentRecents(): string[] {
+  if (!recentsSnapshot) recentsSnapshot = loadRecents();
+  return recentsSnapshot;
+}
+
+function writeRecents(next: string[]) {
+  recentsSnapshot = next;
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    // forgotten on reload; still shows for this visit.
+  }
+  for (const notify of recentsListeners) notify();
+}
+
+function subscribeRecents(onChange: () => void) {
+  recentsListeners.add(onChange);
+  return () => {
+    recentsListeners.delete(onChange);
+  };
+}
+
+const NO_RECENTS: string[] = [];
+const getServerRecents = () => NO_RECENTS;
 
 export function SettingsGrid({
   logoUrl,
@@ -30,6 +76,22 @@ export function SettingsGrid({
   const [pending, setPending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Empty on the server render, this browser's history after hydration
+  // — localStorage is local, so the first paint can't know it.
+  const recents = useSyncExternalStore(subscribeRecents, currentRecents, getServerRecents);
+
+  function remember(card: SettingsCardDef) {
+    const id = recentId(card);
+    if (id === null) return;
+    writeRecents(pushRecent(currentRecents(), id));
+  }
+
+  function clearRecents() {
+    writeRecents(NO_RECENTS);
+  }
+
+  const recentCards = resolveRecents(recents, SETTINGS_SECTIONS, isAdmin);
+
   const q = query.trim().toLowerCase();
   const filteredSections = SETTINGS_SECTIONS.map((sec) => ({
     ...sec,
@@ -41,6 +103,7 @@ export function SettingsGrid({
   })).filter((sec) => sec.cards.length > 0);
 
   function openCard(card: SettingsCardDef) {
+    remember(card); // no-ops for a SOON card — nothing there to return to
     if (card.key === "logo") {
       setLogoPreview(logo);
       setLogoFile(null);
@@ -120,12 +183,50 @@ export function SettingsGrid({
         placeholder="Search settings"
       />
 
+      {/* Shortcut row: the last cards opened in this browser, newest
+          first, until cleared. The static category labels only hold the
+          spot while there's no history yet. */}
       <div className="chip-row">
-        {SETTINGS_CATEGORIES.map((c) => (
-          <span key={c} className="chip settings-chip">
-            {c}
-          </span>
-        ))}
+        {recentCards.length === 0 ? (
+          SETTINGS_CATEGORIES.map((c) => (
+            <span key={c} className="chip settings-chip">
+              {c}
+            </span>
+          ))
+        ) : (
+          <>
+            {recentCards.map((c) =>
+              c.href ? (
+                <Link
+                  key={c.title}
+                  href={c.href}
+                  className="chip settings-recent-chip"
+                  onClick={() => remember(c)}
+                >
+                  {c.icon} {c.title}
+                </Link>
+              ) : (
+                <button
+                  key={c.title}
+                  type="button"
+                  className="chip settings-recent-chip"
+                  onClick={() => openCard(c)}
+                >
+                  {c.icon} {c.title}
+                </button>
+              )
+            )}
+            <span className="chip-row-end">
+              <button
+                type="button"
+                className="chip settings-recents-clear"
+                onClick={clearRecents}
+              >
+                Clear
+              </button>
+            </span>
+          </>
+        )}
       </div>
 
       {filteredSections.length === 0 ? (
@@ -150,6 +251,7 @@ export function SettingsGrid({
                     href={c.href}
                     className="settings-card"
                     style={{ textDecoration: "none", color: "inherit" }}
+                    onClick={() => remember(c)}
                   >
                     <span className="settings-card-icon">{c.icon}</span>
                     <div>
