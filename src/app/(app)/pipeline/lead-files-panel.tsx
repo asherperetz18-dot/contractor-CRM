@@ -3,6 +3,8 @@
 import { useCallback } from "react";
 import type { LeadFile, Profile } from "@/lib/data/types";
 import { attachmentIsImage, leadPhotoThumbUrl } from "@/lib/data/types";
+import { FilePreview } from "@/components/ui/file-preview";
+import { driveFileId } from "@/lib/files/preview";
 import { deleteLeadFile } from "@/lib/actions/lead-files";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
@@ -68,7 +70,14 @@ export function LeadFilesPanel({
             <div key={f.id} className="notes-timeline-item">
               <div className="notes-timeline-body lead-file-row">
                 {attachmentIsImage(f.content_type, f.file_name) && (
-                  <a href={f.file_url} target="_blank" rel="noopener noreferrer">
+                  <FilePreview
+                    file={{
+                      url: f.file_url,
+                      name: f.file_name,
+                      contentType: f.content_type,
+                      driveId: driveFileId(f),
+                    }}
+                  >
                     {/* Drive-stored files' file_url is the Drive viewer
                         page (HTML, not pixels) -- leadPhotoThumbUrl
                         returns a real image URL for those. */}
@@ -80,11 +89,18 @@ export function LeadFilesPanel({
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
-                  </a>
+                  </FilePreview>
                 )}
-                <a href={f.file_url} target="_blank" rel="noopener noreferrer">
+                <FilePreview
+                  file={{
+                    url: f.file_url,
+                    name: f.file_name,
+                    contentType: f.content_type,
+                    driveId: driveFileId(f),
+                  }}
+                >
                   📎 {f.file_name}
-                </a>
+                </FilePreview>
               </div>
               <div className="notes-timeline-meta">
                 <span>{uploaderName(f.uploaded_by)}</span>

@@ -8,6 +8,8 @@ import {
   useFileDrop,
   useUploadQueue,
 } from "@/components/uploads/file-drop";
+import { FilePreview } from "@/components/ui/file-preview";
+import { driveFileId } from "@/lib/files/preview";
 import {
   attachEstimatePhoto,
   detachEstimatePhoto,
@@ -242,7 +244,20 @@ export const PhotosPanel = memo(function PhotosPanel({
         <div className="estdoc-photo-grid">
           {photos.map((p) => (
             <div key={p.id} className="estdoc-photo-edit">
-              <Thumb url={leadPhotoThumbUrl(p)} name={p.file_name} type={p.content_type} />
+              {/* Hover peeks the file, click opens the full preview --
+                  a rep deciding what the customer sees shouldn't have
+                  to guess from a tile named "contract (1).pdf". */}
+              <FilePreview
+                block
+                file={{
+                  url: p.file_url,
+                  name: p.file_name,
+                  contentType: p.content_type,
+                  driveId: driveFileId(p),
+                }}
+              >
+                <Thumb url={leadPhotoThumbUrl(p)} name={p.file_name} type={p.content_type} />
+              </FilePreview>
               {locked ? (
                 <>
                   <div className="est-tax-note">{p.caption || "No caption"}</div>

@@ -4,12 +4,16 @@ import { useEffect, useRef } from "react";
 
 let bodyScrollLocks = 0;
 
-function lockBodyScroll() {
+// Exported for the file-preview lightbox, which opens on top of modals
+// (job photos live in one): both must share the one counter, or
+// whichever closes second hands the scroll back while the other is
+// still up.
+export function lockBodyScroll() {
   bodyScrollLocks += 1;
   document.body.style.overflow = "hidden";
 }
 
-function unlockBodyScroll() {
+export function unlockBodyScroll() {
   bodyScrollLocks = Math.max(0, bodyScrollLocks - 1);
   if (bodyScrollLocks === 0) document.body.style.overflow = "";
 }

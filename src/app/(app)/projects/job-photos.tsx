@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getJobPhotos, fileDocumentUnderJob } from "@/lib/actions/estimate-files";
 import { Modal } from "@/components/ui/modal";
+import { FilePreview } from "@/components/ui/file-preview";
+import { driveFileId } from "@/lib/files/preview";
 import { leadPhotoThumbUrl, type LeadPhoto } from "@/lib/data/types";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
@@ -88,11 +90,19 @@ export function JobPhotos({
     <div className="jp-grid">
       {photos.map((p) => (
         <div key={p.id} className="jp-cell">
-          <a href={p.file_url} target="_blank" rel="noopener noreferrer">
+          <FilePreview
+            block
+            file={{
+              url: p.file_url,
+              name: p.file_name,
+              contentType: p.content_type,
+              driveId: driveFileId(p),
+            }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element -- external
                 Drive/storage URLs, sizes unknown at build time */}
             <img src={leadPhotoThumbUrl(p)} alt={p.file_name} loading="lazy" referrerPolicy="no-referrer" />
-          </a>
+          </FilePreview>
           {withFileButton && (
             <button
               type="button"

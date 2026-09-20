@@ -5,6 +5,8 @@ import { deleteLeadFile } from "@/lib/actions/lead-files";
 import { getVisitMedia, type VisitFile } from "@/lib/actions/visit-media";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
+import { FilePreview } from "@/components/ui/file-preview";
+import { driveFileId } from "@/lib/files/preview";
 import { leadPhotoThumbUrl } from "@/lib/data/types";
 
 function sizeLabel(bytes: number | null) {
@@ -152,27 +154,39 @@ export function VisitMedia({
         <div className="visit-media-grid">
           {files.map((f) => (
             <figure key={f.id} className="visit-media-item">
-              <a href={f.file_url ?? "#"} target="_blank" rel="noopener noreferrer">
-                {isImage(f) && f.file_url ? (
-                  /* Drive-stored files' file_url is the Drive VIEWER page
-                     (HTML, not pixels), which renders as a broken icon in
-                     an <img> -- leadPhotoThumbUrl returns a real image
-                     URL for those, and the file itself for bucket files. */
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={leadPhotoThumbUrl({
-                      file_url: f.file_url,
-                      file_path: f.file_path,
-                      storage_provider: f.storage_provider,
-                    })}
-                    alt={f.file_name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="visit-media-file">{isVideo(f) ? "▶" : "📄"}</div>
-                )}
-              </a>
+              {f.file_url ? (
+                <FilePreview
+                  block
+                  file={{
+                    url: f.file_url,
+                    name: f.file_name,
+                    contentType: f.content_type,
+                    driveId: driveFileId(f),
+                  }}
+                >
+                  {isImage(f) ? (
+                    /* Drive-stored files' file_url is the Drive VIEWER page
+                       (HTML, not pixels), which renders as a broken icon in
+                       an <img> -- leadPhotoThumbUrl returns a real image
+                       URL for those, and the file itself for bucket files. */
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={leadPhotoThumbUrl({
+                        file_url: f.file_url,
+                        file_path: f.file_path,
+                        storage_provider: f.storage_provider,
+                      })}
+                      alt={f.file_name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="visit-media-file">{isVideo(f) ? "▶" : "📄"}</div>
+                  )}
+                </FilePreview>
+              ) : (
+                <div className="visit-media-file">{isVideo(f) ? "▶" : "📄"}</div>
+              )}
               <figcaption>
                 <span className="visit-media-name" title={f.file_name}>
                   {f.file_name}
