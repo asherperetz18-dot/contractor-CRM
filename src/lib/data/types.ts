@@ -405,6 +405,7 @@ export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {
 export type PageKey =
   | "dashboard"
   | "pipeline"
+  | "tasks"
   | "reply-inbox"
   | "marketing-analytics"
   | "contacts"
@@ -446,6 +447,11 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     group: "General",
   },
   { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch (Leads Mgmt.)" },
+  // Every open lead task in one place, overdue first -- the page the
+  // dashboard's "Overdue tasks" card opens. The pipeline's Follow-ups
+  // strip keeps its 1,000-newest-leads scope; this page is the complete
+  // list.
+  { key: "tasks", label: "Tasks", href: "/tasks", group: "Dispatch (Leads Mgmt.)" },
   { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
   { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch (Leads Mgmt.)" },
   { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Dispatch (Leads Mgmt.)" },
@@ -541,6 +547,7 @@ export const VISIBILITY_MANAGED_ROLES: AppRole[] = [
 const DISPATCH_DEFAULT_PAGES: PageKey[] = [
   "dashboard",
   "pipeline",
+  "tasks",
   "reply-inbox",
   "contacts",
   "salespeople",

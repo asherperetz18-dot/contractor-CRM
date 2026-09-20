@@ -509,7 +509,7 @@ export function DashboardView({
     {
       key: "tasks",
       show: true,
-      href: "/pipeline",
+      href: "/tasks",
       alarm: R.attention.overdueTasks > 0,
       value: String(R.attention.overdueTasks),
       label: "Overdue tasks",

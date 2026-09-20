@@ -509,6 +509,7 @@ export async function completeLeadTask(taskId: string) {
   if (error) return { error: error.message };
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
+  revalidatePath("/tasks");
   return {};
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   leadDisplayName,
@@ -38,6 +39,7 @@ function DigestSection({
   defaultOpen,
   urgent,
   attention,
+  moreLink,
 }: {
   title: string;
   count: number;
@@ -56,6 +58,8 @@ function DigestSection({
    *  Amber rather than red so the hierarchy between the two stays
    *  legible at a glance. */
   attention?: boolean;
+  /** A door to the section's complete, uncapped view elsewhere. */
+  moreLink?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
 
@@ -153,6 +157,7 @@ function DigestSection({
       {open && count > 25 && (
         <p className="hint-note">Showing {Math.min(25, leads.length)} of {count.toLocaleString()}.</p>
       )}
+      {open && moreLink && <p className="hint-note">{moreLink}</p>}
     </div>
   );
 }
@@ -193,6 +198,9 @@ export function AttentionDigest({
         dispatcherName={dispatcherName}
         onOpenLead={onOpenLead}
         urgent
+        // This strip only examines the newest open leads; the Tasks
+        // page reads the tasks table itself and misses nothing.
+        moreLink={<Link href="/tasks">See every open task, company-wide →</Link>}
       />
       <DigestSection
         title="Cold Leads"
