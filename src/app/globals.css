@@ -1081,6 +1081,27 @@ button.stat-card {
 .settings-chip {
   cursor: default;
 }
+/* The same chip row once it holds shortcuts: these ARE pressable, so
+   they must read as such next to the static labels they replace. */
+.settings-recent-chip {
+  text-decoration: none;
+  font-family: inherit;
+  line-height: inherit;
+}
+.settings-recent-chip:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+.settings-recents-clear {
+  font-family: inherit;
+  border-style: dashed;
+  color: var(--ink-soft);
+  background: none;
+}
+.settings-recents-clear:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
 .settings-section {
   margin-top: 26px;
 }
