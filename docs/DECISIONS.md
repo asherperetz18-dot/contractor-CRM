@@ -506,3 +506,13 @@ Two things were verified directly rather than assumed, both load-bearing for how
 **Decision:** The stage panel buckets open-stage leads by `updated_at` (maintained by the leads trigger, so any edit or stage move counts as "worked") under a dropdown the owner asked for: worked in the last 30 / 60 / 90 days (default 90) or all open. All four buckets come back in the same rollup, so switching is instant with no refetch. The old open-leads/pipeline-value headline cards are gone in favor of this panel plus the window-scoped KPI row.
 
 **Consequence:** The pipeline figure can finally be believed — and the old reading is still one dropdown away under "All open leads". The trade: `updated_at` is a proxy (a bulk edit "works" a lead; a call logged without touching the row doesn't), accepted for being trigger-maintained and index-cheap rather than inventing a new activity column.
+
+## 047 — The receptionist's live turns run on the fast model; the paperwork keeps the big one
+
+**Date:** 2026-09-20
+
+**Context:** The owner test-called the receptionist and found the pause after each thing he said noticeably long. The pause has three parts — Twilio finalizing speech-to-text (~a second, a floor), the model turn, and TwiML/TTS start (negligible) — and the model turn was the only big, controllable part: every live turn ran on claude-opus-5, whose adaptive thinking and generation speed are priced for depth, not for someone standing in a kitchen holding a phone.
+
+**Decision:** Split the one MODEL constant in the engine. `TURN_MODEL` is `claude-haiku-4-5` — the live turns are exactly the guardrailed, short-JSON work a small fast model handles (strict turn contract, hardened parser, fixed disclosure, turn budget), and Haiku takes no effort/thinking parameters, so the turn request sends none (`output_config.effort` is an API error on Haiku). `EXTRACT_MODEL` stays `claude-opus-5` (effort low): extraction runs at finalize, after the hangup, where nobody is waiting and getting the name/address/appointment right matters most. Nothing else changed — same prompts, same parsers, same budgets.
+
+**Consequence:** The between-turns pause drops by roughly the model's share of it (the Twilio STT second remains), and on-call tokens cost about a fifth of before. The trade: a smaller model on the conversation. If call quality ever reads as less sharp, the dial is one line — `TURN_MODEL` to `claude-sonnet-5` buys most of the quality back while staying far faster than Opus; going all the way back to Opus is the same one line.

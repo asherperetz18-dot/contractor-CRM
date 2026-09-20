@@ -19,7 +19,10 @@ pencils in the visit, and files everything. Shipped across PRs #196,
   `appointmentFromExtraction` (past/60-day/absurd-hours rules),
   `friendlyApptLine`, note/SMS composers.
 - `src/lib/ai-receptionist-engine.ts` — the impure half: Claude per
-  turn (claude-opus-5, effort low), session rows, and finalize (lead
+  turn (claude-haiku-4-5 — the caller is waiting, so the live turns
+  run on the fast model with NO effort/thinking params, which Haiku
+  rejects; decision #047), session rows, and finalize (extraction on
+  claude-opus-5 effort low — after the hangup, quality over speed; lead
   match/create via the 0129 RPC with plain-insert fallback, 🤖
   `lead_notes` transcript, `call_logs` → "AI Receptionist", penciled
   `events` insert, confirmation SMS, lead stage advance via
