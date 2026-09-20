@@ -1,5 +1,6 @@
 "use client";
 
+import { moveInList } from "@/lib/data/move-in-list";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
@@ -50,6 +51,17 @@ export function CallDispositionsTable({
     ids.splice(fromIndex, 1);
     ids.splice(toIndex, 0, draggedId);
     setDraggedId(null);
+    startTransition(async () => {
+      await reorderDispositions(ids);
+      router.refresh();
+    });
+  }
+
+  // The ▲/▼ buttons on touch screens: one swap with a neighbour, saved
+  // through the same action the drag uses.
+  function handleMove(index: number, delta: -1 | 1) {
+    const ids = moveInList(dispositions.map((x) => x.id), index, delta);
+    if (!ids) return;
     startTransition(async () => {
       await reorderDispositions(ids);
       router.refresh();
@@ -177,7 +189,27 @@ export function CallDispositionsTable({
               }
             >
               <td className="stage-drag-handle" title="Drag to reorder">
-                ⠿
+                <span className="drag-grip">⠿</span>
+                <span className="reorder-btns">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, -1)}
+                    disabled={i === 0}
+                    aria-label={`Move ${d.name} up`}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, 1)}
+                    disabled={i === dispositions.length - 1}
+                    aria-label={`Move ${d.name} down`}
+                  >
+                    ▼
+                  </button>
+                </span>
               </td>
               <td>{i + 1}</td>
               <td>
@@ -271,7 +303,7 @@ export function CallDispositionsTable({
       </table>
 
       <p className="hint-note">
-        Drag rows to reorder. Custom dispositions can be renamed and deleted; the
+        Drag rows to reorder (on a touch screen, use the ▲▼ buttons). Custom dispositions can be renamed and deleted; the
         system &quot;No Disposition&quot; default can be recolored but not renamed or removed.
       </p>
       <p className="hint-note">

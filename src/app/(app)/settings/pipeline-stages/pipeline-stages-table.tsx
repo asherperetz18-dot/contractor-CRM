@@ -1,5 +1,6 @@
 "use client";
 
+import { moveInList } from "@/lib/data/move-in-list";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
@@ -51,6 +52,17 @@ export function PipelineStagesTable({
     ids.splice(fromIndex, 1);
     ids.splice(toIndex, 0, draggedId);
     setDraggedId(null);
+    startTransition(async () => {
+      await reorderStages(ids);
+      router.refresh();
+    });
+  }
+
+  // The ▲/▼ buttons on touch screens: one swap with a neighbour, saved
+  // through the same action the drag uses.
+  function handleMove(index: number, delta: -1 | 1) {
+    const ids = moveInList(stages.map((x) => x.id), index, delta);
+    if (!ids) return;
     startTransition(async () => {
       await reorderStages(ids);
       router.refresh();
@@ -206,7 +218,27 @@ export function PipelineStagesTable({
               }
             >
               <td className="stage-drag-handle" title="Drag to reorder">
-                ⠿
+                <span className="drag-grip">⠿</span>
+                <span className="reorder-btns">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, -1)}
+                    disabled={i === 0}
+                    aria-label={`Move ${s.name} up`}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, 1)}
+                    disabled={i === stages.length - 1}
+                    aria-label={`Move ${s.name} down`}
+                  >
+                    ▼
+                  </button>
+                </span>
               </td>
               <td>{i + 1}</td>
               <td>
@@ -306,7 +338,7 @@ export function PipelineStagesTable({
       </table>
 
       <p className="hint-note">
-        Drag rows to reorder. Stages marked SYSTEM are required by app logic
+        Drag rows to reorder (on a touch screen, use the ▲▼ buttons). Stages marked SYSTEM are required by app logic
         (auto-advance on booking, pipeline stats) — you can reorder them, but
         their names can&apos;t be changed and they can&apos;t be deleted.
         &ldquo;⬇ CSV&rdquo; downloads every contact in a stage as a spreadsheet;

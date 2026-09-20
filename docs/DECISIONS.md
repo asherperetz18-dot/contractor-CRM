@@ -628,3 +628,13 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** No code path prices a lead; the app only edits the two figures, and every intake path is covered including ones added later. Changing a source's price affects new leads only — what an existing lead cost is a recorded fact. Until 0166 is pasted the page still loads (the column reads blank) and a save says which migration to run.
 
+## 058 — Touch screens get buttons where a mouse gets a drag, and the no-zoom rule is `!important`
+
+**Date:** 2026-09-20
+
+**Context:** A phone-and-tablet pass over every route. Five settings tables (project types, lead sources, pipeline stages, call dispositions, calendars) could only be reordered by HTML5 drag-and-drop, which a finger on Android Chrome — and on an iPhone before iOS 15 — never triggers; the handle just scrolled the page and the order was frozen. Separately, the app-wide rule that sets fields to 16px on touch screens (so iOS Safari does not zoom in on focus and stay zoomed) used bare `select` and `textarea` selectors, which lose to `.field select` and `.field textarea` in `globals.css` and to the inline `fontSize` on the call-script and quick-text textareas — so most dropdowns and text areas in the forms were still zooming, and the rule stopped at 900px, missing every iPad in landscape.
+
+**Decision:** Reorder buttons (▲/▼) go in the same cell as the grip and are shown only under `(pointer: coarse)`, where the grip is hidden; with a mouse nothing changes. They call the table's existing reorder action with the swapped id list (`moveInList`, pure and tested), never a second code path. The no-zoom rule is gated on `(pointer: coarse)` alone, with no width cap, and carries `!important` — the one place in the app it is the right tool, because the rule has to beat any selector and any inline style, and a form that zooms and stays zoomed is worse than a stylesheet purist's objection. Page-specific phone rules stay in `globals.css` next to the page; only app-wide rules go in `mobile.css`, as its header says.
+
+**Consequence:** Order is editable from any device; desktop tables look the same. Every text field, dropdown and text area is 16px on a touch screen regardless of nesting or inline styles, so nothing zooms on focus. Anyone adding an inline `fontSize` to a field will not reintroduce the zoom.
+
