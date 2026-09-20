@@ -14,7 +14,13 @@ import {
   updateStageColor,
 } from "@/lib/actions/pipeline-stages";
 
-export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) {
+export function PipelineStagesTable({
+  stages,
+  counts,
+}: {
+  stages: PipelineStageRow[];
+  counts: Record<string, number>;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -26,6 +32,9 @@ export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) 
   const [renameValue, setRenameValue] = useState("");
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [purging, setPurging] = useState<{ name: string; total: number; remaining: number } | null>(
+    null
+  );
 
   function refresh() {
     startTransition(() => router.refresh());
@@ -107,6 +116,47 @@ export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) 
     refresh();
   }
 
+  // Deletes every contact in the stage, batch by batch: the purge route
+  // deletes what it can inside its time budget and answers with what's
+  // left, and this loop keeps calling until the stage reads empty. The
+  // count in state is what makes the progress line move between calls.
+  async function handlePurge(stage: PipelineStageRow) {
+    const total = counts[stage.name] ?? 0;
+    const ok = confirm(
+      `Permanently delete all ${total.toLocaleString()} contacts in "${stage.name}"?\n\n` +
+        `They will NOT go to the Trash and cannot be brought back. ` +
+        `If you might need them again, click "CSV" first to download a copy.`
+    );
+    if (!ok) return;
+    setError("");
+    setPurging({ name: stage.name, total, remaining: total });
+    try {
+      for (;;) {
+        const res = await fetch("/api/leads/stage-purge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage: stage.name }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          remaining?: number;
+          error?: string;
+        };
+        if (!res.ok || data.error) {
+          setError(data.error || "Something went wrong — the delete stopped part-way.");
+          return;
+        }
+        const remaining = data.remaining ?? 0;
+        setPurging({ name: stage.name, total, remaining });
+        if (remaining <= 0) return;
+      }
+    } catch {
+      setError("Lost the connection — the delete stopped part-way. Try again to finish.");
+    } finally {
+      setPurging(null);
+      refresh();
+    }
+  }
+
   return (
     <div>
       <div className="ur-breadcrumb">
@@ -138,6 +188,7 @@ export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) 
             <th>#</th>
             <th>Stage Name</th>
             <th>Color</th>
+            <th>Contacts</th>
             <th className="right">Actions</th>
           </tr>
         </thead>
@@ -202,6 +253,38 @@ export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) 
                   onChange={(e) => handleColorChange(s.id, e.target.value)}
                 />
               </td>
+              <td className="stage-count-cell">
+                {purging?.name === s.name ? (
+                  <span className="stage-purge-progress">
+                    Deleting… {(purging.total - purging.remaining).toLocaleString()} of{" "}
+                    {purging.total.toLocaleString()}
+                  </span>
+                ) : (
+                  <>
+                    <span className="stage-count">{(counts[s.name] ?? 0).toLocaleString()}</span>
+                    {(counts[s.name] ?? 0) > 0 && (
+                      <>
+                        <a
+                          className="btn-ghost small stage-count-action"
+                          href={`/api/leads/stage-export?stage=${encodeURIComponent(s.name)}`}
+                          title="Download every contact in this stage as a CSV spreadsheet"
+                        >
+                          ⬇ CSV
+                        </a>
+                        <button
+                          type="button"
+                          className="btn-danger-ghost small stage-count-action"
+                          disabled={purging !== null}
+                          onClick={() => handlePurge(s)}
+                          title="Permanently delete every contact in this stage"
+                        >
+                          Delete all…
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </td>
               <td className="right">
                 {!s.is_system && renamingId !== s.id && (
                   <>
@@ -235,6 +318,9 @@ export function PipelineStagesTable({ stages }: { stages: PipelineStageRow[] }) 
         Drag rows to reorder. Stages marked SYSTEM are required by app logic
         (auto-advance on booking, pipeline stats) — you can reorder them, but
         their names can&apos;t be changed and they can&apos;t be deleted.
+        &ldquo;⬇ CSV&rdquo; downloads every contact in a stage as a spreadsheet;
+        &ldquo;Delete all…&rdquo; permanently deletes them (they do <b>not</b> go
+        to the Trash) — download the CSV first if you might want them back.
       </p>
 
       {showCreate && (

@@ -109,7 +109,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     cards: [
       {
         title: "Pipeline Stages",
-        desc: "Manage stages within each pipeline (Appointment Scheduled, Won, Lost, etc.)",
+        desc: "Manage stages, export a stage's contacts to CSV, or delete them all at once",
         icon: "📍",
         href: "/settings/pipeline-stages",
       },
