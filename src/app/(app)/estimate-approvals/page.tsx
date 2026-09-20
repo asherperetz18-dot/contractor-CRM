@@ -19,7 +19,10 @@ export default async function EstimateApprovalsPage() {
   ]);
 
   return (
-    <AdminGate>
+    // adminOnly: both actions on this page (the pending list and the
+    // approval switch) are strict-Admin, so an Office user should read
+    // the gate's plain refusal here rather than an error string inside.
+    <AdminGate adminOnly>
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Approvals</h1>
