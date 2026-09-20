@@ -20,7 +20,16 @@ import { fileURLToPath } from "node:url";
 // a lead's appointment -- either chair -- sees the lead, its estimates
 // and their contents, exactly like the closer. The string only occurs
 // in the events clause, so it pins that whole grant.
-const GRANTS = ["assigned_to", "dispatcher_id", "closer_id", "second_assigned_to"];
+//
+// partner_rep_id is the partnership seat (0163): the second rep who
+// shares the sale with the owner, and holds the lead the same way.
+const GRANTS = [
+  "assigned_to",
+  "dispatcher_id",
+  "closer_id",
+  "second_assigned_to",
+  "partner_rep_id",
+];
 
 const migrationsDir = join(
   dirname(fileURLToPath(import.meta.url)),
