@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moneyTickLabel, niceTicks } from "./scale.ts";
+import { moneyTickLabel, niceTicks, signedTicks } from "./scale.ts";
 
 /**
  * Axis math for the dashboard's charts. Ticks land on clean numbers
@@ -28,4 +28,17 @@ test("money tick labels compact to K and M", () => {
   assert.equal(moneyTickLabel(150000), "$1.5K");
   assert.equal(moneyTickLabel(40000000), "$400K");
   assert.equal(moneyTickLabel(125000000), "$1.25M");
+});
+
+test("signedTicks: a loss month pushes the axis below zero on the same clean step", () => {
+  const { floor, top, ticks } = signedTicks(-120000, 950000);
+  assert.equal(top, 1000000);
+  assert.equal(floor, -500000);
+  assert.deepEqual(ticks, [-500000, 0, 500000, 1000000]);
+});
+
+test("signedTicks: nothing negative keeps the plain zero-based axis", () => {
+  const { floor, ticks } = signedTicks(0, 950000);
+  assert.equal(floor, 0);
+  assert.equal(ticks[0], 0);
 });

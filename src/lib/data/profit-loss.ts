@@ -168,64 +168,73 @@ export function plPeriodWindow(key: PLPeriodKey, now: Date = new Date()): DateWi
   }
 }
 
-// ── The report ───────────────────────────────────────────────────────
+// ── The ledger ───────────────────────────────────────────────────────
 
 /** When a bill counts on the accrual basis: the day it was billed. */
 function billDay(bill: Pick<PLBill, "bill_date" | "created_at">): string {
   return bill.bill_date ?? bill.created_at;
 }
 
-export function profitLoss(
-  basis: PLBasis,
-  window: DateWindow,
-  input: ProfitLossInput
-): ProfitLoss {
+/**
+ * One counted dollar: what it is, which day it belongs to, and where
+ * it lands. Income and costs land on a job; overhead lands on a bill
+ * (whose vendor the statement groups by).
+ */
+type PLEntry =
+  | { kind: "income" | "cost"; day: string; leadId: string | null; cents: number }
+  | { kind: "overhead"; day: string; bill: PLBill; cents: number };
+
+/**
+ * Every dollar the window counts on the given basis, classified once.
+ * The statement and the month-by-month chart both reduce this same
+ * list, so a bar can never show a figure the total below it disagrees
+ * with -- the basis rules live here and nowhere else.
+ */
+function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLEntry[] {
   const leadOfEstimate = new Map(input.contracts.map((c) => [c.id, c.lead_id]));
   const billById = new Map(input.bills.map((b) => [b.id, b]));
-
-  const income = new Map<string | null, number>();
-  const costs = new Map<string | null, number>();
-  const add = (map: Map<string | null, number>, leadId: string | null, cents: number) => {
-    if (!cents) return;
-    map.set(leadId, (map.get(leadId) ?? 0) + cents);
+  const out: PLEntry[] = [];
+  const push = (entry: PLEntry) => {
+    if (!entry.cents) return;
+    if (!withinWindow(entry.day, window)) return;
+    out.push(entry);
   };
 
   if (basis === "cash") {
     for (const p of input.payments) {
       if (p.status !== "succeeded") continue;
-      if (!withinWindow(p.paid_at ?? p.created_at, window)) continue;
-      add(income, p.lead_id ?? leadOfEstimate.get(p.estimate_id) ?? null, p.amount_cents || 0);
+      push({
+        kind: "income",
+        day: p.paid_at ?? p.created_at,
+        leadId: p.lead_id ?? leadOfEstimate.get(p.estimate_id) ?? null,
+        cents: p.amount_cents || 0,
+      });
     }
     for (const e of input.expenses) {
-      if (!withinWindow(e.spent_on, window)) continue;
-      add(costs, e.lead_id, e.amount_cents || 0);
+      push({ kind: "cost", day: e.spent_on, leadId: e.lead_id, cents: e.amount_cents || 0 });
     }
   } else {
     for (const c of input.contracts) {
-      if (!c.signed_at || !(c.deposit_cents || 0)) continue;
-      if (!withinWindow(c.signed_at, window)) continue;
-      add(income, c.lead_id, c.deposit_cents || 0);
+      if (!c.signed_at) continue;
+      push({ kind: "income", day: c.signed_at, leadId: c.lead_id, cents: c.deposit_cents || 0 });
     }
     for (const ph of input.phases) {
       if (!ph.requested_at) continue;
-      if (!withinWindow(ph.requested_at, window)) continue;
       // A phase on a document that is not a signed contract (or change
       // order) has no lead here and is skipped -- nothing was earned.
       const leadId = leadOfEstimate.get(ph.estimate_id);
       if (leadId === undefined) continue;
-      add(income, leadId, ph.amount_cents || 0);
+      push({ kind: "income", day: ph.requested_at, leadId, cents: ph.amount_cents || 0 });
     }
     // Receipts are incurred the day the money was spent on either basis;
     // "bill" rows are excluded because the bill itself is counted below.
     for (const e of input.expenses) {
       if (e.source === "bill") continue;
-      if (!withinWindow(e.spent_on, window)) continue;
-      add(costs, e.lead_id, e.amount_cents || 0);
+      push({ kind: "cost", day: e.spent_on, leadId: e.lead_id, cents: e.amount_cents || 0 });
     }
     for (const b of input.bills) {
       if (!b.lead_id || b.voided_at) continue;
-      if (!withinWindow(billDay(b), window)) continue;
-      add(costs, b.lead_id, b.amount_cents || 0);
+      push({ kind: "cost", day: billDay(b), leadId: b.lead_id, cents: b.amount_cents || 0 });
     }
   }
 
@@ -233,35 +242,51 @@ export function profitLoss(
   // reads the payments made against them. A voided bill leaves the
   // accrual reading, but money genuinely paid against it before the void
   // stays on cash -- it left the account either way.
-  const overheadMap = new Map<string, PLOverheadLine>();
-  const addOverhead = (bill: PLBill, cents: number) => {
-    if (!cents) return;
-    const key = bill.vendor_id ?? `name:${(bill.vendor_name ?? "").trim().toLowerCase()}`;
-    const line =
-      overheadMap.get(key) ??
-      ({
-        vendorId: bill.vendor_id,
-        vendorName: bill.vendor_name,
-        entries: 0,
-        amountCents: 0,
-      } as PLOverheadLine);
-    line.entries += 1;
-    line.amountCents += cents;
-    overheadMap.set(key, line);
-  };
   if (basis === "cash") {
     for (const bp of input.billPayments) {
       const bill = billById.get(bp.bill_id);
       if (!bill || bill.lead_id) continue;
-      if (!withinWindow(bp.paid_on, window)) continue;
-      addOverhead(bill, bp.amount_cents || 0);
+      push({ kind: "overhead", day: bp.paid_on, bill, cents: bp.amount_cents || 0 });
     }
   } else {
     for (const b of input.bills) {
       if (b.lead_id || b.voided_at) continue;
-      if (!withinWindow(billDay(b), window)) continue;
-      addOverhead(b, b.amount_cents || 0);
+      push({ kind: "overhead", day: billDay(b), bill: b, cents: b.amount_cents || 0 });
     }
+  }
+  return out;
+}
+
+// ── The report ───────────────────────────────────────────────────────
+
+export function profitLoss(
+  basis: PLBasis,
+  window: DateWindow,
+  input: ProfitLossInput
+): ProfitLoss {
+  const income = new Map<string | null, number>();
+  const costs = new Map<string | null, number>();
+  const overheadMap = new Map<string, PLOverheadLine>();
+
+  for (const entry of ledger(basis, window, input)) {
+    if (entry.kind === "overhead") {
+      const bill = entry.bill;
+      const key = bill.vendor_id ?? `name:${(bill.vendor_name ?? "").trim().toLowerCase()}`;
+      const line =
+        overheadMap.get(key) ??
+        ({
+          vendorId: bill.vendor_id,
+          vendorName: bill.vendor_name,
+          entries: 0,
+          amountCents: 0,
+        } as PLOverheadLine);
+      line.entries += 1;
+      line.amountCents += entry.cents;
+      overheadMap.set(key, line);
+      continue;
+    }
+    const map = entry.kind === "income" ? income : costs;
+    map.set(entry.leadId, (map.get(entry.leadId) ?? 0) + entry.cents);
   }
 
   const jobIds = new Set<string | null>([...income.keys(), ...costs.keys()]);
@@ -291,4 +316,107 @@ export function profitLoss(
     jobs,
     overhead,
   };
+}
+
+// ── Month by month ───────────────────────────────────────────────────
+
+export type PLMonth = {
+  /** YYYY-MM. */
+  month: string;
+  incomeCents: number;
+  jobCostCents: number;
+  overheadCents: number;
+  /** income - job costs - overhead, the same arithmetic as the statement. */
+  netCents: number;
+};
+
+/**
+ * The statement's ledger bucketed by calendar month, oldest first, for
+ * the trend chart. Every month the window covers gets a bucket, empty
+ * or not, so a quiet month shows as a gap in the bars rather than
+ * silently closing up. An open edge closes at the first or last month
+ * with activity -- and the far edge always reaches this month, so
+ * "from July on" asked in October runs through October's empty bucket.
+ * It never runs past this month, though: "this year" is a whole
+ * calendar year, and drawing the months that have not happened yet
+ * would read as profit falling to nothing. A window with no activity
+ * at all has nothing to chart: [].
+ */
+export function profitLossByMonth(
+  basis: PLBasis,
+  window: DateWindow,
+  input: ProfitLossInput,
+  now: Date = new Date()
+): PLMonth[] {
+  const entries = ledger(basis, window, input);
+  if (entries.length === 0) return [];
+
+  const monthOf = (day: string) => day.slice(0, 7);
+  const days = entries.map((e) => e.day.slice(0, 10)).sort();
+  const first = window.from ? monthOf(window.from) : monthOf(days[0]);
+  const thisMonth = isoDay(now).slice(0, 7);
+  const lastSeen = monthOf(days[days.length - 1]);
+  const reach = lastSeen > thisMonth ? lastSeen : thisMonth;
+  const last = window.to && monthOf(window.to) < reach ? monthOf(window.to) : reach;
+
+  const buckets = new Map<string, PLMonth>();
+  const [fy, fm] = first.split("-").map(Number);
+  const [ly, lm] = last.split("-").map(Number);
+  for (let i = 0; i <= (ly - fy) * 12 + (lm - fm); i++) {
+    const d = new Date(fy, fm - 1 + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    buckets.set(key, { month: key, incomeCents: 0, jobCostCents: 0, overheadCents: 0, netCents: 0 });
+  }
+  for (const e of entries) {
+    const b = buckets.get(monthOf(e.day));
+    if (!b) continue;
+    if (e.kind === "income") b.incomeCents += e.cents;
+    else if (e.kind === "cost") b.jobCostCents += e.cents;
+    else b.overheadCents += e.cents;
+  }
+  for (const b of buckets.values()) b.netCents = b.incomeCents - b.jobCostCents - b.overheadCents;
+  return [...buckets.values()];
+}
+
+// ── Profit by job, as bars ───────────────────────────────────────────
+
+export type PLJobBarRow = { key: string; label: string; incomeCents: number; costCents: number };
+
+/**
+ * The statement's job lines for the bar panel: the first `limit` jobs
+ * (already biggest income first) by name, the tail folded into one
+ * summed "more jobs" row so the panel stays one screen tall and the
+ * bars still add up to the income line.
+ */
+export function jobBarRows(
+  jobs: PLJobLine[],
+  nameOf: (leadId: string | null) => string,
+  limit = 8
+): PLJobBarRow[] {
+  const shown: PLJobBarRow[] = jobs.slice(0, limit).map((j) => ({
+    key: j.leadId ?? "~none",
+    label: nameOf(j.leadId),
+    incomeCents: j.incomeCents,
+    costCents: j.costCents,
+  }));
+  const rest = jobs.slice(limit);
+  if (rest.length > 0) {
+    shown.push({
+      key: "~more",
+      label: `${rest.length} more job${rest.length === 1 ? "" : "s"}`,
+      incomeCents: rest.reduce((s, j) => s + j.incomeCents, 0),
+      costCents: rest.reduce((s, j) => s + j.costCents, 0),
+    });
+  }
+  return shown;
+}
+
+/**
+ * Jobs that took money in but have no cost against them. Their margin
+ * reads 100% -- which is usually receipts not yet entered, not a free
+ * job -- so the page says so next to the graph rather than letting a
+ * perfect-looking chart pass as the truth.
+ */
+export function uncostedJobs(jobs: PLJobLine[]): number {
+  return jobs.filter((j) => j.incomeCents > 0 && j.costCents === 0).length;
 }

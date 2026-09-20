@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import {
   plPeriodWindow,
   profitLoss,
+  profitLossByMonth,
+  jobBarRows,
+  uncostedJobs,
   type ProfitLossInput,
 } from "./profit-loss.ts";
 import { ALL_TIME } from "./date-range.ts";
@@ -170,4 +173,115 @@ test("quarter and year-end months roll over correctly", () => {
   assert.deepEqual(plPeriodWindow("this-quarter", december), { from: "2026-10-01", to: "2026-12-31" });
   const january = new Date(2026, 0, 2);
   assert.deepEqual(plPeriodWindow("last-month", january), { from: "2025-12-01", to: "2025-12-31" });
+});
+
+// ── Month by month: the same ledger, bucketed for the trend chart ────
+
+const SEP_20 = new Date(2026, 8, 20);
+
+test("months: one bucket per calendar month in the window, oldest first, zero-filled", () => {
+  const months = profitLossByMonth("cash", { from: "2026-07-01", to: "2026-09-30" }, COMPANY, SEP_20);
+  assert.deepEqual(
+    months.map((m) => m.month),
+    ["2026-07", "2026-08", "2026-09"]
+  );
+  // July: only job B's $500 deposit settled (Jul 30).
+  assert.equal(months[0].incomeCents, 50000);
+  assert.equal(months[0].jobCostCents, 0);
+  // September: nothing moved on the cash basis -- the phase requested
+  // Sep 2 is billed, not banked.
+  assert.deepEqual(months[2], {
+    month: "2026-09",
+    incomeCents: 0,
+    jobCostCents: 0,
+    overheadCents: 0,
+    netCents: 0,
+  });
+});
+
+test("months: every bucket reconciles with the statement for that month", () => {
+  for (const basis of ["cash", "accrual"] as const) {
+    const months = profitLossByMonth(basis, { from: "2026-07-01", to: "2026-09-30" }, COMPANY, SEP_20);
+    const aug = months.find((m) => m.month === "2026-08")!;
+    const stmt = profitLoss(basis, AUG, COMPANY);
+    assert.equal(aug.incomeCents, stmt.incomeCents, basis + ": income");
+    assert.equal(aug.jobCostCents, stmt.jobCostCents, basis + ": job costs");
+    assert.equal(aug.overheadCents, stmt.overheadCents, basis + ": overhead");
+    assert.equal(aug.netCents, stmt.netProfitCents, basis + ": net");
+    // The buckets sum to the whole window's statement.
+    const whole = profitLoss(basis, { from: "2026-07-01", to: "2026-09-30" }, COMPANY);
+    assert.equal(months.reduce((s, m) => s + m.incomeCents, 0), whole.incomeCents);
+    assert.equal(months.reduce((s, m) => s + m.netCents, 0), whole.netProfitCents);
+  }
+});
+
+test("months: accrual books September's phase the day it was requested", () => {
+  const months = profitLossByMonth("accrual", { from: "2026-07-01", to: "2026-09-30" }, COMPANY, SEP_20);
+  assert.equal(months[2].incomeCents, 1000000);
+});
+
+test("months: all time runs from the first month with activity through this month", () => {
+  const months = profitLossByMonth("cash", ALL_TIME, COMPANY, new Date(2026, 7, 20));
+  assert.deepEqual(
+    months.map((m) => m.month),
+    ["2026-07", "2026-08"]
+  );
+});
+
+test("months: an open-ended window is closed at the later of today and the last entry", () => {
+  // "From July on", asked in October: the chart should run through
+  // October's empty month, not stop at the last dollar.
+  const months = profitLossByMonth(
+    "cash",
+    { from: "2026-07-01", to: null },
+    COMPANY,
+    new Date(2026, 9, 15)
+  );
+  assert.deepEqual(
+    months.map((m) => m.month),
+    ["2026-07", "2026-08", "2026-09", "2026-10"]
+  );
+});
+
+test("months: a window that runs into the future stops at this month", () => {
+  // "This year" asked in September: Oct-Dec have not happened, and an
+  // empty bar for each would read as profit falling to nothing.
+  const months = profitLossByMonth("cash", { from: "2026-01-01", to: "2026-12-31" }, COMPANY, SEP_20);
+  assert.equal(months[0].month, "2026-01");
+  assert.equal(months[months.length - 1].month, "2026-09");
+});
+
+test("months: nothing in the window means no buckets", () => {
+  assert.deepEqual(profitLossByMonth("cash", { from: "2020-01-01", to: "2020-12-31" }, COMPANY), []);
+});
+
+// ── Profit-by-job bars: the table's rows, folded to fit a panel ──────
+
+test("job bars: the first N jobs keep their names, the rest fold into one summed row", () => {
+  const jobs = [
+    { leadId: "a", incomeCents: 500, costCents: 100, profitCents: 400 },
+    { leadId: "b", incomeCents: 300, costCents: 50, profitCents: 250 },
+    { leadId: "c", incomeCents: 200, costCents: 0, profitCents: 200 },
+    { leadId: null, incomeCents: 100, costCents: 0, profitCents: 100 },
+  ];
+  const rows = jobBarRows(jobs, (id) => (id ? `Job ${id}` : "Not tied to a job"), 2);
+  assert.deepEqual(rows, [
+    { key: "a", label: "Job a", incomeCents: 500, costCents: 100 },
+    { key: "b", label: "Job b", incomeCents: 300, costCents: 50 },
+    { key: "~more", label: "2 more jobs", incomeCents: 300, costCents: 0 },
+  ]);
+});
+
+test("job bars: nothing folds when the list fits", () => {
+  const jobs = [{ leadId: "a", incomeCents: 500, costCents: 100, profitCents: 400 }];
+  assert.equal(jobBarRows(jobs, () => "A", 8).length, 1);
+});
+
+test("uncosted jobs: income with no cost recorded, never a job with nothing at all", () => {
+  const jobs = [
+    { leadId: "a", incomeCents: 500, costCents: 0, profitCents: 500 },
+    { leadId: "b", incomeCents: 300, costCents: 50, profitCents: 250 },
+    { leadId: "c", incomeCents: 0, costCents: 20, profitCents: -20 },
+  ];
+  assert.equal(uncostedJobs(jobs), 1);
 });
