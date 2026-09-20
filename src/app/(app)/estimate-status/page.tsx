@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canViewEstimates, moneyCents } from "@/lib/data/types";
+import { canViewEstimates, isStrictAdmin, moneyCents } from "@/lib/data/types";
 import { estimateFlowStatus } from "@/lib/estimate-flow-status";
 import { Badge } from "@/components/ui/badge";
+import { ApproveEstimateButton } from "@/components/approve-estimate-button";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,10 @@ export default async function EstimateStatusPage() {
 
   const approvalRequired = companyRow?.require_estimate_approval === true;
   const rows = docs ?? [];
+  // The chip names the blocker; an admin looking at it is the blocker,
+  // so they get the button too. Same strict-Admin line as the Approvals
+  // screen and the action behind the button.
+  const canApprove = isStrictAdmin(profile);
 
   // Only the leads these rows reference -- never the book.
   const leadIds = [...new Set(rows.map((r) => r.lead_id).filter(Boolean))] as string[];
@@ -181,7 +186,12 @@ export default async function EstimateStatusPage() {
                       {r.total_cents ? moneyCents(r.total_cents) : "—"}
                     </td>
                     <td>
-                      <Badge color={flow.color}>{flow.label}</Badge>
+                      <span className="est-status-cell">
+                        <Badge color={flow.color}>{flow.label}</Badge>
+                        {canApprove && flow.key === "awaiting_approval" && (
+                          <ApproveEstimateButton estimateId={r.id} />
+                        )}
+                      </span>
                     </td>
                   </tr>
                 );

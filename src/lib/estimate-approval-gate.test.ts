@@ -31,7 +31,9 @@ test("a rep is told to ask an admin, naming the document", () => {
 
 test("an admin is told to approve it themselves", () => {
   const msg = approvalHoldMessage("EST-1110", { canApprove: true });
-  assert.match(msg, /Approve EST-1110 on the Estimate Approvals screen/);
+  // "here": an admin meets this hold beside an Approve button, on the
+  // document page and on Estimate Status, and should not be sent away.
+  assert.match(msg, /Approve EST-1110 here or on the Estimate Approvals screen/);
   assert.doesNotMatch(msg, /Ask an admin/);
 });
 

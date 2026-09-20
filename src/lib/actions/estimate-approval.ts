@@ -170,6 +170,7 @@ export async function approveEstimate(estimateId: string): Promise<{ error?: str
   }
 
   revalidatePath("/estimate-approvals");
+  revalidatePath("/estimate-status");
   revalidatePath(`/estimates/${estimateId}`);
   return {};
 }
