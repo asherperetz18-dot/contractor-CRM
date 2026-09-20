@@ -42,3 +42,13 @@ test("both commission pages sit in the Accounting group", () => {
     assert.notEqual(page.group, TOP_LEVEL_NAV_GROUP);
   }
 });
+
+// Salespeople is the selling leaderboard -- reps ranked by won value --
+// so it sits with the other performance reports in Your Sales Center,
+// NOT under Accounting (nothing on it is a company dollar owed) and not
+// in the middle of the Dispatch lead-operations list.
+test("Salespeople sits in Your Sales Center", () => {
+  const page = PAGE_REGISTRY.find((p) => p.key === "salespeople");
+  assert.ok(page, "salespeople is registered");
+  assert.equal(page.group, "Your Sales Center");
+});

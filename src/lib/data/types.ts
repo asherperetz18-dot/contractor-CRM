@@ -455,7 +455,6 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   { key: "tasks", label: "Tasks", href: "/tasks", group: "Dispatch (Leads Mgmt.)" },
   { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
   { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch (Leads Mgmt.)" },
-  { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Dispatch (Leads Mgmt.)" },
   {
     key: "appt-setter-assignments",
     label: "Appt. Setter Assignments",
@@ -477,6 +476,12 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     href: "/appointment-reports",
     group: "Your Sales Center",
   },
+  // The selling leaderboard (reps ranked by won value), so it reads as
+  // the summary after the activity reports above it. Moved here from
+  // the Dispatch group: it reports on performance, it doesn't work
+  // leads. Key unchanged, so saved Role Visibility overrides and the
+  // route are untouched.
+  { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Your Sales Center" },
   // Production is one collapsible sidebar section: the sold work and the
   // money that follows it. The board keeps its "production" key so saved
   // Role Visibility overrides and the /production route are untouched;
