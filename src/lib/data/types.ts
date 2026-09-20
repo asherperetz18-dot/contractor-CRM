@@ -1845,6 +1845,13 @@ export type Estimate = {
   version: number;
   supersedes_id: string | null;
   assigned_to: string | null;
+  /** The Sales team seats (0086/0135/0163): who a signed contract is
+   *  credited to and paid on. Optional because a slim select may omit
+   *  them; sale-credit.ts falls back to assigned_to when they are. */
+  sales_rep_1?: string | null;
+  sales_rep_1_bp?: number | null;
+  sales_rep_2?: string | null;
+  sales_rep_2_bp?: number | null;
   issued_at: string | null;
   expires_at: string | null;
   voided_at?: string | null;

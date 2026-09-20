@@ -266,3 +266,22 @@ test("coerce: junk comes back as a zeroed rollup, never a crash", () => {
   assert.equal(z.aging.notYetDueCents, 0);
   assert.deepEqual(coerceDashboardRollup(null).sources, []);
 });
+
+test("team: a sale is credited to the contract's Sales team seats, not the rep stamped on it", () => {
+  const r = buildDashboardRollup({
+    ...inputs,
+    signedSinceMonths: [
+      // Stamped on r2 (held the lead when the draft was raised); the panel
+      // says r1 100%, r2 in the zero-share second seat.
+      { assigned_to: "r2", signed_at: "2026-09-03T10:00:00Z", total_cents: 800000, kind: "contract", status: "Signed", sales_rep_1: "r1", sales_rep_1_bp: 10000, sales_rep_2: "r2", sales_rep_2_bp: 0 },
+      // A partnership: both get the sale, the dollars split by share.
+      { assigned_to: "r1", signed_at: "2026-09-05T10:00:00Z", total_cents: 100000, kind: "contract", status: "Signed", sales_rep_1: "r1", sales_rep_1_bp: 5000, sales_rep_2: "r3", sales_rep_2_bp: 5000 },
+      // No seats (signed before the panel existed): the stamped rep, whole.
+      { assigned_to: "r3", signed_at: "2026-09-06T10:00:00Z", total_cents: 1000, kind: "contract", status: "Signed" },
+    ],
+  });
+  const by = Object.fromEntries(r.team.map((t) => [t.rep, t]));
+  assert.deepEqual([by.r1.signedCount, by.r1.signedCents], [2, 850000]);
+  assert.deepEqual([by.r2.signedCount, by.r2.signedCents], [0, 0]);
+  assert.deepEqual([by.r3.signedCount, by.r3.signedCents], [2, 51000]);
+});

@@ -628,8 +628,8 @@ export function AnalyticsView({
           <div className="dash-panel-head">
             <h3 id="mkt-team">Sales team</h3>
             <span className="dash-panel-sub">
-              this period&apos;s leads by assigned rep · appointments and contracts dated in it, credited
-              as on the rep report
+              this period&apos;s leads by assigned rep · appointments and contracts dated in it · a sale
+              counts for the Sales team seats on the contract, as on the rep report
             </span>
           </div>
           {R.byRep.length === 0 ? (

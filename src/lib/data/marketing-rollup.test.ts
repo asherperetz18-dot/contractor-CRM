@@ -229,6 +229,32 @@ test("an estimate is credited to whoever holds the lead until it is frozen", () 
   assert.equal(r.byRep.find((x) => x.rep === "carl")?.signed, 1);
 });
 
+test("a signed contract counts for its Sales team seats, not the rep stamped on it", () => {
+  const leads = [lead({ id: "j1", source: "Roy", assigned_to: "simon" })];
+  const estimates = [
+    // Stamped on simon (he held the lead when the draft was raised); the
+    // panel says Frank 100%, simon in the zero-share second seat.
+    est({ id: "k1", lead_id: "j1", status: "Signed", assigned_to: "simon", total_cents: 800000, sent_at: "2026-09-02T00:00:00Z", signed_at: "2026-09-03T00:00:00Z", sales_rep_1: "frank", sales_rep_1_bp: 10000, sales_rep_2: "simon", sales_rep_2_bp: 0 }),
+    // A partnership gives both the sale and splits the dollars.
+    est({ id: "k2", lead_id: "j1", status: "Signed", assigned_to: "simon", total_cents: 100001, sent_at: "2026-09-02T00:00:00Z", signed_at: "2026-09-04T00:00:00Z", sales_rep_1: "a", sales_rep_1_bp: 5000, sales_rep_2: "b", sales_rep_2_bp: 5000 }),
+  ];
+  const r = buildMarketingRollup({ ...INPUTS, leads, estimates, events: [] });
+  const by = Object.fromEntries(r.byRep.map((x) => [x.rep, x]));
+  assert.deepEqual([by.frank.signed, by.frank.signedCents, by.frank.estimates], [1, 800000, 1]);
+  // simon holds the lead and is stamped on both documents, and gets neither sale.
+  assert.deepEqual([by.simon.leads, by.simon.estimates, by.simon.signed], [1, 0, 0]);
+  assert.deepEqual([by.a.signed, by.a.signedCents, by.b.signed, by.b.signedCents], [1, 50001, 1, 50001]);
+  // The latest-contracts row names the salesperson seat.
+  assert.equal(r.recentSigned.find((x) => x.estimateId === "k1")?.rep, "frank");
+});
+
+test("a source's own default cost reads as default too", () => {
+  // Roy's $197 is the source default (0166), not a hand-priced lead.
+  const r = buildMarketingRollup({ ...INPUTS, sourceDefaultCost: { roy: 197 } });
+  assert.equal(r.bySource.find((s) => s.source === "Roy")?.atDefault, 1);
+  assert.equal(r.totals.atDefault, 4);
+});
+
 test("weeks: twelve Monday buckets, leads by created day, contracts by signed day", () => {
   const r = buildMarketingRollup(INPUTS);
   assert.equal(r.weeks.length, 12);

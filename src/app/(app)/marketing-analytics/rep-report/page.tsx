@@ -22,6 +22,7 @@ import {
   type DateWindow,
 } from "@/lib/data/date-range";
 import { PrintButton } from "@/components/print-button";
+import { saleCredits, splitCents } from "@/lib/data/sale-credit";
 import { RepReportFilters } from "./report-filters";
 
 /** The lead fields this report reads -- fetched exactly, never the
@@ -193,20 +194,28 @@ function buildFunnel(
     (e) => e.date < todayISO && !hasAppointmentResult(e.status as EventStatus)
   );
 
-  const repEstimates = estimates.filter(
-    (e) =>
-      isSellableKind(e.kind) &&
-      effectiveEstimateRepId({
-        status: e.status,
-        estimateAssignedTo: e.assigned_to,
-        leadAssignedTo: leadRepById.get(e.lead_id),
-      }) === repId
-  );
+  // A signed contract is this rep's if they hold a Sales team seat on it
+  // -- the panel's own statement of who sold it, and what commission is
+  // paid on (sale-credit.ts). Until signature the document follows
+  // whoever holds the lead (effectiveEstimateRepId).
+  const repShareBp = (e: Estimate): number => {
+    if (!isSellableKind(e.kind)) return 0;
+    if (e.status === "Signed") return saleCredits(e).find((c) => c.rep === repId)?.bp ?? 0;
+    return effectiveEstimateRepId({
+      status: e.status,
+      estimateAssignedTo: e.assigned_to,
+      leadAssignedTo: leadRepById.get(e.lead_id),
+    }) === repId
+      ? 10000
+      : 0;
+  };
+  const repEstimates = estimates.filter((e) => repShareBp(e) > 0);
   const sent = repEstimates.filter(
     (e) => e.status !== "Draft" && inRange(e.sent_at ?? e.issued_at ?? e.created_at)
   );
   const signed = repEstimates.filter((e) => e.status === "Signed" && inRange(e.signed_at));
-  const signedCents = signed.reduce((s, e) => s + (e.total_cents || 0), 0);
+  // A partnership sale counts for both seats, the dollars split by share.
+  const signedCents = signed.reduce((s, e) => s + splitCents(e.total_cents, repShareBp(e)), 0);
 
   return {
     leads: mine.length,
