@@ -2107,6 +2107,25 @@ a.stat-card {
   background: none;
   cursor: pointer;
 }
+/* Count + CSV export + Delete-all live together in one cell so the two
+   actions read as "about these contacts", not about the stage itself. */
+.stage-count-cell {
+  white-space: nowrap;
+}
+.stage-count {
+  display: inline-block;
+  min-width: 52px;
+  font-variant-numeric: tabular-nums;
+}
+.stage-count-cell .stage-count-action {
+  display: inline-block;
+  margin: 0 0 0 8px;
+  text-decoration: none;
+}
+.stage-purge-progress {
+  color: var(--danger);
+  font-size: 12.5px;
+}
 .stage-rename-row {
   display: flex;
   align-items: center;
