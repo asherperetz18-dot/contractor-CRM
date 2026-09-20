@@ -107,6 +107,7 @@ function toInput(lead?: Lead): LeadInput {
 export function LeadForm({
   lead,
   reps,
+  allMembers,
   stages,
   calendars,
   projectTypes,
@@ -126,6 +127,10 @@ export function LeadForm({
 }: {
   lead?: Lead;
   reps: Profile[];
+  /** The whole roster, deactivated members included -- for name
+   *  lookups (the tasks panel's "Added by"/assignee lines), never for
+   *  dropdowns. */
+  allMembers?: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
   projectTypes: ProjectTypeRow[];
@@ -1294,6 +1299,7 @@ export function LeadForm({
             leadId={lead.id}
             tasks={tasks ?? []}
             reps={reps}
+            members={allMembers}
             readOnly={readOnly}
             onChanged={refresh}
           />

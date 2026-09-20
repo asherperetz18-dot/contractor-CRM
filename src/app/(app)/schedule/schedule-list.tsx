@@ -40,6 +40,7 @@ export function ScheduleList({
   events,
   jobs,
   reps,
+  allMembers,
   leads,
   stages,
   leadTasks,
@@ -57,6 +58,8 @@ export function ScheduleList({
   events: Event[];
   jobs: Job[];
   reps: Profile[];
+  /** Whole roster, deactivated included -- name lookups only. */
+  allMembers?: Profile[];
   leads: Lead[];
   stages: PipelineStageRow[];
   leadTasks: LeadTask[];
@@ -262,6 +265,7 @@ export function ScheduleList({
           event={editing}
           jobs={jobs}
           reps={reps}
+          allMembers={allMembers}
           leads={leads}
           leadTasks={leadTasks}
           leadNotes={leadNotes}

@@ -106,6 +106,7 @@ export function ContactsTable({
   initialTotal,
   stats,
   reps,
+  allMembers,
   stages,
   calendars,
   projectTypes,
@@ -121,6 +122,8 @@ export function ContactsTable({
   initialTotal: number;
   stats: { totalContacts: number; withOpenLeads: number; noSetterAssigned: number };
   reps: Profile[];
+  /** Whole roster, deactivated included -- name lookups only. */
+  allMembers?: Profile[];
   stages: PipelineStageRow[];
   calendars: CalendarRow[];
   projectTypes: ProjectTypeRow[];
@@ -534,6 +537,7 @@ export function ContactsTable({
         <LeadForm
           lead={editing.lead}
           reps={reps}
+          allMembers={allMembers}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}

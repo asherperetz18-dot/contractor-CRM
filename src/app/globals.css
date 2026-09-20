@@ -1556,6 +1556,12 @@ tr.row-link:hover {
 .dash-list li:last-child {
   border-bottom: none;
 }
+/* Second line under a follow-up task: who entered it. */
+.task-byline {
+  display: block;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+}
 
 /* ── Dashboard 2.0 ─────────────────────────────────────────────────
    Chart colors are validated for color-blind separation on the white

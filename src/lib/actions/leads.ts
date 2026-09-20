@@ -490,7 +490,10 @@ export async function createLeadTask(
     title: input.title.trim(),
     due_date: input.due_date,
     due_time: input.due_time || null,
-    assigned_to: input.assigned_to || null,
+    // Every task lands on somebody's plate: no pick means the person
+    // adding it. The form's blank option says so ("Me — assign to
+    // myself"), so this default is what the screen promised.
+    assigned_to: input.assigned_to || profile.id,
     created_by: profile.id,
     company_id: profile.company_id,
   });

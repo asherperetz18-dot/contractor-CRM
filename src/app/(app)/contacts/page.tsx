@@ -58,6 +58,7 @@ export default async function ContactsPage() {
       initialTotal={initialContacts.total}
       stats={stats}
       reps={reps}
+      allMembers={allReps}
       stages={(stages as PipelineStageRow[]) ?? []}
       calendars={(calendars as CalendarRow[]) ?? []}
       projectTypes={(projectTypes as ProjectTypeRow[]) ?? []}

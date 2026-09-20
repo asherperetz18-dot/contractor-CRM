@@ -257,6 +257,10 @@ export async function applyProposal(
               due_date: dueDate,
               company_id: companyId,
               created_by: profile!.id,
+              // Same rule as createLeadTask: a task always has an
+              // assignee, and an AI proposal is accepted by the person
+              // it lands on.
+              assigned_to: profile!.id,
             }))
           );
           if (error) failure = error.message;
