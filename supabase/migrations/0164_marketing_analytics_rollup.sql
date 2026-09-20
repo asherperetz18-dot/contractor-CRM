@@ -63,17 +63,14 @@ security invoker
 set search_path = public
 as $$
 with
-ex_names as (
-  select coalesce(p_exclude_sources, '{}'::text[]) as names
-),
 -- Leads whose source is switched off: their documents and appointments
 -- leave with them. Empty (and unscanned) when nothing is excluded.
 ex_leads as (
   select id
   from leads
   where company_id = p_company
-    and cardinality((select names from ex_names)) > 0
-    and coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names))
+    and cardinality(coalesce(p_exclude_sources, '{}'::text[])) > 0
+    and coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[]))
 ),
 cohort as (
   select id, contact_type::text as contact_type, company_name, first_name, last_name, phone,
@@ -83,7 +80,7 @@ cohort as (
   where company_id = p_company
     and (p_from is null or created_at >= (p_from::timestamp at time zone 'utc'))
     and (p_to is null or created_at < ((p_to + 1)::timestamp at time zone 'utc'))
-    and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+    and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
 ),
 prev_cohort as (
   select id, contact_type::text as contact_type, company_name, first_name, last_name, phone,
@@ -94,7 +91,7 @@ prev_cohort as (
     and p_prev_from is not null
     and created_at >= (p_prev_from::timestamp at time zone 'utc')
     and created_at < ((p_prev_to + 1)::timestamp at time zone 'utc')
-    and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+    and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
 ),
 -- True contracts, any status, with the lead's current holder beside the
 -- document's own rep.
@@ -261,7 +258,7 @@ select jsonb_build_object(
       from leads
       where company_id = p_company
         and created_at >= (p_weeks_from::timestamp at time zone 'utc')
-        and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+        and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
       group by 1
     ) lw on lw.wk = w.d::date
     left join (

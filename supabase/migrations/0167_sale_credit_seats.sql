@@ -29,8 +29,19 @@
 -- Both functions keep their signatures: the app calls them unchanged,
 -- and until this runs it computes the old credit. Idempotent; safe as
 -- one paste and safe to run twice.
+--
+-- The bought-list filter reads p_exclude_sources directly:
+-- "= any((select ...))" is the row-subquery form in Postgres and fails
+-- with "operator does not exist: text = text[]"; "= any(array)" is the
+-- array match this needs. 0164 carried the same line and is fixed too.
 
 begin;
+
+-- 0164's paste rolled back on the array-match error this file also
+-- carried, so its two indexes never landed. Idempotent, so harmless
+-- where they did.
+create index if not exists estimates_company_lead_idx on estimates (company_id, lead_id);
+create index if not exists events_company_date_idx on events (company_id, date);
 
 create or replace function public.marketing_analytics_rollup(
   p_company uuid,
@@ -50,9 +61,6 @@ security invoker
 set search_path = public
 as $$
 with
-ex_names as (
-  select coalesce(p_exclude_sources, '{}'::text[]) as names
-),
 -- Each source's own default lead cost (0166); the company default stands
 -- in. A lead carrying exactly its default was never priced by anyone.
 source_defaults as (
@@ -68,8 +76,8 @@ ex_leads as (
   select id
   from leads
   where company_id = p_company
-    and cardinality((select names from ex_names)) > 0
-    and coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names))
+    and cardinality(coalesce(p_exclude_sources, '{}'::text[])) > 0
+    and coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[]))
 ),
 cohort as (
   select id, contact_type::text as contact_type, company_name, first_name, last_name, phone,
@@ -81,7 +89,7 @@ cohort as (
   where company_id = p_company
     and (p_from is null or created_at >= (p_from::timestamp at time zone 'utc'))
     and (p_to is null or created_at < ((p_to + 1)::timestamp at time zone 'utc'))
-    and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+    and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
 ),
 prev_cohort as (
   select id, contact_type::text as contact_type, company_name, first_name, last_name, phone,
@@ -94,7 +102,7 @@ prev_cohort as (
     and p_prev_from is not null
     and created_at >= (p_prev_from::timestamp at time zone 'utc')
     and created_at < ((p_prev_to + 1)::timestamp at time zone 'utc')
-    and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+    and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
 ),
 -- True contracts, any status, with the lead's current holder beside the
 -- document's own rep.
@@ -301,7 +309,7 @@ select jsonb_build_object(
       from leads
       where company_id = p_company
         and created_at >= (p_weeks_from::timestamp at time zone 'utc')
-        and not (coalesce(nullif(source, ''), 'Unknown') = any((select names from ex_names)))
+        and not (coalesce(nullif(source, ''), 'Unknown') = any(coalesce(p_exclude_sources, '{}'::text[])))
       group by 1
     ) lw on lw.wk = w.d::date
     left join (
