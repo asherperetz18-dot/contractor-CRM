@@ -35,6 +35,9 @@ export type Profile = {
    *  arranged. Identity, not membership: a habit follows the person
    *  across companies (see docs/DECISIONS.md #010). */
   estimate_funnel_order?: string[] | null;
+  /** The dragged order of the dashboard's boxes -- same contract as
+   *  estimate_funnel_order (migration 0161). */
+  dashboard_panel_order?: string[] | null;
   company_id: string;
 };
 
@@ -148,6 +151,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     is_super_admin: boolean | null;
     is_platform_admin?: boolean | null;
     estimate_funnel_order?: string[] | null;
+    dashboard_panel_order?: string[] | null;
   } | null;
   const membership = membershipData as {
     roles: AppRole[];
@@ -187,6 +191,9 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     // Undefined (0145 not yet run) reads as null: never arranged, so
     // the browser's own saved order still applies.
     estimate_funnel_order: identity?.estimate_funnel_order ?? null,
+    // Same contract as estimate_funnel_order, for the dashboard's
+    // boxes (0161).
+    dashboard_panel_order: identity?.dashboard_panel_order ?? null,
     company_id: companyId,
   };
 });

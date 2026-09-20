@@ -55,6 +55,17 @@ export function isoDay(d: Date): string {
 export function presetWindow(preset: string, now: Date = new Date()): DateWindow {
   if (preset === "all") return ALL_TIME;
   if (preset === "today") return { from: isoDay(now), to: null };
+  // Calendar presets: the dashboard asks "how is this month going",
+  // which day-count presets cannot express.
+  if (preset === "month")
+    return { from: isoDay(new Date(now.getFullYear(), now.getMonth(), 1)), to: null };
+  if (preset === "quarter")
+    return {
+      from: isoDay(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)),
+      to: null,
+    };
+  if (preset === "12m")
+    return { from: isoDay(new Date(now.getFullYear(), now.getMonth() - 11, 1)), to: null };
   const days = Number(preset);
   if (!Number.isFinite(days) || days <= 0) return ALL_TIME;
   return { from: isoDay(new Date(now.getTime() - days * 86400000)), to: null };
@@ -78,6 +89,55 @@ export function resolveWindow(
 ): DateWindow {
   if (state.from || state.to) return { from: state.from || null, to: state.to || null };
   return presetWindow(state.preset, now);
+}
+
+/**
+ * The comparison period a delta is measured against.
+ *
+ * A month-to-date window compares to the same span of last month --
+ * "vs August" on September 20th means August 1-20, because that is the
+ * comparison a person makes in their head. Every other window compares
+ * to the equal-length span immediately before it. All time has no
+ * previous period, so a delta is simply not offered there.
+ */
+export function prevWindow(
+  win: DateWindow,
+  now: Date = new Date()
+): { from: string; to: string } | null {
+  if (!win.from) return null;
+  const parse = (day: string) => new Date(`${day}T00:00:00`);
+  const from = parse(win.from);
+  const today = isoDay(now);
+  // The effective end never runs past today: "this month" is the month
+  // so far, and its comparison span must be equally long.
+  const toStr = win.to && win.to < today ? win.to : today;
+  const to = parse(toStr);
+
+  const monthToDateShape =
+    win.from.slice(8) === "01" && !win.to && toStr.slice(0, 7) === win.from.slice(0, 7);
+  if (monthToDateShape) {
+    const prevFrom = new Date(from.getFullYear(), from.getMonth() - 1, 1);
+    // The day clamps to the previous month's length: there is no Feb 31.
+    const lastOfPrev = new Date(from.getFullYear(), from.getMonth(), 0).getDate();
+    const prevTo = new Date(
+      prevFrom.getFullYear(),
+      prevFrom.getMonth(),
+      Math.min(to.getDate(), lastOfPrev)
+    );
+    return { from: isoDay(prevFrom), to: isoDay(prevTo) };
+  }
+
+  // Length via rounded ms (DST makes a "day" 23 or 25 hours once a
+  // year), then date-component arithmetic so no edge drifts an hour
+  // into the wrong calendar day.
+  const len = Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
+  const prevTo = new Date(from.getFullYear(), from.getMonth(), from.getDate() - 1);
+  const prevFrom = new Date(
+    prevTo.getFullYear(),
+    prevTo.getMonth(),
+    prevTo.getDate() - (len - 1)
+  );
+  return { from: isoDay(prevFrom), to: isoDay(prevTo) };
 }
 
 function longDate(day: string): string {
