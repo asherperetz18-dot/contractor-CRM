@@ -8,9 +8,11 @@ import {
   deleteFieldOption,
   renameFieldOption,
   reorderFieldOptions,
+  setLeadSourceDefaultCost,
   setProjectTypeWeatherSensitive,
   type OptionTable,
 } from "@/lib/actions/lead-field-options";
+import { leadCostInputValue } from "@/lib/data/lead-source-cost";
 import type { LeadSourceRow, ProjectTypeRow } from "@/lib/data/types";
 
 type Row = ProjectTypeRow | LeadSourceRow;
@@ -22,6 +24,7 @@ export function FieldOptionsTable({
   itemLabel,
   rows,
   showWeatherSensitive,
+  leadCost,
 }: {
   table: OptionTable;
   title: string;
@@ -30,6 +33,12 @@ export function FieldOptionsTable({
   rows: Row[];
   /** Project types only: scopes the rain-forecast alert to relevant work. */
   showWeatherSensitive?: boolean;
+  /**
+   * Lead sources only: a "Lead cost" box per source. The company default
+   * is shown as the placeholder of every blank box, so the row reads as
+   * what a lead from there will actually cost.
+   */
+  leadCost?: { companyDefault: number | null };
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -146,6 +155,7 @@ export function FieldOptionsTable({
             <th>#</th>
             <th>{itemLabel}</th>
             {showWeatherSensitive && <th>Rain alerts</th>}
+            {leadCost && <th>Lead cost</th>}
             <th className="right">Actions</th>
           </tr>
         </thead>
@@ -209,6 +219,19 @@ export function FieldOptionsTable({
                   </label>
                 </td>
               )}
+              {leadCost && (
+                <td>
+                  <LeadCostCell
+                    // Remount when the stored figure changes, so a save
+                    // that normalized "$1,250.50" shows back as 1250.5.
+                    key={`${r.id}:${leadCostInputValue((r as LeadSourceRow).default_lead_cost)}`}
+                    row={r as LeadSourceRow}
+                    companyDefault={leadCost.companyDefault}
+                    onError={setError}
+                    onSaved={refresh}
+                  />
+                </td>
+              )}
               <td className="right">
                 {renamingId !== r.id && (
                   <>
@@ -240,6 +263,8 @@ export function FieldOptionsTable({
 
       <p className="hint-note">
         Drag rows to reorder. Renaming an option updates it on any lead already using that value.
+        {leadCost &&
+          " Lead cost is put on new leads from that source when nobody types one: blank uses the company default, 0 means free."}
       </p>
 
       {showCreate && (
@@ -261,5 +286,62 @@ export function FieldOptionsTable({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One source's "Lead cost" box. Saves when you leave the box or press
+ * Enter, and only if the text changed -- tabbing down the list must not
+ * write twenty rows.
+ */
+function LeadCostCell({
+  row,
+  companyDefault,
+  onError,
+  onSaved,
+}: {
+  row: LeadSourceRow;
+  companyDefault: number | null;
+  onError: (message: string) => void;
+  onSaved: () => void;
+}) {
+  const stored = leadCostInputValue(row.default_lead_cost);
+  const [draft, setDraft] = useState(stored);
+  const [saving, setSaving] = useState(false);
+  const fallback = companyDefault == null ? "none" : String(companyDefault);
+  const blankMeans =
+    companyDefault == null ? "no company default, so no cost" : `the company default, $${companyDefault}`;
+
+  async function save() {
+    if (draft.trim() === stored) return;
+    setSaving(true);
+    onError("");
+    const result = await setLeadSourceDefaultCost(row.id, draft);
+    setSaving(false);
+    if (result.error) {
+      onError(result.error);
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <span className="lead-cost-box">
+      <span>$</span>
+      <input
+        className="lead-cost-input"
+        inputMode="decimal"
+        value={draft}
+        placeholder={fallback}
+        title={`Blank = ${blankMeans}. 0 = free.`}
+        aria-label={`Lead cost for ${row.name}`}
+        disabled={saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </span>
   );
 }

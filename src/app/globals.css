@@ -2184,6 +2184,27 @@ a.stat-card {
   font-size: 13px;
   max-width: 220px;
 }
+/* Settings › Lead Sources: the per-source and company "Lead cost" boxes */
+.lead-cost-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink-soft);
+}
+.lead-cost-input {
+  width: 6.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: #fefdfb;
+}
+.lead-cost-input::placeholder {
+  color: var(--ink-soft);
+  opacity: 0.7;
+}
 .stage-create-panel {
   margin-top: 16px;
   border: 1px solid var(--line);

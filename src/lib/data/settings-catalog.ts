@@ -146,7 +146,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       {
         title: "Lead Sources",
-        desc: "Create and manage lead source categories (Zillow, Referral, etc.)",
+        desc: "Create and manage lead source categories (Zillow, Referral, etc.) and what a lead from each one costs",
         icon: "📥",
         href: "/settings/lead-sources",
       },

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { isAdminRole } from "@/lib/data/types";
+import { parseLeadCostInput } from "@/lib/data/lead-source-cost";
 
 export type OptionTable = "project_types" | "lead_sources";
 
@@ -286,6 +287,71 @@ export async function setProjectTypeWeatherSensitive(
   if (error) return { error: error.message };
 
   revalidatePath("/settings/project-types");
+  return {};
+}
+
+/**
+ * The owner runs migrations by hand, so a column can be missing for
+ * days after the code ships. Name the file to paste instead of leaking
+ * a schema-cache message.
+ */
+function missingColumnHint(error: { code?: string; message: string }, migration: string): string {
+  return error.code === "PGRST204" || error.code === "42703"
+    ? `Run supabase/migrations/${migration} in the Supabase SQL editor first, then try again.`
+    : error.message;
+}
+
+/**
+ * What a new lead from this source costs, applied by the database when
+ * a lead arrives with no cost typed (migration 0166). Blank clears it,
+ * so the company default applies again; 0 means free.
+ */
+export async function setLeadSourceDefaultCost(
+  id: string,
+  raw: string
+): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const parsed = parseLeadCostInput(raw);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lead_sources")
+    .update({ default_lead_cost: parsed.value })
+    .eq("id", id)
+    .eq("company_id", guard.companyId)
+    .select("id");
+  if (error) return { error: missingColumnHint(error, "0166_lead_source_default_cost.sql") };
+  if (!data?.length) return { error: "Not found." };
+
+  revalidatePath("/settings/lead-sources");
+  return {};
+}
+
+/**
+ * The company-wide fallback (0089): what a new lead costs when nobody
+ * typed a figure and its source has none of its own. Blank means no
+ * default -- such leads arrive unpriced, as they did before 0089.
+ */
+export async function setCompanyDefaultLeadCost(raw: string): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const parsed = parseLeadCostInput(raw);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ default_lead_cost: parsed.value })
+    .eq("company_id", guard.companyId)
+    .select("company_id");
+  if (error) return { error: missingColumnHint(error, "0089_default_lead_cost.sql") };
+  if (!data?.length) return { error: "Couldn't save the default lead cost." };
+
+  revalidatePath("/settings/lead-sources");
   return {};
 }
 

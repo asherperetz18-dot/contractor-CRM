@@ -1039,6 +1039,12 @@ export type LeadSourceRow = {
   /** A purchased contact list rather than an inbound channel (0165).
    *  Optional until that migration has run; undefined reads as false. */
   bought_list?: boolean;
+  /**
+   * What a new lead from this source costs when nobody typed a figure
+   * (dollars, like `leads.lead_cost`). Null = no figure of its own, the
+   * company default applies; 0 = free. Absent until migration 0166 runs.
+   */
+  default_lead_cost: number | null;
 };
 
 export type EventStatus =
