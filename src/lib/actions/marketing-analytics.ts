@@ -99,6 +99,27 @@ async function boughtListSources(supabase: SupabaseClient, companyId: string): P
   return ((data ?? []) as { name: string }[]).map((r) => r.name);
 }
 
+/** Each source's own default lead cost (0166), keyed like the builder
+ *  wants it; empty before that migration, or when no source has one. */
+async function sourceDefaultCosts(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from("lead_sources")
+    .select("name, default_lead_cost, sort_order")
+    .eq("company_id", companyId)
+    .order("sort_order", { ascending: true });
+  if (error) return {};
+  const out: Record<string, number> = {};
+  for (const r of (data ?? []) as { name: string; default_lead_cost: number | string | null }[]) {
+    if (r.default_lead_cost == null) continue;
+    const key = r.name.trim().toLowerCase();
+    if (out[key] === undefined) out[key] = Number(r.default_lead_cost) || 0;
+  }
+  return out;
+}
+
 async function spendRows(supabase: SupabaseClient, companyId: string): Promise<SpendRow[]> {
   const { data, error } = await supabase
     .from("marketing_spend")
@@ -180,7 +201,7 @@ export async function getMarketingAnalytics(
   // ── Fallback: the same buckets from windowed queries ─────────────
   const LEAD =
     "id, contact_type, company_name, first_name, last_name, phone, source, stage, value, has_appt, assigned_to, lead_cost, created_at, won_at";
-  const [leads, estimates, events] = await Promise.all([
+  const [leads, estimates, events, sourceDefaultCost] = await Promise.all([
     // From the oldest edge any bucket needs (the 12-week strip, the
     // previous period, the window). All Time is the one deliberately
     // expensive read -- see TECH_DEBT.
@@ -197,7 +218,9 @@ export async function getMarketingAnalytics(
     selectAll<MarketingEstimate>((f, t) =>
       supabase
         .from("estimates")
-        .select("id, lead_id, status, kind, assigned_to, total_cents, sent_at, issued_at, created_at, signed_at")
+        .select(
+          "id, lead_id, status, kind, assigned_to, total_cents, sent_at, issued_at, created_at, signed_at, sales_rep_1, sales_rep_1_bp, sales_rep_2, sales_rep_2_bp"
+        )
         .eq("company_id", companyId)
         .range(f, t)
     ),
@@ -211,6 +234,7 @@ export async function getMarketingAnalytics(
       if (B.to) q = q.lte("date", B.to);
       return q;
     }),
+    sourceDefaultCosts(supabase, companyId),
   ]);
   // A document's or appointment's lead decides its source and holder.
   // The ones the windowed slice didn't carry are fetched by id, never
@@ -235,6 +259,7 @@ export async function getMarketingAnalytics(
   const rollup = buildMarketingRollup({
     boundaries: B,
     defaultCost,
+    sourceDefaultCost,
     excludeSources,
     leads,
     estimates,

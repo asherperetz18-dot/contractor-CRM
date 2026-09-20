@@ -1,5 +1,6 @@
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
 import { phaseOwedCents, phaseState, type PortalPayment } from "./types.ts";
+import { saleCredits, splitCents } from "./sale-credit.ts";
 
 /**
  * The dashboard, reduced to the numbers its cards and graphs render.
@@ -119,6 +120,11 @@ export type RollupInputs = {
     total_cents: number;
     kind: string | null;
     status: string;
+    /** The Sales team seats: who the sale is credited to (sale-credit.ts). */
+    sales_rep_1?: string | null;
+    sales_rep_1_bp?: number | null;
+    sales_rep_2?: string | null;
+    sales_rep_2_bp?: number | null;
   }[];
   /** Portal payments since fetchFrom (manual and Stripe alike). */
   paymentsSinceMonths: {
@@ -314,10 +320,14 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     return row;
   };
   for (const s of sales) {
-    if (!s.assigned_to || !withinWindow(s.signed_at, win)) continue;
-    const row = teamRow(s.assigned_to);
-    row.signedCount += 1;
-    row.signedCents += s.total_cents || 0;
+    if (!withinWindow(s.signed_at, win)) continue;
+    // Credited to the contract's Sales team seats, dollars split by
+    // share; a contract with no seats goes to the rep stamped on it.
+    for (const c of saleCredits(s)) {
+      const row = teamRow(c.rep);
+      row.signedCount += 1;
+      row.signedCents += splitCents(s.total_cents, c.bp);
+    }
   }
   for (const e of inputs.eventsInWindow) {
     if (e.assigned_to) teamRow(e.assigned_to).appts += 1;

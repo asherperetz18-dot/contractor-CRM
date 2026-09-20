@@ -1,4 +1,5 @@
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
+import { saleCredits, splitCents } from "./sale-credit.ts";
 
 /**
  * Marketing Analytics, reduced to the numbers its tiles, tables and
@@ -23,9 +24,10 @@ import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.
  *     since. That is the marketing question -- what did this period's
  *     leads turn into.
  *   * The team rows follow the rep report: leads by cohort, but
- *     appointments, estimates and contracts DATED in the window, with
- *     an estimate credited to whoever holds the lead until it is
- *     frozen by signature (effectiveEstimateRepId).
+ *     appointments, estimates and contracts DATED in the window. A
+ *     signed contract is credited to its Sales team seats -- the
+ *     office's own statement of who sold it (sale-credit.ts); until
+ *     then a document follows whoever holds the lead.
  *   * The weekly strip is by date -- created day and signed day -- over
  *     twelve Monday-start weeks ending this week, independent of the
  *     range.
@@ -106,6 +108,11 @@ export type MarketingEstimate = {
   issued_at: string | null;
   created_at: string;
   signed_at: string | null;
+  /** The Sales team seats (0086/0135/0163): who a signed contract is credited to. */
+  sales_rep_1?: string | null;
+  sales_rep_1_bp?: number | null;
+  sales_rep_2?: string | null;
+  sales_rep_2_bp?: number | null;
 };
 
 export type MarketingEvent = {
@@ -119,6 +126,10 @@ export type MarketingRollupInputs = {
   boundaries: MarketingBoundaries;
   /** company_profile.default_lead_cost: the placeholder every new lead is stamped with. */
   defaultCost: number | null;
+  /** A source's own default (lead_sources.default_lead_cost, 0166), keyed
+   *  by the lowercased, trimmed source name; it stands in for the company
+   *  default for that source's leads. */
+  sourceDefaultCost?: Record<string, number>;
   /** Source names to drop everywhere (the company's bought lists, when the toggle is on). */
   excludeSources: string[];
   /** Every lead the buckets can touch: created since fetchFrom, plus the
@@ -249,6 +260,15 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
     return !l || keep(l);
   };
 
+  // A lead carrying exactly its default -- the source's own (0166) or the
+  // company's -- was never priced by anyone.
+  const sourceDefaults = inputs.sourceDefaultCost ?? {};
+  const isDefaultCost = (l: MarketingLead, cost: number) => {
+    const own = sourceDefaults[sourceOf(l).trim().toLowerCase()];
+    const expected = own !== undefined ? own : defaultCost;
+    return expected != null && cost === num(expected);
+  };
+
   const cohort = leads.filter((l) => keep(l) && withinWindow(l.created_at, win));
   const prevCohort = prevWin ? leads.filter((l) => keep(l) && withinWindow(l.created_at, prevWin)) : [];
 
@@ -283,7 +303,7 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
       if (cost > 0) {
         t.spend += cost;
         t.costKnown += 1;
-        if (defaultCost !== null && cost === num(defaultCost)) t.atDefault += 1;
+        if (isDefaultCost(l, cost)) t.atDefault += 1;
       }
     }
     return t;
@@ -313,7 +333,7 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
     if (cost > 0) {
       s.spend += cost;
       s.costKnown += 1;
-      if (defaultCost !== null && cost === num(defaultCost)) s.atDefault += 1;
+      if (isDefaultCost(l, cost)) s.atDefault += 1;
     }
     bySourceMap.set(source, s);
   }
@@ -346,17 +366,23 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
   }
   for (const e of estimates) {
     if (!isContract(e) || e.status === "Draft" || !leadOk(e.lead_id)) continue;
-    // effectiveEstimateRepId: the lead's holder until signature or void
-    // freezes the document on whoever it was stamped with.
-    const frozen = e.status === "Signed" || e.status === "Void";
+    // A signed contract counts for its Sales team seats (sale-credit.ts).
+    // Until then the document follows whoever holds the lead; a voided
+    // one stays with the rep it was stamped with (effectiveEstimateRepId).
+    const credits = e.status === "Signed" ? saleCredits(e) : [];
     const holder = leadById.get(e.lead_id)?.assigned_to;
-    const owner = (!frozen && holder) || e.assigned_to || null;
+    const owners =
+      e.status === "Signed"
+        ? credits.map((c) => c.rep)
+        : [(e.status !== "Void" && holder) || e.assigned_to].filter((x): x is string => !!x);
     const sentDay = e.sent_at ?? e.issued_at ?? e.created_at;
-    if (owner && withinWindow(sentDay, win)) rep(owner).estimates += 1;
-    if (e.status === "Signed" && e.signed_at && e.assigned_to && withinWindow(e.signed_at, win)) {
-      const r = rep(e.assigned_to);
-      r.signed += 1;
-      r.signedCents += e.total_cents || 0;
+    if (withinWindow(sentDay, win)) for (const o of owners) rep(o).estimates += 1;
+    if (e.status === "Signed" && e.signed_at && withinWindow(e.signed_at, win)) {
+      for (const c of credits) {
+        const r = rep(c.rep);
+        r.signed += 1;
+        r.signedCents += splitCents(e.total_cents, c.bp);
+      }
     }
   }
   const byRep = [...repMap.values()].sort(
@@ -415,7 +441,8 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
         first_name: l.first_name,
         last_name: l.last_name,
         source: sourceOf(l),
-        rep: e.assigned_to,
+        // The salesperson seat, as the panel names it.
+        rep: saleCredits(e)[0]?.rep ?? e.assigned_to,
         signedAt: e.signed_at as string,
         totalCents: e.total_cents || 0,
         createdAt: l.created_at,

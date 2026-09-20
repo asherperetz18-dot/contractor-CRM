@@ -108,7 +108,7 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
     selectAll<RollupInputs["signedSinceMonths"][number]>((f, t) =>
       supabase
         .from("estimates")
-        .select("assigned_to, signed_at, total_cents, kind, status")
+        .select("assigned_to, signed_at, total_cents, kind, status, sales_rep_1, sales_rep_1_bp, sales_rep_2, sales_rep_2_bp")
         .eq("company_id", companyId)
         .eq("status", "Signed")
         .gte("signed_at", B.fetchFrom)
