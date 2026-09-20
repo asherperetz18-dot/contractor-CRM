@@ -20,14 +20,18 @@ export default async function SalespeoplePage() {
     (async () => {
       const { data, error } = await supabase.rpc("rep_lead_stats", { p_company: companyId });
       if (!error && data) return repLeadStatsFromRows(data as RepLeadStatsRow[]);
-      const slim = await selectAll<{ assigned_to: string | null; stage: string; value: number }>(
-        (f, t) =>
-          supabase
-            .from("leads")
-            .select("assigned_to, stage, value")
-            .eq("company_id", companyId)
-            .order("created_at", { ascending: false })
-            .range(f, t)
+      const slim = await selectAll<{
+        assigned_to: string | null;
+        partner_rep_id: string | null;
+        stage: string;
+        value: number;
+      }>((f, t) =>
+        supabase
+          .from("leads")
+          .select("assigned_to, partner_rep_id, stage, value")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .range(f, t)
       );
       return repLeadStats(slim);
     })(),

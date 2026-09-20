@@ -72,19 +72,34 @@ export function repLeadStatsFromRows(rows: RepLeadStatsRow[]): Map<string, RepLe
 }
 
 export function repLeadStats(
-  slim: { assigned_to: string | null; stage: string; value: number }[]
+  slim: {
+    assigned_to: string | null;
+    /** The second rep on a partnership job (0163). The lead lands in
+     *  both books and both get the Won notch, but the value splits half
+     *  and half -- one sale's money, never doubled on the grid. */
+    partner_rep_id?: string | null;
+    stage: string;
+    value: number;
+  }[]
 ): Map<string, RepLeadStats> {
   const map = new Map<string, RepLeadStats>();
-  for (const l of slim) {
-    if (!l.assigned_to) continue;
-    const row = map.get(l.assigned_to) ?? { assignedCount: 0, openCount: 0, wonCount: 0, wonValue: 0 };
+  const credit = (repId: string, l: { stage: string; value: number }, valueShare: number) => {
+    const row = map.get(repId) ?? { assignedCount: 0, openCount: 0, wonCount: 0, wonValue: 0 };
     row.assignedCount += 1;
     if (!["Won", "Lost", "DNC"].includes(l.stage)) row.openCount += 1;
     if (l.stage === "Won") {
       row.wonCount += 1;
-      row.wonValue += Number(l.value) || 0;
+      row.wonValue += (Number(l.value) || 0) * valueShare;
     }
-    map.set(l.assigned_to, row);
+    map.set(repId, row);
+  };
+  for (const l of slim) {
+    // Guarded even though the pickers forbid it: the same person in
+    // both seats is one rep and one sale, not two.
+    const partner = l.partner_rep_id && l.partner_rep_id !== l.assigned_to ? l.partner_rep_id : null;
+    const share = partner ? 0.5 : 1;
+    if (l.assigned_to) credit(l.assigned_to, l, share);
+    if (partner) credit(partner, l, 0.5);
   }
   return map;
 }

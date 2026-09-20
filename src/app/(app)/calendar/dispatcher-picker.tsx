@@ -10,6 +10,7 @@ import {
   type DispatcherContext,
 } from "@/lib/actions/dispatcher";
 import { CloserPicker } from "../pipeline/closer-picker";
+import { PartnerRepPicker } from "../pipeline/partner-rep-picker";
 
 /**
  * Who owns this lead as dispatcher.
@@ -164,6 +165,7 @@ export function DispatcherPicker({
   return (
     <>
       {dispatcherField}
+      <PartnerRepPicker leadId={leadId} readOnly={readOnly} />
       <CloserPicker leadId={leadId} readOnly={readOnly} />
     </>
   );

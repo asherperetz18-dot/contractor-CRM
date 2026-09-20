@@ -98,20 +98,31 @@ export async function getSalesTeam(
   // pre-0153 contract keeps its closer in seat two, and prefilling the
   // closer seat on top of that would show the same person paid twice.
   let repOne = est.sales_rep_1;
+  let repTwo = est.sales_rep_2;
+  let repOneBp = est.sales_rep_1_bp ?? 10000;
+  let repTwoBp = est.sales_rep_2_bp ?? 0;
   let closerId = est.closer_id;
   let closerPoolBp = est.closer_pool_bp ?? 0;
   const unseeded = !est.sales_rep_1 && !est.sales_rep_2 && !est.closer_id;
   if (unseeded) {
     const { data: lead } = await supabase
       .from("leads")
-      .select("assigned_to, closer_id, closer_bp")
+      .select("assigned_to, partner_rep_id, closer_id, closer_bp")
       .eq("id", est.lead_id)
       .maybeSingle<{
         assigned_to: string | null;
+        partner_rep_id: string | null;
         closer_id: string | null;
         closer_bp: number | null;
       }>();
     repOne = lead?.assigned_to ?? null;
+    // The lead's partnership previews as the even split the trigger
+    // will seed at signature (0163).
+    if (lead?.partner_rep_id && lead.partner_rep_id !== lead.assigned_to) {
+      repTwo = lead.partner_rep_id;
+      repOneBp = 5000;
+      repTwoBp = 5000;
+    }
     closerId = lead?.closer_id ?? null;
     if (closerId) {
       // The same conversion the trigger will run at signature, so the
@@ -126,9 +137,9 @@ export async function getSalesTeam(
   return {
     team: {
       sales_rep_1: repOne,
-      sales_rep_1_bp: est.sales_rep_1_bp ?? 10000,
-      sales_rep_2: est.sales_rep_2,
-      sales_rep_2_bp: est.sales_rep_2_bp ?? 0,
+      sales_rep_1_bp: repOneBp,
+      sales_rep_2: repTwo,
+      sales_rep_2_bp: repTwoBp,
       closer_id: closerId,
       closer_pool_bp: closerPoolBp,
       commission_rate_bp: rateBp,

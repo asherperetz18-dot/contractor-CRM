@@ -30,9 +30,14 @@ export async function getLeadCloserContext(leadId: string): Promise<CloserContex
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, assigned_to, closer_id")
+    .select("id, assigned_to, partner_rep_id, closer_id")
     .eq("id", leadId)
-    .maybeSingle<{ id: string; assigned_to: string | null; closer_id: string | null }>();
+    .maybeSingle<{
+      id: string;
+      assigned_to: string | null;
+      partner_rep_id: string | null;
+      closer_id: string | null;
+    }>();
   if (!lead) return null;
 
   const { data: people } = await supabase
@@ -65,7 +70,9 @@ export async function getLeadCloserContext(leadId: string): Promise<CloserContex
       })),
     [lead.closer_id]
   )
-    .filter((p) => p.id !== lead.assigned_to)
+    // Neither seated rep: the owner cannot close for themselves, and
+    // the partner already holds the sale (one seat per person).
+    .filter((p) => p.id !== lead.assigned_to && p.id !== lead.partner_rep_id)
     .map((p) => ({ id: p.id, name: p.name || p.email || "Unknown" }));
 
   // Matches the rule enforced in setLeadCloser. Sent to the client only
@@ -114,14 +121,28 @@ export async function setLeadCloser(
 
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, assigned_to, closer_id")
+    .select("id, assigned_to, partner_rep_id, closer_id")
     .eq("id", leadId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<{ id: string; assigned_to: string | null; closer_id: string | null }>();
+    .maybeSingle<{
+      id: string;
+      assigned_to: string | null;
+      partner_rep_id: string | null;
+      closer_id: string | null;
+    }>();
   if (!lead) return { error: "Contact not found, or you can't open it." };
 
   if (closerId && closerId === lead.assigned_to) {
     return { error: "The assigned rep is already on this contact — pick someone else as closer." };
+  }
+  // One seat per person, both directions: a partner holds the sale, a
+  // closer follows it, and the same name in both rows would pay one
+  // person from two different rules.
+  if (closerId && closerId === lead.partner_rep_id) {
+    return {
+      error:
+        "They are this contact's partner rep. Pick a different closer, or clear the partnership first.",
+    };
   }
 
   const isOffice = isAdminRole(profile);
