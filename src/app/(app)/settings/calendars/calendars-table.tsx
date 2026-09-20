@@ -1,5 +1,6 @@
 "use client";
 
+import { moveInList } from "@/lib/data/move-in-list";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
@@ -42,6 +43,17 @@ export function CalendarsTable({ calendars }: { calendars: CalendarRow[] }) {
     ids.splice(fromIndex, 1);
     ids.splice(toIndex, 0, draggedId);
     setDraggedId(null);
+    startTransition(async () => {
+      await reorderCalendars(ids);
+      router.refresh();
+    });
+  }
+
+  // The ▲/▼ buttons on touch screens: one swap with a neighbour, saved
+  // through the same action the drag uses.
+  function handleMove(index: number, delta: -1 | 1) {
+    const ids = moveInList(calendars.map((x) => x.id), index, delta);
+    if (!ids) return;
     startTransition(async () => {
       await reorderCalendars(ids);
       router.refresh();
@@ -155,7 +167,27 @@ export function CalendarsTable({ calendars }: { calendars: CalendarRow[] }) {
               }
             >
               <td className="stage-drag-handle" title="Drag to reorder">
-                ⠿
+                <span className="drag-grip">⠿</span>
+                <span className="reorder-btns">
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, -1)}
+                    disabled={i === 0}
+                    aria-label={`Move ${c.name} up`}
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    onClick={() => handleMove(i, 1)}
+                    disabled={i === calendars.length - 1}
+                    aria-label={`Move ${c.name} down`}
+                  >
+                    ▼
+                  </button>
+                </span>
               </td>
               <td>{i + 1}</td>
               <td>
@@ -223,7 +255,7 @@ export function CalendarsTable({ calendars }: { calendars: CalendarRow[] }) {
       </table>
 
       <p className="hint-note">
-        Drag rows to reorder. Custom calendars can be renamed and deleted;
+        Drag rows to reorder (on a touch screen, use the ▲▼ buttons). Custom calendars can be renamed and deleted;
         system calendars can be reordered and recolored but not renamed or removed.
       </p>
 

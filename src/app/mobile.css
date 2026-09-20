@@ -80,7 +80,11 @@
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   select,
   textarea {
-    font-size: 16px;
+    /* !important because the bare "select" and "textarea" here lose to
+       ".field select" / ".field textarea" in globals.css, and to the
+       inline fontSize on the call-script and quick-text textareas -- so
+       most dropdowns and text areas in the forms were still zooming. */
+    font-size: 16px !important;
   }
 }
 
@@ -146,5 +150,10 @@
     min-width: 36px;
     min-height: 36px;
     padding: 6px;
+  }
+  /* The permission switches on Users & Roles are a 36x20 track with no
+     padding around it; a miss flips a teammate's access. */
+  .ur-toggle-btn {
+    padding: 8px 6px;
   }
 }

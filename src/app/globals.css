@@ -2152,6 +2152,32 @@ a.stat-card {
   color: var(--ink-soft);
   width: 24px;
 }
+/* Drag-and-drop was the only way to reorder these tables, and a finger
+   on Android (or an iPhone before iOS 15) fires no drag events at all --
+   the handle just scrolled the page. On touch screens the grip gives way
+   to ▲/▼ buttons that swap a row with its neighbour; with a mouse the
+   grip stays and the buttons stay out of the way. */
+.reorder-btns {
+  display: none;
+}
+@media (pointer: coarse) {
+  .stage-drag-handle {
+    width: auto;
+    cursor: default;
+  }
+  .stage-drag-handle .drag-grip {
+    display: none;
+  }
+  .reorder-btns {
+    display: inline-flex;
+    flex-direction: column;
+  }
+  .reorder-btns .icon-btn {
+    min-height: 30px;
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+}
 .stage-row-dragging {
   opacity: 0.4;
 }
@@ -7653,6 +7679,12 @@ a.portal-header-stars:hover {
   font-size: 14px;
   line-height: 1.7;
 }
+/* Webhook URLs and Stripe ids are one long word; unbroken, one of them
+   pushed the whole settings page into a sideways scroll on a phone. */
+.pp-checks .mono {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .pp-checks li.pp-bad {
   color: #a03b3b;
   font-weight: 500;
@@ -8748,6 +8780,12 @@ textarea.est-item-desc:disabled {
   display: flex;
   gap: 10px;
   margin-top: 12px;
+}
+@media (pointer: coarse) {
+  .menu-order-btns .btn-ghost.small {
+    min-height: 36px;
+    min-width: 36px;
+  }
 }
 
 /* The sidebar footer's identity line: which account, said once, quietly. */
