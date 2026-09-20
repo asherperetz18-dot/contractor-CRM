@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -61,14 +60,6 @@ export function ChecklistTemplatesView({ templates }: { templates: ChecklistTemp
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Checklist Templates</span>
-      </div>
-
       {error && !draft && <p className="error-note">{error}</p>}
 
       <div className="modal-actions" style={{ marginTop: 0, marginBottom: 10 }}>

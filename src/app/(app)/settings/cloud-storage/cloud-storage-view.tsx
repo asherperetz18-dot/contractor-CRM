@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { disconnectGoogleDrive } from "@/lib/actions/google-drive";
 import { backupFilesToDrive } from "@/lib/actions/lead-files";
@@ -83,14 +82,6 @@ export function CloudStorageView({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Cloud Storage</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Cloud Storage</h1>

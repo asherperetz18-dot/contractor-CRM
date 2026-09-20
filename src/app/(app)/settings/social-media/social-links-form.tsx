@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { saveSocialLinks, type SocialLinksInput } from "@/lib/actions/settings";
 import type { CompanyProfile } from "@/lib/data/types";
@@ -67,14 +66,6 @@ export function SocialLinksForm({ profile }: { profile: CompanyProfile | null })
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Social Media Links</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Social Media Links</h1>
