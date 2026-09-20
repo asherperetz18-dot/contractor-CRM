@@ -25,7 +25,14 @@ export const dynamic = "force-dynamic";
  * lead; what was missing was anywhere that put them side by side and
  * said whether the job is making money.
  */
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string }>;
+}) {
+  // ?focus=<estimateId>: a deep link from a Production Board card that
+  // narrows the page to that one project until the user clears it.
+  const { focus } = await searchParams;
   const profile = await getCurrentProfile();
   if (!profile) return null;
 
@@ -96,6 +103,7 @@ export default async function ProjectsPage() {
       canRemoveChecklist={isAdminRole(profile)}
       memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
       canCheckRain={isAdminRole(profile)}
+      focusId={focus}
     />
   );
 }

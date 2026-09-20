@@ -11,7 +11,7 @@ export default async function ProductionPage() {
   const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
 
-  const [jobs, allAssignees] = await Promise.all([
+  const [jobs, roster] = await Promise.all([
     // selectAll: a bare select stops at 1000 rows in silence -- a
     // production board that quietly drops the oldest jobs once the book
     // passes a thousand is exactly the page nobody would suspect.
@@ -23,17 +23,41 @@ export default async function ProductionPage() {
         .order("created_at", { ascending: false })
         .range(f, t)
     ),
+    // The WHOLE roster, active or not: the board and form narrow their
+    // own pickers, and name lookups must keep resolving people who have
+    // since been deactivated.
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
-  const assignees = allAssignees
-    .filter((r) => r.status === "Active")
-    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+
+  // Only the estimates the jobs on the board actually point at (never a
+  // whole-table scan): a signed top-level contract per lead is what
+  // "Open project" jumps to on the Projects board.
+  const leadIds = [...new Set(jobs.map((j) => j.lead_id).filter((x): x is string => !!x))];
+  const projectByLead: Record<string, string> = {};
+  if (leadIds.length > 0) {
+    const { data: signed } = await supabase
+      .from("estimates")
+      .select("id, lead_id, kind, signed_at")
+      .eq("company_id", companyId)
+      .eq("status", "Signed")
+      .in("lead_id", leadIds)
+      .returns<{ id: string; lead_id: string | null; kind: string | null; signed_at: string | null }[]>();
+    (signed ?? [])
+      .filter((e) => e.kind !== "change_order" && e.kind !== "completion")
+      // Latest signature wins when a lead has several signed documents.
+      .sort((a, b) => (a.signed_at ?? "").localeCompare(b.signed_at ?? ""))
+      .forEach((e) => {
+        if (e.lead_id) projectByLead[e.lead_id] = e.id;
+      });
+  }
 
   return (
     <ProductionBoard
       jobs={jobs}
-      assignees={assignees}
+      roster={roster}
+      projectByLead={projectByLead}
       canWrite={canWrite}
+      initialToday={new Date().toISOString().slice(0, 10)}
     />
   );
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import type { JobInput } from "@/lib/data/types";
+import type { JobInput, JobStatus } from "@/lib/data/types";
 
 function toRow(input: JobInput) {
   return {
@@ -34,6 +34,17 @@ export async function createJob(input: JobInput) {
 export async function updateJob(id: string, input: JobInput) {
   const supabase = await createClient();
   const { error } = await supabase.from("jobs").update(toRow(input)).eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/production");
+  return {};
+}
+
+/** The board's drag-between-columns move: status alone, so a drop can
+ *  never clobber edits somebody else is making in the job's form. */
+export async function updateJobStatus(id: string, status: JobStatus) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("jobs").update({ status }).eq("id", id);
 
   if (error) return { error: error.message };
   revalidatePath("/production");

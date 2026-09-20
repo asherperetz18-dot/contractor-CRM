@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
-import { JOB_STATUSES, type Job, type JobInput, type Profile } from "@/lib/data/types";
+import { JOB_STATUSES, type Job, type JobInput } from "@/lib/data/types";
+import type { RepPickable } from "@/lib/data/rep-options";
 import { createJob, deleteJob, updateJob } from "@/lib/actions/jobs";
 
 function toInput(job?: Job): JobInput {
@@ -21,14 +22,15 @@ function toInput(job?: Job): JobInput {
 
 export function JobForm({
   job,
-  assignees,
+  roster,
   readOnly,
   onCancel,
   onSaved,
   onDeleted,
 }: {
   job?: Job;
-  assignees: Profile[];
+  /** The whole roster; the select narrows it itself. */
+  roster: RepPickable[];
   readOnly?: boolean;
   onCancel: () => void;
   onSaved: () => void;
@@ -38,6 +40,13 @@ export function JobForm({
   const [form, setForm] = useState<JobInput>(toInput(job));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+
+  // Active members, plus the job's stored assignee whatever their
+  // status — a deactivated crew member vanishing from their own select
+  // renders it blank and saves as data lost.
+  const assignees = roster
+    .filter((m) => (m.status ?? "Active") === "Active" || m.id === (job?.assigned_to ?? ""))
+    .sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || ""));
 
   const set = <K extends keyof JobInput>(k: K, v: JobInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));

@@ -159,6 +159,7 @@ export function ProjectsView({
   canRemoveChecklist,
   memberNames,
   canCheckRain,
+  focusId,
 }: {
   projects: ProjectCard[];
   canManage: boolean;
@@ -179,13 +180,18 @@ export function ProjectsView({
   memberNames: Record<string, string>;
   /** Office/Admin: may run the on-demand rain check. */
   canCheckRain: boolean;
+  /** ?focus=<estimateId> deep link: show that one project until cleared. */
+  focusId?: string;
 }) {
   // The page opens on the jobs being worked right now; "All" is one click
   // away. Falls back to "All" when nothing is in progress, so the first
-  // screen is never empty.
+  // screen is never empty. A focus deep link starts on "All" instead --
+  // the linked job may be complete or on hold, and landing on a chip
+  // that hides it would make the link look broken.
   const [filter, setFilter] = useState<Filter>(() =>
-    projects.some((p) => p.status === "in_progress") ? "InProgress" : "All",
+    focusId ? "All" : projects.some((p) => p.status === "in_progress") ? "InProgress" : "All",
   );
+  const [focus, setFocus] = useState(focusId ?? "");
   const [search, setSearch] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [repFilter, setRepFilter] = useState("");
@@ -368,6 +374,7 @@ export function ProjectsView({
       client: clientFilter,
       rep: repFilter,
       bounds: dateBounds,
+      focusId: focus || undefined,
     })
   );
 
@@ -592,6 +599,21 @@ export function ProjectsView({
 
       <div className="chip-row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
         <div className="chip-row" style={{ margin: 0 }}>
+          {focus && (
+            // The deep-linked job, pinned until dismissed. One chip, not a
+            // filter row entry: it is the whole page's scope while it's on.
+            <button
+              className="chip chip-sel"
+              onClick={() => setFocus("")}
+              title="Back to the full list"
+            >
+              {(() => {
+                const p = projects.find((x) => x.estimateId === focus);
+                return p ? `Showing ${p.customer || p.title || p.docNumber}` : "Showing one job";
+              })()}{" "}
+              ✕
+            </button>
+          )}
           {(
             [
               ["All", `All ${active.length}`, "", active.length],

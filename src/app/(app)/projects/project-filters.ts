@@ -136,8 +136,12 @@ export function matchesProjectFilters(
     client: string;
     rep: string;
     bounds: [number, number] | null;
+    /** A deep link (?focus=<estimateId>, e.g. from a Production Board
+     *  card) narrows the page to that one project until cleared. */
+    focusId?: string;
   }
 ): boolean {
+  if (f.focusId && p.estimateId !== f.focusId) return false;
   if (f.client && p.customer !== f.client) return false;
   if (f.rep && p.repName !== f.rep) return false;
   if (f.bounds) {

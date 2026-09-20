@@ -527,6 +527,16 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** An admin can clear a 66k-row stage in a couple of minutes from the same screen that manages stages, and the recovery story is the exported file, not the trash. The trade is real: someone who skips the export and confirms has no undo. That's why the action lives behind the Admin gate, spells out the exact count in the confirm, and sits right next to the export button it tells you to press first.
 
+## 048 — A signed contract puts its job on the Production Board by itself
+
+**Date:** 2026-09-20
+
+**Context:** The Production Board starved while Projects filled up: a job only existed if somebody ran the pipeline's "convert to job" or typed one in by hand, so the board showed 1 job against a book of signed contracts. The moment work actually becomes real — a customer signing — created nothing.
+
+**Decision:** `finalizeSignedEstimate` (shared by portal e-signature and signed-on-paper, so both doors behave alike) now creates a production job for a newly signed top-level contract: name and address prefilled from the lead (the convert-to-job naming), status Not Started, crew left unassigned — assignment stays a human call. One job per lead, checked before insert: a re-signed revision, a completion certificate, a change order, or a second contract on the same customer never stacks a duplicate card. The decision of *whether* a job is due and its shape is pure and tested (`src/lib/production-job.ts`); the wrapper never throws, because by then the signature is committed and a board hiccup must not read back to the customer as a failed signing — a create failure is logged server-side and the job can still be added by hand.
+
+**Consequence:** The board reflects the real book from signature day forward with no new tables and no migration. Two boards deliberately coexist: Projects stays the money view (a signed contract and its rollup), Production stays the crew/schedule view (the `jobs` row that Calendar and Schedule already read), bridged by the card's "Open project" link and the `?focus=` deep link on Projects. Board summary cards follow the search and crew filters but not the clicked quick-card itself — the four cards must keep counting one shared list, or each would describe a different board.
+
 ## 049 — Partnership sales: two reps hold the sale, the closer only ever follows it
 
 **Date:** 2026-09-20
