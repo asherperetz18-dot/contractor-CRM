@@ -26,7 +26,8 @@ pencils in the visit, and files everything. Shipped across PRs #196,
   `PRE_APPOINTMENT_STAGES`).
 - Takeover seams: `api/voice/inbound` (no forwarding number branch) and
   `api/voice/inbound/status` (Dial rang out). Per-turn webhook:
-  `api/voice/ai/turn`. All Twilio-signature-validated per company.
+  `api/voice/ai/turn`; transfer-dial result: `api/voice/ai/transfer`.
+  All Twilio-signature-validated per company.
 - Session table `ai_receptionist_calls` (migration 0160): turns jsonb,
   status active→done→finalizing→finalized, claimed by conditional
   update so no path double-files.
@@ -57,34 +58,35 @@ pencils in the visit, and files everything. Shipped across PRs #196,
 - Model replies are untrusted JSON: parse with the tested parsers, and
   a null parse is a stock re-prompt bounded by the turn budget.
 
-## Planned controls — designed, not built (owner asked; specs agreed)
+## Owner controls — two built, one still planned
 
-Build these on the AI Receptionist settings page when asked; each was
-scoped deliberately small:
-
-1. **Pickup ring time.** Already exists as
+1. **Pickup ring time** (built, decision #044). IS
    `company_profile.call_forward_timeout` (SECONDS — the `<Dial
    timeout>` before the status callback hands the call to the AI;
-   ~5s ≈ one ring; default 25). Do NOT add a column. Surface the same
-   column on the AI Receptionist panel with an "≈ N rings" hint, keep
-   Company Profile as the other door to it (one source of truth, two
-   doors — the social-links precedent).
-2. **Transfer to a human.** New column
-   `ai_receptionist_transfer_number text` (next free migration number —
-   CHECK MAIN FIRST, see crm-owner-workflow). Blank = feature off.
-   Mechanics: the turn JSON contract gains `"transfer": true` (model
-   sets it when the caller asks for a person; prompt: offer only when
-   configured, offer proactively on emergency vibes); the turn route
-   then returns `<Say>` + `<Dial timeout=~25 action=…>` to the number;
-   the Dial action on no-answer RESUMES the AI ("Couldn't reach anyone
-   — let me take your details instead") so a failed transfer is never a
-   dead end. Also accept DTMF 0: `<Gather input="speech dtmf">`, treat
-   `Digits === "0"` as transfer intent. Log the transfer in the session
-   turns so the note shows it.
-3. **Business hours / working days** (later): per-company setting the
-   prompt AND `appointmentFromExtraction` both respect; also cures the
-   "penciled a Sunday" TECH_DEBT entry and can gate WHEN the AI answers
-   at all (after-hours only mode).
+   ~5s ≈ one ring; default 25; `approxRings` renders the hint). There
+   is deliberately NO second column: the AI Receptionist panel and
+   Company Profile are two doors to the same value (the social-links
+   precedent). With no forwarding number the AI answers immediately and
+   the timeout is moot.
+2. **Transfer to a human** (built, decision #044).
+   `ai_receptionist_transfer_number` (migration 0161; blank/NULL = off;
+   read in its own tolerant select so a 0160-only database still runs).
+   Two triggers, one path: the turn JSON's `"transfer": true` (prompt
+   offers it only when configured, proactively on emergencies) or
+   `Digits === "0"` (gather is `input="speech dtmf"`). Both return
+   `<Say>` + `transferTwiml` (`<Dial timeout=25
+   action=/api/voice/ai/transfer>`); that action route calls
+   `handleTransferResult`: DialCallStatus completed/answered → the
+   human finished the call, hang up + finalize; anything else →
+   re-gather with "couldn't reach anyone — let me take your details",
+   so a failed transfer NEVER dead-ends. Both branches append plain
+   markers to the session turns so the 🤖 note shows the attempt. The
+   settings save writes this column as its own update, so pre-0161 the
+   rest of the form still saves.
+3. **Business hours / working days** (still planned): per-company
+   setting the prompt AND `appointmentFromExtraction` both respect;
+   also cures the "penciled a Sunday" TECH_DEBT entry and can gate WHEN
+   the AI answers at all (after-hours only mode).
 
 ## Conventions when changing this feature
 

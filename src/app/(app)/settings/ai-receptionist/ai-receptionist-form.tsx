@@ -4,24 +4,32 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Field } from "@/components/ui/field";
+import { approxRings } from "@/lib/ai-receptionist";
 import { saveAiReceptionistSettings } from "@/lib/actions/settings";
 
 export function AiReceptionistForm({
   settings,
+  transferNumber,
   configured,
   migrationPending,
+  transferPending,
 }: {
   settings: {
     ai_receptionist_enabled: boolean;
     ai_receptionist_greeting: string | null;
+    call_forward_timeout: number | null;
   };
+  transferNumber: string | null;
   configured: boolean;
   migrationPending: boolean;
+  transferPending: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [enabled, setEnabled] = useState(settings.ai_receptionist_enabled);
   const [greeting, setGreeting] = useState(settings.ai_receptionist_greeting ?? "");
+  const [timeoutSeconds, setTimeoutSeconds] = useState(settings.call_forward_timeout ?? 25);
+  const [transfer, setTransfer] = useState(transferNumber ?? "");
   const [saved, setSaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +37,12 @@ export function AiReceptionistForm({
   async function save() {
     setPending(true);
     setError("");
-    const result = await saveAiReceptionistSettings({ enabled, greeting });
+    const result = await saveAiReceptionistSettings({
+      enabled,
+      greeting,
+      timeoutSeconds,
+      transferNumber: transfer,
+    });
     setPending(false);
     if (result?.error) {
       setError(result.error);
@@ -38,6 +51,8 @@ export function AiReceptionistForm({
     setSaved(true);
     startTransition(() => router.refresh());
   }
+
+  const rings = approxRings(timeoutSeconds);
 
   return (
     <div>
@@ -114,6 +129,59 @@ export function AiReceptionistForm({
           company&apos;s AI assistant, and this call may be transcribed.&rdquo;). Leave blank for
           the default shown above.
         </p>
+      </div>
+
+      <div className="cp-card">
+        <div className="cp-card-head">⏱ Pickup &amp; hand-off</div>
+
+        <Field label="Ring your phone for (seconds)">
+          <input
+            type="number"
+            min={5}
+            max={60}
+            value={timeoutSeconds}
+            onChange={(e) => {
+              setTimeoutSeconds(Number(e.target.value) || 25);
+              setSaved(false);
+            }}
+          />
+        </Field>
+        <p className="cp-hint">
+          ≈ {rings} ring{rings === 1 ? "" : "s"} before the AI picks up. This is the same
+          &ldquo;Ring For&rdquo; setting as on{" "}
+          <Link href="/settings/company-profile">Company Profile</Link> — your forwarding phone
+          rings this long first, then the AI answers. With no forwarding number set, the AI
+          answers right away.
+        </p>
+
+        <Field label="Transfer to a person (optional)">
+          <input
+            type="tel"
+            value={transfer}
+            onChange={(e) => {
+              setTransfer(e.target.value);
+              setSaved(false);
+            }}
+            placeholder="+18183008242"
+            disabled={transferPending}
+          />
+        </Field>
+        {transferPending ? (
+          <p className="error-note">
+            <strong>
+              Run <code>supabase/migrations/0161_receptionist_transfer.sql</code> in the Supabase
+              SQL editor
+            </strong>{" "}
+            to unlock this field. It&apos;s safe to run twice; the rest of this page works
+            without it.
+          </p>
+        ) : (
+          <p className="cp-hint">
+            When set, a caller who asks for a person (or presses 0) gets connected to this number.
+            If nobody answers, the AI apologizes and keeps taking their details — the caller is
+            never left hanging. Leave blank to turn transfers off.
+          </p>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
           <button className="btn-primary" onClick={save} disabled={pending || migrationPending}>
