@@ -6,19 +6,15 @@ import { companyForAccountSid, companyForInboundNumber, getTwilioForCompany } fr
 import {
   failsafeTwiml,
   finalizeReceptionistCall,
-  runReceptionistTurn,
+  handleTransferResult,
 } from "@/lib/ai-receptionist-engine";
 
 /**
- * One turn of the AI receptionist: Twilio's <Gather> posts what the
- * caller said, this answers with what the AI says next (or a goodbye).
- * Signature-validated per company like every other voice webhook; when
- * the reply ends the call, the CRM records are filed via after() so the
- * goodbye reaches the caller without waiting on the paperwork.
+ * Where the transfer <Dial> reports back. A human answered: the call is
+ * over, file it. Nobody answered: the AI picks the caller back up — a
+ * failed transfer must never be a dead line.
  */
 
-// A turn is one short model reply, but the line is live -- headroom
-// over the default beats clipping a slow turn mid-call.
 export const maxDuration = 30;
 
 function twiml(body: string): NextResponse {
@@ -33,8 +29,6 @@ export async function POST(req: NextRequest) {
   const params: Record<string, string> = {};
   for (const [key, value] of form.entries()) params[key] = String(value);
 
-  // Same two-step resolution as the dial-status callback: the account
-  // that signed it, else the number that was called.
   const companyId =
     (await companyForAccountSid(params.AccountSid || "")) ??
     (await companyForInboundNumber(params.To || ""));
@@ -47,10 +41,9 @@ export async function POST(req: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const result = await runReceptionistTurn(admin, {
+  const result = await handleTransferResult(admin, {
     callSid: (params.CallSid || "").trim(),
-    speech: params.SpeechResult || "",
-    digits: (params.Digits || "").trim(),
+    dialStatus: (params.DialCallStatus || "").trim(),
     origin: new URL(req.url).origin,
   });
 
@@ -60,7 +53,7 @@ export async function POST(req: NextRequest) {
       try {
         await finalizeReceptionistCall(createAdminClient(), sessionId);
       } catch (error) {
-        console.error("[ai-receptionist] finalize after goodbye failed", sessionId, error);
+        console.error("[ai-receptionist] finalize after transfer failed", sessionId, error);
       }
     });
   }

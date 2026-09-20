@@ -22,9 +22,12 @@ export type ReceptionistFacts = {
    *  means nothing without an anchor date. */
   todayISO: string;
   todayLabel: string;
+  /** Where "let me talk to a person" rings; null means the feature is
+   *  off and the prompt never mentions it. */
+  transferNumber: string | null;
 };
 
-export type TurnReply = { say: string; done: boolean };
+export type TurnReply = { say: string; done: boolean; transfer: boolean };
 
 export type ExtractedLead = {
   first_name: string;
@@ -66,12 +69,35 @@ export function sayTwiml(text: string): string {
  * leaves the session hanging with no way to say goodbye.
  */
 export function gatherTwiml(input: { actionUrl: string; say: string }): string {
+  // dtmf alongside speech: pressing 0 is the universal "get me a
+  // person", and it costs nothing when no transfer number is set.
   return (
-    `<Gather input="speech" speechTimeout="auto" speechModel="phone_call"` +
+    `<Gather input="speech dtmf" numDigits="1" speechTimeout="auto" speechModel="phone_call"` +
     ` actionOnEmptyResult="true" action="${xmlEscape(input.actionUrl)}" method="POST">` +
     sayTwiml(input.say) +
     `</Gather>`
   );
+}
+
+const TRANSFER_DIAL_TIMEOUT_SECONDS = 25;
+
+/**
+ * Ring the human, and come back either way: the action fires when the
+ * dial leg ends, so an unanswered transfer resumes the AI instead of
+ * leaving the caller on a dead line.
+ */
+export function transferTwiml(input: { number: string; actionUrl: string; say: string }): string {
+  return (
+    sayTwiml(input.say) +
+    `<Dial timeout="${TRANSFER_DIAL_TIMEOUT_SECONDS}" action="${xmlEscape(input.actionUrl)}" method="POST">` +
+    `<Number>${xmlEscape(input.number)}</Number>` +
+    `</Dial>`
+  );
+}
+
+/** The Dial timeout, as a person counts it: one ring is ~5 seconds. */
+export function approxRings(seconds: number): number {
+  return Math.max(1, Math.round(seconds / 5));
 }
 
 /**
@@ -108,6 +134,11 @@ export function receptionistSystemPrompt(facts: ReceptionistFacts): string {
     "- A booking is only ever penciled in, never final: say they'll get a text to confirm, and never claim to have checked a calendar or promise who will come.",
     "- If they ask something you don't know from the company notes, say you'll pass the question to the team.",
     "- If it's clearly a wrong number or spam, wrap up politely.",
+    ...(facts.transferNumber
+      ? [
+          `- A live transfer is available. If the caller asks for a person (or presses 0), or it sounds like an emergency — flooding, a safety issue — reply with "say" as one short line like "Sure — connecting you now." and add "transfer": true to the JSON. Don't advertise the transfer otherwise.`,
+        ]
+      : []),
     "",
     `Once you have the essentials (or the caller is done), thank them by name, say the team will call back${facts.companyName ? ` from ${facts.companyName}` : ""}, and set done to true.`,
     ...(script
@@ -162,6 +193,8 @@ export function parseTurnReply(raw: string): TurnReply | null {
   return {
     say: speakable(say, MAX_SAY_CHARS),
     done: (parsed as { done?: unknown }).done === true,
+    // Explicit true only -- an untrusted string never counts as a flag.
+    transfer: (parsed as { transfer?: unknown }).transfer === true,
   };
 }
 
