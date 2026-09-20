@@ -577,3 +577,12 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A graph on this page cannot show a number the tables don't; adding a fourth reading of the ledger (say, by salesperson) is one more reducer, not a new date engine. The nudge about uncosted jobs is the page telling the owner the truth about its own inputs. Commissions are still not on the statement (TECH_DEBT), so net profit remains overstated by payouts until that line is added.
 
+## 053 — A send asks every gate before the message leaves
+
+**Date:** 2026-09-20
+
+**Context:** The approval gate (0136) is a database trigger on the status change, which is the right backstop: every path out of Draft hits it. But the email/text send changes the status *after* the message goes out, through the service-role client, and never read the result. With approval switched on and a document unapproved, the trigger refused the change, the customer already had the link, the sender's signature was recorded, and the document stood in Draft on the Contract Board as if nobody had sent it — twice, from two people, leaving two "Contractor" signatures on one contract. The link the customer held was turned away by the portal, which refuses Drafts.
+
+**Decision:** The rule is asked in the server action first — `approvalHoldsSend`, a pure mirror of the trigger's condition, same as the closer's hold (#024) — before a message is sent or a signer row is written, and the estimate page hides the send controls behind the same hold note. The status write is checked, and a refusal is reported to the sender in words. The trigger stays. A send also replaces any earlier send-time contractor signature: one contractor stands behind one document.
+
+**Consequence:** A held document can't be half-sent any more; the held person is told who approves. Existing half-sent documents need no SQL: approving and sending them again replaces the stray signatures and moves them to Sent. The trade is two extra reads on every send, on an action that already sends email.

@@ -1887,6 +1887,11 @@ export type Estimate = {
   signed_at: string | null;
   declined_at: string | null;
   declined_reason: string | null;
+  /** The approval gate (0136): when an admin approved this to go out,
+   *  and who. Null until then, and cleared again by any edit that pulls
+   *  the document back to Draft. */
+  approved_at: string | null;
+  approved_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
