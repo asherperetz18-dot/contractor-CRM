@@ -8,7 +8,7 @@ import { DASHBOARD_PANEL_KEYS, mergePanelOrder } from "@/lib/data/dashboard-layo
  * store funnel-order-prefs is, for the same reasons: the server renders
  * the default order (it cannot know what this browser saved) and the
  * saved order arrives cleanly after hydration. It is the fallback for
- * the profile column (0161), and the pre-migration path.
+ * the profile column (0162), and the pre-migration path.
  */
 const KEY = "crm:dashboard-panel-order";
 

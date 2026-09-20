@@ -43,7 +43,7 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "portal_payments", column: "recorded_by", migration: "0151_portal_payments_manual_columns.sql" },
   { table: "portal_payments", column: "reference", migration: "0151_portal_payments_manual_columns.sql" },
   { table: "portal_payments", column: "note", migration: "0151_portal_payments_manual_columns.sql" },
-  { table: "profiles", column: "dashboard_panel_order", migration: "0161_dashboard_rollup.sql" },
+  { table: "profiles", column: "dashboard_panel_order", migration: "0162_dashboard_rollup.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

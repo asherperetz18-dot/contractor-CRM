@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, type TimeFormat } from "@/lib/data/types";
+import { isAdminRole, toE164, type TimeFormat } from "@/lib/data/types";
 import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
@@ -161,10 +161,22 @@ export async function saveAiAnalysisSettings(input: {
 export async function saveAiReceptionistSettings(input: {
   enabled: boolean;
   greeting: string;
+  timeoutSeconds: number;
+  transferNumber: string;
 }): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const timeoutSeconds = Number(input.timeoutSeconds);
+  if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 5 || timeoutSeconds > 60) {
+    return { error: "Pickup time must be a whole number of seconds between 5 and 60." };
+  }
+  const transferTrimmed = input.transferNumber.trim();
+  const transferNumber = transferTrimmed ? toE164(transferTrimmed) : "";
+  if (transferTrimmed && !transferNumber) {
+    return { error: "The transfer number doesn't look like a phone number — check the digits." };
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -172,6 +184,7 @@ export async function saveAiReceptionistSettings(input: {
     .update({
       ai_receptionist_enabled: input.enabled,
       ai_receptionist_greeting: input.greeting.trim().slice(0, 400) || null,
+      call_forward_timeout: timeoutSeconds,
     })
     .eq("company_id", profile.company_id)
     .select("company_id");
@@ -189,7 +202,29 @@ export async function saveAiReceptionistSettings(input: {
   }
   if (!data?.length) return { error: "That change couldn't be saved." };
 
+  // The transfer column is its own update on purpose: it arrives with
+  // 0161, and a company that has run only 0160 should still be able to
+  // save everything above without this column failing the whole write.
+  const { error: transferError } = await supabase
+    .from("company_profile")
+    .update({ ai_receptionist_transfer_number: transferNumber || null })
+    .eq("company_id", profile.company_id);
+  if (transferError) {
+    // Blank means "transfers off", which a missing column already is —
+    // only a number the owner actually typed is worth an error.
+    if (transferNumber) {
+      if (/ai_receptionist_transfer_number/i.test(transferError.message)) {
+        return {
+          error:
+            "Run supabase/migrations/0161_receptionist_transfer.sql in the Supabase SQL editor first, then save again — everything else on this page was saved.",
+        };
+      }
+      return { error: transferError.message };
+    }
+  }
+
   revalidatePath("/settings/ai-receptionist");
+  revalidatePath("/settings/company-profile");
   return {};
 }
 

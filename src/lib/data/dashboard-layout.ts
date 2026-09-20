@@ -5,7 +5,7 @@ import { mergeSavedOrder } from "./funnel-order.ts";
  * per-person order reconciles with the shipped set.
  *
  * Persistence is the estimates funnel's exact pattern (DECISIONS #010):
- * `profiles.dashboard_panel_order text[]` (migration 0161) written by
+ * `profiles.dashboard_panel_order text[]` (migration 0162) written by
  * its owner, with the browser's localStorage as the pre-migration path
  * and fallback. mergeSavedOrder does the reconciliation, so a panel
  * added in a later release appears at its shipped spot and a removed

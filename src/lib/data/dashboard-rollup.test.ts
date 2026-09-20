@@ -9,7 +9,7 @@ import {
 
 /**
  * The dashboard is reduced in the database (dashboard_rollup, migration
- * 0161) with this pure builder as the tested mirror and the fallback
+ * 0162) with this pure builder as the tested mirror and the fallback
  * until that migration runs. These tests pin the buckets the SQL must
  * agree with. Every clock-dependent edge is passed in as a boundary
  * date, so the SQL and this mirror can never disagree about "today".

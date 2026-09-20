@@ -21,8 +21,10 @@ import {
   receptionistSystemPrompt,
   sayTwiml,
   shouldSendConfirmationSms,
+  transferTwiml,
   turnMessages,
   type ExtractedLead,
+  type TurnReply,
   type PenciledAppointment,
   type ReceptionistFacts,
   type ReceptionistTurn,
@@ -81,6 +83,14 @@ function turnUrl(origin: string): string {
   return `${origin}/api/voice/ai/turn`;
 }
 
+function transferUrl(origin: string): string {
+  return `${origin}/api/voice/ai/transfer`;
+}
+
+const TRANSFER_SAY = "Sure — connecting you now. One moment.";
+const TRANSFER_FAILED_SAY =
+  "Sorry — I couldn't reach anyone right now. Let me take your details and the team will call you right back. Where were we?";
+
 function normalizeTurns(raw: unknown): ReceptionistTurn[] {
   if (!Array.isArray(raw)) return [];
   const turns: ReceptionistTurn[] = [];
@@ -118,7 +128,7 @@ async function receptionistState(
   admin: Admin,
   companyId: string
 ): Promise<{ enabled: boolean; facts: ReceptionistFacts }> {
-  const [baseRes, aiRes] = await Promise.all([
+  const [baseRes, aiRes, transferRes] = await Promise.all([
     admin
       .from("company_profile")
       .select("name, call_script, timezone")
@@ -132,6 +142,14 @@ async function receptionistState(
         ai_receptionist_enabled: boolean | null;
         ai_receptionist_greeting: string | null;
       }>(),
+    // Its own select on purpose: the transfer column arrives with 0161,
+    // and folding it into the 0160 select would error the whole read
+    // and silently disable a receptionist that only needs 0160.
+    admin
+      .from("company_profile")
+      .select("ai_receptionist_transfer_number")
+      .eq("company_id", companyId)
+      .maybeSingle<{ ai_receptionist_transfer_number: string | null }>(),
   ]);
 
   // "Tuesday" from a caller is anchored to the company's own clock, not
@@ -155,6 +173,9 @@ async function receptionistState(
       callScript: baseRes.data?.call_script ?? null,
       todayISO,
       todayLabel,
+      transferNumber: transferRes.error
+        ? null
+        : toE164(transferRes.data?.ai_receptionist_transfer_number) || null,
     },
   };
 }
@@ -196,7 +217,7 @@ export async function maybeStartReceptionist(
  */
 export async function runReceptionistTurn(
   admin: Admin,
-  args: { callSid: string; speech: string; origin: string }
+  args: { callSid: string; speech: string; digits: string; origin: string }
 ): Promise<{ body: string; finalizeSessionId: string | null }> {
   const { data: row } = await admin
     .from("ai_receptionist_calls")
@@ -208,6 +229,33 @@ export async function runReceptionistTurn(
 
   const turns = normalizeTurns(row.turns);
   const speech = cleanSpeechInput(args.speech);
+  const state = await receptionistState(admin, row.company_id);
+
+  // Pressing 0 is the universal "get me a person" -- no model turn
+  // needed to understand it. Without a configured number it falls
+  // through and the AI keeps the conversation.
+  if (args.digits.trim() === "0" && state.facts.transferNumber) {
+    await admin
+      .from("ai_receptionist_calls")
+      .update({
+        turns: [
+          ...turns,
+          { role: "caller", text: "(pressed 0 for a person)" },
+          { role: "assistant", text: TRANSFER_SAY },
+        ],
+        silent_turns: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    return {
+      body: transferTwiml({
+        number: state.facts.transferNumber,
+        actionUrl: transferUrl(args.origin),
+        say: TRANSFER_SAY,
+      }),
+      finalizeSessionId: null,
+    };
+  }
 
   // Silence: one gentle nudge, then a goodbye. Gather's
   // actionOnEmptyResult sends us these, so a quiet line still ends.
@@ -240,10 +288,9 @@ export async function runReceptionistTurn(
   // budget allows, the model is told to say goodbye in it.
   const wrapUp = forceWrapUp(assistantCount + 1);
 
-  const state = await receptionistState(admin, row.company_id);
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  let reply: { say: string; done: boolean } | null = null;
+  let reply: TurnReply | null = null;
   if (apiKey) {
     try {
       const client = new Anthropic({ apiKey });
@@ -266,7 +313,34 @@ export async function runReceptionistTurn(
 
   // A bad model reply is a re-prompt, not a dead line; the turn budget
   // bounds how long that can go on.
-  const finalReply = reply ?? { say: RETRY_SAY, done: false };
+  const finalReply = reply ?? { say: RETRY_SAY, done: false, transfer: false };
+
+  // The model heard "let me talk to a person" (or an emergency). The
+  // dial's action brings the call back to the AI if nobody answers.
+  if (finalReply.transfer && state.facts.transferNumber) {
+    const say = finalReply.say || TRANSFER_SAY;
+    await admin
+      .from("ai_receptionist_calls")
+      .update({
+        turns: [
+          ...nextTurns,
+          { role: "assistant", text: say },
+          { role: "assistant", text: "(Dialing the transfer number.)" },
+        ],
+        silent_turns: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    return {
+      body: transferTwiml({
+        number: state.facts.transferNumber,
+        actionUrl: transferUrl(args.origin),
+        say,
+      }),
+      finalizeSessionId: null,
+    };
+  }
+
   const done = finalReply.done || wrapUp;
 
   await admin
@@ -285,6 +359,52 @@ export async function runReceptionistTurn(
         body: gatherTwiml({ actionUrl: turnUrl(args.origin), say: finalReply.say }),
         finalizeSessionId: null,
       };
+}
+
+/**
+ * What happens when the transfer dial leg ends. Answered means a human
+ * took the call and finished it — hang up and file the session. Anything
+ * else resumes the AI: a failed transfer must never be a dead line.
+ */
+export async function handleTransferResult(
+  admin: Admin,
+  args: { callSid: string; dialStatus: string; origin: string }
+): Promise<{ body: string; finalizeSessionId: string | null }> {
+  const { data: row } = await admin
+    .from("ai_receptionist_calls")
+    .select("id, company_id, from_number, to_number, turns, silent_turns, status")
+    .eq("call_sid", args.callSid)
+    .eq("status", "active")
+    .maybeSingle<SessionRow>();
+  if (!row) return { body: failsafeTwiml(), finalizeSessionId: null };
+
+  const turns = normalizeTurns(row.turns);
+  const answered = args.dialStatus === "completed" || args.dialStatus === "answered";
+
+  if (answered) {
+    await admin
+      .from("ai_receptionist_calls")
+      .update({
+        turns: [...turns, { role: "assistant", text: "(A human took the call from here.)" }],
+        status: "done",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+    return { body: "<Hangup/>", finalizeSessionId: row.id };
+  }
+
+  await admin
+    .from("ai_receptionist_calls")
+    .update({
+      turns: [...turns, { role: "assistant", text: "(Tried a human — no answer; resumed.)" }],
+      silent_turns: 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", row.id);
+  return {
+    body: gatherTwiml({ actionUrl: turnUrl(args.origin), say: TRANSFER_FAILED_SAY }),
+    finalizeSessionId: null,
+  };
 }
 
 /** Same shape as callrail-sync's guard: the migration adding the RPC

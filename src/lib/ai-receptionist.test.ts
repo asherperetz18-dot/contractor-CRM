@@ -6,11 +6,13 @@ import {
   MAX_SPEECH_CHARS,
   aiGreetingText,
   appointmentFromExtraction,
+  approxRings,
   cleanSpeechInput,
   confirmationSms,
   forceWrapUp,
   friendlyApptLine,
   gatherTwiml,
+  transferTwiml,
   parseExtraction,
   parseTurnReply,
   receptionistAvailable,
@@ -37,6 +39,7 @@ const FACTS = {
   callScript: null as string | null,
   todayISO: "2026-09-19",
   todayLabel: "Saturday, September 19, 2026",
+  transferNumber: null as string | null,
 };
 
 function extraction(over: Partial<ExtractedLead> = {}): ExtractedLead {
@@ -62,12 +65,14 @@ test("say renders escaped text in the chosen voice", () => {
   assert.ok(!xml.includes("<roof>"), "raw angle brackets would break the TwiML document");
 });
 
-test("gather listens for speech and survives silence", () => {
+test("gather listens for speech and keypad both, and survives silence", () => {
   const xml = gatherTwiml({
     actionUrl: "https://app.example.com/api/voice/ai/turn?x=1&y=2",
     say: "How can I help?",
   });
-  assert.ok(xml.includes(`input="speech"`));
+  // dtmf too: pressing 0 is the universal "get me a person".
+  assert.ok(xml.includes(`input="speech dtmf"`));
+  assert.ok(xml.includes(`numDigits="1"`));
   // Silence must still call us back, or the session hangs open with no
   // way to say goodbye.
   assert.ok(xml.includes(`actionOnEmptyResult="true"`));
@@ -141,14 +146,52 @@ test("a clean JSON turn parses", () => {
   assert.deepEqual(parseTurnReply(`{"say": "What's your name?", "done": false}`), {
     say: "What's your name?",
     done: false,
+    transfer: false,
   });
 });
 
 test("code fences and prose around the JSON are tolerated", () => {
   const fenced = parseTurnReply('```json\n{"say":"Thanks, goodbye!","done":true}\n```');
-  assert.deepEqual(fenced, { say: "Thanks, goodbye!", done: true });
+  assert.deepEqual(fenced, { say: "Thanks, goodbye!", done: true, transfer: false });
   const wrapped = parseTurnReply('Sure! Here is my reply: {"say":"And your address?","done":false} Hope that helps.');
-  assert.deepEqual(wrapped, { say: "And your address?", done: false });
+  assert.deepEqual(wrapped, { say: "And your address?", done: false, transfer: false });
+});
+
+test("a transfer intent parses only from an explicit true", () => {
+  const parsed = parseTurnReply('{"say":"Sure — connecting you now.","done":false,"transfer":true}');
+  assert.ok(parsed);
+  assert.equal(parsed.transfer, true);
+  const stringy = parseTurnReply('{"say":"ok","done":false,"transfer":"yes"}');
+  assert.ok(stringy);
+  assert.equal(stringy.transfer, false, "an untrusted string never counts as a flag");
+});
+
+test("the transfer TwiML rings the human and comes back to us either way", () => {
+  const xml = transferTwiml({
+    number: "+18183008242",
+    actionUrl: "https://app.example.com/api/voice/ai/transfer?x=1&y=2",
+    say: "Sure — connecting you now.",
+  });
+  assert.ok(xml.includes("connecting you now"));
+  assert.ok(xml.includes("<Number>+18183008242</Number>"));
+  // The action is what lets a no-answer resume the AI instead of dying.
+  assert.ok(xml.includes(`action="https://app.example.com/api/voice/ai/transfer?x=1&amp;y=2"`));
+  assert.ok(/<Dial timeout="\d+"/.test(xml));
+});
+
+test("the prompt only knows about transfers when a number is configured", () => {
+  const withTransfer = receptionistSystemPrompt({ ...FACTS, transferNumber: "+18183008242" });
+  assert.ok(withTransfer.includes('"transfer": true'));
+  assert.ok(withTransfer.includes("0"), "press-zero is part of the offer");
+  const without = receptionistSystemPrompt(FACTS);
+  assert.ok(!without.includes('"transfer"'), "no configured number, no transfer talk");
+});
+
+test("seconds read as rings the way a person counts them", () => {
+  assert.equal(approxRings(25), 5);
+  assert.equal(approxRings(5), 1);
+  assert.equal(approxRings(60), 12);
+  assert.equal(approxRings(3), 1);
 });
 
 test("garbage from the model is a null, not a crash on a live call", () => {

@@ -31,7 +31,7 @@ export default async function DashboardPage() {
   const last48hISO = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
 
   // The desktop dashboard is served by one reduced call (dashboard_
-  // rollup, 0161, with a tested fallback) -- the old page summed its
+  // rollup, 0162, with a tested fallback) -- the old page summed its
   // headline by paging every open lead through the server on each
   // load. The remaining queries feed the two list panels and the
   // phone dashboard, which keeps its own shape.

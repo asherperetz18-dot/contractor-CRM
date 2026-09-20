@@ -23,7 +23,7 @@ function nextDay(day: string): string {
 /**
  * Every number the dashboard renders, for one date window.
  *
- * Served by dashboard_rollup (migration 0161): one call, reduced in the
+ * Served by dashboard_rollup (migration 0162): one call, reduced in the
  * database. Until that migration has run the function is missing and
  * this falls back to targeted windowed queries reduced by the same
  * tested builder -- slower, identical numbers, and the browser never

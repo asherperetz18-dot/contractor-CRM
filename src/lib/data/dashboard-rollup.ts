@@ -7,7 +7,7 @@ import { phaseOwedCents, phaseState, type PortalPayment } from "./types.ts";
  * The old dashboard paged the entire open book through the server on
  * every load just to sum one headline figure. This module is the
  * replacement's contract: the database reduces everything in one call
- * (dashboard_rollup, migration 0161), and buildDashboardRollup is that
+ * (dashboard_rollup, migration 0162), and buildDashboardRollup is that
  * SQL's tested mirror -- and the server-side fallback until the
  * migration has run (same posture as marketing_funnel_rollup/0157).
  *

@@ -36,7 +36,7 @@ export type Profile = {
    *  across companies (see docs/DECISIONS.md #010). */
   estimate_funnel_order?: string[] | null;
   /** The dragged order of the dashboard's boxes -- same contract as
-   *  estimate_funnel_order (migration 0161). */
+   *  estimate_funnel_order (migration 0162). */
   dashboard_panel_order?: string[] | null;
   company_id: string;
 };
@@ -192,7 +192,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     // the browser's own saved order still applies.
     estimate_funnel_order: identity?.estimate_funnel_order ?? null,
     // Same contract as estimate_funnel_order, for the dashboard's
-    // boxes (0161).
+    // boxes (0162).
     dashboard_panel_order: identity?.dashboard_panel_order ?? null,
     company_id: companyId,
   };
