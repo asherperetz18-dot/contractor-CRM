@@ -1030,6 +1030,12 @@ export type LeadSourceRow = {
   name: string;
   sort_order: number;
   created_at: string;
+  /**
+   * What a new lead from this source costs when nobody typed a figure
+   * (dollars, like `leads.lead_cost`). Null = no figure of its own, the
+   * company default applies; 0 = free. Absent until migration 0164 runs.
+   */
+  default_lead_cost: number | null;
 };
 
 export type EventStatus =
