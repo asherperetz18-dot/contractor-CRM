@@ -1030,6 +1030,9 @@ export type LeadSourceRow = {
   name: string;
   sort_order: number;
   created_at: string;
+  /** A purchased contact list rather than an inbound channel (0165).
+   *  Optional until that migration has run; undefined reads as false. */
+  bought_list?: boolean;
 };
 
 export type EventStatus =
