@@ -562,12 +562,21 @@ export function DashboardView({
       <div className="dash-attn-grid">
         {attention.map((c) => (
           <Link key={c.key} href={c.href} className="stat-card dash-attn-card">
-            <span
-              className={"dash-attn-dot" + (c.alarm ? " is-alarm" : "")}
-              aria-hidden="true"
-            />
-            <span className="dash-attn-value mono">{c.value}</span>
-            <span className="stat-label">{c.label}</span>
+            {/* Two lines, like the approved mockup: dot + number + a go
+                arrow on top, the label in plain words underneath. As one
+                inline run the number and label fused into "75OVERDUE
+                TASKS". */}
+            <span className="dash-attn-top">
+              <span
+                className={"dash-attn-dot" + (c.alarm ? " is-alarm" : "")}
+                aria-hidden="true"
+              />
+              <span className="dash-attn-value mono">{c.value}</span>
+              <span className="dash-attn-go" aria-hidden="true">
+                →
+              </span>
+            </span>
+            <span className="dash-attn-label">{c.label}</span>
           </Link>
         ))}
       </div>
