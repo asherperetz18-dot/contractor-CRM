@@ -586,3 +586,13 @@ Two things were verified directly rather than assumed, both load-bearing for how
 **Decision:** The rule is asked in the server action first — `approvalHoldsSend`, a pure mirror of the trigger's condition, same as the closer's hold (#024) — before a message is sent or a signer row is written, and the estimate page hides the send controls behind the same hold note. The status write is checked, and a refusal is reported to the sender in words. The trigger stays. A send also replaces any earlier send-time contractor signature: one contractor stands behind one document.
 
 **Consequence:** A held document can't be half-sent any more; the held person is told who approves. Existing half-sent documents need no SQL: approving and sending them again replaces the stray signatures and moves them to Sent. The trade is two extra reads on every send, on an action that already sends email.
+
+## 054 — Signature evidence prints in the company's clock, labelled
+
+**Date:** 2026-09-20
+
+**Context:** The evidence line under each e-signature ("Signed Sep 20, 2026, 5:57 PM UTC · IP …") was deliberately UTC: the server cannot know what timezone the signer's browser was in, and an unlabelled local-looking time on a contract invites a dispute about which clock it was. In practice the owner read "5:57 PM UTC" under a contractor signature made at 10:57 AM in Los Angeles as simply wrong, and every party to these contracts is in the company's own market.
+
+**Decision:** The line prints in the company's timezone — `company_profile.timezone` ("Pacific") resolved to an IANA zone with `companyIanaZone`, Pacific being the column's default — and always carries the zone label (PDT / PST), so the "which clock" question keeps its answer. The same clock drives the "signed 9/20/2026" date beside the party. Only the zone conversion is left to Intl; the label is still assembled by hand so an ICU upgrade can't reword evidence. UTC, labelled, remains the fallback when no zone resolves.
+
+**Consequence:** The stored instant (`signed_at`, timestamptz) is untouched — presentation moved, the evidence did not. A customer signing from another timezone sees the company's clock with its label, which is unambiguous, rather than their own, which the server still cannot know.

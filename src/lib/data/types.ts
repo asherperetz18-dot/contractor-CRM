@@ -842,6 +842,12 @@ export const TIMEZONE_IANA: Record<string, string> = {
   Hawaii: "Pacific/Honolulu",
 };
 
+/** The IANA zone behind a company's timezone label. Pacific when the
+ *  label is missing or unknown -- the column's own default. */
+export function companyIanaZone(label: string | null | undefined): string {
+  return TIMEZONE_IANA[label ?? ""] ?? "America/Los_Angeles";
+}
+
 export type SmsQuickTextKey = "confirm" | "reschedule" | "on_my_way" | "running_late";
 
 export type SmsQuickText = {
