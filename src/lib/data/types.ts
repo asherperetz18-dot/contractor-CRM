@@ -842,6 +842,12 @@ export const TIMEZONE_IANA: Record<string, string> = {
   Hawaii: "Pacific/Honolulu",
 };
 
+/** The IANA zone behind a company's timezone label. Pacific when the
+ *  label is missing or unknown -- the column's own default. */
+export function companyIanaZone(label: string | null | undefined): string {
+  return TIMEZONE_IANA[label ?? ""] ?? "America/Los_Angeles";
+}
+
 export type SmsQuickTextKey = "confirm" | "reschedule" | "on_my_way" | "running_late";
 
 export type SmsQuickText = {
@@ -1030,10 +1036,13 @@ export type LeadSourceRow = {
   name: string;
   sort_order: number;
   created_at: string;
+  /** A purchased contact list rather than an inbound channel (0165).
+   *  Optional until that migration has run; undefined reads as false. */
+  bought_list?: boolean;
   /**
    * What a new lead from this source costs when nobody typed a figure
    * (dollars, like `leads.lead_cost`). Null = no figure of its own, the
-   * company default applies; 0 = free. Absent until migration 0164 runs.
+   * company default applies; 0 = free. Absent until migration 0166 runs.
    */
   default_lead_cost: number | null;
 };
@@ -1893,6 +1902,11 @@ export type Estimate = {
   signed_at: string | null;
   declined_at: string | null;
   declined_reason: string | null;
+  /** The approval gate (0136): when an admin approved this to go out,
+   *  and who. Null until then, and cleared again by any edit that pulls
+   *  the document back to Draft. */
+  approved_at: string | null;
+  approved_by: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

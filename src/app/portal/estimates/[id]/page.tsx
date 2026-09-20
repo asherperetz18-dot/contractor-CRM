@@ -83,7 +83,7 @@ export default async function PortalEstimatePage({
     admin
       .from("company_profile")
       .select(
-        "name, dba, address, phone, email, website, logo_url, license_number, license_state, license_type"
+        "name, dba, address, phone, email, website, logo_url, license_number, license_state, license_type, timezone"
       )
       .eq("company_id", estimate.company_id)
       .maybeSingle<DocumentCompany>(),

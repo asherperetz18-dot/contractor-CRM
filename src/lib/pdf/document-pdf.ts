@@ -1,9 +1,10 @@
 import "server-only";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
-import { signatureEvidenceLine } from "@/lib/portal/signature-evidence";
+import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
 import { groupIncludedItems } from "@/components/estimate-document";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 import {
+  companyIanaZone,
   discountPercentLabel,
   isPricelessKind,
   moneyCents,
@@ -46,6 +47,8 @@ export type DocumentPdfBundle = {
     license_number: string | null;
     license_state: string | null;
     license_type: string | null;
+    /** company_profile.timezone label; signature times print in it. */
+    timezone: string | null;
   } | null;
   customer: {
     first_name: string | null;
@@ -473,6 +476,8 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   if (signers.length > 0) {
     const sig = signatureProgress(signers);
     w.heading(`Signatures (${sig.signed} of ${sig.total})`);
+    // Same clock as the web document: the company's own, labelled.
+    const zone = companyIanaZone(bundle.company?.timezone);
     for (const s of signers) {
       w.ensure(64);
       if (s.signature_image) {
@@ -497,10 +502,10 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
         color: LINE,
       });
       w.y -= 8;
-      const evidence = signatureEvidenceLine(s);
+      const evidence = signatureEvidenceLine(s, zone);
       w.text(
         `${s.name} - ${s.party === "company" ? "Contractor" : "Customer"}${
-          s.signed_at ? ` - signed ${new Date(s.signed_at).toLocaleDateString("en-US")}` : ""
+          s.signed_at ? ` - signed ${signedOnLabel(s.signed_at, zone)}` : ""
         }`,
         { size: 9, color: MUTED, gapAfter: evidence ? 2 : 8 }
       );

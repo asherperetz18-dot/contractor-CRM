@@ -588,13 +588,43 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** The eighteen hand-written crumbs are gone, and adding one by hand now shows two. A settings page missing from the catalog is unreachable from the grid *and* fails the suite, so it cannot ship quietly. The standing rule is in `AGENTS.md`.
 
-## 054 — Lead cost by source is priced in the insert trigger, matched by name, in dollars
+## 054 — A send asks every gate before the message leaves
 
 **Date:** 2026-09-20
 
-**Context:** Every new lead was priced at the one company default ($375, 0089) unless somebody typed a figure, so a referral or a website enquiry carried the same spend as a bought Facebook lead, and cost-per-sale by source in Marketing Analytics could not be trusted. The owner asked where to control what each source costs. There was nowhere — the company default itself had no screen and lived only in SQL.
+**Context:** The approval gate (0136) is a database trigger on the status change, which is the right backstop: every path out of Draft hits it. But the email/text send changes the status *after* the message goes out, through the service-role client, and never read the result. With approval switched on and a document unapproved, the trigger refused the change, the customer already had the link, the sender's signature was recorded, and the document stood in Draft on the Contract Board as if nobody had sent it — twice, from two people, leaving two "Contractor" signatures on one contract. The link the customer held was turned away by the portal, which refuses Drafts.
 
-**Decision:** `lead_sources.default_lead_cost` (nullable) is edited per row on Settings › Lead Sources, with the company default on the same page. The pricing stays in the 0089 trigger, extended to try the source's figure first: leads arrive by five paths and the trigger is the one place they all pass through, so no call site has to remember. Matched by source *name* (case- and space-insensitive) because `leads.source` stores the name, not an id, and renaming a source already repoints its leads. Blank and 0 are different answers — blank is "no figure of its own, use the company default", 0 is "free" — and `lead-source-cost.test.ts` pins that. The column is dollars, not cents, because it feeds `leads.lead_cost`, dollars since 0023 (TECH_DEBT).
+**Decision:** The rule is asked in the server action first — `approvalHoldsSend`, a pure mirror of the trigger's condition, same as the closer's hold (#024) — before a message is sent or a signer row is written, and the estimate page hides the send controls behind the same hold note. The status write is checked, and a refusal is reported to the sender in words. The trigger stays. A send also replaces any earlier send-time contractor signature: one contractor stands behind one document.
 
-**Consequence:** No code path prices a lead; the app only edits the two figures, and every intake path is covered including ones added later. Changing a source's price affects new leads only — what an existing lead cost is a recorded fact. Until 0164 is pasted the page still loads (the column reads blank) and a save says which migration to run.
+**Consequence:** A held document can't be half-sent any more; the held person is told who approves. Existing half-sent documents need no SQL: approving and sending them again replaces the stray signatures and moves them to Sent. The trade is two extra reads on every send, on an action that already sends email.
+
+## 055 — Signature evidence prints in the company's clock, labelled
+
+**Date:** 2026-09-20
+
+**Context:** The evidence line under each e-signature ("Signed Sep 20, 2026, 5:57 PM UTC · IP …") was deliberately UTC: the server cannot know what timezone the signer's browser was in, and an unlabelled local-looking time on a contract invites a dispute about which clock it was. In practice the owner read "5:57 PM UTC" under a contractor signature made at 10:57 AM in Los Angeles as simply wrong, and every party to these contracts is in the company's own market.
+
+**Decision:** The line prints in the company's timezone — `company_profile.timezone` ("Pacific") resolved to an IANA zone with `companyIanaZone`, Pacific being the column's default — and always carries the zone label (PDT / PST), so the "which clock" question keeps its answer. The same clock drives the "signed 9/20/2026" date beside the party. Only the zone conversion is left to Intl; the label is still assembled by hand so an ICU upgrade can't reword evidence. UTC, labelled, remains the fallback when no zone resolves.
+
+**Consequence:** The stored instant (`signed_at`, timestamptz) is untouched — presentation moved, the evidence did not. A customer signing from another timezone sees the company's clock with its label, which is unambiguous, rather than their own, which the server still cannot know.
+
+## 056 — Marketing Analytics reads one revenue rule, attributes by cohort, and claims spend by the day
+
+**Date:** 2026-09-20
+
+**Context:** The analytics page carried two definitions of money on one screen: the headline tiles summed the pipeline value of leads at stage "Won" ($1.25M, 18 deals) while the source table credited only signed contracts ($498k, 8 sold). Ten "won" leads — a $600,000 one among them — had no contract behind them, and nothing on the page said so. Cost per lead read $375 on 96% of rows because migration 0089 stamps every new lead with the company default, so the two cost columns measured nothing; the one source that sold sat at row nine under a 2,871-lead cold list; and nothing showed direction, because the presets only re-sliced a total.
+
+**Decision:** Money on this page is a signed true contract, everywhere, and the stage-based figure survives only as the count of Won leads with no contract — a flag on the win-rate tile that opens the list, because the gap is a to-do, not a second total. Attribution is the window's cohort (leads created in it, whatever happened since) for the tiles, sources, stages and latest contracts — the marketing question is what this period's leads turned into — while the team panel keeps the rep report's definitions (appointments, estimates and contracts dated in the window, credit by `effectiveEstimateRepId`), stated in its sub-line, so the three pages that describe a rep agree. Every range is served by one SQL function (`marketing_analytics_rollup`, 0164) with a tested TypeScript mirror as the fallback and the contract, the same shape as 0157/0162. Cost comes from entered spend per source per month (`marketing_spend`, 0165), which a window claims in proportion to the days it covers and never past today; without spend the page falls back to `lead_cost`, and when every priced lead carries the default it says "default" instead of a number posing as a measurement. Sources are ranked by signed dollars, then appointments, and the tail that produced nothing folds under one line; a per-source bought-list flag lets one chip remove purchased lists from every number at once.
+
+**Consequence:** The tiles no longer match the old "Won value" figure, by design — the number that dropped was hope, not revenue, and the page now says where it went. Cost per lead and per sale are only as good as the spend entered in Settings › Lead sources; until then the tile shows an honest empty state. The `marketing_funnel_rollup` function from 0157 is no longer called by the app and can be dropped in a later cleanup migration. Changing an attribution rule means changing the builder, its test and the SQL together — never one of them.
+
+## 057 — Lead cost by source is priced in the insert trigger, matched by name, in dollars
+
+**Date:** 2026-09-20
+
+**Context:** Every new lead was priced at the one company default ($375, 0089) unless somebody typed a figure, so a referral or a website enquiry carried the same lead cost on its contact card as a bought Facebook lead — and that figure feeds the card's Est. Margin, Lead Refunds, and the analytics fallback when no monthly spend is entered (056). The owner asked where to control what each source costs. There was nowhere — the company default itself had no screen and lived only in SQL.
+
+**Decision:** `lead_sources.default_lead_cost` (nullable) is edited per row on Settings › Lead Sources, with the company default on the same page. The pricing stays in the 0089 trigger, extended to try the source's figure first: leads arrive by five paths and the trigger is the one place they all pass through, so no call site has to remember. Matched by source *name* (case- and space-insensitive) because `leads.source` stores the name, not an id, and renaming a source already repoints its leads. Blank and 0 are different answers — blank is "no figure of its own, use the company default", 0 is "free" — and `lead-source-cost.test.ts` pins that. The column is dollars, not cents, because it feeds `leads.lead_cost`, dollars since 0023 (TECH_DEBT). This is the per-lead figure; what a source cost in a month is `marketing_spend` (0165), which Marketing Analytics prefers — the two answer different questions and neither replaces the other.
+
+**Consequence:** No code path prices a lead; the app only edits the two figures, and every intake path is covered including ones added later. Changing a source's price affects new leads only — what an existing lead cost is a recorded fact. Until 0166 is pasted the page still loads (the column reads blank) and a save says which migration to run.
 

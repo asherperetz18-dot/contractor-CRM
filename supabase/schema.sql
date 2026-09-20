@@ -301,3 +301,21 @@ create policy "contracts_select" on contracts for select
   to authenticated using (true);
 create policy "contracts_write" on contracts for all
   to authenticated using (has_role('Office')) with check (has_role('Office'));
+
+-- 0165: marketing spend by source, and the bought-list flag on lead
+-- sources. Full definition, RLS and verify query in
+-- supabase/migrations/0165_marketing_spend.sql (multi-company: policies
+-- there scope by company membership, not by the has_role() shape above).
+create table if not exists marketing_spend (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references companies (id) on delete cascade,
+  source text not null,
+  month date not null,                       -- always the first of the month
+  amount_cents integer not null default 0,   -- integer cents, never dollars
+  note text,
+  updated_by uuid references profiles (id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, source, month)
+);
+alter table lead_sources add column if not exists bought_list boolean not null default false;

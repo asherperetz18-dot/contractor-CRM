@@ -5,7 +5,7 @@
  * Two answers that look alike and mean opposite things: blank is "this
  * source has no figure of its own, the company default applies", stored
  * as null; a typed 0 is "leads from here are free", stored as 0. The
- * database trigger (migration 0164) reads them the same way.
+ * database trigger (migration 0166) reads them the same way.
  *
  * Dollars, not cents -- these feed `leads.lead_cost`, which has been
  * dollars since 0023 (see TECH_DEBT).

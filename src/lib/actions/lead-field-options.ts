@@ -303,7 +303,7 @@ function missingColumnHint(error: { code?: string; message: string }, migration:
 
 /**
  * What a new lead from this source costs, applied by the database when
- * a lead arrives with no cost typed (migration 0164). Blank clears it,
+ * a lead arrives with no cost typed (migration 0166). Blank clears it,
  * so the company default applies again; 0 means free.
  */
 export async function setLeadSourceDefaultCost(
@@ -323,7 +323,7 @@ export async function setLeadSourceDefaultCost(
     .eq("id", id)
     .eq("company_id", guard.companyId)
     .select("id");
-  if (error) return { error: missingColumnHint(error, "0164_lead_source_default_cost.sql") };
+  if (error) return { error: missingColumnHint(error, "0166_lead_source_default_cost.sql") };
   if (!data?.length) return { error: "Not found." };
 
   revalidatePath("/settings/lead-sources");

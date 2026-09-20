@@ -53,34 +53,107 @@ export function collectSignatureEvidence(head: Headers, signedAt: string): Signa
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+type WallClock = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  /** "PDT", "PST", "UTC" -- the label the time is printed with. */
+  zoneName: string;
+};
+
+/**
+ * The instant on the wall clock of `timeZone`, or UTC when no zone is
+ * given or the zone is unknown. Only the zone conversion is left to
+ * Intl; the label is assembled by hand below because the document
+ * renders on the server, and an ICU upgrade changing a separator must
+ * not silently reword what is presented as signing evidence.
+ */
+function wallClock(d: Date, timeZone: string | null | undefined): WallClock {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZoneName: "short",
+      }).formatToParts(d);
+      const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+      return {
+        year: Number(get("year")),
+        month: Number(get("month")),
+        day: Number(get("day")),
+        hour: Number(get("hour")) % 24,
+        minute: Number(get("minute")),
+        zoneName: get("timeZoneName") || timeZone,
+      };
+    } catch {
+      // RangeError: not an IANA zone Intl knows. Fall through to UTC,
+      // labelled as such, rather than print nothing or guess.
+    }
+  }
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: d.getUTCHours(),
+    minute: d.getUTCMinutes(),
+    zoneName: "UTC",
+  };
+}
+
 /**
  * The evidence line printed under a signature on the document and its PDF:
- * "Signed Aug 28, 2026, 9:41 PM UTC · IP 203.0.113.5".
+ * "Signed Sep 20, 2026, 10:57 AM PDT · IP 146.75.146.1".
  *
- * Formatted by hand rather than with toLocaleString because the document
- * renders on the server: an ICU upgrade changing the separator (newer ICU
- * puts a narrow no-break space before AM/PM) must not silently reword what
- * is presented as signing evidence. UTC, labelled, for the same reason --
- * the server has no idea what timezone the signer was in, and an
- * unlabelled local-looking time on a contract invites disputes about
- * which clock it was.
+ * In the company's own clock when a zone is given -- the contract is
+ * signed in the company's market, and a California owner reading "5:57
+ * PM UTC" under their own contractor's signature took it for a wrong
+ * time (it was 10:57 AM to everyone in the room). The zone is always
+ * printed, so nobody has to guess which clock it was; with no zone the
+ * line stays UTC, labelled, as it always was.
  *
  * Null when there is nothing honest to show: an unsigned line, or a paper
  * signature, whose signed_at is a hand-entered date (no captured instant,
- * no IP) -- printing "12:00 AM UTC" there would be fabricated precision.
+ * no IP) -- printing "12:00 AM" there would be fabricated precision.
  */
-export function signatureEvidenceLine(signer: {
-  signed_at: string | null;
-  signature_ip: string | null;
-  signature_type?: "typed" | "drawn" | "paper";
-}): string | null {
+export function signatureEvidenceLine(
+  signer: {
+    signed_at: string | null;
+    signature_ip: string | null;
+    signature_type?: "typed" | "drawn" | "paper";
+  },
+  timeZone?: string | null
+): string | null {
   if (!signer.signed_at || signer.signature_type === "paper") return null;
   const d = new Date(signer.signed_at);
   if (isNaN(d.getTime())) return null;
-  const h = d.getUTCHours();
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const period = h >= 12 ? "PM" : "AM";
-  const mm = String(d.getUTCMinutes()).padStart(2, "0");
-  const when = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}, ${h12}:${mm} ${period} UTC`;
+  const w = wallClock(d, timeZone);
+  const h12 = w.hour % 12 === 0 ? 12 : w.hour % 12;
+  const period = w.hour >= 12 ? "PM" : "AM";
+  const mm = String(w.minute).padStart(2, "0");
+  const when = `${MONTHS[w.month - 1]} ${w.day}, ${w.year}, ${h12}:${mm} ${period} ${w.zoneName}`;
   return `Signed ${when}${signer.signature_ip ? ` · IP ${signer.signature_ip}` : ""}`;
+}
+
+/**
+ * The calendar date a signature was made -- "9/20/2026" -- on the same
+ * clock as the evidence line, so the two never disagree about which day
+ * it was (an evening signature in Los Angeles is already tomorrow in
+ * UTC). Null for an unsigned line.
+ */
+export function signedOnLabel(
+  signedAt: string | null,
+  timeZone?: string | null
+): string | null {
+  if (!signedAt) return null;
+  const d = new Date(signedAt);
+  if (isNaN(d.getTime())) return null;
+  const w = wallClock(d, timeZone);
+  return `${w.month}/${w.day}/${w.year}`;
 }
