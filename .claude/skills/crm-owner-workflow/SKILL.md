@@ -34,6 +34,12 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   mirror of the SQL doubles as the fallback and pins the SQL's buckets).
 - In the PR and in chat, name the exact file to paste and say it's safe
   to run twice. After a merge, remind once.
+- **Migration numbers race.** Several Claude sessions ship in parallel
+  here, and two of them once claimed 0159 in the same afternoon — the
+  loser renamed to 0160 and had to chase the number through nine files
+  (settings copy, engine comments, docs). Before writing a migration,
+  fetch main and take the number AFTER its newest file; before opening
+  the PR, fetch again and re-check it's still yours.
 
 ## Scale: ~79,000 contacts
 
