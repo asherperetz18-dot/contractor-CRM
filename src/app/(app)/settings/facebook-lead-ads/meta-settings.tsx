@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { saveMetaConfig, type MetaConfigInput } from "@/lib/actions/settings";
 
@@ -40,14 +39,6 @@ export function MetaSettings({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Facebook Lead Ads</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Facebook Lead Ads</h1>

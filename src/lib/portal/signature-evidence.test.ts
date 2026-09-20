@@ -4,6 +4,7 @@ import {
   resolveClientIp,
   collectSignatureEvidence,
   signatureEvidenceLine,
+  signedOnLabel,
 } from "./signature-evidence.ts";
 
 function headersFrom(entries: Record<string, string>): Headers {
@@ -138,4 +139,53 @@ test("signatureEvidenceLine shows nothing for an unparseable timestamp", () => {
     signature_type: "typed",
   });
   assert.equal(line, null);
+});
+
+// ── Company-local time ───────────────────────────────────────────────
+//
+// The contract is signed in the company's own market, so the evidence
+// line reads in the company's clock (labelled with its zone), not the
+// server's UTC. Without a zone the line stays UTC, still labelled.
+
+test("signatureEvidenceLine prints the company's local time when given a zone", () => {
+  const line = signatureEvidenceLine(
+    { signed_at: "2026-09-20T17:57:00.000Z", signature_ip: "146.75.146.1", signature_type: "typed" },
+    "America/Los_Angeles"
+  );
+  assert.equal(line, "Signed Sep 20, 2026, 10:57 AM PDT · IP 146.75.146.1");
+});
+
+test("signatureEvidenceLine lands on the local calendar day, not UTC's", () => {
+  // 6:53 PM in Los Angeles is already the 21st in UTC.
+  const line = signatureEvidenceLine(
+    { signed_at: "2026-09-21T01:53:00.000Z", signature_ip: null, signature_type: "drawn" },
+    "America/Los_Angeles"
+  );
+  assert.equal(line, "Signed Sep 20, 2026, 6:53 PM PDT");
+});
+
+test("signatureEvidenceLine labels standard time in winter", () => {
+  const line = signatureEvidenceLine(
+    { signed_at: "2026-01-15T20:05:00.000Z", signature_ip: null, signature_type: "typed" },
+    "America/Los_Angeles"
+  );
+  assert.equal(line, "Signed Jan 15, 2026, 12:05 PM PST");
+});
+
+test("signatureEvidenceLine falls back to labelled UTC for an unknown zone", () => {
+  const line = signatureEvidenceLine(
+    { signed_at: "2026-09-20T17:57:00.000Z", signature_ip: null, signature_type: "typed" },
+    "Mars/Olympus_Mons"
+  );
+  assert.equal(line, "Signed Sep 20, 2026, 5:57 PM UTC");
+});
+
+test("signedOnLabel gives the local calendar date", () => {
+  assert.equal(signedOnLabel("2026-09-21T01:53:00.000Z", "America/Los_Angeles"), "9/20/2026");
+  assert.equal(signedOnLabel("2026-09-21T01:53:00.000Z", null), "9/21/2026");
+});
+
+test("signedOnLabel shows nothing for an unsigned line or a bad timestamp", () => {
+  assert.equal(signedOnLabel(null, "America/Los_Angeles"), null);
+  assert.equal(signedOnLabel("not-a-date", "America/Los_Angeles"), null);
 });

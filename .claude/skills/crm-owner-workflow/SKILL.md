@@ -84,6 +84,14 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   number — a chip/filter on the same page, or the page that breaks the
   figure down (#184). A card with the default pointer cursor that does
   nothing reads as broken.
+- **Every settings page links back to the Settings grid.** The
+  "⚙ Settings › Page" crumb is rendered by the settings layout for
+  every route under `/settings/` (2026-09-20, after Commission & Lead
+  Cost Defaults shipped without one and the owner had no way back but
+  the sidebar). A new settings page only needs its tile in
+  `settings-catalog.ts`; the crumb test fails if it is missing. Never
+  add a crumb by hand, and check all the settings pages before
+  finishing settings work.
 
 ## Small conventions that bit before
 

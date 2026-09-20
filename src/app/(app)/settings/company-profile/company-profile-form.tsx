@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Field } from "@/components/ui/field";
 import { saveCompanyProfile, type CompanyProfileInput } from "@/lib/actions/settings";
 import type { CompanyProfile, TimeFormat } from "@/lib/data/types";
@@ -114,14 +113,6 @@ export function CompanyProfileForm({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Company Profile</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Company Profile</h1>

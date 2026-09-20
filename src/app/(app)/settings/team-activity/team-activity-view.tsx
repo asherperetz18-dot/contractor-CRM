@@ -379,14 +379,6 @@ export function TeamActivityView({
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Team Activity</span>
-      </div>
-
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Team Activity</h1>

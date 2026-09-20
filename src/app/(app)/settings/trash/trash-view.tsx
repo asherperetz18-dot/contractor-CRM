@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   purgeTrashEntry,
   restoreLeadFromTrash,
@@ -58,14 +57,6 @@ export function TrashView({ entries }: { entries: TrashEntry[] }) {
 
   return (
     <div>
-      <div className="ur-breadcrumb">
-        <Link href="/settings" className="ur-crumb-link">
-          ⚙ Settings
-        </Link>
-        <span> › </span>
-        <span>Trash</span>
-      </div>
-
       {message && <p className="hint-note">✓ {message}</p>}
       {error && <p className="error-note">{error}</p>}
 

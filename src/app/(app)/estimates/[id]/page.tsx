@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { paidTotalCents } from "@/lib/data/types";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
+import { approvalHoldsSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { CompletionEditor } from "./completion-editor";
@@ -81,11 +82,28 @@ export default async function EstimateDetailPage({
     );
   }
 
-  // The closer's hold on sending. Resolved here so the page can hide
-  // the send buttons and say who sends instead of them -- the server
-  // actions refuse a held send anyway; this stops the click happening.
+  // The holds on sending, in the order a real send meets them: the
+  // approval switch (0136) first, then the closer's. Resolved here so
+  // the page can hide the send buttons and say what happens instead --
+  // the server actions refuse a held send anyway; this stops the click
+  // happening. Drafts only for the approval hold: a document already
+  // out has passed the gate, whatever the switch says today.
   let sendHold: string | null = null;
-  if (estimate.lead_id && canSendEstimates(profile) && !isAdminRole(profile)) {
+  if (canSendEstimates(profile) && estimate.status === "Draft") {
+    const { data: gate } = await supabase
+      .from("company_profile")
+      .select("require_estimate_approval")
+      .eq("company_id", profile.company_id)
+      .maybeSingle<{ require_estimate_approval: boolean | null }>();
+    const held = approvalHoldsSend({
+      approvalRequired: gate?.require_estimate_approval === true,
+      approvedAt: estimate.approved_at,
+    });
+    if (held) {
+      sendHold = approvalHoldMessage(estimate.doc_number, { canApprove: isStrictAdmin(profile) });
+    }
+  }
+  if (!sendHold && estimate.lead_id && canSendEstimates(profile) && !isAdminRole(profile)) {
     const { data: leadCloser } = await supabase
       .from("leads")
       .select("closer_id")
@@ -162,7 +180,8 @@ export default async function EstimateDetailPage({
       lead={lead ?? null}
       canEdit={canCreateEstimates(profile)}
       // Drafts only when off: the Users & Roles "Send Estimates" switch,
-      // plus the closer's hold on a closer-led lead.
+      // the approval gate while it waits on an admin, and the closer's
+      // hold on a closer-led lead.
       canSend={canSendEstimates(profile) && !sendHold}
       sendHoldNote={sendHold}
       // Separate from canEdit on purpose. A bookkeeper records what the
