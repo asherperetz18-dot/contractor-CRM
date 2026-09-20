@@ -608,12 +608,12 @@ async function backupDocumentsBatch(
         .returns<import("@/lib/data/types").EstimateGroup[]>(),
       admin
         .from("company_profile")
-        .select("name, address, phone, email, website, logo_url, license_number, license_state, license_type")
+        .select("name, address, phone, email, website, logo_url, license_number, license_state, license_type, timezone")
         .eq("company_id", companyId)
         .maybeSingle<{
           name: string | null; address: string | null; phone: string | null; email: string | null;
           website: string | null; logo_url: string | null; license_number: string | null;
-          license_state: string | null; license_type: string | null;
+          license_state: string | null; license_type: string | null; timezone: string | null;
         }>(),
     ]);
     const estimate = est.data;

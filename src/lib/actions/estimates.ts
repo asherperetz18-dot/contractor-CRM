@@ -16,6 +16,7 @@ import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
+import { approvalHoldsSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import { defaultEstimateNarrative, paragraphsToHtml } from "@/lib/estimate-email-copy";
 import {
   balanceAfterDepositCents,
@@ -309,6 +310,44 @@ async function closerHoldError(
   return closerHoldMessage(closer?.name || closer?.email || null);
 }
 
+/**
+ * The approval gate's hold on a document leaving Draft (0136). Null when
+ * the document may go; otherwise the message to show whoever pressed
+ * Send.
+ *
+ * The trigger enforces the same rule on the status change -- but the
+ * send action emails or texts the customer BEFORE it changes the
+ * status, so a refusal there arrives after the link is already in their
+ * inbox: the message went out, the document stayed a Draft, the board
+ * said "never sent", and the link the customer holds is turned away by
+ * the portal. Asked here first, nothing goes out.
+ */
+async function approvalHoldError(
+  companyId: string,
+  estimateId: string,
+  canApprove: boolean
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const [{ data: company }, { data: doc }] = await Promise.all([
+    admin
+      .from("company_profile")
+      .select("require_estimate_approval")
+      .eq("company_id", companyId)
+      .maybeSingle<{ require_estimate_approval: boolean | null }>(),
+    admin
+      .from("estimates")
+      .select("doc_number, approved_at")
+      .eq("id", estimateId)
+      .eq("company_id", companyId)
+      .maybeSingle<{ doc_number: string | null; approved_at: string | null }>(),
+  ]);
+  const held = approvalHoldsSend({
+    approvalRequired: company?.require_estimate_approval === true,
+    approvedAt: doc?.approved_at ?? null,
+  });
+  return held ? approvalHoldMessage(doc?.doc_number ?? null, { canApprove }) : null;
+}
+
 // An editor who also holds the Send Estimates switch, and -- on a lead
 // with a closer -- the closer themselves (or Office/Admin). Guards
 // everything that takes a document out of Draft: texting or emailing it,
@@ -317,7 +356,7 @@ async function closerHoldError(
 // permission.
 async function requireEstimateSender(
   estimateId: string
-): Promise<{ error: string } | { companyId: string; userId: string }> {
+): Promise<{ error: string } | { companyId: string; userId: string; canApprove: boolean }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canCreateEstimates(profile))
@@ -325,7 +364,7 @@ async function requireEstimateSender(
   if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
   const hold = await closerHoldError(profile, estimateId);
   if (hold) return { error: hold };
-  return { companyId: profile.company_id, userId: profile.id };
+  return { companyId: profile.company_id, userId: profile.id, canApprove: isStrictAdmin(profile) };
 }
 
 // The detail route is /estimates/<estimate id>. Pipeline is refreshed too
@@ -1100,6 +1139,12 @@ export async function sendEstimateToCustomer(
     return { error: "Add at least one line item before sending." };
   }
 
+  // Before a single message goes out: with approval switched on, an
+  // unapproved document must be refused here, not by the trigger after
+  // the customer already has the link.
+  const approvalHold = await approvalHoldError(guard.companyId, estimateId, guard.canApprove);
+  if (approvalHold) return { error: approvalHold };
+
   const { data: lead } = await admin
     .from("leads")
     .select("id, first_name, last_name, address, phone, email, company_id, second_contact_email")
@@ -1299,13 +1344,41 @@ export async function sendEstimateToCustomer(
     return { error: problems.join("; ") || "Could not send the estimate." };
   }
 
+  // Logged in the same thread the team already watches, so "did they ever
+  // get anything?" stays answerable from data. One row per channel that
+  // actually went out -- written before the status changes, because it
+  // records what happened regardless of what happens next.
+  for (const logRow of logRows) {
+    await admin.from("sms_messages").insert({
+      lead_id: lead.id,
+      direction: "outbound",
+      sent_by: guard.userId,
+      company_id: guard.companyId,
+      ...logRow,
+    });
+  }
+
   await fillContractMoney(estimateId, guard.companyId);
 
   const now = new Date().toISOString();
-  await admin
+  // Checked, not fire-and-forget: the database can refuse this change
+  // (the approval trigger, 0136), and a refusal that went unread here
+  // is exactly how a document got emailed, signed for by the sender,
+  // and left standing in Draft as if nobody had ever sent it.
+  const { data: marked, error: markError } = await admin
     .from("estimates")
     .update({ status: "Sent", sent_at: now, issued_at: now, updated_at: now })
-    .eq("id", estimateId);
+    .eq("id", estimateId)
+    .select("id")
+    .returns<{ id: string }[]>();
+  if (markError || !marked?.length) {
+    revalidateEstimates(estimateId);
+    return {
+      error:
+        `The message went out to ${sentTo.join(" and ")}, but ${estimate.doc_number} could not be ` +
+        `marked as sent${markError ? `: ${markError.message}` : "."}`,
+    };
+  }
 
   // The proposal is out, so the board should say so. Revives a lead
   // written off as Lost, since sending an estimate contradicts that.
@@ -1316,6 +1389,16 @@ export async function sendEstimateToCustomer(
   // time means the customer sees a document the contractor has stood
   // behind, not a blank pair of signature lines.
   if (sender) {
+    // One contractor signature per document: whoever sends it is the one
+    // standing behind these numbers. An earlier send-time signature --
+    // a colleague's, or the sender's own from a send the database
+    // refused -- is replaced, not joined; two "Contractor" lines on one
+    // contract read as two people having signed it.
+    await admin
+      .from("estimate_signers")
+      .delete()
+      .eq("estimate_id", estimateId)
+      .eq("party", "company");
     // Same evidence the customer's signature carries -- the contractor
     // signs from this very request, so record where and when from it.
     const evidence = collectSignatureEvidence(await headers(), now);
@@ -1330,19 +1413,6 @@ export async function sendEstimateToCustomer(
       signature_name: sender.name || sender.email,
       signature_ip: evidence.ip,
       signature_user_agent: evidence.userAgent,
-    });
-  }
-
-  // Logged in the same thread the team already watches, so "did they ever
-  // get anything?" stays answerable from data. One row per channel that
-  // actually went out.
-  for (const logRow of logRows) {
-    await admin.from("sms_messages").insert({
-      lead_id: lead.id,
-      direction: "outbound",
-      sent_by: guard.userId,
-      company_id: guard.companyId,
-      ...logRow,
     });
   }
 
@@ -1851,6 +1921,18 @@ export async function markSignedOnPaper(
   if (estimate.status === "Signed") return { error: "This document is already signed." };
   if (estimate.status === "Void") {
     return { error: "This document was cancelled — un-cancel it before recording a signature." };
+  }
+  // A paper signature takes a Draft straight to Signed, which the
+  // approval trigger refuses just the same -- asked here, before the
+  // signer rows and the contact note are written for a status change
+  // that then never happens.
+  if (estimate.status === "Draft") {
+    const approvalHold = await approvalHoldError(
+      profile.company_id,
+      estimateId,
+      isStrictAdmin(profile)
+    );
+    if (approvalHold) return { error: approvalHold };
   }
 
   const admin = createAdminClient();

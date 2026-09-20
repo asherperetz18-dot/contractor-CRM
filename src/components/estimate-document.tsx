@@ -19,9 +19,10 @@ import {
   type EstimatePhoto,
   type PortalPayment,
   leadPhotoThumbUrl,
+  companyIanaZone,
 } from "@/lib/data/types";
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
-import { signatureEvidenceLine } from "@/lib/portal/signature-evidence";
+import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
 import { OptionalItemCheckbox } from "@/components/optional-item-checkbox";
 
 export type DocumentCompany = {
@@ -35,6 +36,9 @@ export type DocumentCompany = {
   license_number: string | null;
   license_state: string | null;
   license_type: string | null;
+  /** company_profile.timezone label ("Pacific"). Signature times on the
+   *  document are printed in this clock. */
+  timezone: string | null;
 };
 
 export type DocumentCustomer = {
@@ -233,6 +237,10 @@ export function EstimateDocument({
   // CSLB requires the licence number on California home-improvement
   // contracts, and a signed estimate becomes one.
   const licence = [company?.license_type, company?.license_number].filter(Boolean).join(" ");
+  // Signature times in the company's own clock -- the contract is signed
+  // in its market, and "5:57 PM UTC" under a Los Angeles signature was
+  // read as the wrong time. Label always printed (PDT / PST).
+  const zone = companyIanaZone(company?.timezone);
 
   return (
     <article className="estdoc">
@@ -655,7 +663,7 @@ export function EstimateDocument({
           </div>
           <div className="estdoc-signer-grid">
             {signers.map((s) => {
-              const evidence = signatureEvidenceLine(s);
+              const evidence = signatureEvidenceLine(s, zone);
               return (
               <div key={s.id} className="estdoc-signer">
                 <div className="estdoc-signer-line">
@@ -675,9 +683,7 @@ export function EstimateDocument({
                 <div className="estdoc-strong">{s.name}</div>
                 <div className="estdoc-muted">
                   {s.party === "company" ? "Contractor" : "Customer"}
-                  {s.signed_at
-                    ? ` · signed ${new Date(s.signed_at).toLocaleDateString("en-US")}`
-                    : ""}
+                  {s.signed_at ? ` · signed ${signedOnLabel(s.signed_at, zone)}` : ""}
                 </div>
                 {evidence && <div className="estdoc-muted">{evidence}</div>}
               </div>
