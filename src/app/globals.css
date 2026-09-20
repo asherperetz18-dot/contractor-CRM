@@ -680,6 +680,14 @@ body {
 .stat-grid-5 {
   grid-template-columns: repeat(5, 1fr);
 }
+/* An iPad in landscape keeps the sidebar open, which leaves ~740px for
+   the page: five or six tiles across were ~125px each and the money in
+   them wrapped. Three across until the phone rules take over. */
+@media (max-width: 1100px) {
+  .stat-grid-5 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
 .stat-card {
   background: #fff;
   border: 1px solid var(--line);
@@ -759,6 +767,7 @@ button.stat-card {
 }
 .filter-bar-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -1807,6 +1816,13 @@ a.stat-card {
   align-items: center;
   gap: 10px;
   font-size: 12.5px;
+}
+@media (max-width: 700px) {
+  .dash-hbar-row {
+    grid-template-columns: 96px 1fr 84px;
+    gap: 8px;
+    font-size: 12px;
+  }
 }
 .dash-hbar-label {
   color: var(--ink-soft);
@@ -3432,6 +3448,16 @@ a.stat-card {
   max-height: 55vh;
   overflow-y: auto;
 }
+/* Two contacts side by side is the point of the comparison, but inside
+   a phone-width modal each side was about 150px and every field wrapped
+   to nothing. One under the other reads; the keep/merge buttons stay on
+   each. */
+@media (max-width: 560px) {
+  .dup-pair-sides,
+  .dup-preview-sides {
+    grid-template-columns: 1fr;
+  }
+}
 .dup-preview-side {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -4259,6 +4285,14 @@ a.stat-card {
   position: sticky;
   top: 16px;
 }
+/* On a phone the 280px side column left the list about 60px wide -- the
+   contacts, the thing the page is for, were unreadable. Stack instead:
+   the list first, the saved lists and session controls under it. */
+@media (max-width: 700px) {
+  .dial-queue-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .dial-queue-filters {
   display: flex;
   flex-direction: column;
@@ -4409,6 +4443,11 @@ a.stat-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 10px;
+}
+@media (max-width: 700px) {
+  .dial-edit-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .dial-edit-actions {
   display: flex;
@@ -7599,6 +7638,12 @@ a.portal-header-stars:hover {
 .stat-grid-6 {
   grid-template-columns: repeat(6, 1fr);
 }
+/* Same iPad-landscape squeeze as .stat-grid-5 above: three across. */
+@media (max-width: 1100px) {
+  .stat-grid-6 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
 
 /* Stripe connection check */
 .pp-checks,
@@ -7883,6 +7928,7 @@ textarea.est-item-desc:disabled {
 
 .est-add-row-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 10px 0 18px;
 }
@@ -8167,7 +8213,7 @@ textarea.est-item-desc:disabled {
   left: 0;
   z-index: 40;
   margin-top: 4px;
-  min-width: 340px;
+  min-width: min(340px, calc(100vw - 32px));
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;

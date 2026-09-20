@@ -72,9 +72,11 @@
    new contact, appointment, bill, settings, even the login screen --
    jumped in and stayed there. 16px is the threshold Safari respects.
    Touch screens only (pointer: coarse), so desktop keeps the compact
-   13px fields. Checkboxes, radios, sliders and colour pickers draw no
-   text, so they are left alone. */
-@media (max-width: 900px) and (pointer: coarse) {
+   13px fields. No width cap: an iPad in landscape is 1024-1180px wide
+   and Safari zooms there exactly the same, so the old 900px cap left
+   every iPad landscape form jumping. Checkboxes, radios, sliders and
+   colour pickers draw no text, so they are left alone. */
+@media (pointer: coarse) {
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   select,
   textarea {
@@ -129,5 +131,20 @@
   .topbar-icon-btn {
     width: 30px;
     height: 30px;
+  }
+}
+
+/* 5. Tap targets ---------------------------------------------------------
+   .icon-btn is a bare glyph -- ✎, 🗑, ▸ -- with no padding, about 16px
+   square. On a desktop the cursor lands on it; under a thumb, on the
+   settings tables, the contact card's file rows and the pipeline
+   filters, it took two or three tries and often hit the row instead.
+   36px is the smallest target that reads as reliable on a touch screen.
+   Touch screens only, so desktop tables keep their height. */
+@media (pointer: coarse) {
+  .icon-btn {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px;
   }
 }
