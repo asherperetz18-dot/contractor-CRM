@@ -8,6 +8,7 @@ import {
   canSeePage,
   canViewEstimates,
   isAdminRole,
+  isStrictAdmin,
   pathToPageKey,
   PAGE_REGISTRY,
   TOP_LEVEL_NAV_GROUP,
@@ -35,6 +36,10 @@ export function filterNavForProfile(
     // by isAdminRole directly instead, since AdminGate blocks the page
     // itself for everyone else anyway.
     if (href === "/settings") return isAdminRole(profile);
+    // Approvals is Admin only -- both of its actions (the pending list
+    // and the on/off switch) refuse anyone else, so the link shows only
+    // to the person who can actually use the page.
+    if (href === "/estimate-approvals") return isStrictAdmin(profile);
     // Estimates carry a per-person permission ON TOP of role visibility,
     // not instead of it. Bypassing the matrix here kept the link (and
     // postLoginPath's idea of "first visible page") alive for roles the
@@ -143,7 +148,16 @@ function buildNav(): NavEntry[] {
 
   // Admin Settings is deliberately absent from PAGE_REGISTRY: it is not
   // role-visibility managed (AdminGate blocks it outright), so it has no
-  // cell in that matrix and has to be appended here.
+  // cell in that matrix and has to be appended here. Estimate Approvals
+  // is the same shape -- Admin only, no Role Visibility cell -- and until
+  // this link existed the page was reachable only by typing its URL,
+  // which is how the approval switch went unfound.
+  entries.push({
+    type: "link",
+    href: "/estimate-approvals",
+    label: "Estimate Approvals",
+    icon: "✓",
+  });
   entries.push({ type: "link", href: "/settings", label: "Admin Settings", icon: "⚙" });
   return entries;
 }
