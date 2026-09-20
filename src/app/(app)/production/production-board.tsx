@@ -14,7 +14,7 @@ import {
   weekBounds,
   type QuickFilter,
 } from "@/lib/production-board";
-import { updateJobStatus } from "@/lib/actions/jobs";
+import { backfillJobsFromSignedContracts, updateJobStatus } from "@/lib/actions/jobs";
 import { JobForm } from "./job-form";
 
 function initials(name: string): string {
@@ -70,6 +70,8 @@ export function ProductionBoard({
   // A dropped card jumps columns immediately; the server then confirms.
   const [override, setOverride] = useState<Record<string, JobStatus>>({});
   const [moveError, setMoveError] = useState("");
+  const [syncPending, setSyncPending] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   const board = useMemo(
     () => jobs.map((j) => (override[j.id] ? { ...j, status: override[j.id] } : j)),
@@ -134,6 +136,21 @@ export function ProductionBoard({
   };
 
   const toggleQuick = (q: Exclude<QuickFilter, null>) => setQuick((cur) => (cur === q ? null : q));
+
+  async function runBackfill() {
+    setSyncPending(true);
+    setSyncMsg("");
+    const res = await backfillJobsFromSignedContracts();
+    setSyncPending(false);
+    if (res.error) {
+      setSyncMsg(res.error);
+    } else if (!res.created) {
+      setSyncMsg("Every signed contract already has its job.");
+    } else {
+      setSyncMsg(`Added ${res.created} job${res.created === 1 ? "" : "s"} from signed contracts.`);
+      router.refresh();
+    }
+  }
 
   const card = (j: Job, withBadge: boolean) => {
     const dates = jobDateInfo(j, today);
@@ -223,11 +240,23 @@ export function ProductionBoard({
           </p>
         </div>
         {canWrite && (
-          <button className="btn-primary" onClick={() => setShowNew(true)}>
-            + New Job
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              className="btn-ghost"
+              onClick={runBackfill}
+              disabled={syncPending}
+              title="Create a job for every signed contract that doesn't have one yet — safe to click twice, nothing is doubled"
+            >
+              {syncPending ? "Adding…" : "Add signed jobs"}
+            </button>
+            <button className="btn-primary" onClick={() => setShowNew(true)}>
+              + New Job
+            </button>
+          </div>
         )}
       </div>
+
+      {syncMsg && <p className="hint-note">{syncMsg}</p>}
 
       <div className="stat-grid">
         <button
@@ -310,8 +339,10 @@ export function ProductionBoard({
           </div>
           <p className="empty-label">No jobs here</p>
           <p className="empty-hint">
-            Jobs appear when a contract is signed or a won lead is converted — or add one
-            directly.
+            Jobs appear when a contract is signed or a won lead is converted.
+            {canWrite
+              ? " Click “Add signed jobs” above to pull in the contracts already signed, or add one directly."
+              : ""}
           </p>
         </div>
       ) : (

@@ -537,7 +537,17 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** The board reflects the real book from signature day forward with no new tables and no migration. Two boards deliberately coexist: Projects stays the money view (a signed contract and its rollup), Production stays the crew/schedule view (the `jobs` row that Calendar and Schedule already read), bridged by the card's "Open project" link and the `?focus=` deep link on Projects. Board summary cards follow the search and crew filters but not the clicked quick-card itself — the four cards must keep counting one shared list, or each would describe a different board.
 
-## 049 — Partnership sales: two reps hold the sale, the closer only ever follows it
+## 049 — The Contract Board is a view, and its cards don't drag
+
+**Date:** 2026-09-20
+
+**Context:** The Contracts placeholder under Production needed to become a real module. The obvious build was a new `contracts` table and a drag-and-drop kanban like the leads pipeline. But a contract already exists in the schema — it is an `estimates` row with `kind='contract'`, and migration 0059's own comment on the `Signed` status says "this is a contract". The Estimates funnel and the Projects page already read those rows.
+
+**Decision:** The board (`/contracts`) is a read-only view over the same rows: five columns (Draft / Sent / Viewed / Signed / Closed) derived with the funnel's `effectiveEstimateStatus`, no new tables, no migration. And unlike the leads pipeline, cards do not drag between columns. A lead's stage is an opinion, so dragging it is honest; a contract's status is evidence — `sent_at`, a customer's portal open, a signature with IP and timestamp — and a drag to "Signed" would fake a legal record. Status changes stay where the evidence is made: the document page (send, mark signed on paper, void).
+
+**Consequence:** The board can never disagree with Estimates or Projects, and it shipped as pure app code. The trade: people who expect every board to drag will find these cards fixed; the card click opens the document where the real action lives, which is the explanation.
+
+## 050 — Partnership sales: two reps hold the sale, the closer only ever follows it
 
 **Date:** 2026-09-20
 

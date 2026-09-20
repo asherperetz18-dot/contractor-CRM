@@ -27,6 +27,36 @@ export type ProductionJobInsert = {
   status: "Not Started";
 };
 
+export type SignedContractSeed = {
+  id: string;
+  lead_id: string | null;
+  kind: string | null;
+  title: string | null;
+  signed_at: string | null;
+};
+
+/**
+ * The one-click backfill for contracts signed before auto-create
+ * shipped: one seed per lead still missing a job, the latest signature
+ * naming it (same winner as the board's "Open project" link). The
+ * caller pairs each seed with its lead row and inserts what
+ * productionJobRow returns — so the backfilled job and the
+ * signed-yesterday job can never be shaped differently.
+ */
+export function backfillSeeds(
+  signed: readonly SignedContractSeed[],
+  existingJobLeadIds: ReadonlySet<string>
+): SignedContractSeed[] {
+  const byLead = new Map<string, SignedContractSeed>();
+  for (const doc of signed) {
+    if (doc.kind === "change_order" || doc.kind === "completion") continue;
+    if (!doc.lead_id || existingJobLeadIds.has(doc.lead_id)) continue;
+    const held = byLead.get(doc.lead_id);
+    if (!held || (doc.signed_at ?? "") > (held.signed_at ?? "")) byLead.set(doc.lead_id, doc);
+  }
+  return [...byLead.values()];
+}
+
 export function productionJobRow(
   estimate: JobSeedEstimate,
   lead: JobSeedLead | null,

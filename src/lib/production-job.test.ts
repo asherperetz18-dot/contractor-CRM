@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { productionJobRow } from "./production-job.ts";
+import { backfillSeeds, productionJobRow } from "./production-job.ts";
 
 /**
  * A signed contract puts the job on the Production Board by itself —
@@ -60,4 +60,51 @@ test("a nameless lead on an untitled document still gets a readable name", () =>
     false
   );
   assert.equal(row?.name, "New Project");
+});
+
+// ── Backfill: the contracts signed before auto-create shipped ─────────
+
+const signedDoc = (over: Partial<import("./production-job.ts").SignedContractSeed>) => ({
+  id: "e1",
+  lead_id: "lead-1",
+  kind: null as string | null,
+  title: "Some Job",
+  signed_at: "2026-09-01T10:00:00Z",
+  ...over,
+});
+
+test("backfill seeds one job per lead still missing one", () => {
+  const seeds = backfillSeeds(
+    [
+      signedDoc({ id: "e1", lead_id: "lead-1" }),
+      signedDoc({ id: "e2", lead_id: "lead-2" }),
+      signedDoc({ id: "e3", lead_id: "lead-3" }),
+    ],
+    new Set(["lead-2"])
+  );
+  assert.deepEqual(seeds.map((s) => s.lead_id), ["lead-1", "lead-3"]);
+});
+
+test("backfill skips change orders, completions and leadless documents", () => {
+  const seeds = backfillSeeds(
+    [
+      signedDoc({ id: "e1", kind: "change_order" }),
+      signedDoc({ id: "e2", kind: "completion" }),
+      signedDoc({ id: "e3", lead_id: null }),
+    ],
+    new Set()
+  );
+  assert.deepEqual(seeds, []);
+});
+
+test("two signed contracts on one lead seed one job, the latest signature naming it", () => {
+  const seeds = backfillSeeds(
+    [
+      signedDoc({ id: "old", lead_id: "lead-1", title: "v1", signed_at: "2026-08-01T00:00:00Z" }),
+      signedDoc({ id: "new", lead_id: "lead-1", title: "v2", signed_at: "2026-09-01T00:00:00Z" }),
+    ],
+    new Set()
+  );
+  assert.equal(seeds.length, 1);
+  assert.equal(seeds[0].id, "new");
 });
