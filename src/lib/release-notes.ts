@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.133.0",
+    date: "2026-09-22",
+    notes: [
+      "The appointment and contact cards are now linked: save an appointment and its Assigned To / Second Assigned To fill the customer's empty Assigned Rep and Partner Rep seats automatically, with a note on the timeline saying so. A seat someone already holds is never overwritten, and the Closer never changes from an appointment.",
+      "Booking is faster: new appointments start with the customer's own rep pre-picked, and an old appointment with an empty rep box gets a one-tap \"Use customer's rep\" button.",
+      "Reminder texts have a safety net: a visit with nobody booked now texts the customer's rep instead of texting no one.",
+    ],
+  },
+  {
     version: "1.132.0",
     date: "2026-09-22",
     notes: [
