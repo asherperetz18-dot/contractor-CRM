@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.139.0",
+    date: "2026-09-22",
+    notes: [
+      "Dispatch Dashboard is now its own item in the sidebar, right under Dashboard, instead of a row inside the Dispatch section. Like every top-level item, an admin can move it in Settings › Menu Order.",
+      "If your company has a saved menu order, the new item appears at the bottom of the menu once; drag it where you want it in Settings › Menu Order.",
+    ],
+  },
+  {
     version: "1.138.0",
     date: "2026-09-22",
     notes: [
