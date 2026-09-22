@@ -1,3 +1,5 @@
+import { addDays } from "@/lib/company-clock";
+import { todayForCompany } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { portalBaseUrl } from "@/lib/portal/session";
@@ -139,13 +141,12 @@ export async function finalizeSignedEstimate(
     // No text goes out. Billing and telling them are separate acts, and
     // a pay link arriving while the contractor is still standing in
     // their kitchen reads as pushy.
-    const due = new Date();
-    due.setDate(due.getDate() + 7);
+    const dueDate = addDays(await todayForCompany(admin, estimate.company_id), 7);
     await admin
       .from("estimate_payments")
       .update({
         requested_at: now,
-        due_date: due.toISOString().slice(0, 10),
+        due_date: dueDate,
         updated_at: now,
       })
       .eq("estimate_id", estimate.parent_estimate_id)

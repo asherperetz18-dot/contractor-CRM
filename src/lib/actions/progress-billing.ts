@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
@@ -105,7 +106,7 @@ export async function requestProgressPayment(
   const twilioEnv = await getTwilioForCompany(guard.companyId);
   if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
 
-  const due = dueDate || phase.due_date || defaultDueDate();
+  const due = dueDate || phase.due_date || defaultDueDate(await companyToday());
 
   const { data: companyRow } = await admin
     .from("company_profile")
@@ -246,7 +247,7 @@ export async function markProgressPaymentBilled(
     .maybeSingle();
   if (settled) return { error: "This phase has already been paid." };
 
-  const due = dueDate || phase.due_date || defaultDueDate();
+  const due = dueDate || phase.due_date || defaultDueDate(await companyToday());
 
   await admin
     .from("leads")

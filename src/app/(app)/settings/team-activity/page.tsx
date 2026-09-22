@@ -1,3 +1,5 @@
+import { dayStartInZone, isoDateInZone } from "@/lib/company-clock";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { isStrictAdmin } from "@/lib/data/types";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { getActivityEventsInRange } from "@/lib/actions/activity-range";
@@ -19,12 +21,6 @@ import { TeamActivityView } from "./team-activity-view";
  * Widening the range now fetches that range, the same way the lead-view
  * figures beside it already worked.
  */
-function startOfTodayISO(): string {
-  // Sliced from the ISO string to match the report, which buckets days by
-  // the UTC date rather than anyone's local one.
-  return new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z").toISOString();
-}
-
 export default async function TeamActivityPage() {
   // Checked before the fetch, not just around the render: this page reads
   // every teammate's browsing history, and there's no reason to pull that
@@ -34,7 +30,11 @@ export default async function TeamActivityPage() {
     return <AdminGate adminOnly>{null}</AdminGate>;
   }
 
-  const since = startOfTodayISO();
+  // Today on the company's calendar, from its own midnight -- the report
+  // filters and buckets by that same clock (data/company-today), so an
+  // evening's work no longer shows up under tomorrow.
+  const zone = await getCompanyZone();
+  const since = dayStartInZone(isoDateInZone(new Date(), zone), zone).toISOString();
 
   const companyId = await getCurrentCompanyId();
   const [initial, users] = await Promise.all([
@@ -48,6 +48,7 @@ export default async function TeamActivityPage() {
         initialEvents={initial.events ?? []}
         initialSince={since}
         users={users}
+        zone={zone}
       />
     </AdminGate>
   );

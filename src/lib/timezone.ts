@@ -1,5 +1,5 @@
 import "server-only";
-import { utcClockIn } from "@/lib/company-clock";
+import { instantOfWallClock, utcClockIn } from "@/lib/company-clock";
 
 // Returns the company's current wall-clock time expressed as a Date whose
 // UTC getters give the local Y/M/D/H/M/S in that zone -- lets grace-period
@@ -17,16 +17,9 @@ export function nowInZone(ianaZone: string): Date {
 }
 
 // The real UTC instant at which `ianaZone`'s wall clock reads `naive` (a
-// naive-as-UTC Date, e.g. from parseNaiveDateTime). Needed whenever a
-// stored local time has to be compared against genuinely zoned timestamps
-// (like NWS forecast periods) -- naive-vs-real comparisons are silently off
-// by the whole UTC offset. Guess-and-correct twice so a naive time sitting
-// right on a DST transition still lands on the offset actually in force.
+// naive-as-UTC Date, e.g. from parseNaiveDateTime) -- for comparing a
+// stored local time against genuinely zoned timestamps like NWS forecast
+// periods. The math lives in lib/company-clock (pure, tested).
 export function naiveZonedToUtc(naive: Date, ianaZone: string): Date {
-  let utcMs = naive.getTime();
-  for (let i = 0; i < 2; i++) {
-    const wall = utcClockIn(new Date(utcMs), ianaZone);
-    utcMs += naive.getTime() - wall.getTime();
-  }
-  return new Date(utcMs);
+  return instantOfWallClock(naive, ianaZone);
 }
