@@ -1541,6 +1541,10 @@ tr.row-link:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 16px 18px;
+  /* A grid item's default min-width is its content's — without this,
+     the chart's 540px scroll floor forces the whole page that wide on
+     phones instead of scrolling inside its own panel. */
+  min-width: 0;
 }
 .dash-panel h3 {
   font-family: var(--font-headers);
@@ -1767,7 +1771,8 @@ a.stat-card {
 
 .dash-legend {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   margin-left: auto;
   font-size: 12px;
   color: var(--ink-soft);
@@ -1937,6 +1942,30 @@ a.stat-card {
   background: var(--dash-chart-blue);
 }
 
+/* Phone-width reflow for the dashboard proper: two-up cards, the stage
+   dropdown on its own line, and smaller headline type so money figures
+   don't collide at ~180px per tile. */
+@media (max-width: 700px) {
+  .dash-attn-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .dash-kpi-grid .stat-value {
+    font-size: 21px;
+  }
+  .dash-panel-head .dash-panel-select {
+    margin-left: 0;
+    flex: 1 1 100%;
+  }
+  .dash-legend {
+    margin-left: 0;
+  }
+  .dash-mini-stats {
+    flex-wrap: wrap;
+    gap: 12px 18px;
+  }
+}
+
 .dash-mobile {
   display: none;
 }
@@ -1953,105 +1982,6 @@ a.stat-card {
   margin: 0 0 12px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-}
-.mobile-stat-row {
-  display: flex;
-  gap: 10px;
-}
-.mobile-stat {
-  flex: 1;
-  text-align: center;
-}
-.mobile-stat-value {
-  font-family: var(--font-headers);
-  font-size: 22px;
-}
-.mobile-stat-danger {
-  color: var(--danger);
-}
-.mobile-stat-label {
-  font-size: 11px;
-  color: var(--ink-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-.week-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  height: 110px;
-}
-.week-bar-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-}
-.week-bar-track {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.week-bar {
-  width: 60%;
-  min-height: 3px;
-  background: var(--blueprint);
-  border-radius: 3px 3px 0 0;
-}
-.week-bar-count {
-  font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 4px;
-}
-.week-bar-label {
-  font-size: 11px;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
-.month-cal {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-}
-.month-cal-head {
-  text-align: center;
-  font-size: 11px;
-  color: var(--ink-soft);
-  font-weight: 600;
-  padding-bottom: 4px;
-}
-.month-cal-cell {
-  position: relative;
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  font-size: 12px;
-}
-.month-cal-blank {
-  visibility: hidden;
-}
-.month-cal-today {
-  background: var(--paper);
-  border: 1px solid var(--blueprint);
-  font-weight: 700;
-}
-.month-cal-badge {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  background: var(--safety);
-  color: #fff;
-  font-size: 9px;
-  line-height: 1;
-  padding: 2px 4px;
-  border-radius: 6px;
-  min-width: 12px;
-  text-align: center;
 }
 .modules-grid {
   display: grid;
@@ -3900,11 +3830,13 @@ a.stat-card {
     right: auto;
     left: 0;
   }
-  .dash-desktop {
-    display: none;
-  }
+  /* The dashboard itself stays on phones and small tablets — the
+     ≤1100/≤700 rules reflow it — and the module tiles append below as
+     the familiar phone launcher. It used to be display:none here, which
+     left phones with only the tiles. */
   .dash-mobile {
     display: block;
+    margin-top: 18px;
   }
   .pipeline-col {
     flex-basis: 200px;
