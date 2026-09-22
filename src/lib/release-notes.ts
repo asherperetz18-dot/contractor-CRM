@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.137.0",
+    date: "2026-09-22",
+    notes: [
+      "The appointment window's Estimates tab now has a \"Write estimate for …\" button: one tap creates the estimate for that customer and opens it ready to price -- no more leaving the appointment to go hunt for New Estimate.",
+    ],
+  },
+  {
     version: "1.136.0",
     date: "2026-09-22",
     notes: [
