@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getLiveUsers, type PresenceUser } from "@/lib/actions/presence";
+import type { PresenceUser } from "@/lib/actions/presence";
 
 const REFRESH_MS = 60000;
 
@@ -26,6 +26,11 @@ function summary(users: PresenceUser[]): string {
  * about a second and a half each, for a list nobody was looking at. The
  * layout already renders this button and can hand over the first
  * snapshot for free, alongside the queries it makes anyway.
+ *
+ * The refresh itself asks a route handler, not the action: Next runs
+ * server actions one after another through a single queue in the
+ * browser, so even a poll that only runs while the panel is open stood
+ * in front of the admin's next click (DECISIONS #029, #060).
  */
 export function LiveUsersButton({ initialUsers }: { initialUsers: PresenceUser[] }) {
   const [users, setUsers] = useState<PresenceUser[]>(initialUsers);
@@ -35,8 +40,10 @@ export function LiveUsersButton({ initialUsers }: { initialUsers: PresenceUser[]
     if (!open) return;
     let cancelled = false;
     async function load() {
-      const result = await getLiveUsers();
-      if (cancelled) return;
+      const result = await fetch("/api/live-users", { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<{ users?: PresenceUser[] }>) : null))
+        .catch(() => null);
+      if (cancelled || !result) return;
       setUsers(result.users ?? []);
     }
     load();

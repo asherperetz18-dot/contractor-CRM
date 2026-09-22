@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { repMessagePreview } from "@/lib/data/types";
 import { DeliveryTag } from "@/components/ui/delivery-tag";
 import {
-  getLeadMessages,
-  getRepMessages,
   getRepRecipients,
   sendRepMessage,
   sendSms,
@@ -13,6 +11,23 @@ import {
   type RepMessage,
   type RepRecipient,
 } from "@/lib/actions/sms";
+
+/**
+ * The thread is read through a route handler, never a Server Action:
+ * this panel refetches it every twelve seconds while open, and Next
+ * runs server actions one after another through a single queue in the
+ * browser -- an action here put the person's own Send behind the poll
+ * (DECISIONS #029, #060). The route calls the same two action functions
+ * server-side, so what comes back is what the actions returned.
+ */
+async function fetchThread(leadId: string): Promise<{
+  lead: { error?: string; messages?: LeadMessage[] };
+  rep: { error?: string; messages?: RepMessage[] };
+} | null> {
+  return fetch(`/api/lead-messages?leadId=${encodeURIComponent(leadId)}`, { cache: "no-store" })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+}
 
 // Portal-link emails are logged in the same table so delivery is
 // auditable, but they aren't conversation -- shown as a quiet system line
@@ -57,12 +72,9 @@ export function MessagesPanel({
     // one contact's thread into another's card.
     let cancelled = false;
     (async () => {
-      const [result, repResult, whoResult] = await Promise.all([
-        getLeadMessages(leadId),
-        getRepMessages(leadId),
-        getRepRecipients(leadId),
-      ]);
+      const [thread, whoResult] = await Promise.all([fetchThread(leadId), getRepRecipients(leadId)]);
       if (cancelled) return;
+      const result = thread?.lead ?? { error: "Couldn't load this conversation." };
       if (result.error) {
         setError(result.error);
         setMessages([]);
@@ -70,7 +82,7 @@ export function MessagesPanel({
         return;
       }
       setMessages(result.messages ?? []);
-      setRepMessages(repResult.messages ?? []);
+      setRepMessages(thread?.rep.messages ?? []);
       const who = whoResult.recipients ?? [];
       setRecipients(who);
       setJobLabel(whoResult.jobLabel ?? "");
@@ -106,12 +118,12 @@ export function MessagesPanel({
       if (document.visibilityState !== "visible" || inFlight) return;
       inFlight = true;
       try {
-        const [lead, rep] = await Promise.all([getLeadMessages(leadId), getRepMessages(leadId)]);
-        if (cancelled) return;
+        const thread = await fetchThread(leadId);
+        if (cancelled || !thread) return;
         // Only on success: a dropped request should leave the thread as
         // it was rather than blanking it.
-        if (lead.messages) setMessages(lead.messages);
-        if (rep.messages) setRepMessages(rep.messages);
+        if (thread.lead.messages) setMessages(thread.lead.messages);
+        if (thread.rep.messages) setRepMessages(thread.rep.messages);
       } catch {
         // A failed poll is not worth an error banner over a thread that
         // is already on screen -- the next one is twelve seconds away.
