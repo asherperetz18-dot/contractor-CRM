@@ -476,6 +476,17 @@ export const GROUP_TONES: Record<string, NavTone> = {
 // below (nav-tones.test.ts fails until it has one).
 export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/", group: "General" },
+  // The desk's own overview (is every lead being worked fast, is the
+  // calendar filling) is its own top-level link, not a row inside the
+  // Dispatch group: a top-level link is what Settings › Menu Order can
+  // drag, and the owner wants it placed from there. Its built-in spot
+  // is right under Dashboard.
+  {
+    key: "dispatch-dashboard",
+    label: "Dispatch Dashboard",
+    href: "/dispatch-dashboard",
+    group: "General",
+  },
   {
     key: "marketing-analytics",
     label: "Marketing Analytics",
@@ -486,15 +497,6 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // carried wrapped the header to two lines beside the unread badge, and
   // the pages inside already say leads. Labels stay at 21 characters or
   // fewer so none wraps (nav-groups.test.ts).
-  //
-  // The desk's own overview leads the section: is every lead being
-  // worked fast, and is the calendar filling.
-  {
-    key: "dispatch-dashboard",
-    label: "Dispatch Dashboard",
-    href: "/dispatch-dashboard",
-    group: "Dispatch",
-  },
   { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch" },
   // Every open lead task in one place, overdue first -- the page the
   // dashboard's "Overdue tasks" card opens. The pipeline's Follow-ups

@@ -14,7 +14,7 @@ The overview page ("Dashboard 2.0"): headline numbers, graphs and a needs-attent
 
 ## Dispatch Dashboard
 
-The desk's own overview at `/dispatch-dashboard`, first in the Dispatch sidebar section and on by default for the Dispatch role (Role Visibility can give it to anyone). It answers one question — is every lead being worked fast, and is the calendar filling — so it carries speed and the board, never money.
+The desk's own overview at `/dispatch-dashboard`, its own top-level sidebar link right under Dashboard (so Settings › Menu Order can place it; it is not a row inside the Dispatch group) and on by default for the Dispatch role (Role Visibility can give it to anyone). It answers one question — is every lead being worked fast, and is the calendar filling — so it carries speed and the board, never money.
 
 | Feature | Status | Description | Code |
 |---|---|---|---|

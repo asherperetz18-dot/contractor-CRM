@@ -96,6 +96,7 @@ export function filterNavForProfile(
 
 const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   dashboard: "◎",
+  "dispatch-dashboard": "◉",
   "marketing-analytics": "📈",
   documents: "📄",
   "estimate-status": "⏳",
