@@ -768,3 +768,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** The desk gets live problems, then pace, then the board, from one call. The first-touch derivation is the one expensive piece of the SQL (three correlated mins per cohort lead), which is why the cohort is a window and never the book. A text cannot be attributed to a person (no sender column), so the desk table has no per-person text count until one exists. The panels are not drag-arrangeable yet — the main Dashboard's order lives in a dashboard-specific profile column — noted in TECH_DEBT.
 
+## 071 — Invite history is a view over `signup_invites`, and Resend rotates the row instead of adding one
+
+**Context:** The Platform Admin page could send a setup link but never show what had been sent. Every invite already lived in `signup_invites` (0130/0131) with its send time, expiry, redemption and the company it became; nothing read it back, and nothing recorded which admin clicked Send.
+
+**Decision:** No audit table and no new page. The history is a card on the Platform Admin page reading `signup_invites` through the service-role client (the table has RLS on with no policies by design; the page gate is the guard, as for `listPlatformAdmins`) and returning display fields only, never `token_hash`. Status is derived, not stored, by `inviteStatus` in `src/lib/signup/invite-history.ts` (pure, tested): redeemed beats everything, then "email never went out", then expiry. Resend mints a fresh token on the **same** row (`rotateInviteToken`, pinned to `consumed_at is null`) so the list stays one line per person invited and a stale click can never reopen a redeemed link; the rotation also clears `invite_sent_at`, so a failed resend honestly shows as Send failed. `sent_by` (0172) answers "who sent it"; both the insert and the loader fall back to the pre-0172 shape when the column is missing, because migrations are pasted by hand and lag. The list is capped at 300 rows rather than paged — invites arrive a few a week.
+
+**Consequence:** Paid signups show "Signup page" as the sender. Rows are judged against a single clock read in the server page (the client view may not call `Date.now()` in render), so a tab left open for hours can be minutes stale on a status that has days of granularity. If invite volume ever makes 300 rows a real cap, page it then.
+

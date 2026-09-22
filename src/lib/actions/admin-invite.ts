@@ -3,7 +3,7 @@
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isPlatformAdmin } from "@/lib/data/types";
 import { sendEmail } from "@/lib/email-env";
-import { createManualInvite, markInviteSent, registerUrl } from "@/lib/signup/invites";
+import { createManualInvite, markInviteSent, registerUrl, rotateInviteToken } from "@/lib/signup/invites";
 import { manualInviteEmailBody } from "@/lib/signup/provision";
 
 /**
@@ -33,7 +33,7 @@ export async function sendManualSignupInvite(email: string): Promise<{ error?: s
   if (!profile) return { error: "Not signed in." };
   if (!isPlatformAdmin(profile)) return { error: "Only a Platform Admin can do this." };
 
-  const { id, token, error } = await createManualInvite(email);
+  const { id, token, error } = await createManualInvite(email, profile.id);
   if (error) return { error };
   if (!id || !token) return { error: "Couldn't create the invite." };
 
@@ -55,5 +55,33 @@ export async function sendManualSignupInvite(email: string): Promise<{ error?: s
     console.error(`[signup] manual invite ${id} sent but not marked: ${marked.error}`);
   }
 
+  return {};
+}
+
+/**
+ * Resend from the invite history: same row, fresh link, same email
+ * address it was first sent to. Refused for a redeemed invite -- there
+ * is an account behind it already, and "sign in" is the right answer.
+ */
+export async function resendSignupInvite(inviteId: string): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isPlatformAdmin(profile)) return { error: "Only a Platform Admin can do this." };
+  if (!inviteId) return { error: "Which invite?" };
+
+  const rotated = await rotateInviteToken(inviteId);
+  if (rotated.error) return { error: rotated.error };
+  if (!rotated.email || !rotated.token) return { error: "Couldn't refresh the invite." };
+
+  const body = manualInviteEmailBody(registerUrl(rotated.token));
+  const sent = await sendEmail(rotated.email, "Set up your Contractor CRM account", body.html, body.text);
+  // The row was already reset to "unsent" by the rotation, so a failed
+  // send shows as Send failed in the history -- honest, and retryable.
+  if (sent.error) return { error: sent.error };
+
+  const marked = await markInviteSent(inviteId);
+  if (marked.error) {
+    console.error(`[signup] invite ${inviteId} resent but not marked: ${marked.error}`);
+  }
   return {};
 }

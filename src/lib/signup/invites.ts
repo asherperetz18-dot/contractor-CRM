@@ -193,27 +193,63 @@ export async function createInvite(input: {
  * on this path has typed one in yet.
  */
 export async function createManualInvite(
-  email: string
+  email: string,
+  sentBy: string | null = null
 ): Promise<{ id?: string; token?: string; error?: string }> {
   const normalized = email.trim().toLowerCase();
   if (!normalized.includes("@")) return { error: "Enter a valid email address." };
 
   const admin = createAdminClient();
   const raw = newRawToken();
-  const { data, error } = await admin
+  const base = {
+    email: normalized,
+    company_name: null,
+    source: "manual",
+    token_hash: hashToken(raw),
+    expires_at: expiryFromNow(),
+  };
+  let { data, error } = await admin
     .from("signup_invites")
-    .insert({
-      email: normalized,
-      company_name: null,
-      source: "manual",
-      token_hash: hashToken(raw),
-      expires_at: expiryFromNow(),
-    })
+    .insert({ ...base, sent_by: sentBy })
     .select("id")
     .single();
 
+  // Migration 0172 adds sent_by and is pasted by hand, so it may not
+  // exist yet. Losing "who sent it" is better than refusing to send.
+  if (error && missingSentByColumn(error.message)) {
+    ({ data, error } = await admin.from("signup_invites").insert(base).select("id").single());
+  }
+
   if (error) return { error: error.message };
   return { id: (data as { id: string }).id, token: raw };
+}
+
+function missingSentByColumn(message: string): boolean {
+  return /sent_by/.test(message) && /column|schema cache/i.test(message);
+}
+
+/**
+ * A fresh link on an invite that was never redeemed -- the Resend button
+ * on the Platform Admin history. Rotating the hash on the same row keeps
+ * the history one line per person invited instead of one per attempt,
+ * and the old link stops working the moment the new one is minted. The
+ * update is pinned to `consumed_at is null` so a link someone redeemed a
+ * second ago cannot be reopened by a stale Resend click.
+ */
+export async function rotateInviteToken(
+  inviteId: string
+): Promise<{ email?: string; token?: string; error?: string }> {
+  const admin = createAdminClient();
+  const raw = newRawToken();
+  const { data, error } = await admin
+    .from("signup_invites")
+    .update({ token_hash: hashToken(raw), expires_at: expiryFromNow(), invite_sent_at: null })
+    .eq("id", inviteId)
+    .is("consumed_at", null)
+    .select("email");
+  if (error) return { error: error.message };
+  if (!data || data.length === 0) return { error: "This invite was already used to set up an account." };
+  return { email: (data[0] as { email: string }).email, token: raw };
 }
 
 /**

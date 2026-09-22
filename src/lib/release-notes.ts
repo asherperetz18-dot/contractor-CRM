@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.140.0",
+    date: "2026-09-22",
+    notes: [
+      "Platform Admin has a new Invite History card under Invite a Business: every setup link ever sent, paid or by hand, newest first, with the email, the company it became, who sent it, when, and a status chip — Set up, Pending (with the day it expires), Expired, or Send failed.",
+      "Tabs narrow the list by status and a search box finds an invite by email or company name.",
+      "Resend on a Pending, Expired or Send failed invite puts a fresh link in the same inbox (the old link stops working); Open company on a Set up invite jumps straight into that company.",
+      "Manual invites now record which admin sent them (after migration 0172 is run in Supabase; until then the Sent by column shows a dash).",
+    ],
+  },
+  {
     version: "1.139.0",
     date: "2026-09-22",
     notes: [
