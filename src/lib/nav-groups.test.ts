@@ -71,8 +71,10 @@ test("the dialer and its reports sit in Call Center, and nothing says Sales Cent
 // The lead-operations group is "Dispatch", full stop. It was "Dispatch
 // (Leads Mgmt.)", which wrapped to two lines beside the unread badge at
 // the sidebar's width; the pages inside already say leads.
-test("the lead-operations pages sit in Dispatch", () => {
-  for (const key of ["pipeline", "tasks", "reply-inbox", "contacts", "appt-setter-assignments", "lead-refunds"] as const) {
+test("the lead-operations pages sit in Dispatch, the desk's dashboard first", () => {
+  const first = PAGE_REGISTRY.find((p) => p.group === "Dispatch");
+  assert.equal(first?.key, "dispatch-dashboard", "the Dispatch section opens with its dashboard");
+  for (const key of ["dispatch-dashboard", "pipeline", "tasks", "reply-inbox", "contacts", "appt-setter-assignments", "lead-refunds"] as const) {
     const page = PAGE_REGISTRY.find((p) => p.key === key);
     assert.ok(page, key + " is registered");
     assert.equal(page.group, "Dispatch", key + " grouped under Dispatch");

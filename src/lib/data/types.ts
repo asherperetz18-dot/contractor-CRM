@@ -416,6 +416,7 @@ export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {
 // everything, mirroring its "Admins always have full access" behavior.
 export type PageKey =
   | "dashboard"
+  | "dispatch-dashboard"
   | "pipeline"
   | "tasks"
   | "reply-inbox"
@@ -485,6 +486,15 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // carried wrapped the header to two lines beside the unread badge, and
   // the pages inside already say leads. Labels stay at 21 characters or
   // fewer so none wraps (nav-groups.test.ts).
+  //
+  // The desk's own overview leads the section: is every lead being
+  // worked fast, and is the calendar filling.
+  {
+    key: "dispatch-dashboard",
+    label: "Dispatch Dashboard",
+    href: "/dispatch-dashboard",
+    group: "Dispatch",
+  },
   { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch" },
   // Every open lead task in one place, overdue first -- the page the
   // dashboard's "Overdue tasks" card opens. The pipeline's Follow-ups
@@ -609,6 +619,7 @@ export const VISIBILITY_MANAGED_ROLES: AppRole[] = [
 // overridable per company in Role Visibility.
 const DISPATCH_DEFAULT_PAGES: PageKey[] = [
   "dashboard",
+  "dispatch-dashboard",
   "pipeline",
   "tasks",
   "reply-inbox",
@@ -1190,6 +1201,9 @@ export type Event = {
   result_reminder_sent_at: string | null;
   followup_moved_at: string | null;
   notes_updated_at: string | null;
+  /** Who booked it -- stamped on insert since the base schema; the
+   *  Dispatch Dashboard credits the booking to this person. */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   /** Live recompute from the rain-alerts cron -- clears itself if the forecast improves. */
