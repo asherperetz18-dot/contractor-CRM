@@ -12,10 +12,17 @@ export const dynamic = "force-dynamic";
  * the two to be read as one number, and meant opening the page to reps
  * also showed them the dispatcher scheme.
  */
-export default function SalesCommissionPage() {
+export default async function SalesCommissionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ rep?: string }>;
+}) {
+  // URL-synced like Payments' rep filter, so a filtered view can be
+  // bookmarked; the table narrows everything on it to this person.
+  const { rep } = await searchParams;
   return (
     <div>
-      <RepCommissionTable />
+      <RepCommissionTable repFilter={rep ?? ""} />
     </div>
   );
 }

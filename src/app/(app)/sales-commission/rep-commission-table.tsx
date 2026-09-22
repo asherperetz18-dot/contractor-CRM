@@ -12,7 +12,9 @@ import {
   type CommissionLineLike,
   type PayoutLike,
 } from "@/lib/data/commission-payouts";
+import { commissionRepFilterOptions } from "@/lib/data/commission-filter-options";
 import { PayoutsPanel, type PayoutJobOption } from "./payouts-panel";
+import { RepFilter } from "./rep-filter";
 
 /**
  * Sales rep commission: a share of the net profit, after the lead cost
@@ -29,8 +31,8 @@ import { PayoutsPanel, type PayoutJobOption } from "./payouts-panel";
  * that migration is run the ledger reports itself not ready and this
  * page renders exactly as it did before.
  */
-export async function RepCommissionTable() {
-  const [{ rows, everyone, error }, payoutsRes] = await Promise.all([
+export async function RepCommissionTable({ repFilter = "" }: { repFilter?: string }) {
+  const [{ rows: allRows, everyone, error }, payoutsRes] = await Promise.all([
     getRepCommissions(),
     getCommissionPayouts(),
   ]);
@@ -38,13 +40,28 @@ export async function RepCommissionTable() {
 
   const ledgerReady = payoutsRes.ledgerReady === true;
   const canRecord = payoutsRes.canRecord === true && ledgerReady;
-  const payouts = payoutsRes.payouts ?? [];
-  const reps: CommissionRep[] = canRecord ? await getCommissionReps() : [];
+  const allPayouts = payoutsRes.payouts ?? [];
+  // The roster feeds the filter's options as well as the payout modal,
+  // so it is fetched for anyone who sees everyone's lines.
+  const reps: CommissionRep[] = everyone ? await getCommissionReps() : [];
 
-  const priced = (rows ?? []).filter((r) => !r.detail.unmeasured);
-  const pending = (rows ?? []).filter((r) => r.detail.unmeasured);
+  // The filter is an admin's tool -- a rep already sees only their own
+  // lines. Options are built from the UNFILTERED rows (standing rule:
+  // the Sales roster plus everyone present in the rows plus the tick),
+  // then every figure on the page narrows to the picked person: stat
+  // cards, balance table, jobs and the payout ledger all describe the
+  // same one salesperson's money, never a mix.
+  const filtering = !!repFilter && !!everyone;
+  const filterOptions = everyone
+    ? commissionRepFilterOptions(reps, allRows ?? [], repFilter)
+    : [];
+  const rows = filtering ? (allRows ?? []).filter((r) => r.repId === repFilter) : (allRows ?? []);
+  const payouts = filtering ? allPayouts.filter((p) => p.repId === repFilter) : allPayouts;
 
-  const lines: CommissionLineLike[] = (rows ?? []).map((r) => ({
+  const priced = rows.filter((r) => !r.detail.unmeasured);
+  const pending = rows.filter((r) => r.detail.unmeasured);
+
+  const lines: CommissionLineLike[] = rows.map((r) => ({
     repId: r.repId,
     shareCents: r.shareCents,
     payable: r.holds.length === 0,
@@ -63,7 +80,7 @@ export async function RepCommissionTable() {
   // Names for the per-rep summary: whatever named the rows and the
   // ledger, so an archived rep with money outstanding keeps their name.
   const repNameById = new Map<string, string>();
-  for (const r of rows ?? []) repNameById.set(r.repId, r.repName);
+  for (const r of rows) repNameById.set(r.repId, r.repName);
   for (const p of payouts) repNameById.set(p.repId, p.repName);
   const balanceRows = [...balances.values()].sort((a, b) =>
     (repNameById.get(a.repId) ?? "").localeCompare(repNameById.get(b.repId) ?? "")
@@ -80,7 +97,7 @@ export async function RepCommissionTable() {
   // The modal's job picker: this rep's contracts, held ones flagged so
   // money against them defaults to an advance.
   const jobsByRep: Record<string, PayoutJobOption[]> = {};
-  for (const r of rows ?? []) {
+  for (const r of rows) {
     (jobsByRep[r.repId] ??= []).push({
       estimateId: r.estimateId,
       label: `${r.customerName} — ${r.docNumber}${r.title ? ` · ${r.title}` : ""}`,
@@ -99,17 +116,26 @@ export async function RepCommissionTable() {
           </p>
         </div>
         <div className="toolbar-actions">
+          {everyone && filterOptions.length > 0 && (
+            <RepFilter options={filterOptions} value={repFilter} />
+          )}
           <Link href="/sales-commission/statement" className="btn-ghost">
             Printable statement
           </Link>
         </div>
       </div>
 
-      {!rows?.length ? (
+      {!rows.length ? (
         <div className="empty-state">
-          <p className="empty-label">Nothing yet</p>
+          <p className="empty-label">
+            {filtering ? "Nothing for this salesperson" : "Nothing yet"}
+          </p>
           <p className="empty-hint">
-            Commission appears once a contract is signed and a salesperson is set on it.
+            {filtering ? (
+              <>They have no signed contracts with a commission seat — pick Everyone to see the full report.</>
+            ) : (
+              <>Commission appears once a contract is signed and a salesperson is set on it.</>
+            )}
           </p>
         </div>
       ) : (
@@ -180,7 +206,14 @@ export async function RepCommissionTable() {
                 <tbody>
                   {balanceRows.map((b) => (
                     <tr key={b.repId}>
-                      <td>{repNameById.get(b.repId) ?? "Unnamed"}</td>
+                      {/* The name is the filter: clicking it narrows the
+                          whole page to this person's money, same as the
+                          dropdown above. */}
+                      <td>
+                        <Link href={`/sales-commission?rep=${b.repId}`}>
+                          {repNameById.get(b.repId) ?? "Unnamed"}
+                        </Link>
+                      </td>
                       <td className="right mono">{moneyCents(b.earnedCents)}</td>
                       <td className="right mono">{moneyCents(b.payableCents)}</td>
                       <td className="right mono">
@@ -223,9 +256,14 @@ export async function RepCommissionTable() {
                   const tiedCents = paidByJobRep.get(r.estimateId + r.repId) ?? 0;
                   return (
                     <tr key={r.estimateId + r.repId}>
+                      {/* The job opens its contract -- the numbers on
+                          this row are explained there (Sales Team panel,
+                          costs, payment schedule). */}
                       <td>
-                        <div className="ur-name">{r.title || "Untitled job"}</div>
-                        <div className="est-tax-note">{r.docNumber}</div>
+                        <Link href={`/estimates/${r.estimateId}`}>
+                          <div className="ur-name">{r.title || "Untitled job"}</div>
+                          <div className="est-tax-note">{r.docNumber}</div>
+                        </Link>
                       </td>
                       {everyone && <td>{r.repName}</td>}
                       <td className="right mono">{moneyCents(r.detail.contractCents)}</td>
@@ -269,8 +307,10 @@ export async function RepCommissionTable() {
                 {pending.map((r) => (
                   <tr key={r.estimateId + r.repId} style={{ opacity: 0.65 }}>
                     <td>
-                      <div className="ur-name">{r.title || "Untitled job"}</div>
-                      <div className="est-tax-note">{r.docNumber}</div>
+                      <Link href={`/estimates/${r.estimateId}`}>
+                        <div className="ur-name">{r.title || "Untitled job"}</div>
+                        <div className="est-tax-note">{r.docNumber}</div>
+                      </Link>
                     </td>
                     {everyone && <td>{r.repName}</td>}
                     <td className="right mono">{moneyCents(r.detail.contractCents)}</td>
