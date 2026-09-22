@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalFilterOptions, filterApprovals } from "./approvals-filters.ts";
+import {
+  approvalFilterOptions,
+  filterApprovals,
+  normalizeApprovalFilters,
+} from "./approvals-filters.ts";
 
 // The Approvals list's dropdowns. Options come from the rows being
 // filtered -- everyone with a draft waiting is reachable, and a name
@@ -34,6 +38,20 @@ test("value sorts put the money in order, and a priceless draft always sorts las
   assert.deepEqual(desc.map((r) => r.id), ["b", "c", "a", "d"]);
   const asc = filterApprovals(rows, { customer: "", writtenBy: "", sort: "value_asc" });
   assert.deepEqual(asc.map((r) => r.id), ["a", "c", "b", "d"]);
+});
+
+test("a selection whose last draft was approved falls back to 'all', not an empty board", () => {
+  // The rows after approving Vanessa's only draft: her name is gone from
+  // the options, so a filter still holding it must read as no filter --
+  // otherwise the select shows "All" while the table shows nothing.
+  const remaining = rows.filter((r) => r.writtenBy !== "Vanessa Sandoval");
+  const f = normalizeApprovalFilters(remaining, {
+    customer: "Drew Thomas",
+    writtenBy: "Vanessa Sandoval",
+  });
+  assert.equal(f.writtenBy, "");
+  // A selection that still has drafts is left alone.
+  assert.equal(f.customer, "Drew Thomas");
 });
 
 test("filtering never mutates the list it was given", () => {

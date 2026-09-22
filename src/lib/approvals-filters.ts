@@ -27,6 +27,24 @@ export function approvalFilterOptions<T extends FilterableApproval>(rows: T[]): 
   return { customers, writers };
 }
 
+/**
+ * A stored selection whose last draft was just approved is no filter at
+ * all. Without this, approving the only row of a filtered name left the
+ * select showing "All" (its value no longer among the options) while the
+ * table showed an empty "no drafts match" -- a board that looks
+ * unfiltered and empty at once.
+ */
+export function normalizeApprovalFilters<T extends FilterableApproval>(
+  rows: T[],
+  filter: { customer: string; writtenBy: string }
+): { customer: string; writtenBy: string } {
+  const { customers, writers } = approvalFilterOptions(rows);
+  return {
+    customer: customers.includes(filter.customer) ? filter.customer : "",
+    writtenBy: writers.includes(filter.writtenBy) ? filter.writtenBy : "",
+  };
+}
+
 export function filterApprovals<T extends FilterableApproval>(
   rows: T[],
   filter: { customer: string; writtenBy: string; sort: ApprovalsSort }

@@ -7,6 +7,7 @@ import { moneyCents } from "@/lib/data/types";
 import {
   approvalFilterOptions,
   filterApprovals,
+  normalizeApprovalFilters,
   type ApprovalsSort,
 } from "@/lib/approvals-filters";
 import {
@@ -46,14 +47,16 @@ export function ApprovalsView({
   const [sort, setSort] = useState<ApprovalsSort>("newest");
 
   const options = useMemo(() => approvalFilterOptions(pending), [pending]);
+  // A selection whose last draft was just approved reads as "all" again
+  // -- normalized for the selects AND the filtering, so the two can
+  // never disagree about what is being shown.
+  const filters = useMemo(
+    () => normalizeApprovalFilters(pending, { customer: customerFilter, writtenBy: writerFilter }),
+    [pending, customerFilter, writerFilter]
+  );
   const visible = useMemo(
-    () =>
-      filterApprovals(pending, {
-        customer: customerFilter,
-        writtenBy: writerFilter,
-        sort,
-      }),
-    [pending, customerFilter, writerFilter, sort]
+    () => filterApprovals(pending, { ...filters, sort }),
+    [pending, filters, sort]
   );
 
   async function handleApprove(id: string) {
@@ -113,7 +116,7 @@ export function ApprovalsView({
         <div className="form-row">
           <label className="field">
             <span className="field-label">Customer</span>
-            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)}>
+            <select value={filters.customer} onChange={(e) => setCustomerFilter(e.target.value)}>
               <option value="">All customers</option>
               {options.customers.map((c) => (
                 <option key={c} value={c}>
@@ -124,7 +127,7 @@ export function ApprovalsView({
           </label>
           <label className="field">
             <span className="field-label">Written by</span>
-            <select value={writerFilter} onChange={(e) => setWriterFilter(e.target.value)}>
+            <select value={filters.writtenBy} onChange={(e) => setWriterFilter(e.target.value)}>
               <option value="">Everyone</option>
               {options.writers.map((w) => (
                 <option key={w} value={w}>
