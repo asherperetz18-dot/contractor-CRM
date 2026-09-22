@@ -1,25 +1,26 @@
+import { companyNow } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import { presetWindow } from "@/lib/data/date-range";
+import { isoDay, presetWindow } from "@/lib/data/date-range";
 import { getDashboardRollup } from "@/lib/actions/dashboard";
 import type { Event, Lead, PipelineStageRow, RolePageVisibilityRow } from "@/lib/data/types";
 import { NAV, filterNavForProfile } from "@/lib/nav";
 import { MobileDashboard, type MobileModule } from "./mobile-dashboard";
 import { DashboardView } from "./dashboard-view";
 
-function toISODate(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
 export default async function DashboardPage() {
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const companyId = profile?.company_id ?? "";
 
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const now = new Date();
+  // The office's calendar, not the server's: Vercel's clock is UTC, and
+  // from 5pm Pacific "today" there is already tomorrow. `now` is a
+  // calendar Date (its local getters read the company wall clock);
+  // anything measured in hours starts from the real instant instead.
+  const now = await companyNow();
+  const todayISO = isoDay(now);
 
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay());
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
 
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const last48hISO = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+  const last48hISO = new Date(new Date().getTime() - 48 * 60 * 60 * 1000).toISOString();
 
   // The desktop dashboard is served by one reduced call (dashboard_
   // rollup, 0162, with a tested fallback) -- the old page summed its
@@ -48,7 +49,7 @@ export default async function DashboardPage() {
     eventsThisMonth,
     visibilityRows,
   ] = await Promise.all([
-    getDashboardRollup(presetWindow("month")),
+    getDashboardRollup(presetWindow("month", now)),
     supabase
       .from("leads")
       .select("*")
@@ -89,14 +90,14 @@ export default async function DashboardPage() {
       .from("events")
       .select("date")
       .eq("company_id", companyId)
-      .gte("date", toISODate(weekStart))
-      .lte("date", toISODate(weekEnd)),
+      .gte("date", isoDay(weekStart))
+      .lte("date", isoDay(weekEnd)),
     supabase
       .from("events")
       .select("date")
       .eq("company_id", companyId)
-      .gte("date", toISODate(monthStart))
-      .lte("date", toISODate(monthEnd)),
+      .gte("date", isoDay(monthStart))
+      .lte("date", isoDay(monthEnd)),
     supabase
       .from("role_page_visibility")
       .select("id, role, page_key, visible")
@@ -115,7 +116,7 @@ export default async function DashboardPage() {
   const weekCounts = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
-    const dateStr = toISODate(d);
+    const dateStr = isoDay(d);
     return weekEventRows.filter((r) => r.date === dateStr).length;
   });
 
@@ -127,7 +128,7 @@ export default async function DashboardPage() {
   const monthDayCount = monthEnd.getDate();
   const monthCells = Array.from({ length: monthDayCount }, (_, i) => {
     const day = i + 1;
-    const dateStr = toISODate(new Date(now.getFullYear(), now.getMonth(), day));
+    const dateStr = isoDay(new Date(now.getFullYear(), now.getMonth(), day));
     return { day, dateStr, count: monthCountByDate.get(dateStr) ?? 0, isToday: dateStr === todayISO };
   });
 

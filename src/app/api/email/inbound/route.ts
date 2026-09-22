@@ -1,3 +1,4 @@
+import { todayForCompany } from "@/lib/data/company-today";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -150,7 +151,7 @@ async function handlePost(req: NextRequest) {
         .eq("id", existingId)
         .maybeSingle<{ notes: string | null }>();
       const prev = (row?.notes ?? "").trim();
-      const stamped = `${new Date().toISOString().slice(0, 10)} — Emailed in via ${parsed.source}:\n${(parsed.message ?? "").slice(0, 800)}`;
+      const stamped = `${await todayForCompany(admin, companyId)} — Emailed in via ${parsed.source}:\n${(parsed.message ?? "").slice(0, 800)}`;
       await admin
         .from("leads")
         .update({ notes: prev ? `${prev}\n\n${stamped}` : stamped })

@@ -1,5 +1,7 @@
 "use server";
 
+import { addDays } from "@/lib/company-clock";
+import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { appointmentAttended, isAdminRole, isSettledStage, type EventStatus } from "@/lib/data/types";
@@ -74,9 +76,9 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
 
   const supabase = await createClient();
   const companyId = profile.company_id;
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const in2Days = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
-  const in7Days = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+  const todayISO = await companyToday();
+  const in2Days = addDays(todayISO, 2);
+  const in7Days = addDays(todayISO, 7);
 
   const [
     { data: company },

@@ -1,3 +1,5 @@
+import { dayLabel, isoDateInZone } from "@/lib/company-clock";
+import { getCompanyZone } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -52,22 +54,6 @@ type ChecklistRow = {
   note?: string | null;
 };
 
-function longDate(value: string | null | undefined) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
-function shortDate(value: string | null | undefined) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 /**
  * One job on paper.
  *
@@ -105,6 +91,13 @@ export default async function ProjectReportPage({
   const sp = await searchParams;
   const clientView = sp.view === "client";
   const supabase = await createClient();
+  // The company's calendar (data/company-today): "Prepared" and overdue
+  // read on the office wall clock, and a timestamp prints on the day it
+  // was there, not the UTC one.
+  const zone = await getCompanyZone();
+  const todayISO = isoDateInZone(new Date(), zone);
+  const longDate = (value: string | null | undefined) => dayLabel(value, zone, "long");
+  const shortDate = (value: string | null | undefined) => dayLabel(value, zone, "short");
   const companyId = profile.company_id;
 
   const { data: contract } = await supabase
@@ -320,7 +313,6 @@ export default async function ProjectReportPage({
   const jobAddress = contract.job_address ?? lead?.address ?? null;
   const repName = (repProfile as { name: string | null } | null)?.name ?? null;
   const items = (checklistRows as ChecklistRow[] | null) ?? [];
-  const todayISO = new Date().toISOString().slice(0, 10);
 
   // Documents the sheet lists: the contract, then every non-void child.
   const docs = [contract, ...changeOrders.filter((e) => e.status !== "Void")];

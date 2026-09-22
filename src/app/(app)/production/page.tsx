@@ -1,3 +1,4 @@
+import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -57,7 +58,7 @@ export default async function ProductionPage() {
       roster={roster}
       projectByLead={projectByLead}
       canWrite={canWrite}
-      initialToday={new Date().toISOString().slice(0, 10)}
+      initialToday={await companyToday()}
     />
   );
 }

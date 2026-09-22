@@ -1,3 +1,4 @@
+import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -130,6 +131,7 @@ type ChecklistRow = {
  */
 async function CrewProjects({ companyId }: { companyId: string }) {
   const admin = createAdminClient();
+  const today = await companyToday();
 
   // The admin client answers exactly what it is asked, so every query
   // below is scoped by hand. profiles has no company column -- scope it
@@ -184,7 +186,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
         .in("status", ["New", "Confirmed"])
         .not("lead_id", "is", null)
         .not("rain_alert_pop", "is", null)
-        .gte("date", new Date().toISOString().slice(0, 10))
+        .gte("date", today)
         .range(from, to)
     ),
   ]);

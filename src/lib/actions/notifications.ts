@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
@@ -54,7 +55,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   const now = Date.now();
   const since48h = new Date(now - 2 * DAY).toISOString();
   const since7d = new Date(now - 7 * DAY).toISOString();
-  const today = new Date(now).toISOString().slice(0, 10);
+  const today = await companyToday();
 
   const staffsPhones =
     isAdminRole(profile) ||

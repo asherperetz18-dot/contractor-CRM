@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
@@ -1890,7 +1891,7 @@ export async function markSignedOnPaper(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.signedDate)) {
     return { error: "Pick the date it was signed." };
   }
-  if (input.signedDate > new Date().toISOString().slice(0, 10)) {
+  if (input.signedDate > (await companyToday())) {
     return { error: "The signing date can't be in the future." };
   }
   // Noon UTC: the paper knows the day, not the hour, and noon keeps the

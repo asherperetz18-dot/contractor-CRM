@@ -1,3 +1,4 @@
+import { companyNow } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
@@ -16,6 +17,7 @@ import {
   type Lead,
 } from "@/lib/data/types";
 import {
+  isoDay,
   describeWindow,
   resolveWindow,
   withinWindow,
@@ -359,8 +361,9 @@ export default async function RepReportPage({
         .maybeSingle<Company>(),
     ]);
 
-  const now = new Date();
-  const todayISO = now.toISOString().slice(0, 10);
+  // The office's calendar, not the server's UTC one (data/company-today).
+  const now = await companyNow();
+  const todayISO = isoDay(now);
   const state = { preset: rangeKey, from: sp.from ?? "", to: sp.to ?? "" };
   const win = resolveWindow(state, now);
 

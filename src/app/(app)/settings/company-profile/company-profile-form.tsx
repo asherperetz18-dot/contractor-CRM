@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
 import { saveCompanyProfile, type CompanyProfileInput } from "@/lib/actions/settings";
-import type { CompanyProfile, TimeFormat } from "@/lib/data/types";
+import { TIMEZONE_OPTIONS, type CompanyProfile, type TimeFormat } from "@/lib/data/types";
 import { taxRateBpToInput, taxRateInputToBp, taxRateLabel } from "@/lib/data/tax-rate";
 
 const US_STATES = [
@@ -14,18 +14,9 @@ const US_STATES = [
   "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
 ];
 
-const TIMEZONES = [
-  { value: "Pacific", label: "Pacific Time (PT)" },
-  { value: "Mountain", label: "Mountain Time (MT)" },
-  { value: "Central", label: "Central Time (CT)" },
-  { value: "Eastern", label: "Eastern Time (ET)" },
-  { value: "Alaska", label: "Alaska Time (AKT)" },
-  { value: "Hawaii", label: "Hawaii Time (HT)" },
-];
-
 const STATE_TZ: Record<string, string> = {
   CA: "Pacific", OR: "Pacific", WA: "Pacific", NV: "Pacific",
-  AZ: "Mountain", CO: "Mountain", UT: "Mountain", NM: "Mountain", MT: "Mountain", WY: "Mountain", ID: "Mountain",
+  AZ: "Arizona", CO: "Mountain", UT: "Mountain", NM: "Mountain", MT: "Mountain", WY: "Mountain", ID: "Mountain",
   TX: "Central", IL: "Central", MO: "Central", MN: "Central", WI: "Central", LA: "Central", OK: "Central", KS: "Central", NE: "Central", IA: "Central", AR: "Central", MS: "Central", AL: "Central", TN: "Central", SD: "Central", ND: "Central",
   NY: "Eastern", FL: "Eastern", GA: "Eastern", NC: "Eastern", SC: "Eastern", VA: "Eastern", PA: "Eastern", OH: "Eastern", MI: "Eastern", NJ: "Eastern", MA: "Eastern", MD: "Eastern", CT: "Eastern", ME: "Eastern", NH: "Eastern", VT: "Eastern", RI: "Eastern", DE: "Eastern", WV: "Eastern", KY: "Eastern", IN: "Eastern",
   AK: "Alaska", HI: "Hawaii",
@@ -318,7 +309,7 @@ export function CompanyProfileForm({
             value={form.timezone}
             onChange={(e) => set("timezone", e.target.value)}
           >
-            {TIMEZONES.map((tz) => (
+            {TIMEZONE_OPTIONS.map((tz) => (
               <option key={tz.value} value={tz.value}>
                 {tz.label}
               </option>

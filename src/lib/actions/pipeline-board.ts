@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
@@ -179,6 +180,7 @@ async function buildDigest(
   companyId: string,
   input: PipelineBoardQuery
 ) {
+  const today = await companyToday();
   const [{ data: windowRows }, tasks] = await Promise.all([
     applyFilters(
       supabase
@@ -219,7 +221,7 @@ async function buildDigest(
   for (const l of rows) {
     const leadTasks = (tasksByLead.get(l.id) ?? []) as LeadTask[];
     const w = computeLeadWarnings(l, l.has_appt, leadTasks);
-    if (hasFollowUpDue(leadTasks)) {
+    if (hasFollowUpDue(leadTasks, today)) {
       followUpsDueCount += 1;
       if (followUpsDue.length < DIGEST_LIST_CAP) {
         followUpsDue.push(l);

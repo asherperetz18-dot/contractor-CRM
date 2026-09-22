@@ -1,5 +1,6 @@
 "use server";
 
+import { todayForCompany } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -356,7 +357,7 @@ export async function portalRequestReschedule(
     title: `Reschedule requested: ${event.title || "appointment"}${
       note.trim() ? ` — "${note.trim()}"` : ""
     }`,
-    due_date: new Date().toISOString().slice(0, 10),
+    due_date: await todayForCompany(admin, viewer.companyId),
     assigned_to: event.assigned_to,
     company_id: viewer.companyId,
   });

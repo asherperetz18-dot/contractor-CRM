@@ -1,3 +1,5 @@
+import { dayLabel, isoDateInZone } from "@/lib/company-clock";
+import { getCompanyZone } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -64,22 +66,6 @@ const RANGE_LABEL: Record<string, string> = {
   year: "signed in the last 12 months",
 };
 
-function longDate(value: string | null | undefined) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
-function shortDate(value: string | null | undefined) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 /**
  * The Projects page on paper.
  *
@@ -120,6 +106,13 @@ export default async function ProjectsReportPage({
 
   const sp = await searchParams;
   const supabase = await createClient();
+  // The company's calendar (data/company-today): "Prepared" and overdue
+  // read on the office wall clock, and a timestamp prints on the day it
+  // was there, not the UTC one.
+  const zone = await getCompanyZone();
+  const todayISO = isoDateInZone(new Date(), zone);
+  const longDate = (value: string | null | undefined) => dayLabel(value, zone, "long");
+  const shortDate = (value: string | null | undefined) => dayLabel(value, zone, "short");
   const companyId = profile.company_id;
 
   const chip: ProjectChip = PROJECT_CHIPS.includes(sp.status as ProjectChip)
@@ -196,7 +189,6 @@ export default async function ProjectsReportPage({
     scope.push(RANGE_LABEL[range]);
   }
   if (sp.q) scope.push(`matching “${sp.q}”`);
-  const todayISO = new Date().toISOString().slice(0, 10);
 
   return (
     <div>
