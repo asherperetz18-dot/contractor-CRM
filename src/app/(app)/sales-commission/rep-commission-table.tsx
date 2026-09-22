@@ -115,18 +115,17 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
             what was spent.
           </p>
         </div>
-        <div className="toolbar-actions">
-          {everyone && filterOptions.length > 0 && (
-            <RepFilter options={filterOptions} value={repFilter} />
-          )}
-          <Link href="/sales-commission/statement" className="btn-ghost">
-            Printable statement
-          </Link>
-        </div>
       </div>
 
       {!rows.length ? (
         <div className="empty-state">
+          {/* The filter caused this emptiness, so it stays reachable to
+              be cleared. */}
+          {filtering && filterOptions.length > 0 && (
+            <div className="form-row" style={{ marginBottom: 12 }}>
+              <RepFilter options={filterOptions} value={repFilter} />
+            </div>
+          )}
           <p className="empty-label">
             {filtering ? "Nothing for this salesperson" : "Nothing yet"}
           </p>
@@ -174,6 +173,23 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
             <div className="stat-card stat-static">
               <div className="stat-value mono">{pending.length}</div>
               <div className="stat-label">Awaiting costs</div>
+            </div>
+          </div>
+
+          {/* Under the boxes, on the left -- where the eye lands after
+              reading them: the filter that narrows every figure, and the
+              statement that prints exactly what is being looked at. */}
+          <div
+            className="form-row"
+            style={{ margin: "14px 0 4px", maxWidth: 480, alignItems: "end" }}
+          >
+            {everyone && filterOptions.length > 0 && (
+              <RepFilter options={filterOptions} value={repFilter} />
+            )}
+            <div className="field">
+              <Link href="/sales-commission/statement" className="btn-ghost">
+                Printable statement
+              </Link>
             </div>
           </div>
 
