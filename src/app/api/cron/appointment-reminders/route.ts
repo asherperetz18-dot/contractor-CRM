@@ -5,6 +5,7 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { reminderRecipientIds } from "@/lib/events/reminder-recipients";
 import {
   TIMEZONE_IANA,
   formatTimeRange,
@@ -29,6 +30,7 @@ type EventRow = {
   event_type: string;
   lead_id: string | null;
   assigned_to: string | null;
+  second_assigned_to: string | null;
   notes: string | null;
   reminder_night_before_sent_at: string | null;
   reminder_hour_before_sent_at: string | null;
@@ -74,12 +76,15 @@ async function processCompany(
   const { data: candidates } = await admin
     .from("events")
     .select(
-      "id, date, time, end_time, status, event_type, lead_id, assigned_to, notes, reminder_night_before_sent_at, reminder_hour_before_sent_at"
+      "id, date, time, end_time, status, event_type, lead_id, assigned_to, second_assigned_to, notes, reminder_night_before_sent_at, reminder_hour_before_sent_at"
     )
     .eq("company_id", company.company_id)
     .in("status", ["New", "Confirmed"])
     .not("lead_id", "is", null)
-    .not("assigned_to", "is", null)
+    // Either visit seat is enough: the second rep on a two-person visit
+    // gets the same reminders as the first, and a visit booked with
+    // only a second chair still reminds somebody.
+    .or("assigned_to.not.is.null,second_assigned_to.not.is.null")
     .gte("date", todayDate)
     .lte("date", tomorrowDate)
     .or("reminder_night_before_sent_at.is.null,reminder_hour_before_sent_at.is.null");
@@ -88,7 +93,7 @@ async function processCompany(
   if (rows.length === 0) return { checked: 0, sent: 0 };
 
   const leadIds = [...new Set(rows.map((r) => r.lead_id!))];
-  const repIds = [...new Set(rows.map((r) => r.assigned_to!))];
+  const repIds = [...new Set(rows.flatMap((r) => reminderRecipientIds(r)))];
   const [{ data: leads }, { data: reps }] = await Promise.all([
     admin.from("leads").select("*").eq("company_id", company.company_id).in("id", leadIds),
     admin.from("profiles").select("id, phone").in("id", repIds),
@@ -101,8 +106,22 @@ async function processCompany(
   let sent = 0;
   for (const row of rows) {
     const lead = leadById.get(row.lead_id!);
-    const repPhone = repPhoneById.get(row.assigned_to!);
-    if (!lead || !repPhone) continue;
+    // Both visit seats, de-duplicated -- and only people with a phone on
+    // file. The reminder is marked sent when at least one text got out,
+    // so one rep's missing phone never re-texts the other on every run.
+    const phones = reminderRecipientIds(row)
+      .map((id) => repPhoneById.get(id))
+      .filter((p): p is string => !!p);
+    if (!lead || phones.length === 0) continue;
+
+    const sendToCrew = async (body: string) => {
+      let delivered = false;
+      for (const phone of phones) {
+        const result = await sendTwilioSms(phone, body, twilioEnv);
+        if (!result.error) delivered = true;
+      }
+      return delivered;
+    };
 
     const start = parseNaiveDateTime(row.date, row.time);
 
@@ -118,12 +137,8 @@ async function processCompany(
       hoursUntilStart > ADVANCE_MIN_HOURS &&
       hoursUntilStart <= ADVANCE_MAX_HOURS
     ) {
-      const result = await sendTwilioSms(
-        repPhone,
-        buildBody("advance", row, lead, todayDate),
-        twilioEnv
-      );
-      if (!result.error) {
+      const delivered = await sendToCrew(buildBody("advance", row, lead, todayDate));
+      if (delivered) {
         await admin
           .from("events")
           .update({ reminder_night_before_sent_at: new Date().toISOString() })
@@ -136,8 +151,8 @@ async function processCompany(
     if (row.date === todayDate && !row.reminder_hour_before_sent_at) {
       const minutesUntilStart = (start.getTime() - nowNaive.getTime()) / 60000;
       if (minutesUntilStart > 0 && minutesUntilStart <= 60) {
-        const result = await sendTwilioSms(repPhone, buildBody("hour", row, lead, todayDate), twilioEnv);
-        if (!result.error) {
+        const delivered = await sendToCrew(buildBody("hour", row, lead, todayDate));
+        if (delivered) {
           await admin
             .from("events")
             .update({ reminder_hour_before_sent_at: new Date().toISOString() })
