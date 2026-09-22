@@ -31,6 +31,9 @@ const POLL_MS = 5 * 60 * 1000;
  */
 export function UpdateNotice({ current }: { current: string }) {
   const [latest, setLatest] = useState<string | null>(null);
+  // What the deployed version changed, from the same answer. Shown under
+  // the prompt so "refresh" is a choice about something, not a chore.
+  const [notes, setNotes] = useState<string[]>([]);
   const [snooze, setSnooze] = useState<UpdateSnooze | null>(null);
   // Advanced by every check so an expired snooze re-renders even when
   // /api/version keeps answering the same string (React skips renders
@@ -48,8 +51,11 @@ export function UpdateNotice({ current }: { current: string }) {
       try {
         const res = await fetch("/api/version", { cache: "no-store" });
         if (!res.ok) return;
-        const data: { version?: string } = await res.json();
-        if (!stopped && data.version) setLatest(data.version);
+        const data: { version?: string; notes?: string[] } = await res.json();
+        if (!stopped && data.version) {
+          setLatest(data.version);
+          setNotes(Array.isArray(data.notes) ? data.notes : []);
+        }
       } catch {
         // Offline, or mid-deploy. Silent on purpose -- a failed version
         // check is not something to interrupt anybody about.
@@ -85,6 +91,16 @@ export function UpdateNotice({ current }: { current: string }) {
             &mdash; anything unsaved on this screen will be lost, so finish
             what you&apos;re typing first.
           </p>
+          {notes.length > 0 && (
+            <div className="release-notes">
+              <div className="release-notes-title">What&apos;s new</div>
+              <ul className="release-notes-list">
+                {notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="modal-actions" style={{ justifyContent: "flex-end", gap: 8 }}>
             {/* Later postpones only: the popup returns by itself after
                 SNOOZE_MS, and a newer release re-prompts immediately. */}

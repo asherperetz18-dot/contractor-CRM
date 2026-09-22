@@ -66,3 +66,17 @@ its tile in `src/lib/data/settings-catalog.ts`, so a new settings page
 needs a tile there carrying its `href`; `src/lib/settings-crumb.test.ts`
 fails when a page has none. Before finishing any settings work, check
 every page under `/settings/` still has its way back.
+
+# Version + update notice — standing rule (always, automatic)
+
+Every change to the CRM ships as a new version that announces itself
+on screen. Before the commit that finishes any work, without being
+asked: bump the version (`npm version minor --no-git-tag-version`, or
+`patch` for a fix) and add that version's plain-language entry at the
+top of `RELEASE_NOTES` in `src/lib/release-notes.ts` — what a person
+sees differently, not what the code does. Re-check against
+`origin/main` right before opening the PR; if main moved past you, bump
+again. The update popup (stale tabs) and the What's new screen (fresh
+loads) read those two files; `src/lib/release-notes.test.ts` and the
+"Version bumped" CI step fail without them. Full rule:
+`.claude/skills/release-notes/SKILL.md`.
