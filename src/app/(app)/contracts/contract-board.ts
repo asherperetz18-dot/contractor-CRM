@@ -72,7 +72,7 @@ type ExpiryDoc = Pick<Estimate, "status" | "expires_at">;
  * has already moved the document to Closed via the effective status.
  */
 export function daysUntilExpiry(e: ExpiryDoc, now: Date = new Date()): number | null {
-  const status = effectiveEstimateStatus(e);
+  const status = effectiveEstimateStatus(e, now);
   if (status !== "Sent" && status !== "Viewed") return null;
   if (!e.expires_at) return null;
   // The document lives to the end of its expiry day, same instant
@@ -93,7 +93,7 @@ type SignedDoc = Pick<Estimate, "status" | "expires_at" | "signed_at">;
 /** Signed this calendar month -- the month the review asks about, not a
  *  rolling 30 days (the Projects page's NewMonth chip counts the same way). */
 export function signedThisMonth(e: SignedDoc, now: Date = new Date()): boolean {
-  if (effectiveEstimateStatus(e) !== "Signed" || !e.signed_at) return false;
+  if (effectiveEstimateStatus(e, now) !== "Signed" || !e.signed_at) return false;
   const d = new Date(e.signed_at);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
@@ -111,7 +111,7 @@ type NoReplyDoc = Pick<Estimate, "status" | "expires_at" | "sent_at" | "viewed_a
  * and an expired one is over, with nobody owed a reply on it.
  */
 export function noReplyDays(e: NoReplyDoc, now: Date = new Date()): number | null {
-  if (effectiveEstimateStatus(e) !== "Sent" || e.viewed_at || !e.sent_at) return null;
+  if (effectiveEstimateStatus(e, now) !== "Sent" || e.viewed_at || !e.sent_at) return null;
   const days = Math.floor((now.getTime() - new Date(e.sent_at).getTime()) / DAY_MS);
   return days >= NO_REPLY_DAYS ? days : null;
 }

@@ -95,7 +95,7 @@ export function SourceSpend({
   }
 
   return (
-    <div className="settings-section mkt-spend">
+    <div className="settings-section mkt-spend" id="spend">
       <div className="settings-section-head">
         <span className="settings-section-title">SPEND BY SOURCE</span>
         <span className="settings-section-hint">
@@ -111,11 +111,11 @@ export function SourceSpend({
       ) : (
         <>
           <div className="mkt-month-nav">
-            <Link className="btn-ghost small" href={`?month=${shiftMonth(month, -1)}`}>
+            <Link className="btn-ghost small" href={`?month=${shiftMonth(month, -1)}#spend`} scroll={false}>
               ‹ {monthLabel(shiftMonth(month, -1))}
             </Link>
             <strong>{monthLabel(month)}</strong>
-            <Link className="btn-ghost small" href={`?month=${shiftMonth(month, 1)}`}>
+            <Link className="btn-ghost small" href={`?month=${shiftMonth(month, 1)}#spend`} scroll={false}>
               {monthLabel(shiftMonth(month, 1))} ›
             </Link>
             <span className="mkt-month-total mono">

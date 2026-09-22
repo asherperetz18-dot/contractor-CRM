@@ -437,7 +437,7 @@ export function AnalyticsView({
             </div>
           </button>
         ) : canManageSpend ? (
-          <Link href="/settings/lead-sources" className="stat-card" title="Enter spend by source">
+          <Link href="/settings/lead-sources#spend" className="stat-card" title="Enter spend by source">
             <div className="stat-value mkt-empty-value">—</div>
             <div className="stat-label">Cost per signed job</div>
             <div className="dash-kpi-foot">
@@ -575,7 +575,7 @@ export function AnalyticsView({
             {data.boughtListSources.length === 0 && canManageSpend && (
               <>
                 {" "}
-                Flag bought lists in <Link href="/settings/lead-sources">Settings › Lead sources</Link> to
+                Flag bought lists in <Link href="/settings/lead-sources#spend">Settings › Lead sources</Link> to
                 compare inbound alone.
               </>
             )}
