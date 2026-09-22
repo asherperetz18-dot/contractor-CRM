@@ -708,7 +708,17 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Search is fast at the current scale and stays so as the book grows (the index does the work). Estimates and appointments still scan their own tables (8k / 20k rows, plain LIKE, tens of milliseconds) and join the client's name — the next thing to index if document volume ever makes it slow. Accents are not folded: "Muñoz" is found by "muñoz", not "munoz" (TECH_DEBT). The fallback finds a client's contract only through the contact it matched (no join), so "type a client's name, see their contract" is slightly narrower until 0170 runs — one more reason to paste it. The `search_text` column is derived, never written; a new lead field that should be searchable is added to the generated expression (a migration), to `buildSearchGroups`, and to the fallback's column list together.
 
-## 065 — Every PR is a version, and every version announces itself on screen
+## 065 — Two cards, one team: paid seats live on the contact, visit seats on the appointment
+
+**Date:** 2026-09-22
+
+**Context:** The Edit Appointment window had grown six people boxes — Assigned To, Second Assigned To, Customer's Rep, Dispatcher, Partner Rep, Closer — four of them duplicating fields the contact card already edits. Two of everything read as two sources of truth, and the owner flagged it as confusing. The tempting fix (edit the closer/partner per appointment) recreates the exact problem the dispatcher seat was designed against: one customer with three appointments must not have three windows disagreeing about who is owed the commission, and the paid team exists from lead arrival, before any appointment does.
+
+**Decision:** The appointment window keeps only the visit seats (Assigned To / Second Assigned To — who drives out) and shows everything else as one read-only "Customer's team" line (Rep · Partner · Closer · Dispatcher, `customerTeamSegments`, whole-roster names) with an "Edit on contact card" button. The contact card stays the single editing home for the paid team, including dispatcher claim/release. Automatic reminder texts follow the same split: both visit seats get them (`reminder-recipients.test.ts`), and the paid team never does unless someone on it is also booked into a visit seat.
+
+**Consequence:** One place to change who gets paid; every appointment's team line updates itself. Booking still shows the whole team, so nobody drives out blind. Nothing about pay, send-gating, portals or stored appointments changed — the window just stopped duplicating the contact card. A dispatcher now claims a lead from the contact card rather than the appointment window.
+
+## 066 — Every PR is a version, and every version announces itself on screen
 
 **Date:** 2026-09-22
 

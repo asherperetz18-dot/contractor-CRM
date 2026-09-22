@@ -20,7 +20,6 @@ import {
 } from "@/lib/data/types";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions/dispatcher";
-import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
 import { CalendarBoard } from "./calendar-board";
 
 type LeadWithEvents = Lead & { events?: unknown };
@@ -180,7 +179,6 @@ export default async function CalendarPage() {
       viewerId={profile?.id ?? null}
       viewerIsDispatchScoped={isDispatchScoped(profile)}
       appointmentHolders={appointmentHolders}
-      dispatcherPicker={dispatcherPickerBootstrap(profile, allReps)}
       leads={[...withoutJoin(leads), ...behindAppointments.leads]}
       leadTasks={leadTasks}
       leadNotes={[...leadNotes, ...behindAppointments.notes]}

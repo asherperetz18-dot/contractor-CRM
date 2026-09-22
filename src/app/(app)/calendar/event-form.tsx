@@ -46,14 +46,14 @@ import {
   getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
-import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
+import { repDropdownOptions } from "@/lib/data/rep-options";
+import { customerTeamSegments } from "@/lib/customer-team-line";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import { TasksPanel } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
-import { DispatcherPicker, type DispatcherPickerBootstrap } from "./dispatcher-picker";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
@@ -153,7 +153,6 @@ export function EventForm({
   viewerId,
   viewerIsDispatchScoped,
   appointmentHolders,
-  dispatcherPicker,
   onCancel,
   onSaved,
   onDeleted,
@@ -185,9 +184,6 @@ export function EventForm({
   /** leads.dispatcher_id per event id, resolved server-side because the
    *  client cannot see the lead it is being kept out of. */
   appointmentHolders?: Record<string, string | null>;
-  /** Dispatcher picker data, from the page -- so the control renders
-   *  with the form instead of seconds after it. */
-  dispatcherPicker?: DispatcherPickerBootstrap;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -895,30 +891,26 @@ export function EventForm({
             />
           )}
 
-          {/* Set here because this is where the work happens, but written
-              to the lead: the dispatcher holds it until it sells and is
-              paid on the sale, so it cannot differ per appointment. */}
+          {/* Read-only on purpose: who gets paid on this customer --
+              Assigned Rep, Partner Rep, Closer, Dispatcher -- lives on
+              the contact card, one home however many appointments the
+              customer has. Shown here so nobody books blind, and because
+              the Rep seat is the grant that decides who can see this
+              appointment at all. */}
           {lead && (
-            <div className="form-grid">
-              <DispatcherPicker
-                leadId={lead.id}
-                currentDispatcherId={lead.dispatcher_id ?? null}
-                readOnly={readOnly}
-                bootstrap={dispatcherPicker}
-              />
-              {/* Read-only on purpose: whose customer this is lives on
-                  the contact (its Assigned Rep box), not per appointment.
-                  Shown here because it is the grant that decides who can
-                  see this appointment at all -- without it, a name on
-                  someone's calendar looks unexplainable ("how come Simon
-                  can see this?" when Simon is on no seat below). */}
-              <Field label="Customer's Rep">
-                <div>{repDisplayName(lead.assigned_to, reps)}</div>
-                <p className="est-tax-note">
-                  Whose customer this is — they see this appointment whoever is booked on
-                  it. Change it on the contact (Assigned Rep).
-                </p>
-              </Field>
+            <div className="team-line">
+              <span className="team-line-label">Customer&apos;s team</span>
+              <span className="team-line-names">
+                {customerTeamSegments(lead, allMembers ?? reps).map((s, i) => (
+                  <span key={s.label}>
+                    {i > 0 && <span className="team-line-dot"> · </span>}
+                    {s.label} — <strong>{s.name}</strong>
+                  </span>
+                ))}
+              </span>
+              <button type="button" className="btn-ghost small" onClick={openFullLead}>
+                Edit on contact card →
+              </button>
             </div>
           )}
 
