@@ -10,6 +10,7 @@ import {
   type SmsMessage,
 } from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
+import { replyTargetSnapshot, type ReplyTargetSnapshot } from "@/lib/reply-target";
 import { DeliveryTag } from "@/components/ui/delivery-tag";
 
 type Conversation = {
@@ -49,11 +50,13 @@ export function ReplyInboxView({
   // Kept in state rather than read from the URL each render: the effect
   // below strips the query string immediately, and deriving the
   // placeholder conversation from the params meant it vanished on the
-  // very next render -- taking the selected thread with it.
-  const [pendingTarget, setPendingTarget] = useState<{
-    leadId: string | null;
-    phone: string;
-  } | null>(null);
+  // very next render -- taking the selected thread with it. The whole
+  // snapshot (name AND phone) is pinned, not just the ids: once the URL
+  // is stripped, the next server render only carries contacts that
+  // already have messages, so a first-ever text's contact is gone from
+  // `leads` -- which used to leave this thread reading "New
+  // conversation" with no number to send to.
+  const [pendingTarget, setPendingTarget] = useState<ReplyTargetSnapshot | null>(null);
   const [reply, setReply] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -96,12 +99,11 @@ export function ReplyInboxView({
     }
 
     if (pendingTarget?.leadId && !map.has(pendingTarget.leadId)) {
-      const lead = leads.find((l) => l.id === pendingTarget.leadId) ?? null;
       map.set(pendingTarget.leadId, {
         key: pendingTarget.leadId,
         leadId: pendingTarget.leadId,
-        name: lead ? leadDisplayName(lead) : pendingTarget.phone || "New conversation",
-        phone: lead?.phone || pendingTarget.phone || "",
+        name: pendingTarget.name,
+        phone: pendingTarget.phone,
         isCrew: false,
         messages: [],
       });
@@ -111,7 +113,7 @@ export function ReplyInboxView({
         map.set(key, {
           key,
           leadId: null,
-          name: pendingTarget.phone,
+          name: pendingTarget.name,
           phone: pendingTarget.phone,
           isCrew: false,
           messages: [],
@@ -130,7 +132,9 @@ export function ReplyInboxView({
   if (targetKey && targetKey !== consumedTargetKey) {
     setConsumedTargetKey(targetKey);
     setSelectedKey(targetKey);
-    setPendingTarget({ leadId: targetLeadId, phone: targetPhone ?? "" });
+    // Resolved NOW, while the ?leadId= render still carries the target
+    // contact (the page fetches it for exactly this pass).
+    setPendingTarget(replyTargetSnapshot(leads, targetLeadId, targetPhone));
     if (targetBody) setReply(targetBody);
   } else if (selectedKey === null && conversations.length > 0) {
     // else-if, not a second statement. setSelectedKey does not change

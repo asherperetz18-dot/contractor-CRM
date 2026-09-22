@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.135.1",
+    date: "2026-09-22",
+    notes: [
+      "Fixed: texting a contact for the first time from an appointment's Send SMS no longer says \"No phone number to send to\" -- the composer now keeps the contact's name and number, and it also finds a number saved under the second contact.",
+    ],
+  },
+  {
     version: "1.135.0",
     date: "2026-09-22",
     notes: [
