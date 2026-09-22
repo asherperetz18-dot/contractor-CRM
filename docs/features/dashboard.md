@@ -1,6 +1,6 @@
 # Dashboard
 
-The overview page ("Dashboard 2.0"): headline numbers, graphs and a needs-attention strip, all following one date filter, with the boxes drag-arrangeable per person. The phone-width dashboard keeps its own shape (module tiles, week strip, month grid) and is untouched by the desktop redesign.
+The overview page ("Dashboard 2.0"): headline numbers, graphs and a needs-attention strip, all following one date filter, with the boxes drag-arrangeable per person. It renders on every screen size — phones and portrait tablets get the same content reflowed (2-across cards, self-scrolling tables and chart, ≤700/≤1100 rules), with the Modules tile launcher appended below on ≤900px screens; the old phone-only widget list (tasks/calls/week/month) is gone since the dashboard itself shows all of that now. See `.claude/skills/responsive-check` — the standing rule this set.
 
 | Feature | Status | Description | Code |
 |---|---|---|---|
