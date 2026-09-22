@@ -1652,12 +1652,13 @@ a.stat-card {
 .dash-kpi-grid {
   margin-bottom: 20px;
 }
-/* The Win rate card holds two rates side by side -- signed out of the
-   period's leads, and out of the ones that got an appointment -- each
-   with its own "x of y" foot, split by a hairline. Under the phone
-   rules the tile is ~half the screen, so the pair stacks. Two classes
-   so it outranks `a.stat-card { display: block }`. */
-.stat-card.dash-kpi-pair {
+/* The Win rate card (Dashboard) and tile (Marketing Analytics) hold two
+   rates side by side -- signed out of the period's leads, and out of the
+   ones that got an appointment -- each with its own "x of y" foot, split
+   by a hairline. An inner div, so the card itself stays whatever the
+   page makes it (a link, a button). Under the phone rules the tile is
+   ~half the screen, so the pair stacks. */
+.dash-kpi-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 14px;
@@ -1667,7 +1668,7 @@ a.stat-card {
   padding-left: 14px;
 }
 @media (max-width: 700px) {
-  .stat-card.dash-kpi-pair {
+  .dash-kpi-pair {
     grid-template-columns: 1fr;
     gap: 10px 0;
   }
