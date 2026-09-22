@@ -67,3 +67,32 @@ test("the dialer and its reports sit in Call Center, and nothing says Sales Cent
     assert.ok(!/sales center/i.test(page.group), page.key + " still says Sales Center");
   }
 });
+
+// The lead-operations group is "Dispatch", full stop. It was "Dispatch
+// (Leads Mgmt.)", which wrapped to two lines beside the unread badge at
+// the sidebar's width; the pages inside already say leads.
+test("the lead-operations pages sit in Dispatch", () => {
+  for (const key of ["pipeline", "tasks", "reply-inbox", "contacts", "appt-setter-assignments", "lead-refunds"] as const) {
+    const page = PAGE_REGISTRY.find((p) => p.key === key);
+    assert.ok(page, key + " is registered");
+    assert.equal(page.group, "Dispatch", key + " grouped under Dispatch");
+  }
+});
+
+// The sidebar is 220px wide (a 260px drawer on phones) and a label that
+// wraps to two lines reads as a mistake -- three of them did. Twenty-one
+// characters is the longest label that fits on one line at the menu's
+// font with an icon beside it ("Estimates & Contracts" is exactly that).
+const SIDEBAR_LABEL_MAX = 21;
+test("every sidebar label fits on one line", () => {
+  for (const page of PAGE_REGISTRY) {
+    assert.ok(
+      page.label.length <= SIDEBAR_LABEL_MAX,
+      `"${page.label}" is ${page.label.length} characters and wraps in the sidebar`
+    );
+    assert.ok(
+      page.group.length <= SIDEBAR_LABEL_MAX,
+      `group "${page.group}" is ${page.group.length} characters and wraps in the sidebar`
+    );
+  }
+});

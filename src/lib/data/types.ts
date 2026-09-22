@@ -73,8 +73,7 @@ export type NavGroupItem = {
   tone?: NavTone;
   items: {
     label: string;
-    href?: string;
-    comingSoon?: boolean;
+    href: string;
   }[];
 };
 
@@ -106,6 +105,7 @@ export function navEntryKey(entry: NavEntry): string {
 const LEGACY_NAV_KEYS: Record<string, string> = {
   "group:Call Center": "group:Your Sales Center",
   "group:Staff": "group:Your Sales Center",
+  "group:Dispatch": "group:Dispatch (Leads Mgmt.)",
 };
 
 export function sortNavEntries(
@@ -126,7 +126,7 @@ export function sortNavEntries(
     if (own !== undefined || entry.type === "link") return own;
     let best: number | undefined;
     for (const item of entry.items) {
-      const p = item.href ? pos.get(item.href) : undefined;
+      const p = pos.get(item.href);
       if (p !== undefined && (best === undefined || p < best)) best = p;
     }
     return best;
@@ -194,7 +194,7 @@ export function isPlatformAdmin(profile: Pick<Profile, "is_platform_admin"> | nu
   return profile?.is_platform_admin === true;
 }
 
-// Dispatch section (Pipeline, Contacts, Appt. Setter Assignments): Office
+// Dispatch section (Pipeline, Contacts, Setter Assignments): Office
 // or Sales can create/edit; delete on leads is a separate, narrower check.
 // Admin is included throughout -- it is the full-access role, and omitting
 // it here meant an Admin-only user silently couldn't save a contact.
@@ -460,7 +460,7 @@ export const NAV_TONES = ["dispatch", "calls", "staff", "production", "accountin
 export type NavTone = (typeof NAV_TONES)[number];
 
 export const GROUP_TONES: Record<string, NavTone> = {
-  "Dispatch (Leads Mgmt.)": "dispatch",
+  Dispatch: "dispatch",
   "Call Center": "calls",
   Staff: "staff",
   Production: "production",
@@ -481,25 +481,31 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     href: "/marketing-analytics",
     group: "General",
   },
-  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch (Leads Mgmt.)" },
+  // Dispatch is the lead work. Plain "Dispatch": the "(Leads Mgmt.)" it
+  // carried wrapped the header to two lines beside the unread badge, and
+  // the pages inside already say leads. Labels stay at 21 characters or
+  // fewer so none wraps (nav-groups.test.ts).
+  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch" },
   // Every open lead task in one place, overdue first -- the page the
   // dashboard's "Overdue tasks" card opens. The pipeline's Follow-ups
   // strip keeps its 1,000-newest-leads scope; this page is the complete
   // list.
-  { key: "tasks", label: "Tasks", href: "/tasks", group: "Dispatch (Leads Mgmt.)" },
-  { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch (Leads Mgmt.)" },
-  { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch (Leads Mgmt.)" },
+  { key: "tasks", label: "Tasks", href: "/tasks", group: "Dispatch" },
+  { key: "reply-inbox", label: "Reply Inbox", href: "/reply-inbox", group: "Dispatch" },
+  { key: "contacts", label: "Contacts", href: "/contacts", group: "Dispatch" },
+  // The menu says "Setter Assignments" (one line); the page's own title
+  // keeps the full "Appt. Setter Assignments". Key and route unchanged.
   {
     key: "appt-setter-assignments",
-    label: "Appt. Setter Assignments",
+    label: "Setter Assignments",
     href: "/appt-setter-assignments",
-    group: "Dispatch (Leads Mgmt.)",
+    group: "Dispatch",
   },
   {
     key: "lead-refunds",
     label: "Lead Refunds",
     href: "/lead-refunds",
-    group: "Dispatch (Leads Mgmt.)",
+    group: "Dispatch",
   },
   // Call Center is the phone and text work: the dialer and the reports
   // on what it produced. Named after the Call Center role that lives in

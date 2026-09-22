@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.135.0",
+    date: "2026-09-22",
+    notes: [
+      "The sidebar's \"Dispatch (Leads Mgmt.)\" is now just \"Dispatch\", so the heading fits on one line next to the unread count.",
+      "\"Appt. Setter Assignments\" reads \"Setter Assignments\" in the sidebar. Same page, same address; the page's own title is unchanged.",
+      "The greyed \"Dispatch Dashboard · Soon\" row is gone from the sidebar until that page exists. It was the only row that did nothing when tapped.",
+      "If you had arranged the menu in Settings › Menu Order, Dispatch stays where it was.",
+    ],
+  },
+  {
     version: "1.134.0",
     date: "2026-09-22",
     notes: [
