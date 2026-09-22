@@ -405,6 +405,24 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
   };
 }
 
+/** One win rate: signed contracts out of `of`; no rate while `of` is 0. */
+export type WinRate = { rate: number | null; signed: number; of: number };
+
+/**
+ * The Win rate card's two rates, read straight off the rollup: signed
+ * contracts out of the period's leads, and out of the ones that got an
+ * appointment (the funnel's has_appt step). Same cohort and the same
+ * signed count on both, so "from appointments" is always the higher of
+ * the two -- of the leads we got in front of, this many closed. The
+ * period's appointment *count* is deliberately not the denominator: it
+ * dates appointments, not leads, and one lead can hold several.
+ */
+export function winRates(r: DashboardRollup): { fromLeads: WinRate; fromAppts: WinRate } {
+  const signed = r.funnel.signed;
+  const rate = (of: number): WinRate => ({ rate: of > 0 ? (signed / of) * 100 : null, signed, of });
+  return { fromLeads: rate(r.window.leads), fromAppts: rate(r.funnel.withAppt) };
+}
+
 /**
  * The RPC's jsonb, coerced field by field: aggregates can cross JSON as
  * strings, and one stringly "40" would silently concatenate its way
