@@ -21,6 +21,7 @@ Fixing a bug: reproduce it as a failing test first, then fix — that test is wh
 - [ ] Test written first, suite passes — `npm test`
 - [ ] `npm run lint` clean
 - [ ] New tenant-data table/route has RLS coverage — a UI check alone is never the boundary
+- [ ] `package.json` version bumped and its entry added to `src/lib/release-notes.ts` — every PR, so the CRM announces the update on screen (`.claude/skills/release-notes/SKILL.md`)
 - [ ] Docs updated: feature → `docs/features/<domain>.md` · non-obvious call → `docs/DECISIONS.md` · known shortcut → `docs/TECH_DEBT.md`
 - [ ] Skip the docs step only for trivial changes (typos, formatting, dependency bumps) — use judgment, don't pad them
 

@@ -24,6 +24,8 @@ import { getCompanyChrome, getRoleVisibility } from "@/lib/data/company-chrome";
 import { ActivityTracker } from "./activity-tracker";
 import { VoiceDialer } from "./voice-dialer";
 import { UpdateNotice } from "./update-notice";
+import { WhatsNewNotice } from "./whats-new-notice";
+import { notesForVersion } from "@/lib/release-notes";
 import { CompanySwitcher } from "./company-switcher";
 import { DialerButton } from "./dialer-button";
 import { DuplicateContactsButton } from "./duplicate-contacts-button";
@@ -184,6 +186,9 @@ export default async function AppLayout({
             browser actually loaded -- which is exactly what the banner
             needs to compare against. */}
         <UpdateNotice current={version} />
+        {/* And the other half: whoever loads this build fresh (or just
+            refreshed for it) is told once what changed in it. */}
+        <WhatsNewNotice release={notesForVersion(version)} />
 
         <div className="app-body">
           <MobileNav

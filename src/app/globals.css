@@ -3097,6 +3097,34 @@ a.stat-card {
   z-index: 90;
 }
 
+/* "What's new in vX" -- the same card, shown once after the new build
+   loads. Just under the update popup: if a newer deploy lands while
+   this is open, the prompt to refresh is the one that must win. */
+.whats-new-backdrop {
+  z-index: 89;
+}
+.whats-new-date {
+  margin: 0 0 8px;
+  color: var(--muted, #64748b);
+  font-size: 13px;
+}
+.release-notes {
+  margin-top: 12px;
+}
+.release-notes-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.release-notes-list {
+  /* The reset strips markers; a change list reads as a list. */
+  list-style: disc;
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  line-height: 1.4;
+}
+
 /* Confirmation, marked without taking the colour channel.
    The chip's border-left is the calendar -- Estimate blue, Job Visit
    green -- so painting a confirmed appointment green would make a green

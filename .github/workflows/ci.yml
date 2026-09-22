@@ -15,6 +15,20 @@ jobs:
         with:
           node-version: "24"
           cache: "npm"
+      # Every PR ships as a new version with a release note, so the CRM
+      # can announce it on screen. A PR whose package.json still carries
+      # the base branch's version has nothing to announce and fails here.
+      - name: Version bumped
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --depth=1 origin "$GITHUB_BASE_REF"
+          base=$(git show "origin/$GITHUB_BASE_REF:package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+          head=$(node -p "require('./package.json').version")
+          if [ "$base" = "$head" ]; then
+            echo "::error::package.json is still v$head, same as $GITHUB_BASE_REF -- bump the version and add its note to src/lib/release-notes.ts (see .claude/skills/release-notes/SKILL.md)"
+            exit 1
+          fi
+          echo "v$base -> v$head"
       - run: npm ci
       - run: npm run lint
       - run: npm test
