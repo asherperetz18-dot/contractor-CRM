@@ -177,20 +177,29 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
           </div>
 
           {/* Under the boxes, on the left -- where the eye lands after
-              reading them: the filter that narrows every figure, and the
-              statement that prints exactly what is being looked at. */}
+              reading them: the filter that narrows every figure, with
+              the statement that prints exactly what is being looked at
+              RIGHT BESIDE it. A plain flex row, not form-row: the grid's
+              column minimums stacked the two on narrower screens, which
+              read as the button belonging to something else. Bottoms
+              aligned, so the button lines up with the select box rather
+              than floating at the label's height; wraps only when a
+              phone genuinely has no room for both. */}
           <div
-            className="form-row"
-            style={{ margin: "14px 0 4px", maxWidth: 480, alignItems: "end" }}
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-end",
+              gap: 10,
+              margin: "14px 0 4px",
+            }}
           >
             {everyone && filterOptions.length > 0 && (
               <RepFilter options={filterOptions} value={repFilter} />
             )}
-            <div className="field">
-              <Link href="/sales-commission/statement" className="btn-ghost">
-                Printable statement
-              </Link>
-            </div>
+            <Link href="/sales-commission/statement" className="btn-ghost">
+              Printable statement
+            </Link>
           </div>
 
           {/* The owner runs migrations by hand, sometimes days after a
