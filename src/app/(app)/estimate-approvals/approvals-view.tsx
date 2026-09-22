@@ -1,9 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { moneyCents } from "@/lib/data/types";
+import {
+  approvalFilterOptions,
+  filterApprovals,
+  type ApprovalsSort,
+} from "@/lib/approvals-filters";
 import {
   approveEstimate,
   setApprovalSetting,
@@ -32,6 +37,24 @@ export function ApprovalsView({
   const [busy, startTransition] = useTransition();
   const [error, setError] = useState(loadError ?? "");
   const [working, setWorking] = useState("");
+  // The dropdowns over the three columns the eye scans: whose customer,
+  // who wrote it, and how much it's worth. Options come from the rows
+  // themselves (approvalFilterOptions), so approving the last of
+  // somebody's drafts drops their name from the filter too.
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [writerFilter, setWriterFilter] = useState("");
+  const [sort, setSort] = useState<ApprovalsSort>("newest");
+
+  const options = useMemo(() => approvalFilterOptions(pending), [pending]);
+  const visible = useMemo(
+    () =>
+      filterApprovals(pending, {
+        customer: customerFilter,
+        writtenBy: writerFilter,
+        sort,
+      }),
+    [pending, customerFilter, writerFilter, sort]
+  );
 
   async function handleApprove(id: string) {
     setWorking(id);
@@ -86,8 +109,55 @@ export function ApprovalsView({
 
       {error && <p className="error-note">{error}</p>}
 
+      {pending.length > 0 && (
+        <div className="form-row">
+          <label className="field">
+            <span className="field-label">Customer</span>
+            <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)}>
+              <option value="">All customers</option>
+              {options.customers.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">Written by</span>
+            <select value={writerFilter} onChange={(e) => setWriterFilter(e.target.value)}>
+              <option value="">Everyone</option>
+              {options.writers.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">Sort</span>
+            <select value={sort} onChange={(e) => setSort(e.target.value as ApprovalsSort)}>
+              <option value="newest">Newest first</option>
+              <option value="value_desc">Highest value first</option>
+              <option value="value_asc">Lowest value first</option>
+            </select>
+          </label>
+          <div className="field">
+            <span className="field-label">&nbsp;</span>
+            <p className="est-tax-note" style={{ margin: 0 }}>
+              {visible.length === pending.length
+                ? `${pending.length} waiting`
+                : `${visible.length} of ${pending.length} waiting`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {pending.length === 0 ? (
         <p className="empty-hint">Nothing waiting. Every draft has been checked.</p>
+      ) : visible.length === 0 ? (
+        <p className="empty-hint">
+          No drafts match these filters — clear them to see all {pending.length} waiting.
+        </p>
       ) : (
         <table className="data-table">
           <thead>
@@ -100,7 +170,7 @@ export function ApprovalsView({
             </tr>
           </thead>
           <tbody>
-            {pending.map((row) => (
+            {visible.map((row) => (
               <tr key={row.id}>
                 <td>
                   <Link href={`/estimates/${row.id}`}>
