@@ -115,11 +115,6 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
             what was spent.
           </p>
         </div>
-        <div className="toolbar-actions">
-          <Link href="/sales-commission/statement" className="btn-ghost">
-            Printable statement
-          </Link>
-        </div>
       </div>
 
       {!rows.length ? (
@@ -182,12 +177,21 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
           </div>
 
           {/* Under the boxes, on the left -- where the eye lands after
-              reading them, right above the table it narrows. */}
-          {everyone && filterOptions.length > 0 && (
-            <div className="form-row" style={{ margin: "14px 0 4px", maxWidth: 320 }}>
+              reading them: the filter that narrows every figure, and the
+              statement that prints exactly what is being looked at. */}
+          <div
+            className="form-row"
+            style={{ margin: "14px 0 4px", maxWidth: 480, alignItems: "end" }}
+          >
+            {everyone && filterOptions.length > 0 && (
               <RepFilter options={filterOptions} value={repFilter} />
+            )}
+            <div className="field">
+              <Link href="/sales-commission/statement" className="btn-ghost">
+                Printable statement
+              </Link>
             </div>
-          )}
+          </div>
 
           {/* The owner runs migrations by hand, sometimes days after a
               merge -- until 0158 is in, the page stays exactly what it
