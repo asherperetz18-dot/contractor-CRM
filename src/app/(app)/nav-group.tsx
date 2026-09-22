@@ -8,9 +8,7 @@ import { useInboxCount } from "./use-inbox-count";
 
 export function NavGroup({ group }: { group: NavGroupItem }) {
   const pathname = usePathname();
-  const containsActive = group.items.some(
-    (i) => i.href && pathname.startsWith(i.href)
-  );
+  const containsActive = group.items.some((i) => pathname.startsWith(i.href));
   const [open, setOpen] = useState(containsActive);
 
   // Texts waiting on a reply. Shown on the group header too, because
@@ -40,21 +38,14 @@ export function NavGroup({ group }: { group: NavGroupItem }) {
           {/* Same fetch-on-hover link as the top-level entries: an open
               group with five pages in it should not queue five prefetches
               ahead of the one click that is coming. */}
-          {group.items.map((item) =>
-            item.href ? (
-              <NavLink key={item.label} href={item.href} className="nav-subitem">
-                {item.label}
-                {item.href === "/reply-inbox" && inboxCount > 0 && (
-                  <span className="nav-badge">{inboxCount}</span>
-                )}
-              </NavLink>
-            ) : (
-              <div key={item.label} className="nav-subitem nav-subitem-disabled">
-                {item.label}
-                {item.comingSoon && <span className="nav-soon-tag">Soon</span>}
-              </div>
-            )
-          )}
+          {group.items.map((item) => (
+            <NavLink key={item.label} href={item.href} className="nav-subitem">
+              {item.label}
+              {item.href === "/reply-inbox" && inboxCount > 0 && (
+                <span className="nav-badge">{inboxCount}</span>
+              )}
+            </NavLink>
+          ))}
         </div>
       )}
     </div>

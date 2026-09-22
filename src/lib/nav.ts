@@ -76,11 +76,8 @@ export function filterNavForProfile(
         return allowed(entry.href) ? entry : null;
       }
       const items = entry.items.filter((item) => allowed(item.href));
-      // Placeholder ("coming soon") items have no href and would otherwise
-      // keep an entire group visible even when every real page in it is
-      // hidden for this role, so they don't count toward keeping the group.
-      const hasRealItem = items.some((item) => !!item.href);
-      if (!hasRealItem) return null;
+      // A group with every page hidden for this role has no reason to show.
+      if (items.length === 0) return null;
       return { ...entry, items };
     })
     .filter((entry): entry is NavEntry => entry !== null);
@@ -92,8 +89,10 @@ export function filterNavForProfile(
 // now appears here automatically, and the label, href and grouping shown
 // in the sidebar cannot drift from the ones Role Visibility manages.
 //
-// Only presentation lives below: icons, and the one placeholder that has
-// no page behind it yet. A page whose icon is missing still gets a link.
+// Only presentation lives below: icons. A page whose icon is missing
+// still gets a link. Nothing renders in the sidebar without a page
+// behind it -- the "Dispatch Dashboard · Soon" placeholder that once did
+// was the only row that went nowhere when tapped, and it read as broken.
 
 const PAGE_ICONS: Partial<Record<PageKey, string>> = {
   dashboard: "◎",
@@ -105,7 +104,7 @@ const PAGE_ICONS: Partial<Record<PageKey, string>> = {
 };
 
 const GROUP_ICONS: Record<string, string> = {
-  "Dispatch (Leads Mgmt.)": "▸",
+  Dispatch: "▸",
   // "\uFE0E" after the phone asks for the plain text glyph, so the group
   // color can tint it -- without it iOS and Windows draw a red emoji
   // phone beside a teal rail.
@@ -116,13 +115,6 @@ const GROUP_ICONS: Record<string, string> = {
 };
 
 const FALLBACK_ICON = "▪";
-
-// Announced-but-unbuilt items. They have no page key because they have no
-// page, so they cannot come from the registry; `after` pins each one to
-// its spot rather than leaving it to sort to the end of its group.
-const PLACEHOLDERS: { label: string; group: string; after: PageKey }[] = [
-  { label: "Dispatch Dashboard", group: "Dispatch (Leads Mgmt.)", after: "pipeline" },
-];
 
 function buildNav(): NavEntry[] {
   const entries: NavEntry[] = [];
@@ -149,11 +141,6 @@ function buildNav(): NavEntry[] {
     }
 
     openGroup.items.push({ label: page.label, href: page.href });
-    for (const placeholder of PLACEHOLDERS) {
-      if (placeholder.group === page.group && placeholder.after === page.key) {
-        openGroup.items.push({ label: placeholder.label, comingSoon: true });
-      }
-    }
   }
 
   // Admin Settings is deliberately absent from PAGE_REGISTRY: it is not

@@ -6,7 +6,7 @@ import { navEntryKey, sortNavEntries, type NavEntry } from "./data/types.ts";
 const NAV: NavEntry[] = [
   { type: "link", href: "/", label: "Dashboard", icon: "o" },
   { type: "link", href: "/marketing-analytics", label: "Marketing Analytics", icon: "o" },
-  { type: "group", label: "Dispatch (Leads Mgmt.)", icon: "o", items: [{ label: "Pipeline", href: "/pipeline" }] },
+  { type: "group", label: "Dispatch", icon: "o", items: [{ label: "Pipeline", href: "/pipeline" }] },
   { type: "group", label: "Call Center", icon: "o", items: [{ label: "Dialer", href: "/dial-queue" }] },
   { type: "link", href: "/projects", label: "Projects", icon: "o" },
   { type: "link", href: "/settings", label: "Admin Settings", icon: "o" },
@@ -70,9 +70,10 @@ test("a group the saved order predates takes the spot its pages held", () => {
 });
 
 // "Your Sales Center" was renamed Call Center and its Salespeople page
-// moved into a new Staff group. A menu order saved before that names
-// the old group key; both new groups take that spot rather than
-// dropping to the bottom of a menu somebody already arranged, in their
+// moved into a new Staff group; "Dispatch (Leads Mgmt.)" became
+// Dispatch. A menu order saved before that names the old group keys;
+// the new groups take those spots rather than dropping to the bottom
+// of a menu somebody already arranged, a split group's parts in their
 // built-in order (Call Center, then Staff).
 test("a renamed or split group keeps the spot the old group held", () => {
   const split: NavEntry[] = [
@@ -85,6 +86,7 @@ test("a renamed or split group keeps the spot the old group held", () => {
     NAV[5],
   ];
   const saved = ["group:Your Sales Center", "/projects", "/", "/marketing-analytics", "group:Dispatch (Leads Mgmt.)"];
+  // NAV[2] is the Dispatch group, whose saved key is the old long name.
   const sorted = sortNavEntries(split, saved).map(navEntryKey);
   assert.deepEqual(sorted, [
     "group:Call Center",
@@ -92,7 +94,7 @@ test("a renamed or split group keeps the spot the old group held", () => {
     "/projects",
     "/",
     "/marketing-analytics",
-    "group:Dispatch (Leads Mgmt.)",
+    "group:Dispatch",
     "/settings",
   ]);
 });
