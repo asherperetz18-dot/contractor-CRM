@@ -74,3 +74,9 @@ What: after decisions #061 and its follow-up, every server-side "today", every s
 
 **Search is accent-sensitive.**
 What: "Search for Anything" lowercases but does not fold accents: "Muñoz" is found by "muñoz", not by "munoz", and "José" not by "jose". Why: the haystack is a plain `lower()` in a generated column (0170) so it can be indexed; folding would need the `unaccent` extension in the generated expression (its function is not marked immutable, so a wrapper would be needed) and the same fold in `buildSearchGroups`. Impact: a Spanish-language name typed without its accent misses; the office knows its clients' spellings, and phone or address still finds the record. Where: `supabase/migrations/0170_global_search_indexed.sql`, `src/lib/data/global-search.ts`.
+
+---
+
+**The Dispatch Dashboard's panels don't drag-arrange, and its fallback scans 90 days of pre-appointment leads.**
+What: the main Dashboard's boxes drag to a saved order (`profiles.dashboard_panel_order`); the Dispatch Dashboard's five panels render in a fixed order, and its desk-table names link to the unfiltered Call Reports page (that page takes no rep or disposition in its URL). Until migration 0171 is run, the fallback path reads every pre-appointment lead of the last 90 days (three slim columns, paged) to bucket the waiting panel — the RPC replaces that scan. Why: a second order column and a shared drag hook were more than the page's first cut warranted, and Call Reports' filters are in-page state. Impact: a dispatcher cannot move the desk table to the top; a click from an outcome row lands on the whole call log. Fix: generalize the panel-order plumbing (a keyed column or a jsonb map) and give Call Reports `?rep=` / `?disposition=` query params; run 0171 so the fallback never runs.
+
