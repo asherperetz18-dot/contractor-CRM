@@ -80,11 +80,10 @@ async function processCompany(
     )
     .eq("company_id", company.company_id)
     .in("status", ["New", "Confirmed"])
+    // No seat filter: a visit with nobody booked falls back to texting
+    // the customer's own rep (reminderRecipientIds), so an unassigned
+    // appointment is a candidate too, not a silent no-show waiting.
     .not("lead_id", "is", null)
-    // Either visit seat is enough: the second rep on a two-person visit
-    // gets the same reminders as the first, and a visit booked with
-    // only a second chair still reminds somebody.
-    .or("assigned_to.not.is.null,second_assigned_to.not.is.null")
     .gte("date", todayDate)
     .lte("date", tomorrowDate)
     .or("reminder_night_before_sent_at.is.null,reminder_hour_before_sent_at.is.null");
@@ -93,12 +92,18 @@ async function processCompany(
   if (rows.length === 0) return { checked: 0, sent: 0 };
 
   const leadIds = [...new Set(rows.map((r) => r.lead_id!))];
-  const repIds = [...new Set(rows.flatMap((r) => reminderRecipientIds(r)))];
-  const [{ data: leads }, { data: reps }] = await Promise.all([
-    admin.from("leads").select("*").eq("company_id", company.company_id).in("id", leadIds),
-    admin.from("profiles").select("id, phone").in("id", repIds),
-  ]);
+  // Leads first: an unassigned visit's recipient is the lead's own rep,
+  // so who needs a phone number isn't known until the leads are in hand.
+  const { data: leads } = await admin
+    .from("leads")
+    .select("*")
+    .eq("company_id", company.company_id)
+    .in("id", leadIds);
   const leadById = new Map(((leads as Lead[]) ?? []).map((l) => [l.id, l]));
+  const repIds = [
+    ...new Set(rows.flatMap((r) => reminderRecipientIds(r, leadById.get(r.lead_id!)))),
+  ];
+  const { data: reps } = await admin.from("profiles").select("id, phone").in("id", repIds);
   const repPhoneById = new Map(
     ((reps as { id: string; phone: string | null }[]) ?? []).map((r) => [r.id, r.phone])
   );
@@ -109,7 +114,7 @@ async function processCompany(
     // Both visit seats, de-duplicated -- and only people with a phone on
     // file. The reminder is marked sent when at least one text got out,
     // so one rep's missing phone never re-texts the other on every run.
-    const phones = reminderRecipientIds(row)
+    const phones = reminderRecipientIds(row, lead)
       .map((id) => repPhoneById.get(id))
       .filter((p): p is string => !!p);
     if (!lead || phones.length === 0) continue;

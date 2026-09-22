@@ -10,15 +10,24 @@
  *
  * The reminder cron used to text the first chair only; the second rep
  * found out they were on a visit by being asked why they missed it.
+ *
+ * The one exception: a visit with NOBODY booked falls back to the
+ * customer's own rep (the contact's Assigned Rep), so no appointment
+ * ever goes out with zero reminders. The fallback never fires while a
+ * visit seat is held -- the customer's rep is not the one driving.
  */
-export function reminderRecipientIds(event: {
-  assigned_to: string | null;
-  second_assigned_to?: string | null;
-}): string[] {
+export function reminderRecipientIds(
+  event: {
+    assigned_to: string | null;
+    second_assigned_to?: string | null;
+  },
+  lead?: { assigned_to: string | null } | null
+): string[] {
   const ids: string[] = [];
   for (const id of [event.assigned_to, event.second_assigned_to]) {
     // De-duplicated: one person in both chairs gets one text, not two.
     if (id && !ids.includes(id)) ids.push(id);
   }
+  if (ids.length === 0 && lead?.assigned_to) return [lead.assigned_to];
   return ids;
 }
