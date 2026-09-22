@@ -93,6 +93,7 @@ end $$;
 
 -- ── the display name, as one expression the joins below can share ────
 -- Must read exactly like leadDisplayName() in src/lib/data/types.ts.
+-- Takes text: callers cast contact_type (an enum) explicitly.
 
 create or replace function public.lead_display_name(
   p_contact_type text, p_company_name text, p_first_name text, p_last_name text
@@ -161,7 +162,7 @@ matched_estimates as (
   where p_include_docs
     and e.company_id = p_company
     and lower(concat_ws(' ', e.doc_number, e.title, e.job_address,
-                        lead_display_name(cl.contact_type, cl.company_name, cl.first_name, cl.last_name)))
+                        lead_display_name(cl.contact_type::text, cl.company_name, cl.first_name, cl.last_name)))
         like all (q.pats)
   order by e.created_at desc
   limit p_limit
@@ -174,7 +175,7 @@ matched_events as (
   cross join q
   where ev.company_id = p_company
     and lower(concat_ws(' ', ev.title, ev.event_type, ev.notes,
-                        lead_display_name(cl.contact_type, cl.company_name, cl.first_name, cl.last_name)))
+                        lead_display_name(cl.contact_type::text, cl.company_name, cl.first_name, cl.last_name)))
         like all (q.pats)
   order by ev.date desc
   limit p_limit
