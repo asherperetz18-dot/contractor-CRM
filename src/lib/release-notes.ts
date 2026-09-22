@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.136.0",
+    date: "2026-09-22",
+    notes: [
+      "The Reply Inbox is live: when a customer texts back (a YES, a question, anything), the open conversation updates by itself within about 20 seconds -- no more refreshing the page to see the reply. Your selected thread and a half-typed reply stay put while it updates.",
+    ],
+  },
+  {
     version: "1.135.1",
     date: "2026-09-22",
     notes: [

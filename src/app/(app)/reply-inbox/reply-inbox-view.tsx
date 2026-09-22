@@ -11,6 +11,7 @@ import {
 } from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
 import { replyTargetSnapshot, type ReplyTargetSnapshot } from "@/lib/reply-target";
+import { TEXTS_FRESH_EVENT } from "../popup-alerts";
 import { DeliveryTag } from "@/components/ui/delivery-tag";
 
 type Conversation = {
@@ -150,6 +151,19 @@ export function ReplyInboxView({
       router.replace("/reply-inbox", { scroll: false });
     }
   }, [targetLeadId, targetPhone, router]);
+
+  // Live without its own poll: the popup watcher already asks the
+  // server for fresh inbound texts every 20 seconds on every open tab
+  // (a route handler, off the action path -- DECISIONS #029/#062).
+  // When it sees one, this re-pulls the page's conversations, so a
+  // customer's YES lands in the open thread instead of waiting for a
+  // manual refresh. Selection and a half-typed reply live in state, so
+  // the refresh does not disturb them.
+  useEffect(() => {
+    const onFresh = () => router.refresh();
+    window.addEventListener(TEXTS_FRESH_EVENT, onFresh);
+    return () => window.removeEventListener(TEXTS_FRESH_EVENT, onFresh);
+  }, [router]);
 
 
   // Deliberately no "?? conversations[0]" fallback here. That silently

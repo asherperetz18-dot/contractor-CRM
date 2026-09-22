@@ -26,6 +26,12 @@ const OVERLAP_MS = 120_000;
  *  of waiting out its own poll. */
 export const FRESH_EVENT = "crm:alerts-fresh";
 
+/** Fired when the poll sees a NEW inbound text (deduplicated, so once
+ *  per text, not once per poll while it sits inside the overlap
+ *  margin). The Reply Inbox listens and re-pulls its conversations, so
+ *  a customer's YES lands on screen without a manual refresh. */
+export const TEXTS_FRESH_EVENT = "crm:texts-fresh";
+
 function readStore(key: string): string | null {
   try {
     return localStorage.getItem(key);
@@ -223,6 +229,11 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
         }
 
         if (events.length) window.dispatchEvent(new CustomEvent(FRESH_EVENT));
+        // After the seenIds dedupe on purpose: a text re-served inside
+        // the overlap margin must not re-refresh the inbox every poll.
+        if (incoming.some((t) => t.id.startsWith("text:"))) {
+          window.dispatchEvent(new CustomEvent(TEXTS_FRESH_EVENT));
+        }
 
         // Switches are read live, not from the closure: one flipped a
         // minute ago has to apply to THIS poll.
