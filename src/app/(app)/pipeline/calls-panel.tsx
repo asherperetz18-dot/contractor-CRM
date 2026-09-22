@@ -8,6 +8,7 @@ import {
   updateCallNotes,
   type LeadCall,
 } from "@/lib/actions/call-logs";
+import { RecordingPlayer } from "@/components/recording-player";
 
 function duration(seconds: number) {
   if (!seconds) return "0s";
@@ -106,7 +107,14 @@ export function CallsPanel({ leadId, readOnly }: { leadId: string; readOnly?: bo
                   </button>
                 )}
                 {playing.has(c.id) && (
-                  <audio controls autoPlay src={`/api/voice/recording/${c.id}`} style={{ width: "100%", marginTop: 6 }} />
+                  <div style={{ marginTop: 6 }}>
+                    <RecordingPlayer
+                      src={`/api/voice/recording/${c.id}`}
+                      durationHint={c.duration_seconds}
+                      downloadName={`call-${c.created_at.slice(0, 10)}.mp3`}
+                      autoPlay
+                    />
+                  </div>
                 )}
                 {c.notes && <div className="est-tax-note">“{c.notes}”</div>}
               </td>

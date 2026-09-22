@@ -6,6 +6,7 @@ import {
   callrailAuthHeader,
   getCallRailForCompany,
 } from "@/lib/callrail-company";
+import { recordingResponseInit, upstreamRecordingHeaders } from "@/lib/recording-range";
 
 export async function GET(
   req: NextRequest,
@@ -32,6 +33,12 @@ export async function GET(
     }>();
   const recordingUrl = data?.recording_url;
   if (!recordingUrl) return NextResponse.json({ error: "No recording." }, { status: 404 });
+
+  // The slice the player asked for (a drag of the bar, a press of +10s)
+  // is requested from the provider as-is and answered with their 206 --
+  // served whole, the recording could only ever be played from the
+  // start. See src/lib/recording-range.ts.
+  const range = req.headers.get("range");
 
   // CallRail calls: the stored URL is their dashboard player, which
   // demands a CallRail login nobody's reps have. Their API hands out a
@@ -61,9 +68,11 @@ export async function GET(
     // refused, retry carrying the API key: CallRail has served both
     // shapes, and a header S3 would reject is only sent after the
     // plain fetch already failed.
-    let audio = await fetch(meta.url);
+    let audio = await fetch(meta.url, { headers: upstreamRecordingHeaders(range) });
     if (!audio.ok) {
-      audio = await fetch(meta.url, { headers: callrailAuthHeader(creds.apiKey) });
+      audio = await fetch(meta.url, {
+        headers: upstreamRecordingHeaders(range, callrailAuthHeader(creds.apiKey)),
+      });
     }
     if (!audio.ok || !audio.body) {
       return NextResponse.json(
@@ -71,13 +80,7 @@ export async function GET(
         { status: 502 }
       );
     }
-    return new NextResponse(audio.body, {
-      status: 200,
-      headers: {
-        "Content-Type": audio.headers.get("content-type") || "audio/mpeg",
-        "Cache-Control": "private, max-age=3600",
-      },
-    });
+    return new NextResponse(audio.body, recordingResponseInit(audio));
   }
 
   // Fetched with the credentials of the company that recorded it. Twilio
@@ -91,17 +94,11 @@ export async function GET(
     "base64"
   );
   const twilioRes = await fetch(recordingUrl, {
-    headers: { Authorization: `Basic ${basicAuth}` },
+    headers: upstreamRecordingHeaders(range, { Authorization: `Basic ${basicAuth}` }),
   });
   if (!twilioRes.ok || !twilioRes.body) {
     return NextResponse.json({ error: "Could not fetch recording." }, { status: 502 });
   }
 
-  return new NextResponse(twilioRes.body, {
-    status: 200,
-    headers: {
-      "Content-Type": twilioRes.headers.get("content-type") || "audio/mpeg",
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  return new NextResponse(twilioRes.body, recordingResponseInit(twilioRes));
 }

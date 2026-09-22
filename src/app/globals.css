@@ -4290,9 +4290,52 @@ a.stat-card {
   justify-content: center;
 }
 
-.call-recording-player {
-  height: 32px;
-  max-width: 220px;
+/* The call recording player (src/components/recording-player.tsx):
+   ▶  −10s  +10s  [bar]  0:17 / 0:54  1×  ⤓  -- one row, wrapping
+   where the column is narrow. */
+.rec-player {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 280px;
+}
+.rec-btn {
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 26px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.rec-btn:hover {
+  background: #f0ede4;
+}
+.rec-speed {
+  min-width: 36px;
+}
+.rec-bar {
+  flex: 1 1 70px;
+  min-width: 70px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--blueprint);
+  cursor: pointer;
+}
+.rec-bar:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rec-clock {
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
 }
 
 .dial-queue-layout {

@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/types";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { updateCallDisposition } from "@/lib/actions/call-logs";
+import { RecordingPlayer } from "@/components/recording-player";
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -236,6 +237,9 @@ export function CallReportsView({
             {rows.map((c) => {
               const lead = c.lead_id ? leadById.get(c.lead_id) : null;
               const rep = c.rep_id ? repById.get(c.rep_id) : null;
+              // The customer's number, whichever end of the call they
+              // were on.
+              const phone = c.direction === "inbound" ? c.from_number : c.to_number;
               return (
                 <tr key={c.id}>
                   <td>{new Date(c.created_at).toLocaleString()}</td>
@@ -257,11 +261,7 @@ export function CallReportsView({
                       <div className="est-tax-note">via {c.marketing_source}</div>
                     )}
                   </td>
-                  {/* The customer's number, whichever end of the call
-                      they were on. */}
-                  <td className="mono">
-                    {c.direction === "inbound" ? c.from_number : c.to_number}
-                  </td>
+                  <td className="mono">{phone}</td>
                   <td>{rep?.name || rep?.email || "—"}</td>
                   <td className="mono">{formatDuration(c.duration_seconds)}</td>
                   <td>
@@ -285,11 +285,10 @@ export function CallReportsView({
                         Twilio recordings with Twilio credentials and
                         CallRail recordings through CallRail's API. */}
                     {c.recording_url ? (
-                      <audio
-                        controls
-                        preload="none"
+                      <RecordingPlayer
                         src={`/api/voice/recording/${c.id}`}
-                        className="call-recording-player"
+                        durationHint={c.duration_seconds}
+                        downloadName={`call-${c.created_at.slice(0, 10)}-${phone}.mp3`}
                       />
                     ) : (
                       "—"
