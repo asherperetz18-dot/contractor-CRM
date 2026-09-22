@@ -1456,6 +1456,13 @@ export type Lead = {
   // who runs the appointment -- a lead has both, and they are rarely the
   // same person.
   dispatcher_id: string | null;
+  /** Second salesperson on a partnership sale -- shares the sale with
+   *  assigned_to (migration 0163). Optional: rows read before the
+   *  migration runs won't have it. */
+  partner_rep_id?: string | null;
+  /** Who reviews & sends this customer's estimates and follows the job
+   *  with their own cut (migration 0134). Optional as above. */
+  closer_id?: string | null;
   won_at: string | null;
   notes_updated_at: string | null;
   address_type: AddressType;

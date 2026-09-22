@@ -28,7 +28,6 @@ import { safeInternalPath } from "@/lib/safe-path";
 import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
 import { AppointmentWizard } from "../schedule/appointment-wizard";
-import type { DispatcherPickerBootstrap } from "./dispatcher-picker";
 import { FilterSelect } from "@/components/filter-select";
 
 const MONTH_NAMES = [
@@ -106,7 +105,6 @@ export function CalendarBoard({
   viewerId,
   viewerIsDispatchScoped,
   appointmentHolders,
-  dispatcherPicker,
 }: {
   events: Event[];
   jobs: Job[];
@@ -129,7 +127,6 @@ export function CalendarBoard({
   viewerId: string | null;
   viewerIsDispatchScoped: boolean;
   appointmentHolders: Record<string, string | null>;
-  dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
   const timeFormat = useTimeFormat();
   /**
@@ -799,7 +796,6 @@ export function CalendarBoard({
           viewerId={viewerId}
           viewerIsDispatchScoped={viewerIsDispatchScoped}
           appointmentHolders={appointmentHolders}
-          dispatcherPicker={dispatcherPicker}
           onCancel={closeEvent}
           onSaved={closeEvent}
           onDeleted={closeEvent}

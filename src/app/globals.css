@@ -10152,3 +10152,34 @@ textarea.est-item-desc:disabled {
   border-radius: 6px;
   background: #fff;
 }
+
+/* The appointment window's read-only "Customer's team" line: who gets
+   paid on this customer, edited on the contact card, never here. */
+.team-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blueprint);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.team-line-label {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.team-line-names {
+  color: var(--ink);
+}
+.team-line-dot {
+  color: var(--ink-soft);
+}
