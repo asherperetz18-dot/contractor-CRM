@@ -286,7 +286,9 @@ export function DialSession({
     // with nothing behind them.
     const dispo = dispositions.find((d) => d.name === name);
     if (dispo?.move_to_stage === "Appointment Scheduled") {
-      setBooking({ date: todayISO(), time: "09:00", assignedTo: "" });
+      // Linked cards: start with the customer's own rep when they have
+      // one -- still changeable before booking.
+      setBooking({ date: todayISO(), time: "09:00", assignedTo: lead?.assigned_to ?? "" });
       return;
     }
     advance(true);

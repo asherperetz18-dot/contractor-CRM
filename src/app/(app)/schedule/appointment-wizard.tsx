@@ -102,6 +102,10 @@ export function AppointmentWizard({
     setMatchedLead(l);
     setContactQuery(l.label);
     setMatches([]);
+    // Linked cards: booking for a customer who has a rep starts with
+    // that rep, not Unassigned -- still changeable if someone else
+    // drives. Never clobbers a rep already picked in the wizard.
+    setAssignedTo((current) => current || l.assigned_to || "");
   }
 
   function startAsNewContact() {

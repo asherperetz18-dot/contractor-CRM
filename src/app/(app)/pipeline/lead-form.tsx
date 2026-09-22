@@ -377,7 +377,9 @@ export function LeadForm({
     time: "09:00",
     endTime: "",
     eventType: "Estimate",
-    assignedTo: "",
+    // Linked cards: booking for a customer who has a rep starts with
+    // that rep, not Unassigned -- still changeable before saving.
+    assignedTo: lead?.assigned_to ?? "",
     projectType: "",
     notes: "",
   });
