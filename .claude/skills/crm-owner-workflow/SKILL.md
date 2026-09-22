@@ -63,7 +63,7 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
 - Recurring client polls never ship as Server Actions — Next runs
   actions through one queue in the browser, so a poll on that path
   puts the user's own Save/Send behind it. Thin route handlers instead
-  (DECISIONS #029, #060); the poll routes under `src/app/api/` are the
+  (DECISIONS #029, #062); the poll routes under `src/app/api/` are the
   pattern, and `src/lib/poll-routes.test.ts` fails on any `setInterval`
   that calls an action. "Keeps freezing" has meant this twice.
 

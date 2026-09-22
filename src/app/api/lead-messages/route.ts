@@ -7,7 +7,7 @@ import { getLeadMessages, getRepMessages } from "@/lib/actions/sms";
  * Action. The Texts tab polls this every 12 seconds while it is open,
  * and Next runs server actions through one queue in the browser: a
  * poll on the action path put the user's own Send behind it, every
- * twelve seconds (DECISIONS #029, #060). As a route it does the reads
+ * twelve seconds (DECISIONS #029, #062). As a route it does the reads
  * and nothing else. The actions themselves are unchanged and do their
  * own auth on the caller's cookie session, so RLS scopes the answer
  * exactly as before.

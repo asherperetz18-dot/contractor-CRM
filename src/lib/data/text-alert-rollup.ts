@@ -10,7 +10,7 @@ import { normalizePhone } from "./types.ts";
  * tab. Migration 0168 moves the reduction into Postgres
  * (text_alert_rollup); this module is its exact mirror, pinned by tests,
  * and doubles as the fallback while that migration hasn't run. See
- * DECISIONS #060.
+ * DECISIONS #062.
  *
  * "Waiting on us" means the customer spoke last -- the same grouping the
  * Reply Inbox draws, so the badge and the page can never disagree about

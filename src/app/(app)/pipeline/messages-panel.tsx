@@ -17,7 +17,7 @@ import {
  * this panel refetches it every twelve seconds while open, and Next
  * runs server actions one after another through a single queue in the
  * browser -- an action here put the person's own Send behind the poll
- * (DECISIONS #029, #060). The route calls the same two action functions
+ * (DECISIONS #029, #062). The route calls the same two action functions
  * server-side, so what comes back is what the actions returned.
  */
 async function fetchThread(leadId: string): Promise<{

@@ -24,7 +24,7 @@
 -- Its buckets are pinned by src/lib/data/text-alert-rollup.ts and its
 -- tests, which also serve as the fallback while this migration hasn't
 -- run (the watcher catches the missing-function error and walks the
--- window as before -- slower, same numbers). See DECISIONS #060.
+-- window as before -- slower, same numbers). See DECISIONS #062.
 --
 -- security invoker, so RLS scopes the read exactly as the watcher's own
 -- fetch. Idempotent; safe as one paste and safe to run twice.

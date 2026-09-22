@@ -30,7 +30,7 @@ function summary(users: PresenceUser[]): string {
  * The refresh itself asks a route handler, not the action: Next runs
  * server actions one after another through a single queue in the
  * browser, so even a poll that only runs while the panel is open stood
- * in front of the admin's next click (DECISIONS #029, #060).
+ * in front of the admin's next click (DECISIONS #029, #062).
  */
 export function LiveUsersButton({ initialUsers }: { initialUsers: PresenceUser[] }) {
   const [users, setUsers] = useState<PresenceUser[]>(initialUsers);

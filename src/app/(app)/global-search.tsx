@@ -10,7 +10,7 @@ import type { GlobalSearchGroup } from "@/lib/data/global-search";
  * pause in typing, and Next runs server actions one after another
  * through a single queue in the browser -- so each pause used to queue
  * a search ahead of whatever the person clicked next, on every page
- * (DECISIONS #060). A failed or aborted request reads as no matches.
+ * (DECISIONS #062). A failed or aborted request reads as no matches.
  */
 async function searchEverything(q: string): Promise<GlobalSearchGroup[]> {
   const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { cache: "no-store" })

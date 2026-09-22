@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 /**
- * A recurring poll never ships as a Server Action (DECISIONS #029, #060).
+ * A recurring poll never ships as a Server Action (DECISIONS #029, #062).
  *
  * Next runs every server action through one queue in the browser, one
  * after another -- so a timer that asks an action every N seconds puts
