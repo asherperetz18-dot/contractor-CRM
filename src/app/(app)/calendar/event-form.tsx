@@ -46,7 +46,7 @@ import {
   getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
-import { repDropdownOptions } from "@/lib/data/rep-options";
+import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
 import { customerTeamSegments } from "@/lib/customer-team-line";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
@@ -799,6 +799,19 @@ export function EventForm({
                   </option>
                 ))}
               </select>
+              {/* Linked cards: an empty visit seat gets the customer's
+                  own rep in one tap -- no hunting the dropdown. */}
+              {!form.assigned_to && lead?.assigned_to && !readOnly && (
+                <div className="rep-text-row">
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={() => set("assigned_to", lead.assigned_to!)}
+                  >
+                    Use customer&apos;s rep — {repDisplayName(lead.assigned_to, allMembers ?? reps)}
+                  </button>
+                </div>
+              )}
               {form.assigned_to && (
                 <div className="rep-text-row">
                   <button
@@ -843,6 +856,17 @@ export function EventForm({
                   </option>
                 ))}
               </select>
+              {!form.second_assigned_to && lead?.partner_rep_id && !readOnly && (
+                <div className="rep-text-row">
+                  <button
+                    type="button"
+                    className="btn-ghost small"
+                    onClick={() => set("second_assigned_to", lead.partner_rep_id!)}
+                  >
+                    Use partner — {repDisplayName(lead.partner_rep_id, allMembers ?? reps)}
+                  </button>
+                </div>
+              )}
               {form.second_assigned_to && (
                 <div className="rep-text-row">
                   <button

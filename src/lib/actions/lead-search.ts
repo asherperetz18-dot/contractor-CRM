@@ -6,7 +6,15 @@ import type { PipelineStage } from "@/lib/data/types";
 
 /** Stage travels with the match because booking moves the lead on from
  * whatever stage it is in, and the wizard no longer holds the full row. */
-export type LeadMatch = { id: string; label: string; phone: string | null; address: string | null; stage: PipelineStage };
+export type LeadMatch = {
+  id: string;
+  label: string;
+  phone: string | null;
+  address: string | null;
+  stage: PipelineStage;
+  /** The contact's Assigned Rep -- pre-fills the booking's Assigned To. */
+  assigned_to: string | null;
+};
 
 const LIMIT = 20;
 
@@ -101,7 +109,7 @@ export async function searchBookableLeads(query: string): Promise<LeadMatch[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("leads")
-    .select("id, contact_type, company_name, first_name, last_name, phone, address, stage")
+    .select("id, contact_type, company_name, first_name, last_name, phone, address, stage, assigned_to")
     .eq("company_id", companyId)
     .or(
       `first_name.ilike.${term},last_name.ilike.${term},company_name.ilike.${term}`
@@ -118,11 +126,13 @@ export async function searchBookableLeads(query: string): Promise<LeadMatch[]> {
     phone: string | null;
     address: string | null;
     stage: PipelineStage;
+    assigned_to: string | null;
   }[]).map((l) => ({
     id: l.id,
     phone: l.phone,
     address: l.address,
     stage: l.stage,
+    assigned_to: l.assigned_to,
     // Same label the wizard showed when it filtered in the browser.
     label:
       l.contact_type === "Company"

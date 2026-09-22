@@ -8,6 +8,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { collectContactKeys } from "@/lib/import-batching";
 import { snapshotLead, TRASH_RETENTION_DAYS } from "@/lib/lead-trash";
 import { syncSignersWithContact } from "@/lib/signers-sync";
+import { applyLeadTeamFills } from "@/lib/lead-team-sync";
 import type { ContactForSigners } from "@/lib/data/signers-follow-contact";
 import {
   PRE_APPOINTMENT_STAGES,
@@ -463,6 +464,12 @@ export async function bookAppointmentForLead(
     })
     .eq("id", leadId);
   if (leadError) return { error: leadError.message };
+
+  // Linked cards: the visit's rep fills the contact's empty Assigned Rep.
+  await applyLeadTeamFills(supabase, profile, leadId, {
+    assigned_to: details.assignedTo || null,
+    second_assigned_to: null,
+  });
 
   revalidatePath("/pipeline");
   revalidatePath("/calendar");

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { applyLeadTeamFills } from "@/lib/lead-team-sync";
 import type { EventInput, EventStatus } from "@/lib/data/types";
 
 // Confirmation flags are deliberately NOT in here -- they can be changed
@@ -73,6 +74,13 @@ export async function createEvent(input: EventInput, leadId?: string) {
     company_id: profile.company_id,
   });
   if (error) return { error: error.message };
+  // Linked cards: the visit seats fill the contact's empty team seats.
+  if (leadId) {
+    await applyLeadTeamFills(supabase, profile, leadId, {
+      assigned_to: input.assigned_to || null,
+      second_assigned_to: input.second_assigned_to || null,
+    });
+  }
   revalidateCalendarRoutes();
   return {};
 }
@@ -118,7 +126,7 @@ export async function updateEvent(
   const supabase = await createClient();
   const { data: existing } = await supabase
     .from("events")
-    .select("notes, date, time")
+    .select("notes, date, time, lead_id")
     .eq("id", id)
     .single();
   const notesChanged = (existing?.notes ?? "") !== (input.notes || "");
@@ -167,6 +175,14 @@ export async function updateEvent(
       error:
         "That appointment couldn't be saved — it belongs to another dispatcher's lead. Only they or the office can change it.",
     };
+  }
+  // Linked cards: the visit seats fill the contact's empty team seats.
+  const leadId = (existing as { lead_id?: string | null } | null)?.lead_id ?? null;
+  if (leadId && profile) {
+    await applyLeadTeamFills(supabase, profile, leadId, {
+      assigned_to: input.assigned_to || null,
+      second_assigned_to: input.second_assigned_to || null,
+    });
   }
   revalidateCalendarRoutes();
   return {};
