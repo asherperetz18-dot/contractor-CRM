@@ -3,34 +3,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
+import { canSeePage, type RolePageVisibilityRow } from "@/lib/data/types";
 import {
-  canSeePage,
-  normalizePhone,
-  type RolePageVisibilityRow,
-} from "@/lib/data/types";
+  TEXT_ALERT_WINDOW_DAYS,
+  coerceTextAlertRollup,
+  rollupTextAlerts,
+  type FreshText,
+  type TextAlertRow,
+} from "@/lib/data/text-alert-rollup";
 
-/** One toast's worth of a new incoming text. */
-export type FreshText = {
-  id: string;
-  leadId: string | null;
-  /** The sender's number -- the inbox deep-links by it when the text
-   *  matched no lead. */
-  fromNumber: string;
-  /** Who it's from: the lead's name, or the bare number. */
-  name: string;
-  preview: string;
-  at: string;
-};
-
-type AlertRow = {
-  id: string;
-  lead_id: string | null;
-  direction: "inbound" | "outbound";
-  from_number: string;
-  to_number: string;
-  body: string | null;
-  created_at: string;
-};
+export type { FreshText };
 
 /**
  * What the incoming-text watcher polls: how many conversations are
@@ -45,6 +27,12 @@ type AlertRow = {
  * Scoped to the last 30 days: a thread silent for a month is not an
  * alert, it is history, and counting it forever would teach everyone to
  * ignore the badge.
+ *
+ * Reduced in the database (text_alert_rollup, migration 0168): every
+ * open tab asks this every 20 seconds, and the answer used to be the
+ * whole 30-day window walked out of Postgres in 1000-row pages per ask.
+ * Until that migration is run, the fallback below walks the window as
+ * before through the same tested reduction -- slower, same numbers.
  */
 export async function getTextAlerts(sinceIso: string | null): Promise<{
   error?: string;
@@ -68,12 +56,32 @@ export async function getTextAlerts(sinceIso: string | null): Promise<{
     return { awaitingCount: 0, latestIso: sinceIso, fresh: [] };
   }
 
-  const windowStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const windowStart = new Date(Date.now() - TEXT_ALERT_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: reduced, error: rpcError } = await supabase.rpc("text_alert_rollup", {
+    p_company: profile.company_id,
+    p_since: sinceIso,
+    p_window_start: windowStart,
+  });
+  if (!rpcError && reduced) {
+    const rollup = coerceTextAlertRollup(reduced);
+    if (rollup) {
+      return {
+        awaitingCount: rollup.awaitingCount,
+        latestIso: rollup.latestIso ?? sinceIso,
+        // A lead the caller's RLS hides, or none at all: the number is
+        // the name, as the inbox shows it.
+        fresh: rollup.fresh.map((f) => ({ ...f, name: f.name || f.fromNumber })),
+      };
+    }
+  }
+
+  // ── Fallback: the window walked out and reduced here ────────────
   // selectAll, not .limit(): PostgREST silently clamps any limit to the
   // project's max-rows (1000 here), and a clamped newest-first list
   // makes whole conversations vanish from the count -- not misfiled,
   // just never seen. The 30-day window keeps the walk bounded.
-  const rows = await selectAll<AlertRow>((f, t) =>
+  const rows = await selectAll<TextAlertRow>((f, t) =>
     supabase
       .from("sms_messages")
       .select("id, lead_id, direction, from_number, to_number, body, created_at")
@@ -86,28 +94,9 @@ export async function getTextAlerts(sinceIso: string | null): Promise<{
       .range(f, t)
   );
 
-  // Newest message per conversation, keyed the way the inbox keys them.
-  // Rows arrive newest-first, so the first row seen for a key IS the
-  // newest -- a conversation is "awaiting" when that row is inbound.
-  const newestByKey = new Map<string, AlertRow>();
-  for (const m of rows) {
-    const counterparty = m.direction === "inbound" ? m.from_number : m.to_number;
-    const key = m.lead_id ?? `phone:${normalizePhone(counterparty)}`;
-    if (!newestByKey.has(key)) newestByKey.set(key, m);
-  }
-  const awaitingCount = [...newestByKey.values()].filter(
-    (m) => m.direction === "inbound"
-  ).length;
+  const { awaitingCount, latestIso, fresh: freshRows } = rollupTextAlerts(rows, sinceIso);
 
-  const latestIso = rows[0]?.created_at ?? sinceIso;
-
-  // The toasts: inbound texts the caller has not seen yet. Capped so a
-  // burst becomes a badge, not a wall of pop-ups.
-  const freshRows = sinceIso
-    ? rows.filter((m) => m.direction === "inbound" && m.created_at > sinceIso).slice(0, 5)
-    : [];
-
-  const leadIds = [...new Set(freshRows.map((m) => m.lead_id).filter(Boolean))] as string[];
+  const leadIds = [...new Set(freshRows.map((m) => m.leadId).filter(Boolean))] as string[];
   const names = new Map<string, string>();
   if (leadIds.length) {
     const { data: leads } = await supabase
@@ -128,12 +117,8 @@ export async function getTextAlerts(sinceIso: string | null): Promise<{
   }
 
   const fresh: FreshText[] = freshRows.map((m) => ({
-    id: m.id,
-    leadId: m.lead_id,
-    fromNumber: m.from_number,
-    name: (m.lead_id && names.get(m.lead_id)) || m.from_number,
-    preview: (m.body ?? "").slice(0, 90),
-    at: m.created_at,
+    ...m,
+    name: (m.leadId && names.get(m.leadId)) || m.fromNumber,
   }));
 
   return { awaitingCount, latestIso, fresh };
