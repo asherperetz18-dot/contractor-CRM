@@ -60,10 +60,12 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   server-side (`searchBookableLeads` / `searchEstimateLeads` pattern),
   serve aggregates from SQL (0156/0157). See DECISIONS #019–#021 and
   the standing note in TECH_DEBT.
-- Recurring client polls never ship as Server Actions — an action
-  re-runs the whole layout (~1.5s) and queues against the user's own
-  clicks. Thin route handlers instead (DECISIONS #029); the four
-  poll routes under `src/app/api/` are the pattern.
+- Recurring client polls never ship as Server Actions — Next runs
+  actions through one queue in the browser, so a poll on that path
+  puts the user's own Save/Send behind it. Thin route handlers instead
+  (DECISIONS #029, #060); the poll routes under `src/app/api/` are the
+  pattern, and `src/lib/poll-routes.test.ts` fails on any `setInterval`
+  that calls an action. "Keeps freezing" has meant this twice.
 
 ## Account and data quirks
 
