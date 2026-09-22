@@ -10371,3 +10371,71 @@ textarea.est-item-desc:disabled {
 .team-line-dot {
   color: var(--ink-soft);
 }
+
+/* ── Platform Admin › Invite History ─────────────────────────────── */
+/* A list, not a form: the 640px card cap that suits the invite and
+   admin forms would push Status and Resend off-screen here. */
+.cp-card.invite-history-card {
+  max-width: 1100px;
+}
+.invite-history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+}
+.invite-history-tabs {
+  margin: 0;
+}
+.invite-tab-count {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+.invite-history-search {
+  margin-left: auto;
+  min-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  background: #fefdfb;
+}
+.invite-history-search:focus {
+  outline: 2px solid var(--blueprint);
+  outline-offset: 1px;
+  border-color: var(--blueprint);
+}
+/* A statement, not a control -- it must not look pressable. */
+.chip.invite-status {
+  cursor: default;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+.invite-expiry {
+  white-space: nowrap;
+}
+/* The card is 640px wide at most, so the table is a scroller past
+   ~600px of content; cells stay on one line and the row scrolls sideways
+   rather than an email address wrapping one letter per line. */
+.invite-history-table td,
+.invite-history-table th {
+  white-space: nowrap;
+  cursor: default;
+}
+.invite-history-table .error-note {
+  white-space: normal;
+  text-align: right;
+  margin: 6px 0 0;
+}
+@media (max-width: 700px) {
+  .invite-history-search {
+    margin-left: 0;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .invite-history-table .chip.invite-status {
+    padding: 8px 12px;
+  }
+}
