@@ -35,7 +35,22 @@ export type GlobalSearchGroup = {
 
 export type SearchableLead = Pick<
   Lead,
-  "id" | "contact_type" | "company_name" | "first_name" | "last_name" | "phone" | "email" | "address" | "stage"
+  | "id"
+  | "contact_type"
+  | "company_name"
+  | "first_name"
+  | "last_name"
+  | "phone"
+  | "phone2"
+  | "phone3"
+  | "email"
+  | "address"
+  | "zip"
+  | "second_contact_first_name"
+  | "second_contact_last_name"
+  | "second_contact_phone"
+  | "second_contact_email"
+  | "stage"
 >;
 export type SearchableEstimate = Pick<
   Estimate,
@@ -91,9 +106,33 @@ function shortDate(iso: string): string {
 // substring match fails. Fold every whitespace run to one space, and
 // match per word: each typed word must appear somewhere in the folded
 // haystack, in any order, across field boundaries. The SQL prefilter
-// (migration 0155) applies the same rule -- see DECISIONS #008.
+// (migration 0170) applies the same rule -- see DECISIONS #008.
 function fold(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** The query as the words both halves of search match on: whitespace
+ *  (non-breaking included) folded, lowercased. Empty for a query under
+ *  two characters, the same floor buildSearchGroups applies. */
+export function searchWords(query: string): string[] {
+  const q = fold(query);
+  if (q.length < 2) return [];
+  return q.split(" ");
+}
+
+/**
+ * One PostgREST `.or()` filter: this word, as a case-insensitive
+ * substring, in any of the columns. For the fallback path the action
+ * takes when the global_search SQL function is unavailable -- chaining
+ * one of these per word ANDs them, which is the per-word rule above
+ * expressed as filters. Values are double-quoted so a comma or
+ * parenthesis in the word cannot split the filter, with the quote's own
+ * escapes applied after LIKE's, so `%` and `_` stay literal (0141).
+ */
+export function ilikeAnyColumn(word: string, columns: string[]): string {
+  const likeEscaped = word.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const quoted = `"%${likeEscaped.replace(/[\\"]/g, (c) => `\\${c}`)}%"`;
+  return columns.map((col) => `${col}.ilike.${quoted}`).join(",");
 }
 
 function matchesEveryWord(words: string[], fields: (string | null | undefined)[]): boolean {
@@ -135,9 +174,9 @@ export function buildSearchGroups(
     notes: SearchableNote[];
   }
 ): GlobalSearchGroup[] {
-  const q = fold(query);
-  if (q.length < 2) return [];
-  const words = q.split(" ");
+  const words = searchWords(query);
+  if (words.length === 0) return [];
+  const q = words.join(" ");
 
   const leadById = new Map(input.leads.map((l) => [l.id, l]));
 
@@ -147,10 +186,32 @@ export function buildSearchGroups(
   // normalized digits too, alongside the free-text match.
   const qDigits = q.replace(/\D/g, "");
 
+  // The same fields leads.search_text carries (migration 0170): the
+  // display name, every name part (so a Company contact's person is
+  // findable), every phone as typed and as bare digits, emails, address
+  // and zip. A field the SQL side matches on and this list lacks makes
+  // the prefilter return a row this re-filter then drops.
   const contactHits: GlobalHit[] = input.leads
     .filter((l) => {
-      const textMatch = matchesEveryWord(words, [leadDisplayName(l), l.phone, l.address, l.email]);
-      const phoneMatch = qDigits.length >= 3 && !!l.phone && normalizePhone(l.phone).includes(qDigits);
+      const phones = [l.phone, l.phone2, l.phone3, l.second_contact_phone].filter(
+        (p): p is string => !!p
+      );
+      const textMatch = matchesEveryWord(words, [
+        leadDisplayName(l),
+        l.company_name,
+        l.first_name,
+        l.last_name,
+        l.second_contact_first_name,
+        l.second_contact_last_name,
+        ...phones,
+        ...phones.map((p) => p.replace(/\D/g, "")),
+        l.email,
+        l.second_contact_email,
+        l.address,
+        l.zip,
+      ]);
+      const phoneMatch =
+        qDigits.length >= 3 && phones.some((p) => normalizePhone(p).includes(qDigits));
       return textMatch || phoneMatch;
     })
     .slice(0, PER_GROUP)

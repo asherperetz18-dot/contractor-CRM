@@ -10,13 +10,15 @@ import type { GlobalSearchGroup } from "@/lib/data/global-search";
  * pause in typing, and Next runs server actions one after another
  * through a single queue in the browser -- so each pause used to queue
  * a search ahead of whatever the person clicked next, on every page
- * (DECISIONS #062). A failed or aborted request reads as no matches.
+ * (DECISIONS #062). A failed or aborted request is null -- reported as
+ * a failure, never as "no matches": that wording once hid a database
+ * timeout for weeks while clients "vanished" from search.
  */
-async function searchEverything(q: string): Promise<GlobalSearchGroup[]> {
+async function searchEverything(q: string): Promise<GlobalSearchGroup[] | null> {
   const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { cache: "no-store" })
     .then((r) => (r.ok ? (r.json() as Promise<{ groups?: GlobalSearchGroup[] }>) : null))
     .catch(() => null);
-  return res?.groups ?? [];
+  return res?.groups ?? null;
 }
 
 export function GlobalSearch() {
@@ -26,6 +28,7 @@ export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [failed, setFailed] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestIdRef = useRef(0);
 
@@ -43,6 +46,7 @@ export function GlobalSearch() {
     if (q.length < 2) {
       setLoading(false);
       setSearched(false);
+      setFailed(false);
       setGroups([]);
       return;
     }
@@ -52,7 +56,8 @@ export function GlobalSearch() {
     debounceRef.current = setTimeout(() => {
       searchEverything(q).then((found) => {
         if (requestIdRef.current !== requestId) return;
-        setGroups(found);
+        setGroups(found ?? []);
+        setFailed(found === null);
         setLoading(false);
         setSearched(true);
       });
@@ -64,6 +69,7 @@ export function GlobalSearch() {
     setQuery("");
     setGroups([]);
     setSearched(false);
+    setFailed(false);
     router.push(href);
   }
 
@@ -87,6 +93,10 @@ export function GlobalSearch() {
           <div className="gsearch-panel">
             {loading ? (
               <div className="gsearch-empty">Searching…</div>
+            ) : failed ? (
+              <div className="gsearch-empty">
+                Search didn&apos;t answer. Try again in a moment.
+              </div>
             ) : empty && searched ? (
               <div className="gsearch-empty">
                 No matches across contacts, estimates, appointments, notes, or bills.
