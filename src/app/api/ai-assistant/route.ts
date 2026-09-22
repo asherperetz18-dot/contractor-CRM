@@ -1,3 +1,5 @@
+import { addDays } from "@/lib/company-clock";
+import { companyToday } from "@/lib/data/company-today";
 import Anthropic from "@anthropic-ai/sdk";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
@@ -206,12 +208,6 @@ function proposalTargetCount(
 
 const CALL_FETCH_CAP = 3000;
 
-function isoDaysFromNow(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 type Access = { canViewEstimates: boolean; canViewFinancials: boolean };
 
@@ -221,7 +217,7 @@ async function gatherContext(
   access: Access,
   repScope: AssistantRepScope | null
 ) {
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = await companyToday();
   const callWindowStart = new Date(Date.now() - CALL_WINDOW_DAYS * 86400000).toISOString();
 
   // A rep-scoped viewer gets only their own rows, filtered at the
@@ -277,8 +273,8 @@ async function gatherContext(
       .select("id, title, date, time, end_time, event_type, status, assigned_to, lead_id")
       .eq("company_id", companyId)
       .match(repMatch)
-      .gte("date", isoDaysFromNow(-1))
-      .lte("date", isoDaysFromNow(14))
+      .gte("date", addDays(todayISO, -1))
+      .lte("date", addDays(todayISO, 14))
       .order("date", { ascending: true })
       .order("time", { ascending: true })
       .limit(150),
@@ -288,7 +284,7 @@ async function gatherContext(
       .eq("company_id", companyId)
       .match(repMatch)
       .is("completed_at", null)
-      .lte("due_date", isoDaysFromNow(30))
+      .lte("due_date", addDays(todayISO, 30))
       .order("due_date", { ascending: true })
       .limit(150),
     // The Estimates page's own gate; without it the section never

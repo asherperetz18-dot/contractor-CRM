@@ -1,3 +1,4 @@
+import { todayForCompany } from "@/lib/data/company-today";
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { leadForPhoneNumber, leadPhoneMatch } from "@/lib/data/lead-for-number";
@@ -343,7 +344,7 @@ async function appendLeadNote(
     .eq("company_id", companyId)
     .maybeSingle<{ notes: string | null }>();
   const existing = (data?.notes ?? "").trim();
-  const stamped = `${new Date().toISOString().slice(0, 10)} — ${note}`;
+  const stamped = `${await todayForCompany(admin, companyId)} — ${note}`;
   await admin
     .from("leads")
     .update({ notes: existing ? `${existing}\n\n${stamped}` : stamped })

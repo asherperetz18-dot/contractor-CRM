@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -25,10 +26,6 @@ async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: 
   return { companyId: profile.company_id };
 }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /**
  * What a person currently owns, split into work that's still live and
  * work that's already history. Shown before a handover so nobody removes
@@ -42,7 +39,7 @@ export async function getAssignedWork(userId: string): Promise<{
   if ("error" in guard) return guard;
 
   const supabase = await createClient();
-  const today = todayISO();
+  const today = await companyToday();
 
   const [leadsRes, eventsRes, tasksRes] = await Promise.all([
     supabase
@@ -98,7 +95,7 @@ export async function reassignWork(
   }
 
   const supabase = await createClient();
-  const today = todayISO();
+  const today = await companyToday();
 
   // --- Leads -------------------------------------------------------
   const { data: leadRows, error: leadReadError } = await supabase

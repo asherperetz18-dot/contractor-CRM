@@ -830,17 +830,34 @@ export function endsNextDay(time: string | null, endTime: string | null): boolea
 // <input type="time"> is locale-driven, so a custom picker enforces this.
 export type TimeFormat = "12h" | "24h";
 
-// Maps the company_profile.timezone custom label to a real IANA zone, for
-// the handful of features (no-show follow-up windows, SMS reminders) that
-// need to reason about "now" in the company's local time.
+// Maps the company_profile.timezone custom label to a real IANA zone.
+// Every "what day is it" on the server resolves through this (see
+// lib/company-clock and data/company-today): the machine's clock is UTC,
+// and a company's calendar day is the one on its own wall.
 export const TIMEZONE_IANA: Record<string, string> = {
   Pacific: "America/Los_Angeles",
   Mountain: "America/Denver",
+  // Arizona keeps standard time all year; "Mountain" is an hour off there
+  // from March to November.
+  Arizona: "America/Phoenix",
   Central: "America/Chicago",
   Eastern: "America/New_York",
   Alaska: "America/Anchorage",
   Hawaii: "Pacific/Honolulu",
 };
+
+/** The choices the Company Profile's Timezone select offers, in the
+ *  order shown. Values are the labels stored in company_profile.timezone;
+ *  every one has a row in TIMEZONE_IANA (a test holds the two together). */
+export const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
+  { value: "Pacific", label: "Pacific Time (PT)" },
+  { value: "Mountain", label: "Mountain Time (MT)" },
+  { value: "Arizona", label: "Arizona (MST, no daylight saving)" },
+  { value: "Central", label: "Central Time (CT)" },
+  { value: "Eastern", label: "Eastern Time (ET)" },
+  { value: "Alaska", label: "Alaska Time (AKT)" },
+  { value: "Hawaii", label: "Hawaii Time (HT)" },
+];
 
 /** The IANA zone behind a company's timezone label. Pacific when the
  *  label is missing or unknown -- the column's own default. */
@@ -1594,8 +1611,9 @@ export function computeLeadWarnings(
   };
 }
 
-export function hasFollowUpDue(tasks: LeadTask[]) {
-  const todayISO = new Date().toISOString().slice(0, 10);
+/** Whether any open task is due on or before `todayISO` -- the company's
+ *  today (data/company-today), never the server's. */
+export function hasFollowUpDue(tasks: LeadTask[], todayISO: string) {
   return tasks.some((t) => !t.completed_at && t.due_date <= todayISO);
 }
 

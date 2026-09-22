@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -143,7 +144,7 @@ async function applyDispositionToLead(
       title: "Call back",
       // Due today, so it lands on Follow-ups Due immediately rather
       // than surfacing tomorrow when the promise has gone stale.
-      due_date: new Date().toISOString().slice(0, 10),
+      due_date: await companyToday(),
       assigned_to: callerId,
       created_by: callerId,
       company_id: companyId,

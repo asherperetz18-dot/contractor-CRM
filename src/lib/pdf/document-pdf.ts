@@ -1,3 +1,4 @@
+import { dayLabel } from "@/lib/company-clock";
 import "server-only";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
@@ -72,13 +73,6 @@ const LINE = rgb(0.85, 0.85, 0.85);
 const DANGER = rgb(0.72, 0.15, 0.15);
 // The house green (#2f855a): a discount is savings, and savings read green.
 const SAVINGS = rgb(0x2f / 255, 0x85 / 255, 0x5a / 255);
-
-function longDate(value: string | null | undefined): string {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + "T00:00:00" : value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-}
 
 /** ASCII-safe for WinAnsi standard fonts: smart punctuation folded down. */
 function safe(text: string): string {
@@ -239,6 +233,10 @@ async function embedDataUrlPng(doc: PDFDocument, dataUrl: string) {
 
 export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint8Array> {
   const { estimate, items, signers, payments, sections, company, customer, parent } = bundle;
+  // Every date on the sheet is on the company's own calendar, labelled
+  // where a clock time is printed: an evening signature is that day.
+  const zone = companyIanaZone(company?.timezone);
+  const longDate = (value: string | null | undefined) => dayLabel(value, zone, "long");
   const w = await Writer.create();
 
   const isChangeOrder = estimate.kind === "change_order";
@@ -476,8 +474,6 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   if (signers.length > 0) {
     const sig = signatureProgress(signers);
     w.heading(`Signatures (${sig.signed} of ${sig.total})`);
-    // Same clock as the web document: the company's own, labelled.
-    const zone = companyIanaZone(bundle.company?.timezone);
     for (const s of signers) {
       w.ensure(64);
       if (s.signature_image) {

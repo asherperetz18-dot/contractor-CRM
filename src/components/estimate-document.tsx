@@ -1,3 +1,4 @@
+import { dayLabel } from "@/lib/company-clock";
 import { Fragment } from "react";
 import {
   discountPercentLabel,
@@ -142,14 +143,6 @@ function AttachmentFigure({
   );
 }
 
-function longDate(value: string | null) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
 /**
  * The customer-facing document. Rendered both in the client portal and in
  * the staff "Preview as Customer" view from the same component, so what
@@ -241,6 +234,9 @@ export function EstimateDocument({
   // in its market, and "5:57 PM UTC" under a Los Angeles signature was
   // read as the wrong time. Label always printed (PDT / PST).
   const zone = companyIanaZone(company?.timezone);
+  // Issued / signed / valid-until / cancelled / paid dates on the same
+  // calendar: an evening timestamp is that day, not UTC's tomorrow.
+  const longDate = (value: string | null) => dayLabel(value, zone, "long");
 
   return (
     <article className="estdoc">
@@ -548,7 +544,7 @@ export function EstimateDocument({
                       <div className="estdoc-paid">
                         PAID
                         {depositPaid.paid_at
-                          ? " " + new Date(depositPaid.paid_at).toLocaleDateString("en-US")
+                          ? " " + new Date(depositPaid.paid_at).toLocaleDateString("en-US", { timeZone: zone })
                           : ""}
                         {paymentMethodLabel(depositPaid.method)
                           ? " · " + paymentMethodLabel(depositPaid.method)

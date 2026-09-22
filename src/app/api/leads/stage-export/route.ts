@@ -1,3 +1,5 @@
+import { nowInZone } from "@/lib/timezone";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -77,10 +79,12 @@ export async function GET(request: Request) {
     },
   });
 
+  const filename = stageExportFilename(stage, nowInZone(await getCompanyZone()));
+
   return new Response(stream, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${stageExportFilename(stage)}"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
       "Cache-Control": "no-store",
     },
   });

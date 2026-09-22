@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -110,12 +111,12 @@ export async function getExistingContactKeys(): Promise<{
 // spreadsheet used to be sent as null, which failed the insert -- and
 // because rows go up in chunks, one bad cell aborted the whole import.
 // Anything that isn't a real YYYY-MM-DD falls back to today.
-function importDate(raw: string): string {
+function importDate(raw: string, today: string): string {
   const trimmed = (raw || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed) && !isNaN(new Date(trimmed).getTime())) {
     return trimmed;
   }
-  return new Date().toISOString().slice(0, 10);
+  return today;
 }
 
 export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage) {
@@ -123,6 +124,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
   if (!profile) return { error: "Not signed in.", imported: 0 };
 
   const supabase = await createClient();
+  const today = await companyToday();
   const payload = rows.map((r) => ({
     contact_type: "Individual" as const,
     company_name: r.company_name || null,
@@ -135,7 +137,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     address: r.address || null,
     project_type: r.project_type || null,
     value: Number(r.value) || 0,
-    date_received: importDate(r.date_received),
+    date_received: importDate(r.date_received, today),
     stage,
     source: r.source || "CSV Import",
     notes: r.notes || null,

@@ -1,8 +1,9 @@
+import { isoDateInZone } from "@/lib/company-clock";
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
-import { normalizePhone } from "@/lib/data/types";
+import { companyIanaZone, normalizePhone } from "@/lib/data/types";
 
 export type NewLeadAlertInput = {
   companyId: string;
@@ -21,6 +22,7 @@ type AlertConfig = {
   new_lead_alert_daily_cap: number;
   new_lead_alert_count: number;
   new_lead_alert_count_date: string | null;
+  timezone: string | null;
 };
 
 /**
@@ -83,7 +85,7 @@ export async function notifyNewLead(
   const { data } = await admin
     .from("company_profile")
     .select(
-      "new_lead_alert_phones, new_lead_alert_daily_cap, new_lead_alert_count, new_lead_alert_count_date"
+      "new_lead_alert_phones, new_lead_alert_daily_cap, new_lead_alert_count, new_lead_alert_count_date, timezone"
     )
     .eq("company_id", lead.companyId)
     .maybeSingle();
@@ -94,8 +96,10 @@ export async function notifyNewLead(
   if (recipients.length === 0) return { sent: 0, skipped: "no alert numbers configured" };
 
   // The counter resets on the first alert of a new day rather than on a
-  // schedule, so there's nothing to keep running for it.
-  const today = new Date().toISOString().slice(0, 10);
+  // schedule, so there's nothing to keep running for it. The day is the
+  // company's own: a cap "per day" that rolled at 5pm Pacific was two
+  // half-days.
+  const today = isoDateInZone(new Date(), companyIanaZone(config.timezone));
   const usedToday = config.new_lead_alert_count_date === today ? config.new_lead_alert_count : 0;
   if (usedToday >= config.new_lead_alert_daily_cap) {
     return { sent: 0, skipped: `daily cap of ${config.new_lead_alert_daily_cap} reached` };

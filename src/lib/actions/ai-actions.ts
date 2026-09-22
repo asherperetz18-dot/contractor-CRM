@@ -1,5 +1,6 @@
 "use server";
 
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -244,7 +245,7 @@ export async function applyProposal(
       const dueDate =
         typeof params.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.due_date)
           ? params.due_date
-          : new Date().toISOString().slice(0, 10);
+          : await companyToday();
       if (!title) {
         failure = "That task has no title.";
       } else {
