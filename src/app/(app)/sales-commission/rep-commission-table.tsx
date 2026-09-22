@@ -116,9 +116,6 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
           </p>
         </div>
         <div className="toolbar-actions">
-          {everyone && filterOptions.length > 0 && (
-            <RepFilter options={filterOptions} value={repFilter} />
-          )}
           <Link href="/sales-commission/statement" className="btn-ghost">
             Printable statement
           </Link>
@@ -127,6 +124,13 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
 
       {!rows.length ? (
         <div className="empty-state">
+          {/* The filter caused this emptiness, so it stays reachable to
+              be cleared. */}
+          {filtering && filterOptions.length > 0 && (
+            <div className="form-row" style={{ marginBottom: 12 }}>
+              <RepFilter options={filterOptions} value={repFilter} />
+            </div>
+          )}
           <p className="empty-label">
             {filtering ? "Nothing for this salesperson" : "Nothing yet"}
           </p>
@@ -176,6 +180,14 @@ export async function RepCommissionTable({ repFilter = "" }: { repFilter?: strin
               <div className="stat-label">Awaiting costs</div>
             </div>
           </div>
+
+          {/* Under the boxes, on the left -- where the eye lands after
+              reading them, right above the table it narrows. */}
+          {everyone && filterOptions.length > 0 && (
+            <div className="form-row" style={{ margin: "14px 0 4px", maxWidth: 320 }}>
+              <RepFilter options={filterOptions} value={repFilter} />
+            </div>
+          )}
 
           {/* The owner runs migrations by hand, sometimes days after a
               merge -- until 0158 is in, the page stays exactly what it
