@@ -40,6 +40,12 @@ Lessons from real sessions, kept so the next one doesn't relearn them.
   into the Supabase SQL editor. A filename, repo path, or file
   attachment alone is not enough; attach the file too if you like, but
   the inline block is the deliverable.
+- **Say "SQL to run: yes/no" in every hand-off, and look beyond your own
+  PR.** Parallel sessions merge migrations into main mid-conversation,
+  and the owner tracks "did I run SQL" per chat, not per PR — when he
+  asks (or when you open a PR), check main's recently merged migrations
+  and paste any he plausibly hasn't run. Idempotent-by-rule makes
+  re-offering one free.
 - **Migration numbers race.** Several Claude sessions ship in parallel
   here, and two of them once claimed 0159 in the same afternoon — the
   loser renamed to 0160 and had to chase the number through nine files

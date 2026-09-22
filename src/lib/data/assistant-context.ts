@@ -3,6 +3,7 @@ import {
   money,
   moneyCents,
   effectiveEstimateRepId,
+  type AppRole,
   type ContactType,
   type Estimate,
 } from "./types.ts";
@@ -38,6 +39,34 @@ export type AssistantAccess = {
   canViewEstimates: boolean;
   canViewFinancials: boolean;
 };
+
+export type AssistantRepScope = { id: string; name: string };
+
+// Desk roles work the whole book by definition -- Office runs the
+// company, Dispatch assigns everyone's appointments, Call Center enters
+// everyone's leads, Bookkeeping reads everyone's money, Production runs
+// every job. Someone whose only hats are Sales/Field is a rep, and the
+// chat talks to them about their own records (the route filters every
+// fetch by this id). No roles at all scopes too: least data is the
+// safe direction.
+const DESK_ROLES: AppRole[] = [
+  "Office",
+  "Admin",
+  "Dispatch",
+  "Call Center",
+  "Bookkeeping",
+  "Production",
+];
+
+export function assistantRepScope(profile: {
+  id: string;
+  roles: AppRole[];
+  name?: string | null;
+  email?: string | null;
+}): AssistantRepScope | null {
+  if (profile.roles.some((role) => DESK_ROLES.includes(role))) return null;
+  return { id: profile.id, name: profile.name || profile.email || "This rep" };
+}
 
 export type AssistantLead = {
   id: string;
@@ -162,6 +191,10 @@ export type AssistantContextInput = {
    *  the detail roster -- a signed job's customer must never read as
    *  "Unnamed" just because the lead is years old. */
   extraLeadNames: Map<string, string>;
+  /** Set when the viewer is a rep: every row the route fetched was
+   *  already filtered to them, and the context must say so instead of
+   *  presenting their book as the company's. */
+  repScope?: AssistantRepScope | null;
 };
 
 export function formatCallDuration(totalSeconds: number): string {
@@ -232,7 +265,13 @@ export function buildAssistantContext(input: AssistantContextInput): string {
     return `- Due ${t.due_date}${overdue} | ${t.title} | rep: ${rep(t.assigned_to)}${contact}`;
   });
 
+  const scope = input.repScope;
   const sections: string[] = [
+    ...(scope
+      ? [
+          `VIEWER SCOPE: You are talking to ${scope.name}. Every section below covers ONLY records assigned to them (their leads, appointments, tasks, documents, projects, checklist steps and calls) -- not the whole company. If asked about another person's work or numbers beyond this data, say this chat only covers their own assigned records.`,
+        ]
+      : []),
     [
       `Company: ${input.companyName}`,
       `Today's date: ${input.todayISO}`,
@@ -242,7 +281,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
       `TEAM (use these ids when proposing an assignment):`,
       input.team.length ? input.team.map((m) => `- id: ${m.id} | ${m.name}`).join("\n") : "(none)",
     ].join("\n"),
-    `Summary (accurate company-wide totals -- use these for any count/value question): ${openTotals.length} open leads worth ${money(openPipelineValue)} total, out of ${input.leadTotals.length} leads overall.`,
+    `Summary (${input.repScope ? `accurate totals for ${input.repScope.name}'s assigned leads` : "accurate company-wide totals"} -- use these for any count/value question): ${openTotals.length} open leads worth ${money(openPipelineValue)} total, out of ${input.leadTotals.length} leads overall.`,
     [
       `LEADS -- detail roster, most recent ${input.leads.length} of ${input.leadTotals.length} total (older leads are omitted here; rely on the Summary above for totals, not a count of this list):`,
       leadLines.length ? leadLines.join("\n") : "(none)",

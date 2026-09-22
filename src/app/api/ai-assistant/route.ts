@@ -15,11 +15,13 @@ import {
 import { canViewFinancials } from "@/lib/data/accounting-access";
 import { buildProjectCards } from "@/app/(app)/projects/project-data";
 import {
+  assistantRepScope,
   buildAssistantContext,
   CALL_WINDOW_DAYS,
   MAX_ESTIMATES_IN_CONTEXT,
   MAX_CALLS_IN_CONTEXT,
   MAX_LEADS_IN_CONTEXT,
+  type AssistantRepScope,
   type AssistantCall,
   type AssistantChecklistItem,
   type AssistantEstimate,
@@ -213,9 +215,19 @@ function isoDaysFromNow(days: number) {
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 type Access = { canViewEstimates: boolean; canViewFinancials: boolean };
 
-async function gatherContext(supabase: Supabase, companyId: string, access: Access) {
+async function gatherContext(
+  supabase: Supabase,
+  companyId: string,
+  access: Access,
+  repScope: AssistantRepScope | null
+) {
   const todayISO = new Date().toISOString().slice(0, 10);
   const callWindowStart = new Date(Date.now() - CALL_WINDOW_DAYS * 86400000).toISOString();
+
+  // A rep-scoped viewer gets only their own rows, filtered at the
+  // query so the caps and summaries all describe THEIR book. match({})
+  // is a no-op for desk roles.
+  const repMatch = repScope ? { assigned_to: repScope.id } : {};
 
   const [
     { data: companyProfile },
@@ -238,6 +250,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
         "id, contact_type, company_name, first_name, last_name, phone, email, source, project_type, stage, value, assigned_to, date_received, created_at"
       )
       .eq("company_id", companyId)
+      .match(repMatch)
       .order("created_at", { ascending: false })
       .limit(MAX_LEADS_IN_CONTEXT),
     // Narrow columns, and genuinely every row -- true totals,
@@ -251,6 +264,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
         .from("leads")
         .select("stage, value")
         .eq("company_id", companyId)
+        .match(repMatch)
         .range(rangeFrom, rangeTo)
     ),
     supabase
@@ -262,6 +276,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
       .from("events")
       .select("id, title, date, time, end_time, event_type, status, assigned_to, lead_id")
       .eq("company_id", companyId)
+      .match(repMatch)
       .gte("date", isoDaysFromNow(-1))
       .lte("date", isoDaysFromNow(14))
       .order("date", { ascending: true })
@@ -271,6 +286,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
       .from("lead_tasks")
       .select("id, lead_id, title, due_date, completed_at, assigned_to")
       .eq("company_id", companyId)
+      .match(repMatch)
       .is("completed_at", null)
       .lte("due_date", isoDaysFromNow(30))
       .order("due_date", { ascending: true })
@@ -285,6 +301,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
               "id, lead_id, doc_number, title, status, kind, total_cents, expires_at, signed_at, created_at, assigned_to, parent_estimate_id"
             )
             .eq("company_id", companyId)
+            .match(repMatch)
             .range(rangeFrom, rangeTo)
         )
       : Promise.resolve([] as AssistantEstimate[]),
@@ -299,6 +316,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
         .from("project_checklist_items")
         .select("id, estimate_id, label, due_date, assigned_to")
         .eq("company_id", companyId)
+        .match(repMatch)
         .is("completed_at", null)
         .range(rangeFrom, rangeTo)
     ),
@@ -312,6 +330,7 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
           .from("call_logs")
           .select("created_at, direction, disposition, status, duration_seconds, rep_id, lead_id")
           .eq("company_id", companyId)
+          .match(repScope ? { rep_id: repScope.id } : {})
           .gte("created_at", callWindowStart)
           .order("created_at", { ascending: false })
           .range(from, from + 999);
@@ -364,6 +383,19 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     }
   }
 
+  // Projects can't be filtered at fetch (the rollup is one company-wide
+  // pass), so a rep's cards are the ones behind their own documents or
+  // their own checklist steps -- covers both a salesperson and a crew
+  // member who holds steps but no document access.
+  let visibleCards = projectCards.cards;
+  if (repScope) {
+    const mineEstimateIds = new Set<string>([
+      ...estimates.map((e) => e.id),
+      ...checklists.map((c) => c.estimate_id),
+    ]);
+    visibleCards = projectCards.cards.filter((card) => mineEstimateIds.has(card.estimateId));
+  }
+
   return buildAssistantContext({
     companyName: (companyProfile as { name: string | null } | null)?.name || "this company",
     todayISO,
@@ -375,7 +407,8 @@ async function gatherContext(supabase: Supabase, companyId: string, access: Acce
     events: ((events ?? []) as AssistantEvent[]) ?? [],
     tasks: ((tasks ?? []) as AssistantTask[]) ?? [],
     estimates,
-    projects: projectCards.cards.map((card) => ({
+    repScope,
+    projects: visibleCards.map((card) => ({
       estimateId: card.estimateId,
       docNumber: card.docNumber,
       title: card.title,
@@ -427,10 +460,15 @@ async function handlePost(request: NextRequest) {
     canViewFinancials: canViewFinancials(profile),
   };
 
+  // A rep-only viewer (Sales/Field with no desk role) chats about their
+  // own book: every fetch below is filtered to them, and the context
+  // says so. Desk roles keep the whole company.
+  const repScope = assistantRepScope(profile);
+
   const supabase = await createClient();
   let context: string;
   try {
-    context = await gatherContext(supabase, profile.company_id, access);
+    context = await gatherContext(supabase, profile.company_id, access, repScope);
   } catch {
     return Response.json(
       { error: "Couldn't load your data right now. Try again in a moment." },
