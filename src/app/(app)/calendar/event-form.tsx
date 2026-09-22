@@ -46,6 +46,7 @@ import {
   getEventLiveState,
   updateEvent,
 } from "@/lib/actions/events";
+import { createEstimate } from "@/lib/actions/estimates";
 import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
 import { customerTeamSegments } from "@/lib/customer-team-line";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
@@ -436,6 +437,30 @@ export function EventForm({
     if (!lead) return;
     onCancel();
     router.push(`/contacts?openLead=${lead.id}&from=${encodeURIComponent(pathname)}`);
+  }
+
+  const [estimatePending, setEstimatePending] = useState(false);
+  const [estimateError, setEstimateError] = useState("");
+
+  /**
+   * One tap from the visit to a draft: creates the estimate for this
+   * customer and opens the builder. Titled from the project type so the
+   * rep is not asked to name a document they haven't priced yet --
+   * editable in the builder like everything else. Who may write one is
+   * the server's call (requireEstimateEditor), so a refusal comes back
+   * as a message here rather than a hidden button lying about rights.
+   */
+  async function writeEstimate() {
+    if (!lead) return;
+    setEstimatePending(true);
+    setEstimateError("");
+    const res = await createEstimate(lead.id, lead.project_type || "Estimate");
+    setEstimatePending(false);
+    if (res.error) return setEstimateError(res.error);
+    if (res.id) {
+      onCancel();
+      router.push(`/estimates/${res.id}`);
+    }
   }
 
   /**
@@ -1132,6 +1157,17 @@ export function EventForm({
 
       {lead && tab === "Estimates" && (
         <div>
+          <div className="rep-text-row" style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              className="btn-primary small"
+              onClick={writeEstimate}
+              disabled={estimatePending}
+            >
+              {estimatePending ? "Creating…" : `✏️ Write estimate for ${leadDisplayName(lead)}`}
+            </button>
+          </div>
+          {estimateError && <p className="error-note">{estimateError}</p>}
           {linkedEstimates.length === 0 ? (
             <p className="empty-hint">No estimates yet for this lead.</p>
           ) : (

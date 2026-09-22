@@ -21,7 +21,7 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.137.0",
+    version: "1.138.0",
     date: "2026-09-22",
     notes: [
       "New Dispatch Dashboard, first in the Dispatch section of the sidebar: the desk's own overview of new leads coming in and appointments going out.",
@@ -29,6 +29,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Below that, the period's pace with change against the previous period: new leads, how many were reached within an hour (and the typical time to first call or text), appointments booked, show rate, and dials with the connect rate.",
       "Then today's board with a confirmation pill per visit, the next seven days on the calendar, leads still waiting for a first appointment by age, call outcomes, and a per-dispatcher desk table with a booking rate.",
       "Dispatch users see it by default; other roles can be given it in Settings › Role Visibility. A dispatcher who is not a supervisor sees only their own numbers.",
+    ],
+  },
+  {
+    version: "1.137.0",
+    date: "2026-09-22",
+    notes: [
+      "The appointment window's Estimates tab now has a \"Write estimate for …\" button: one tap creates the estimate for that customer and opens it ready to price -- no more leaving the appointment to go hunt for New Estimate.",
     ],
   },
   {
