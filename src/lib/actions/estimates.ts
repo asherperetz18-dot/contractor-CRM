@@ -1,5 +1,6 @@
 "use server";
 
+import { addDays } from "@/lib/company-clock";
 import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -487,8 +488,9 @@ export async function createEstimate(
   if (numberError) return { error: numberError.message };
 
   const expiryDays = settings?.estimate_expiry_days ?? 7;
-  const expires = new Date();
-  expires.setDate(expires.getDate() + expiryDays);
+  // On the company's calendar: sent after 5pm Pacific, "valid 7 days"
+  // was landing on the eighth.
+  const expiresAt = addDays(await companyToday(), expiryDays);
 
   const customerFullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
   const repName = await repDisplayName(supabase, lead.assigned_to ?? guard.userId);
@@ -529,7 +531,7 @@ export async function createEstimate(
       tax_rate_bp: settings?.tax_rate_bp ?? 0,
       terms: contractBody,
       contract_template_id: template?.id ?? null,
-      expires_at: expires.toISOString().slice(0, 10),
+      expires_at: expiresAt,
       created_by: guard.userId,
     })
     .select("id")

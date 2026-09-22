@@ -85,6 +85,41 @@ export function utcClockIn(instant: Date, ianaZone: string): Date {
   return new Date(Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second));
 }
 
+/**
+ * The real UTC instant at which `ianaZone`'s wall clock reads `naive` (a
+ * naive-as-UTC Date, the encoding utcClockIn produces). Needed whenever a
+ * stored local time has to meet a genuinely zoned timestamp -- comparing
+ * the two directly is silently off by the whole UTC offset. Guess and
+ * correct twice so a time sitting right on a DST transition still lands
+ * on the offset actually in force.
+ */
+export function instantOfWallClock(naive: Date, ianaZone: string): Date {
+  // The wall clock reads whole seconds, so correct on whole seconds and
+  // carry the milliseconds across untouched -- otherwise 23:59:59.999
+  // drifts past midnight by the time the second guess lands.
+  const millis = ((naive.getTime() % 1000) + 1000) % 1000;
+  const whole = naive.getTime() - millis;
+  let utcMs = whole;
+  for (let i = 0; i < 2; i++) {
+    const wall = utcClockIn(new Date(utcMs), ianaZone);
+    utcMs += whole - wall.getTime();
+  }
+  return new Date(utcMs + millis);
+}
+
+/** The instant a calendar day begins in `ianaZone` -- its local midnight. */
+export function dayStartInZone(isoDay: string, ianaZone: string): Date {
+  return instantOfWallClock(new Date(`${isoDay}T00:00:00.000Z`), ianaZone);
+}
+
+/**
+ * The last instant of a calendar day in `ianaZone`, for an inclusive
+ * upper bound: "to Sep 20" keeps everything stamped during Sep 20 there.
+ */
+export function dayEndInZone(isoDay: string, ianaZone: string): Date {
+  return instantOfWallClock(new Date(`${isoDay}T23:59:59.999Z`), ianaZone);
+}
+
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**

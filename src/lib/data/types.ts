@@ -2720,10 +2720,12 @@ export function phaseStateLabel(state: PhaseState): string {
 /** Default terms on a progress payment: net 7 from the day it is billed. */
 export const PROGRESS_PAYMENT_NET_DAYS = 7;
 
-export function defaultDueDate(from = new Date(), netDays = PROGRESS_PAYMENT_NET_DAYS): string {
-  const d = new Date(from);
-  d.setDate(d.getDate() + netDays);
-  return d.toISOString().slice(0, 10);
+/** `netDays` after `todayISO` (a plain YYYY-MM-DD: the company's today on
+ *  the server via data/company-today, the browser's in a form). Counting
+ *  from the server's instant made a bill sent after 5pm Pacific net 8. */
+export function defaultDueDate(todayISO: string, netDays = PROGRESS_PAYMENT_NET_DAYS): string {
+  const [y, m, d] = todayISO.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + netDays)).toISOString().slice(0, 10);
 }
 
 export const DEFAULT_DEPOSIT_PERCENT_BP = 1000; // 10.00%

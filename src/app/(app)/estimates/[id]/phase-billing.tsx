@@ -1,5 +1,6 @@
 "use client";
 
+import { isoDay } from "@/lib/data/date-range";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -52,7 +53,7 @@ export function PhaseBilling({
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
-  const [due, setDue] = useState(defaultDueDate());
+  const [due, setDue] = useState(() => defaultDueDate(isoDay(new Date())));
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

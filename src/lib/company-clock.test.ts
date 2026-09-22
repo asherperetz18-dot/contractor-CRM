@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addDays,
+  dayEndInZone,
   dayLabel,
+  dayStartInZone,
+  instantOfWallClock,
   isoDateInZone,
   localClockIn,
   utcClockIn,
@@ -13,6 +16,7 @@ import {
   TIMEZONE_IANA,
   TIMEZONE_OPTIONS,
   companyIanaZone,
+  defaultDueDate,
   hasFollowUpDue,
   type LeadTask,
 } from "./data/types.ts";
@@ -118,4 +122,36 @@ test("a follow-up is due on the company's today, not the server's", () => {
   assert.equal(hasFollowUpDue([due], "2026-09-19"), false);
   assert.equal(hasFollowUpDue([done], "2026-09-20"), false);
   assert.equal(hasFollowUpDue([], "2026-09-20"), false);
+});
+
+test("instantOfWallClock is the real moment the zone's clock read that time", () => {
+  // 7:30 PM on Sep 20 in Los Angeles (naive, encoded as UTC) really
+  // happened at 02:30 UTC on Sep 21.
+  const naive = new Date("2026-09-20T19:30:00Z");
+  assert.equal(instantOfWallClock(naive, LA).toISOString(), "2026-09-21T02:30:00.000Z");
+  assert.equal(instantOfWallClock(naive, "UTC").toISOString(), "2026-09-20T19:30:00.000Z");
+  // Round trip: the wall clock at that instant reads the naive time again.
+  assert.equal(isoDateInZone(instantOfWallClock(naive, LA), LA), "2026-09-20");
+});
+
+test("a company's day starts and ends on its own midnight, DST included", () => {
+  assert.equal(dayStartInZone("2026-09-20", LA).toISOString(), "2026-09-20T07:00:00.000Z");
+  assert.equal(dayEndInZone("2026-09-20", LA).toISOString(), "2026-09-21T06:59:59.999Z");
+  assert.equal(dayStartInZone("2026-09-20", NY).toISOString(), "2026-09-20T04:00:00.000Z");
+  // Mar 8, 2026: midnight is still PST (-8), by 11:59 PM it is PDT (-7),
+  // so the day is 23 hours long and both edges are on the right offset.
+  assert.equal(dayStartInZone("2026-03-08", LA).toISOString(), "2026-03-08T08:00:00.000Z");
+  assert.equal(dayEndInZone("2026-03-08", LA).toISOString(), "2026-03-09T06:59:59.999Z");
+  // An event at 7:30 PM Pacific falls inside Sep 20's window, not Sep 21's.
+  const evening = new Date("2026-09-21T02:30:00Z").getTime();
+  assert.ok(evening >= dayStartInZone("2026-09-20", LA).getTime());
+  assert.ok(evening <= dayEndInZone("2026-09-20", LA).getTime());
+  assert.ok(evening < dayStartInZone("2026-09-21", LA).getTime());
+});
+
+test("a progress payment's default due date counts from the company's today", () => {
+  assert.equal(defaultDueDate("2026-09-20"), "2026-09-27");
+  assert.equal(defaultDueDate("2026-09-28"), "2026-10-05");
+  assert.equal(defaultDueDate("2026-09-20", 30), "2026-10-20");
+  assert.equal(defaultDueDate("2026-12-31", 1), "2027-01-01");
 });

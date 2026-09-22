@@ -1,5 +1,7 @@
 "use server";
 
+import { addDays } from "@/lib/company-clock";
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -18,8 +20,7 @@ export async function requestPhaseNow(phaseId: string): Promise<{ error?: string
   if (!canManageBills(profile)) return { error: "Bookkeeping, Office or Admin only." };
 
   const now = new Date();
-  const due = new Date(now);
-  due.setDate(due.getDate() + 7);
+  const dueDate = addDays(await companyToday(), 7);
 
   // Admin client behind the app gate: the estimate_payments write
   // policy belongs to the roles that EDIT documents, and Bookkeeping
@@ -31,7 +32,7 @@ export async function requestPhaseNow(phaseId: string): Promise<{ error?: string
     .from("estimate_payments")
     .update({
       requested_at: now.toISOString(),
-      due_date: due.toISOString().slice(0, 10),
+      due_date: dueDate,
       updated_at: now.toISOString(),
     })
     .eq("id", phaseId)

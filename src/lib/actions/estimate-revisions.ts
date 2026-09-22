@@ -1,5 +1,7 @@
 "use server";
 
+import { addDays } from "@/lib/company-clock";
+import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -108,8 +110,7 @@ export async function createEstimateRevision(
     .select("estimate_expiry_days")
     .eq("company_id", profile.company_id)
     .maybeSingle<{ estimate_expiry_days: number }>();
-  const expires = new Date();
-  expires.setDate(expires.getDate() + (settings?.estimate_expiry_days ?? 7));
+  const expiresAt = addDays(await companyToday(), settings?.estimate_expiry_days ?? 7);
 
   // Sending froze the money into the stored terms ("{{contract_total}}"
   // became "$114,000.00"). Turned back into tokens on the copy, so if the
@@ -149,7 +150,7 @@ export async function createEstimateRevision(
       job_address: parent.job_address,
       start_date: parent.start_date,
       completion_date: parent.completion_date,
-      expires_at: expires.toISOString().slice(0, 10),
+      expires_at: expiresAt,
       created_by: profile.id,
     })
     .select("id")

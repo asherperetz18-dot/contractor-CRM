@@ -18,10 +18,13 @@ export function LeadsTouched({
   userId,
   userName,
   sinceISO,
+  zone,
 }: {
   userId: string;
   userName: string;
   sinceISO: string;
+  /** The company's IANA zone; times print on its clock like the rest of the report. */
+  zone: string;
 }) {
   const [touches, setTouches] = useState<LeadTouch[] | null>(null);
   const [error, setError] = useState("");
@@ -65,6 +68,7 @@ export function LeadsTouched({
               <tr key={t.id}>
                 <td className="ta-nowrap">
                   {new Date(t.at).toLocaleString(undefined, {
+                    timeZone: zone,
                     month: "short",
                     day: "numeric",
                     hour: "numeric",

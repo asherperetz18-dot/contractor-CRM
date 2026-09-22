@@ -1,10 +1,11 @@
 "use client";
 
+import { dayEndInZone, dayStartInZone, isoDateInZone, localClockIn } from "@/lib/company-clock";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PAGE_REGISTRY, type ActivityEvent, type Profile } from "@/lib/data/types";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
-import { isoDay, resolveWindow, withinWindow, type DateWindow } from "@/lib/data/date-range";
+import { isoDay, resolveWindow, withinWindow } from "@/lib/data/date-range";
 import { LeadsTouched } from "./leads-touched";
 import { getLeadViewsInRange, type RangeLeadView } from "@/lib/actions/lead-touches";
 import { getActivityEventsInRange } from "@/lib/actions/activity-range";
@@ -24,16 +25,6 @@ const HISTORY_DAYS = 90;
 
 function historyFloor(now: Date): string {
   return isoDay(new Date(now.getTime() - HISTORY_DAYS * 86400000));
-}
-
-/** The window's start as a local timestamp, for comparing against created_at. */
-function startOfWindow(win: DateWindow): number {
-  if (!win.from) return 0;
-  return new Date(`${win.from}T00:00:00`).getTime();
-}
-
-function dayKey(iso: string) {
-  return iso.slice(0, 10);
 }
 
 // The tracker pings every 30s while the tab is visible, so a real,
@@ -98,10 +89,13 @@ export function TeamActivityView({
   initialEvents,
   initialSince,
   users,
+  zone,
 }: {
   initialEvents: ActivityEvent[];
   initialSince: string;
   users: Profile[];
+  /** The company's IANA zone: every day on this report is one of its days. */
+  zone: string;
 }) {
   const [range, setRange] = useState<RangeState>({ preset: "today", from: "", to: "" });
   const [userFilter, setUserFilter] = useState<string>("all");
@@ -109,12 +103,15 @@ export function TeamActivityView({
   const [openUser, setOpenUser] = useState<string | null>(null);
   const [rangeViews, setRangeViews] = useState<RangeLeadView[]>([]);
 
-  const [now] = useState(() => new Date());
+  // The company's calendar, whatever the browser's zone: presets, day
+  // buckets and the fetch window all agree with the page's first load.
+  const [now] = useState(() => localClockIn(new Date(), zone));
   const win = useMemo(() => resolveWindow(range, now), [range, now]);
-  const sinceISO = new Date(startOfWindow(win)).toISOString();
-  // End of the last day, not its midnight -- an upper bound of
-  // "2026-08-10T00:00" would drop everything that happened on the 10th.
-  const untilISO = win.to ? new Date(`${win.to}T23:59:59.999`).toISOString() : undefined;
+  const sinceISO = (win.from ? dayStartInZone(win.from, zone) : new Date(0)).toISOString();
+  // End of the last day on the company's clock, not its midnight -- an
+  // upper bound of "2026-08-10T00:00" would drop everything that
+  // happened on the 10th.
+  const untilISO = win.to ? dayEndInZone(win.to, zone).toISOString() : undefined;
 
   /**
    * The events for the selected range, fetched when the range changes.
@@ -180,9 +177,10 @@ export function TeamActivityView({
   const filtered = useMemo(() => {
     return events.filter(
       (e) =>
-        withinWindow(e.created_at, win) && (userFilter === "all" || e.user_id === userFilter)
+        withinWindow(isoDateInZone(new Date(e.created_at), zone), win) &&
+        (userFilter === "all" || e.user_id === userFilter)
     );
-  }, [events, win, userFilter]);
+  }, [events, win, userFilter, zone]);
 
   const bySession = useMemo(() => {
     const map = new Map<string, ActivityEvent[]>();
@@ -214,11 +212,11 @@ export function TeamActivityView({
   const dailyActivity = useMemo(() => {
     const map = new Map<string, number>();
     for (const e of filtered) {
-      const key = dayKey(e.created_at);
+      const key = isoDateInZone(new Date(e.created_at), zone);
       map.set(key, (map.get(key) ?? 0) + 1);
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
+  }, [filtered, zone]);
   const maxDaily = Math.max(1, ...dailyActivity.map(([, c]) => c));
 
   const teamBreakdown = useMemo(() => {
@@ -514,6 +512,7 @@ export function TeamActivityView({
                         <td className="mono">{row.pages}</td>
                         <td className="right">
                           {new Date(row.lastActive).toLocaleString(undefined, {
+                            timeZone: zone,
                             month: "short",
                             day: "numeric",
                             hour: "numeric",
@@ -529,6 +528,7 @@ export function TeamActivityView({
                               userId={row.userId}
                               userName={userName(row.userId)}
                               sinceISO={sinceISO}
+                              zone={zone}
                             />
                             <h4 className="ta-drill-title">
                               Sessions — {userName(row.userId)}
@@ -549,6 +549,7 @@ export function TeamActivityView({
                                     <tr key={s.sessionId}>
                                       <td className="ta-nowrap">
                                         {new Date(s.start).toLocaleString(undefined, {
+                                          timeZone: zone,
                                           month: "short",
                                           day: "numeric",
                                           hour: "numeric",
@@ -595,6 +596,7 @@ export function TeamActivityView({
                   <tr key={s.sessionId}>
                     <td className="ta-nowrap">
                       {new Date(s.start).toLocaleString(undefined, {
+                        timeZone: zone,
                         month: "short",
                         day: "numeric",
                         hour: "numeric",
@@ -720,6 +722,7 @@ export function TeamActivityView({
                                         <div className="ta-visit-head">
                                           <span className="mono">
                                             {new Date(v.created_at).toLocaleString(undefined, {
+                                              timeZone: zone,
                                               month: "short",
                                               day: "numeric",
                                               hour: "numeric",
