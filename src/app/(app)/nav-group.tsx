@@ -19,7 +19,9 @@ export function NavGroup({ group }: { group: NavGroupItem }) {
   const hasInbox = group.items.some((i) => i.href === "/reply-inbox");
 
   return (
-    <div className="nav-group">
+    // data-tone paints the department color: icon, left rail, and the
+    // highlight of the current page (globals.css, .nav-group[data-tone]).
+    <div className="nav-group" data-tone={group.tone}>
       <div
         className={"nav-item" + (containsActive && !open ? " active" : "")}
         onClick={() => setOpen((o) => !o)}

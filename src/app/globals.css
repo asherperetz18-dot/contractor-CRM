@@ -278,6 +278,50 @@ body {
   padding: 4px 0 6px;
   background: #182636;
 }
+/* Department colors on the collapsible groups (GROUP_TONES in
+   lib/data/types.ts): the icon, a rail down the group's left edge that
+   continues beside its open pages, and a tint on the current-page
+   highlight. The fixed orange marker stays for top-level links only, so
+   orange stops meaning both "you are here" and "Production". Green and
+   red are absent on purpose: everywhere else in the CRM they mean money
+   in and money out, so the books are gold. */
+.nav-group[data-tone="dispatch"] {
+  --nav-tone: #5ba3e6;
+}
+.nav-group[data-tone="calls"] {
+  --nav-tone: #3ec6bd;
+}
+.nav-group[data-tone="staff"] {
+  --nav-tone: #ec8fb0;
+}
+.nav-group[data-tone="production"] {
+  --nav-tone: #f0913f;
+}
+.nav-group[data-tone="accounting"] {
+  --nav-tone: #e6c34a;
+}
+.nav-group[data-tone] > .nav-item {
+  border-left-color: var(--nav-tone);
+}
+.nav-group[data-tone] > .nav-item .nav-icon {
+  color: var(--nav-tone);
+  opacity: 1;
+}
+.nav-group[data-tone] > .nav-item .nav-group-chevron {
+  color: var(--nav-tone);
+  opacity: 0.9;
+}
+.nav-group[data-tone] > .nav-item.active {
+  background: #1d2d3f;
+  background: color-mix(in srgb, var(--nav-tone) 14%, #1d2d3f);
+}
+.nav-group[data-tone] > .nav-group-items {
+  border-left: 3px solid var(--nav-tone);
+}
+/* The rail takes 3px, so the pages keep the same text edge as before. */
+.nav-group[data-tone] > .nav-group-items .nav-subitem {
+  padding-left: 41px;
+}
 .nav-subitem {
   padding: 8px 18px 8px 44px;
   font-size: 12.5px;

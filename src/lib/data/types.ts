@@ -69,6 +69,8 @@ export type NavGroupItem = {
   type: "group";
   label: string;
   icon: string;
+  /** The department color the group wears in the sidebar (GROUP_TONES). */
+  tone?: NavTone;
   items: {
     label: string;
     href?: string;
@@ -97,6 +99,15 @@ export function navEntryKey(entry: NavEntry): string {
  * matter what: the screen that undoes configuration mistakes must not
  * be movable by one.
  */
+// Sidebar entries that were renamed or split after companies had saved
+// a menu order. The saved order still names the old key; the new
+// entries take its spot (in their built-in order) instead of dropping
+// to the bottom of a menu somebody already arranged.
+const LEGACY_NAV_KEYS: Record<string, string> = {
+  "group:Call Center": "group:Your Sales Center",
+  "group:Staff": "group:Your Sales Center",
+};
+
 export function sortNavEntries(
   entries: NavEntry[],
   order: string[] | null | undefined
@@ -110,7 +121,8 @@ export function sortNavEntries(
   // any of its pages held, so regrouping the sidebar does not drop the
   // new group to the bottom of a menu somebody already arranged.
   function savedPos(entry: NavEntry): number | undefined {
-    const own = pos.get(navEntryKey(entry));
+    const key = navEntryKey(entry);
+    const own = pos.get(key) ?? pos.get(LEGACY_NAV_KEYS[key] ?? "");
     if (own !== undefined || entry.type === "link") return own;
     let best: number | undefined;
     for (const item of entry.items) {
@@ -387,7 +399,7 @@ export function canEditSchedule(profile: Pick<Profile, "roles"> | null) {
   );
 }
 
-// Your Sales Center (Power Dialer, Call Reports): Office, Sales, or the
+// Call Center (Power Dialer, Call Reports): Office, Sales, or the
 // Call-Center-only role can place calls, set dispositions, and manage lists.
 export function canUseSalesCenter(profile: Pick<Profile, "roles"> | null) {
   if (!profile) return false;
@@ -435,10 +447,32 @@ export type PageKey =
 // Visibility still shows them under one "General" heading.
 export const TOP_LEVEL_NAV_GROUP = "General";
 
+/**
+ * The color each collapsible sidebar group wears: on its icon, as the
+ * rail down its left edge, and on the highlight of the page you are on.
+ * One hue per department so the eye finds a section without reading.
+ * Green and red are deliberately absent -- across the CRM they mean
+ * money in and money out (see .claude/skills/semantic-chips), so the
+ * books are gold, not green. The hex values live in globals.css under
+ * `.nav-group[data-tone=...]`.
+ */
+export const NAV_TONES = ["dispatch", "calls", "staff", "production", "accounting"] as const;
+export type NavTone = (typeof NAV_TONES)[number];
+
+export const GROUP_TONES: Record<string, NavTone> = {
+  "Dispatch (Leads Mgmt.)": "dispatch",
+  "Call Center": "calls",
+  Staff: "staff",
+  Production: "production",
+  Accounting: "accounting",
+};
+
 // The single source of truth for pages: Role Visibility reads it to build
 // its matrix, and lib/nav.ts derives the sidebar from it. Array order is
 // sidebar order. Adding a page here is all that is needed to route it,
 // list it, and make it govern-able -- see the note in lib/nav.ts.
+// A page in a NEW group also needs that group's color in GROUP_TONES
+// below (nav-tones.test.ts fails until it has one).
 export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: string }[] = [
   { key: "dashboard", label: "Dashboard", href: "/", group: "General" },
   {
@@ -467,21 +501,25 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
     href: "/lead-refunds",
     group: "Dispatch (Leads Mgmt.)",
   },
-  { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Your Sales Center" },
-  { key: "call-reports", label: "Call Reports", href: "/call-reports", group: "Your Sales Center" },
-  { key: "text-reports", label: "Text Reports", href: "/text-reports", group: "Your Sales Center" },
+  // Call Center is the phone and text work: the dialer and the reports
+  // on what it produced. Named after the Call Center role that lives in
+  // it (it was "Your Sales Center", which read as somebody else's area
+  // to that role).
+  { key: "power-dialer", label: "Power Dialer", href: "/dial-queue", group: "Call Center" },
+  { key: "call-reports", label: "Call Reports", href: "/call-reports", group: "Call Center" },
+  { key: "text-reports", label: "Text Reports", href: "/text-reports", group: "Call Center" },
   {
     key: "appointment-reports",
     label: "Appointment Reports",
     href: "/appointment-reports",
-    group: "Your Sales Center",
+    group: "Call Center",
   },
-  // The selling leaderboard (reps ranked by won value), so it reads as
-  // the summary after the activity reports above it. Moved here from
-  // the Dispatch group: it reports on performance, it doesn't work
-  // leads. Key unchanged, so saved Role Visibility overrides and the
-  // route are untouched.
-  { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Your Sales Center" },
+  // Staff is the people group. It opens with the selling leaderboard
+  // (reps ranked by won value), which reports on people, not on calling
+  // -- so it left Call Center -- and is not a company dollar owed, so
+  // it is not Accounting either. Key unchanged, so saved Role
+  // Visibility overrides and the route are untouched.
+  { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Staff" },
   // Production is one collapsible sidebar section: the sold work and the
   // money that follows it. The board keeps its "production" key so saved
   // Role Visibility overrides and the /production route are untouched;

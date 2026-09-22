@@ -7,7 +7,7 @@ const NAV: NavEntry[] = [
   { type: "link", href: "/", label: "Dashboard", icon: "o" },
   { type: "link", href: "/marketing-analytics", label: "Marketing Analytics", icon: "o" },
   { type: "group", label: "Dispatch (Leads Mgmt.)", icon: "o", items: [{ label: "Pipeline", href: "/pipeline" }] },
-  { type: "group", label: "Your Sales Center", icon: "o", items: [{ label: "Dialer", href: "/dial-queue" }] },
+  { type: "group", label: "Call Center", icon: "o", items: [{ label: "Dialer", href: "/dial-queue" }] },
   { type: "link", href: "/projects", label: "Projects", icon: "o" },
   { type: "link", href: "/settings", label: "Admin Settings", icon: "o" },
 ];
@@ -67,4 +67,32 @@ test("a group the saved order predates takes the spot its pages held", () => {
   const sorted = sortNavEntries(regrouped, saved).map(navEntryKey);
   // The group sits where Projects was -- above Dashboard, not at the end.
   assert.deepEqual(sorted, ["/marketing-analytics", "group:Production", "/", "/settings"]);
+});
+
+// "Your Sales Center" was renamed Call Center and its Salespeople page
+// moved into a new Staff group. A menu order saved before that names
+// the old group key; both new groups take that spot rather than
+// dropping to the bottom of a menu somebody already arranged, in their
+// built-in order (Call Center, then Staff).
+test("a renamed or split group keeps the spot the old group held", () => {
+  const split: NavEntry[] = [
+    NAV[0],
+    NAV[1],
+    NAV[2],
+    { type: "group", label: "Call Center", icon: "o", items: [{ label: "Dialer", href: "/dial-queue" }] },
+    { type: "group", label: "Staff", icon: "o", items: [{ label: "Salespeople", href: "/salespeople" }] },
+    NAV[4],
+    NAV[5],
+  ];
+  const saved = ["group:Your Sales Center", "/projects", "/", "/marketing-analytics", "group:Dispatch (Leads Mgmt.)"];
+  const sorted = sortNavEntries(split, saved).map(navEntryKey);
+  assert.deepEqual(sorted, [
+    "group:Call Center",
+    "group:Staff",
+    "/projects",
+    "/",
+    "/marketing-analytics",
+    "group:Dispatch (Leads Mgmt.)",
+    "/settings",
+  ]);
 });
