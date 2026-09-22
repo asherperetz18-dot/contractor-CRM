@@ -23,12 +23,21 @@ import { fileURLToPath } from "node:url";
 //
 // partner_rep_id is the partnership seat (0163): the second rep who
 // shares the sale with the owner, and holds the lead the same way.
+//
+// current_contract_seat_lead_ids is the stamped-contract grant (0169):
+// anyone seated on a contract's own Sales team (sales_rep_1/2 or its
+// closer seat) keeps the customer, the contract and their commission
+// line visible FOREVER -- reseating the contact for a later job must
+// not hide the money the old team is still owed. A security definer
+// helper, same shape as current_appointment_lead_ids (0159), so
+// leads_select never subqueries another RLS-governed table inline.
 const GRANTS = [
   "assigned_to",
   "dispatcher_id",
   "closer_id",
   "second_assigned_to",
   "partner_rep_id",
+  "current_contract_seat_lead_ids",
 ];
 
 const migrationsDir = join(
