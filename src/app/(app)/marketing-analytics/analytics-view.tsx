@@ -17,6 +17,7 @@ import {
 import { sourceCost } from "@/lib/data/marketing-spend";
 import type { RepRow, SourceRow } from "@/lib/data/marketing-rollup";
 import { leadDisplayName, money, stageColor, type PipelineStageRow } from "@/lib/data/types";
+import { winRates } from "@/lib/data/win-rates";
 
 const PRESETS = [
   { key: "7", label: "Last 7 Days" },
@@ -208,7 +209,13 @@ export function AnalyticsView({
 
   const spendTracked = data.spendTotalCents > 0;
   const costPerSale = spendTracked && T.signed > 0 ? Math.round(data.spendTotalCents / T.signed) : null;
-  const winRate = T.leads ? (T.signed / T.leads) * 100 : 0;
+  const rates = winRates(T);
+  // Tiny rates are the norm here (a few sales out of thousands of
+  // leads), so the decimals follow the size of the number.
+  const fmtRate = (rate: number | null) =>
+    rate === null
+      ? "\u2014"
+      : `${rate >= 10 ? rate.toFixed(0) : rate >= 1 ? rate.toFixed(1) : rate.toFixed(2)}%`;
   const prevLabel =
     P && data.boundaries.prevFrom && data.boundaries.prevTo
       ? `${shortDate(data.boundaries.prevFrom)} – ${shortDate(data.boundaries.prevTo)}`
@@ -465,17 +472,28 @@ export function AnalyticsView({
               : "See the sources behind this rate"
           }
         >
-          <div className="stat-value">
-            {winRate >= 10 ? winRate.toFixed(0) : winRate >= 1 ? winRate.toFixed(1) : winRate.toFixed(2)}%
-          </div>
-          <div className="stat-label">Win rate</div>
-          <div className="dash-kpi-foot">
-            <span className="dash-delta muted">
-              {fmtInt(T.signed)} signed of {fmtInt(T.leads)}
-            </span>
-            {T.wonNoContract > 0 && (
-              <span className="mkt-flag">{fmtInt(T.wonNoContract)} at Won, no contract</span>
-            )}
+          <div className="dash-kpi-pair">
+            <div>
+              <div className="stat-value">{fmtRate(rates.fromLeads.rate)}</div>
+              <div className="stat-label">Win rate · leads</div>
+              <div className="dash-kpi-foot">
+                <span className="dash-delta muted">
+                  {fmtInt(rates.fromLeads.signed)} signed of {fmtInt(rates.fromLeads.of)}
+                </span>
+                {T.wonNoContract > 0 && (
+                  <span className="mkt-flag">{fmtInt(T.wonNoContract)} at Won, no contract</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="stat-value">{fmtRate(rates.fromAppts.rate)}</div>
+              <div className="stat-label">Win rate · appointments</div>
+              <div className="dash-kpi-foot">
+                <span className="dash-delta muted">
+                  {fmtInt(rates.fromAppts.signed)} signed of {fmtInt(rates.fromAppts.of)}
+                </span>
+              </div>
+            </div>
           </div>
         </button>
       </div>

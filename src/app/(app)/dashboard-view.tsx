@@ -12,8 +12,9 @@ import {
   mergePanelOrder,
   type DashboardPanelKey,
 } from "@/lib/data/dashboard-layout";
-import { winRates, type DashboardRollup } from "@/lib/data/dashboard-rollup";
+import type { DashboardRollup } from "@/lib/data/dashboard-rollup";
 import { describeWindow, isoDay, resolveWindow } from "@/lib/data/date-range";
+import { winRates } from "@/lib/data/win-rates";
 import { moveBefore } from "@/lib/data/funnel-order";
 import {
   leadDisplayName,
@@ -139,7 +140,7 @@ export function DashboardView({
   // rollup so switching is instant.
   const [stageCutoff, setStageCutoff] = useState<"d30" | "d60" | "d90" | "all">("d90");
 
-  const rates = winRates(R);
+  const rates = winRates(R.funnel);
   const pct = (rate: number | null) => (rate === null ? "\u2014" : `${rate.toFixed(1)}%`);
 
   const spark = (pick: (m: DashboardRollup["months"][number]) => number) =>
@@ -615,26 +616,28 @@ export function DashboardView({
             </div>
           </Link>
         )}
-        <Link href="/marketing-analytics" className="stat-card dash-kpi dash-kpi-pair">
-          <div>
-            <div className="stat-value">{pct(rates.fromLeads.rate)}</div>
-            <div className="stat-label">Win rate · leads</div>
-            <div className="dash-kpi-foot">
-              <span className="dash-delta muted" title="Signed contracts out of leads created in this period">
-                {rates.fromLeads.signed} of {rates.fromLeads.of}
-              </span>
+        <Link href="/marketing-analytics" className="stat-card dash-kpi">
+          <div className="dash-kpi-pair">
+            <div>
+              <div className="stat-value">{pct(rates.fromLeads.rate)}</div>
+              <div className="stat-label">Win rate · leads</div>
+              <div className="dash-kpi-foot">
+                <span className="dash-delta muted" title="Signed contracts out of leads created in this period">
+                  {rates.fromLeads.signed} of {rates.fromLeads.of}
+                </span>
+              </div>
             </div>
-          </div>
-          <div>
-            <div className="stat-value">{pct(rates.fromAppts.rate)}</div>
-            <div className="stat-label">Win rate · appointments</div>
-            <div className="dash-kpi-foot">
-              <span
-                className="dash-delta muted"
-                title="Signed contracts out of this period's leads that got an appointment set"
-              >
-                {rates.fromAppts.signed} of {rates.fromAppts.of}
-              </span>
+            <div>
+              <div className="stat-value">{pct(rates.fromAppts.rate)}</div>
+              <div className="stat-label">Win rate · appointments</div>
+              <div className="dash-kpi-foot">
+                <span
+                  className="dash-delta muted"
+                  title="Signed contracts out of this period's leads that got an appointment set"
+                >
+                  {rates.fromAppts.signed} of {rates.fromAppts.of}
+                </span>
+              </div>
             </div>
           </div>
         </Link>

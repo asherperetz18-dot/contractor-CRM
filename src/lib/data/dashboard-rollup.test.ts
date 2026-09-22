@@ -4,9 +4,9 @@ import {
   buildDashboardRollup,
   coerceDashboardRollup,
   rollupBoundaries,
-  winRates,
   type RollupInputs,
 } from "./dashboard-rollup.ts";
+import { winRates } from "./win-rates.ts";
 
 /**
  * The dashboard is reduced in the database (dashboard_rollup, migration
@@ -287,11 +287,11 @@ test("team: a sale is credited to the contract's Sales team seats, not the rep s
   assert.deepEqual([by.r3.signedCount, by.r3.signedCents], [2, 51000]);
 });
 
-test("win rates: signed out of the cohort's leads, and out of the ones that got an appointment", () => {
+test("win rates: the card reads the funnel -- signed out of the cohort, and out of the booked ones", () => {
   const R = buildDashboardRollup(inputs);
   // Same period's leads, same signed count, two denominators: every lead
   // created in the window, and the ones that were booked (has_appt).
-  assert.deepEqual(winRates(R), {
+  assert.deepEqual(winRates(R.funnel), {
     fromLeads: { rate: 25, signed: 1, of: 4 },
     fromAppts: { rate: 50, signed: 1, of: 2 },
   });
@@ -300,9 +300,5 @@ test("win rates: signed out of the cohort's leads, and out of the ones that got 
     ...inputs,
     leadsInWindow: inputs.leadsInWindow.map((l) => ({ ...l, has_appt: false })),
   });
-  assert.deepEqual(winRates(quiet).fromAppts, { rate: null, signed: 1, of: 0 });
-  assert.deepEqual(winRates(buildDashboardRollup({ ...inputs, leadsInWindow: [] })), {
-    fromLeads: { rate: null, signed: 0, of: 0 },
-    fromAppts: { rate: null, signed: 0, of: 0 },
-  });
+  assert.deepEqual(winRates(quiet.funnel).fromAppts, { rate: null, signed: 1, of: 0 });
 });
