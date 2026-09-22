@@ -44,11 +44,26 @@ test("both commission pages sit in the Accounting group", () => {
 });
 
 // Salespeople is the selling leaderboard -- reps ranked by won value --
-// so it sits with the other performance reports in Your Sales Center,
-// NOT under Accounting (nothing on it is a company dollar owed) and not
-// in the middle of the Dispatch lead-operations list.
-test("Salespeople sits in Your Sales Center", () => {
+// so it sits in its own people group (Staff), NOT with the dialer and
+// its call/text reports (it reports on selling, not on calling), not
+// under Accounting (nothing on it is a company dollar owed) and not in
+// the middle of the Dispatch lead-operations list.
+test("Salespeople sits in Staff", () => {
   const page = PAGE_REGISTRY.find((p) => p.key === "salespeople");
   assert.ok(page, "salespeople is registered");
-  assert.equal(page.group, "Your Sales Center");
+  assert.equal(page.group, "Staff");
+});
+
+// The dialer and the activity reports are the Call Center: the group
+// carries the same name as the Call Center role that lives in it, and
+// the old "Your Sales Center" heading is gone from every page.
+test("the dialer and its reports sit in Call Center, and nothing says Sales Center", () => {
+  for (const key of ["power-dialer", "call-reports", "text-reports", "appointment-reports"] as const) {
+    const page = PAGE_REGISTRY.find((p) => p.key === key);
+    assert.ok(page, key + " is registered");
+    assert.equal(page.group, "Call Center", key + " grouped under Call Center");
+  }
+  for (const page of PAGE_REGISTRY) {
+    assert.ok(!/sales center/i.test(page.group), page.key + " still says Sales Center");
+  }
 });

@@ -7,6 +7,7 @@ import {
 
   canSeePage,
   canViewEstimates,
+  GROUP_TONES,
   isAdminRole,
   isStrictAdmin,
   pathToPageKey,
@@ -86,7 +87,7 @@ export function filterNavForProfile(
 }
 
 // The sidebar is DERIVED from PAGE_REGISTRY -- it is not a second list to
-// keep in step. Maintaining both by hand dropped Sales Center's link once
+// keep in step. Maintaining both by hand dropped Call Center's link once
 // and mis-grouped Marketing Analytics once; a page added to the registry
 // now appears here automatically, and the label, href and grouping shown
 // in the sidebar cannot drift from the ones Role Visibility manages.
@@ -105,7 +106,11 @@ const PAGE_ICONS: Partial<Record<PageKey, string>> = {
 
 const GROUP_ICONS: Record<string, string> = {
   "Dispatch (Leads Mgmt.)": "▸",
-  "Your Sales Center": "☎",
+  // "\uFE0E" after the phone asks for the plain text glyph, so the group
+  // color can tint it -- without it iOS and Windows draw a red emoji
+  // phone beside a teal rail.
+  "Call Center": "☎\uFE0E",
+  Staff: "👥",
   Production: "▦",
   Accounting: "▤",
 };
@@ -137,6 +142,7 @@ function buildNav(): NavEntry[] {
         type: "group",
         label: page.group,
         icon: GROUP_ICONS[page.group] ?? FALLBACK_ICON,
+        tone: GROUP_TONES[page.group],
         items: [],
       };
       entries.push(openGroup);
