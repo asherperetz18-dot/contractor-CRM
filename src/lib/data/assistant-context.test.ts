@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  assistantRepScope,
   buildAssistantContext,
   formatCallDuration,
   MAX_ESTIMATES_IN_CONTEXT,
@@ -364,4 +365,81 @@ test("an estimate whose lead fell off the roster still names its customer", () =
     })
   );
   assert.ok(text.includes("Harriet Historic"));
+});
+
+// ── Rep scoping: who sees the whole company vs only their own book ──
+//
+// The route filters every fetch by this decision, so the rule itself
+// must be pinned here: desk roles work the whole book; a user whose
+// only hats are Sales/Field talks to a chat about their own records.
+
+test("assistantRepScope: a Sales- or Field-only user is scoped to themselves", () => {
+  const base = { id: REP, name: "Josh Closer", email: "josh@ace.com" };
+  assert.deepEqual(assistantRepScope({ ...base, roles: ["Sales"] }), {
+    id: REP,
+    name: "Josh Closer",
+  });
+  assert.deepEqual(assistantRepScope({ ...base, roles: ["Field"] }), {
+    id: REP,
+    name: "Josh Closer",
+  });
+  assert.deepEqual(assistantRepScope({ ...base, roles: ["Sales", "Field"] }), {
+    id: REP,
+    name: "Josh Closer",
+  });
+  // No roles at all: least data is the safe direction.
+  assert.deepEqual(assistantRepScope({ ...base, roles: [] }), {
+    id: REP,
+    name: "Josh Closer",
+  });
+});
+
+test("assistantRepScope: any desk role sees the whole company", () => {
+  const base = { id: REP, name: "Dana Desk", email: null };
+  for (const role of [
+    "Office",
+    "Admin",
+    "Dispatch",
+    "Call Center",
+    "Bookkeeping",
+    "Production",
+  ] as const) {
+    assert.equal(assistantRepScope({ ...base, roles: [role] }), null, role);
+    // A desk hat wins even alongside a Sales hat.
+    assert.equal(assistantRepScope({ ...base, roles: ["Sales", role] }), null, `Sales+${role}`);
+  }
+});
+
+test("assistantRepScope: name falls back to email, then a generic label", () => {
+  assert.deepEqual(assistantRepScope({ id: REP, name: null, email: "j@x.com", roles: ["Sales"] }), {
+    id: REP,
+    name: "j@x.com",
+  });
+  assert.deepEqual(assistantRepScope({ id: REP, name: null, email: null, roles: ["Sales"] }), {
+    id: REP,
+    name: "This rep",
+  });
+});
+
+test("scoped context announces the viewer and stops claiming company-wide", () => {
+  const text = buildAssistantContext(
+    baseInput({
+      repScope: { id: REP, name: "Josh Closer" },
+      leadTotals: [{ stage: "New", value: 5000 }],
+    })
+  );
+  assert.ok(text.includes("VIEWER SCOPE"), "has the scope banner");
+  assert.ok(text.includes("Josh Closer"), "names the rep");
+  assert.ok(/ONLY records assigned to them/.test(text), "says it covers only their records");
+  assert.ok(
+    text.includes("accurate totals for Josh Closer's assigned leads"),
+    "summary is labeled as theirs"
+  );
+  assert.ok(!text.includes("company-wide"), "never claims company-wide numbers");
+});
+
+test("unscoped context keeps the company-wide summary and no viewer banner", () => {
+  const text = buildAssistantContext(baseInput({ leadTotals: [{ stage: "New", value: 5000 }] }));
+  assert.ok(text.includes("company-wide"), "full view keeps the company-wide label");
+  assert.ok(!text.includes("VIEWER SCOPE"), "no banner for desk roles");
 });
