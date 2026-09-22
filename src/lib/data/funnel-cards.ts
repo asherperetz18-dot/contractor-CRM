@@ -35,9 +35,12 @@ export const FUNNEL_CARD_STATUSES: Record<FunnelCardKey, EstimateStatus[]> = {
  * count is worse than none.
  */
 export function effectiveEstimateStatus(
-  e: Pick<Estimate, "status" | "expires_at">
+  e: Pick<Estimate, "status" | "expires_at">,
+  /** The clock to judge expiry by. Callers that already take a `now`
+   *  pass it through, so a countdown and its status agree on the day. */
+  now: Date = new Date()
 ): EstimateStatus {
-  return estimateExpired(e) ? "Expired" : e.status;
+  return estimateExpired(e, now) ? "Expired" : e.status;
 }
 
 /**
