@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.145.1",
+    date: "2026-09-23",
+    notes: [
+      "Estimate Status now shows an unsigned estimate under the rep who holds the customer today. Before, it stayed under whoever held the lead when the estimate was made, so filtering by rep showed estimates that had since been handed to someone else. Signed contracts still stay with the rep who sold them.",
+    ],
+  },
+  {
     version: "1.145.0",
     date: "2026-09-23",
     notes: [

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewEstimates, isStrictAdmin } from "@/lib/data/types";
 import { estimateFlowStatus } from "@/lib/estimate-flow-status";
+import { statusBoardRep1Id } from "@/lib/estimate-status-filters";
 import { EstimateStatusView, type StatusRow } from "./estimate-status-view";
 
 export const dynamic = "force-dynamic";
@@ -106,7 +107,7 @@ export default async function EstimateStatusPage() {
   const { data: leads } = leadIds.length
     ? await supabase
         .from("leads")
-        .select("id, first_name, last_name, company_name, closer_id")
+        .select("id, first_name, last_name, company_name, closer_id, assigned_to")
         .in("id", leadIds)
         .returns<
           {
@@ -115,16 +116,22 @@ export default async function EstimateStatusPage() {
             last_name: string | null;
             company_name: string | null;
             closer_id: string | null;
+            assigned_to: string | null;
           }[]
         >()
     : { data: [] as never[] };
   const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
 
   // Everyone the rows name -- closers and both rep seats -- in one
-  // read. Rep 1 falls back to the document's assigned_to when the seat
-  // was never set, the same reading sale-credit.ts gives it.
-  const rep1Of = (r: { sales_rep_1: string | null; assigned_to: string | null }) =>
-    r.sales_rep_1 || r.assigned_to || null;
+  // read. Rep 1 with no seat set follows the lead until signed, the
+  // same rule as the estimates list (statusBoardRep1Id).
+  const rep1Of = (r: (typeof rows)[number]) =>
+    statusBoardRep1Id({
+      status: r.status,
+      salesRep1: r.sales_rep_1,
+      estimateAssignedTo: r.assigned_to,
+      leadAssignedTo: r.lead_id ? leadById.get(r.lead_id)?.assigned_to : null,
+    });
   const personIds = [
     ...new Set([
       ...(leads ?? []).map((l) => l.closer_id),
