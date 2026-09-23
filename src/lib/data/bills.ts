@@ -1,4 +1,4 @@
-import type { VendorBill, VendorBillPayment } from "./types";
+import type { JobExpense, VendorBill, VendorBillPayment } from "./types.ts";
 
 /**
  * The bill side of "money out", as the newer screens read it. Kept in
@@ -87,3 +87,20 @@ export function billReferenceLabel(method: BillPaymentMethod): string {
 
 /** A vendor_bill_payments row including the method column from 0124. */
 export type VendorBillPaymentRow = VendorBillPayment & { method?: string | null };
+
+/**
+ * The job costs that never were a bill: receipts saved with "Already
+ * paid" on (and QuickBooks-synced costs). Bills to Pay's Paid tab lists
+ * these beside the paid bills so it holds every dollar paid out on a
+ * job. A cost created by paying a bill is left out -- the paid bill is
+ * already on the tab, and listing both would count it twice.
+ */
+export function paidOnEntryReceipts(
+  expenses: JobExpense[],
+  billPayments: { job_expense_id: string | null }[]
+): JobExpense[] {
+  const fromBills = new Set(billPayments.map((p) => p.job_expense_id).filter(Boolean));
+  return expenses
+    .filter((e) => e.source !== "bill" && !fromBills.has(e.id))
+    .sort((a, b) => b.spent_on.localeCompare(a.spent_on));
+}
