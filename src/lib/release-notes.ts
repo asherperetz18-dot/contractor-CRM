@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.143.0",
+    date: "2026-09-23",
+    notes: [
+      "The sidebar's standard order is now Dashboard, Marketing Analytics, Dispatch Dashboard, Calendar, Schedule, Estimates & Contracts, Production, Accounting, Dispatch, Call Center, Staff, Estimate Status, Estimate Approvals — and \"Reset to standard order\" on Settings › Menu Order goes back to exactly that.",
+    ],
+  },
+  {
     version: "1.142.0",
     date: "2026-09-23",
     notes: [
