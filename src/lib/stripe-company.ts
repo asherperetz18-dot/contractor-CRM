@@ -1,12 +1,9 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
-import { getStripeEnv, type StripeEnv } from "@/lib/stripe-env";
+import type { StripeEnv } from "@/lib/stripe-env";
 
-export type CompanyStripe = StripeEnv & {
-  /** "company" means the contractor's own account; "platform" is the shared fallback. */
-  source: "company" | "platform";
-};
+export type CompanyStripe = StripeEnv;
 
 type StripeColumns = {
   stripe_secret_key_enc: string | null;
@@ -22,10 +19,10 @@ type StripeColumns = {
  * Stripe account, which is exactly what happened while this was a single
  * environment variable.
  *
- * Falls back to the platform key when a company has not connected its
- * own, so the original business keeps working unchanged rather than
- * losing payments the moment this shipped. A company with its own key
- * never touches the fallback.
+ * No fallback to the deployment's STRIPE_SECRET_KEY: that is the AI
+ * Build Pros account, which sells the CRM itself. Falling back to it sent
+ * the deposits of any company without its own account into ours. A
+ * company that hasn't connected one simply has no online payment.
  */
 export async function getStripeForCompany(companyId: string): Promise<CompanyStripe | null> {
   const admin = createAdminClient();
@@ -36,22 +33,13 @@ export async function getStripeForCompany(companyId: string): Promise<CompanyStr
     .maybeSingle<StripeColumns>();
 
   const secretKey = decryptSecret(data?.stripe_secret_key_enc);
-  if (secretKey) {
-    return {
-      secretKey,
-      webhookSecret: decryptSecret(data?.stripe_webhook_secret_enc),
-      source: "company",
-    };
-  }
-
-  const platform = getStripeEnv();
-  return platform ? { ...platform, source: "platform" } : null;
+  if (!secretKey) return null;
+  return { secretKey, webhookSecret: decryptSecret(data?.stripe_webhook_secret_enc) };
 }
 
 /**
- * Whether this company has connected its own account, regardless of
- * whether the platform fallback exists. Used by the UI to say "your
- * account" versus "using the platform account".
+ * Whether this company has connected its own Stripe account -- the only
+ * account its customers can pay into.
  */
 export async function companyHasOwnStripe(companyId: string): Promise<boolean> {
   const admin = createAdminClient();

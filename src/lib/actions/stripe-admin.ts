@@ -39,8 +39,6 @@ export type StripeDiagnostics = {
   configured: boolean;
   keyMode: "test" | "live" | null;
   webhookSecretSet: boolean;
-  /** Whether this company uses its own Stripe account or the platform fallback. */
-  source: "company" | "platform" | null;
   /** The URL this company must give Stripe, which is unique to it. */
   webhookUrl: string;
   /** Whether APP_ENCRYPTION_KEY is readable by the running deployment. */
@@ -84,7 +82,6 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
     configured: false,
     keyMode: null,
     webhookSecretSet: false,
-    source: null,
     webhookUrl: "",
     encryptionReady: encryptionAvailable(),
     endpoints: [],
@@ -147,7 +144,6 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
       configured: true,
       keyMode,
       webhookSecretSet: !!env.webhookSecret,
-      source: env.source,
       configs: pmConfigs,
       error: e instanceof Error ? e.message : "Could not reach Stripe.",
     };
@@ -211,7 +207,6 @@ export async function stripeDiagnostics(): Promise<StripeDiagnostics> {
     configured: true,
     keyMode,
     webhookSecretSet: !!env.webhookSecret,
-    source: env.source,
     endpoints,
     achEnabled,
     configs: pmConfigs,
@@ -371,7 +366,7 @@ export async function saveCompanyStripeKeys(input: {
   return { ok: true, mode };
 }
 
-/** Disconnects this company's account, falling back to the platform's. */
+/** Disconnects this company's account; its customers can no longer pay online. */
 export async function clearCompanyStripeKeys(): Promise<{ error?: string; ok?: boolean }> {
   const profile = await requireAdmin();
   if (!profile) return { error: "Admins only." };
