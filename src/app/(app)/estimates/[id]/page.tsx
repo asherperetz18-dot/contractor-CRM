@@ -7,6 +7,7 @@ import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import { approvalHoldsSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
+import { estimateRepLine } from "@/lib/estimate-rep-line";
 import { CompletionEditor } from "./completion-editor";
 
 export const dynamic = "force-dynamic";
@@ -53,9 +54,9 @@ export default async function EstimateDetailPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("leads")
-      .select("id, first_name, last_name, email, phone, address, second_contact_email")
+      .select("id, first_name, last_name, email, phone, address, second_contact_email, assigned_to")
       .eq("id", estimate.lead_id)
-      .maybeSingle<BuilderLead>(),
+      .maybeSingle<BuilderLead & { assigned_to: string | null }>(),
   ]);
 
   // A completion certificate has no prices, so it does not get the
@@ -173,6 +174,21 @@ export default async function EstimateDetailPage({
     }
   }
 
+  // The rep for the header: the same person every list names, read by
+  // id from the whole roster so a past rep still shows by name.
+  const repLine = estimateRepLine({
+    status: estimate.status,
+    estimateAssignedTo: estimate.assigned_to,
+    leadAssignedTo: lead?.assigned_to,
+  });
+  const { data: rep } = repLine.repId
+    ? await supabase
+        .from("profiles")
+        .select("name, email")
+        .eq("id", repLine.repId)
+        .maybeSingle<{ name: string | null; email: string | null }>()
+    : { data: null };
+
   return (
     <EstimateBuilder
       estimate={estimate}
@@ -183,6 +199,10 @@ export default async function EstimateDetailPage({
       paid={(paidRows ?? []) as PortalPayment[]}
       changeOrderBilling={changeOrderBilling}
       lead={lead ?? null}
+      rep={{
+        name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,
+        followsLead: repLine.followsLead,
+      }}
       canEdit={canCreateEstimates(profile)}
       // Drafts only when off: the Users & Roles "Send Estimates" switch,
       // the approval gate while it waits on an admin, and the closer's
