@@ -1,0 +1,367 @@
+/* Public front page (/home). Same palette and fonts as the app, so the
+   product a visitor signs up for looks like the page that sold it. */
+
+.mk {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+.mk img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mk-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 32px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.mk-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-headers);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mk-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mk-nav-link {
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.mk-nav-link:hover {
+  color: var(--ink);
+}
+
+.mk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mk-btn-primary {
+  background: var(--safety);
+  color: #fff;
+}
+.mk-btn-primary:hover {
+  background: #ad5a14;
+}
+.mk-btn-ghost {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.mk-btn-ghost:hover {
+  border-color: var(--ink-soft);
+}
+.mk-btn-lg {
+  min-height: 48px;
+  padding: 12px 24px;
+  font-size: 16px;
+}
+.mk-btn-block {
+  width: 100%;
+}
+
+.mk-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 48px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 72px 32px 56px;
+}
+.mk-eyebrow {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--safety);
+}
+.mk-h1 {
+  margin: 0 0 18px;
+  font-family: var(--font-headers);
+  font-size: 48px;
+  line-height: 1.08;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.mk-lead {
+  margin: 0 0 28px;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.mk-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mk-hero-shot,
+.mk-shot {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 18px 40px rgba(20, 32, 46, 0.14);
+}
+
+.mk-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 56px 32px;
+}
+.mk-h2 {
+  margin: 0 0 10px;
+  font-family: var(--font-headers);
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.mk-section-sub {
+  margin: 0 0 32px;
+  max-width: 640px;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.mk-h3 {
+  margin: 10px 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.mk-features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.mk-feature {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 22px;
+}
+.mk-feature p {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+.mk-feature-icon {
+  font-size: 26px;
+}
+
+.mk-shot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 48px;
+}
+.mk-shot-row-flip .mk-shot-copy {
+  order: 2;
+}
+
+.mk-pricing {
+  text-align: center;
+}
+.mk-pricing .mk-section-sub {
+  margin-left: auto;
+  margin-right: auto;
+}
+.mk-price-card {
+  max-width: 420px;
+  margin: 0 auto;
+  background: #fff;
+  border: 2px solid var(--safety);
+  border-radius: 14px;
+  padding: 32px 28px 24px;
+  text-align: left;
+}
+.mk-price-name {
+  margin: 0 0 8px;
+  font-family: var(--font-headers);
+  font-size: 22px;
+  font-weight: 700;
+}
+.mk-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+.mk-price-amount {
+  font-family: var(--font-headers);
+  font-size: 48px;
+  font-weight: 700;
+}
+.mk-price-per {
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+.mk-price-list {
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+}
+.mk-price-list li {
+  padding: 8px 0 8px 28px;
+  position: relative;
+  font-size: 15px;
+  border-bottom: 1px solid var(--line);
+}
+.mk-price-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 4px;
+  color: var(--success);
+  font-weight: 700;
+}
+.mk-price-note {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.mk-faq {
+  max-width: 800px;
+}
+.mk-faq-item {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+.mk-faq-item summary {
+  cursor: pointer;
+  padding: 16px 20px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.mk-faq-item p {
+  margin: 0;
+  padding: 0 20px 18px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.mk-final {
+  padding: 64px 32px;
+  text-align: center;
+  background: var(--ink);
+  color: #fff;
+}
+.mk-final .mk-h2 {
+  margin-bottom: 24px;
+}
+
+.mk-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 24px 32px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.mk-footer a {
+  color: var(--blueprint);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (max-width: 1024px) {
+  .mk-hero,
+  .mk-shot-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+  .mk-shot-row-flip .mk-shot-copy {
+    order: 0;
+  }
+  .mk-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mk-h1 {
+    font-size: 40px;
+  }
+}
+
+@media (max-width: 700px) {
+  .mk-nav {
+    padding: 10px 16px;
+  }
+  .mk-nav-link {
+    display: none;
+  }
+  .mk-nav-links .mk-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+  .mk-brand {
+    font-size: 17px;
+  }
+  .mk-hero {
+    padding: 40px 16px 32px;
+  }
+  .mk-section {
+    padding: 40px 16px;
+  }
+  .mk-h1 {
+    font-size: 32px;
+  }
+  .mk-h2 {
+    font-size: 26px;
+  }
+  .mk-lead {
+    font-size: 16px;
+  }
+  .mk-features {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mk-cta-row .mk-btn {
+    flex: 1 1 100%;
+  }
+  .mk-price-card {
+    padding: 24px 20px 20px;
+  }
+  .mk-final {
+    padding: 48px 16px;
+  }
+  .mk-footer {
+    padding: 20px 16px;
+  }
+}

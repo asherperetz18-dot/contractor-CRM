@@ -2,23 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSigningKeys } from "@/lib/supabase/jwks";
 import { reportOnlyCsp } from "@/lib/security-headers";
-
-// /portal is the customer-facing Client Portal. It runs on its own
-// magic-link session (see lib/portal/session.ts), not Supabase Auth, so it
-// must not be bounced to the staff login page.
-// /get-started, /welcome and /register are the self-serve signup: whoever
-// walks them has no account yet by definition, so bouncing them to the
-// login page would close the only door in.
-const PUBLIC_PATHS = [
-  "/login",
-  "/auth",
-  "/portal",
-  "/forgot-password",
-  "/reset-password",
-  "/get-started",
-  "/welcome",
-  "/register",
-];
+import { signedOutRedirect } from "@/lib/auth/signed-out-route";
 
 export async function updateSession(request: NextRequest) {
   // One nonce per request, threaded onto both the outgoing request (so
@@ -83,13 +67,10 @@ export async function updateSession(request: NextRequest) {
     jwks: await getSigningKeys(),
   });
 
-  const isPublicPath = PUBLIC_PATHS.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  );
-
-  if (!claims && !isPublicPath) {
+  const redirectTo = claims ? null : signedOutRedirect(request.nextUrl.pathname);
+  if (redirectTo) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = redirectTo;
     return NextResponse.redirect(url);
   }
 

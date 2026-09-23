@@ -817,3 +817,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A company must connect its own Stripe under Settings → Portal Payments before its customers can pay online. The deployment key is used only for self-serve signup and subscription billing.
 
+
+## 077 — Signed-out visitors to the bare address see the front page, not the login
+
+**Context:** With self-serve signup live (#075), the site had no front door: `/` sent every signed-out visitor to the staff login, so a contractor who typed the address in saw a password box and nothing about the product or its price.
+
+**Decision:** A public front page at `/home` (feature tour, demo-company screenshots, live plan price, FAQ). The proxy's signed-out rule moved into `signedOutRedirect` (`src/lib/auth/signed-out-route.ts`, tested): the bare `/` goes to `/home`, every other private page still goes to `/login`. Signed-in users at `/` still get the dashboard. The page is a separate route rather than `/` itself so the dashboard keeps its URL. Public paths now match whole segments, so `/homework` or `/portalx` would stay private instead of slipping through a prefix match. The price is read from the same Stripe price checkout charges (`SIGNUP_PRICE_ID`), refreshed hourly, and the card says "Price shown at checkout" when Stripe can't be reached.
+
+**Consequence:** Staff whose session has expired and who open the bare address land on the front page, one "Sign in" click from the login; deep links still go straight to the login. Changing the plan's price in Stripe changes the front page within the hour, with no deploy.
