@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.145.0",
+    date: "2026-09-23",
+    notes: [
+      "The CRM is getting its own phone app. Clocked in from the app, your location keeps being shared with your phone locked or in your pocket, so arrivals at jobs are logged without opening the CRM. On Android an \"On the clock\" notification shows while it's sharing. Sharing still stops the moment you clock out.",
+      "If location is blocked for the app, the \"On the clock\" pill turns orange with an Open settings button.",
+    ],
+  },
+  {
     version: "1.144.0",
     date: "2026-09-23",
     notes: [
