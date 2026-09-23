@@ -85,7 +85,7 @@ export async function handleStripeWebhook(
     }
   }
 
-  // An AI Build Pro subscription renewing, failing or ending. Platform
+  // An AI Build Pros subscription renewing, failing or ending. Platform
   // endpoint only, for the same reason as signup above: a contractor's
   // own Stripe account never sells the CRM.
   const billingCustomer = companyId ? null : customerIdFromEvent(event);

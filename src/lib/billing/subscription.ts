@@ -1,5 +1,5 @@
 /**
- * What a company's AI Build Pro subscription means for its access.
+ * What a company's AI Build Pros subscription means for its access.
  *
  * Pure on purpose: the webhook, the app layout and the lock screen all
  * decide from these, and migration 0175 carries the same status list for
@@ -38,7 +38,7 @@ export function isBillingLocked(status: string | null | undefined): boolean {
 /** The warning shown across the app while Stripe retries a failed payment. */
 export function billingBanner(status: string | null | undefined): string | null {
   if (status === "past_due") {
-    return "Your last AI Build Pro payment didn't go through. Update your card to keep access.";
+    return "Your last AI Build Pros payment didn't go through. Update your card to keep access.";
   }
   return null;
 }

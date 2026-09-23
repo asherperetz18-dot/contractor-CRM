@@ -801,7 +801,7 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** GPS stays on for the whole shift inside the app — a real battery cost, bounded by clock-out. The app needs a network connection to open (an offline page offers Try again). Force-quitting the app stops sharing until it is opened again.
 
-## 075 — A lapsed AI Build Pro subscription locks the company in RLS, not just in the UI
+## 075 — A lapsed AI Build Pros subscription locks the company in RLS, not just in the UI
 
 **Context:** Self-serve signup (0130) sells the CRM on a recurring Stripe price but only ever looked at the first payment, so a company that cancelled or stopped paying kept full access. The owner chose a full lockout (not read-only) when a subscription lapses.
 

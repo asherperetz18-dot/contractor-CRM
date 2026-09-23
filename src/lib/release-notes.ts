@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-09-23",
     notes: [
       "The CRM has a public front page. Someone who types in the site's address without being signed in now sees what the CRM does, what it costs and a Start now button, instead of the sign-in box. Your team's sign-in is one click away under Sign in at the top, and links to a specific page still go straight to sign-in.",
+      "The subscription is called AI Build Pros everywhere now: on the Subscription settings page, the payment-failed notice and the renew page.",
     ],
   },
   {

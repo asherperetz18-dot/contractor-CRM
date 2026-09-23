@@ -11,7 +11,7 @@ import {
 } from "./subscription.ts";
 
 /**
- * A company that bought AI Build Pro through /get-started is locked out
+ * A company that bought AI Build Pros through /get-started is locked out
  * when its subscription lapses. These pin which Stripe statuses count as
  * lapsed, which subscription speaks for a customer that has more than
  * one, and how an event is traced back to the customer it belongs to.

@@ -282,7 +282,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       {
         title: "Subscription",
-        desc: "Your AI Build Pro plan: update the card you pay with, download invoices, or cancel",
+        desc: "Your AI Build Pros plan: update the card you pay with, download invoices, or cancel",
         icon: "🧾",
         href: "/settings/billing",
       },

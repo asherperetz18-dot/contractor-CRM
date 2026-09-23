@@ -4,7 +4,7 @@ import { loadPlanPrice } from "@/lib/marketing/plan";
 import "./home.css";
 
 export const metadata: Metadata = {
-  title: "AI Build Pro — the CRM built for contractors",
+  title: "AI Build Pros — the CRM built for contractors",
   description:
     "Leads, estimates with e-signature, scheduling, production, payments and commissions in one place — built with a working contractor, for the office and the job site.",
 };
@@ -106,7 +106,7 @@ export default async function HomePage() {
       <header className="mk-nav">
         <a href="/home" className="mk-brand">
           <img src="/aibuildpros-icon.svg" alt="" width={28} height={28} />
-          AI Build Pro
+          AI Build Pros
         </a>
         <nav className="mk-nav-links">
           <a href="#features" className="mk-nav-link">Features</a>
@@ -169,9 +169,9 @@ export default async function HomePage() {
 
       <section id="pricing" className="mk-section mk-pricing">
         <h2 className="mk-h2">Simple pricing</h2>
-        <p className="mk-section-sub">One plan with every feature. Your whole team is included.</p>
+        <p className="mk-section-sub">One plan with every feature.</p>
         <div className="mk-price-card">
-          <p className="mk-price-name">AI Build Pro</p>
+          <p className="mk-price-name">AI Build Pros</p>
           {price ? (
             <p className="mk-price">
               <span className="mk-price-amount">{price.amount}</span>
@@ -182,7 +182,6 @@ export default async function HomePage() {
           )}
           <ul className="mk-price-list">
             <li>Every feature on this page</li>
-            <li>Your whole team, with no per-user fees</li>
             <li>Customer portal with online payments</li>
             <li>Phone and tablet ready</li>
             <li>Cancel any time from Settings</li>

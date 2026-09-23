@@ -9,7 +9,7 @@ import { readCompanyBilling, syncCustomerBilling } from "@/lib/billing/company-b
 import { isBillingLocked } from "@/lib/billing/subscription";
 
 /**
- * The AI Build Pro subscription controls: Stripe's Customer Portal for
+ * The AI Build Pros subscription controls: Stripe's Customer Portal for
  * the card and invoices, a fresh Checkout to come back after cancelling,
  * and a re-check for when a payment has gone through but the webhook
  * hasn't arrived yet. Office/Admin only -- the people who pay the bill.
@@ -29,7 +29,7 @@ async function billingForCaller() {
   const env = getStripeEnv();
   if (!env) return { error: "Billing isn't switched on for this deployment." } as const;
   const billing = await readCompanyBilling(profile.company_id);
-  if (!billing) return { error: "This company isn't on an AI Build Pro subscription." } as const;
+  if (!billing) return { error: "This company isn't on an AI Build Pros subscription." } as const;
   return { billing, stripe: stripeClient(env) } as const;
 }
 

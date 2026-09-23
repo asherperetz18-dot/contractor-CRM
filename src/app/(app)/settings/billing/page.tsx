@@ -27,7 +27,7 @@ export default async function BillingSettingsPage() {
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Subscription</h1>
-          <p className="module-sub">Your AI Build Pro plan, card and invoices</p>
+          <p className="module-sub">Your AI Build Pros plan, card and invoices</p>
         </div>
       </div>
 

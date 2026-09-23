@@ -11,7 +11,7 @@ export const metadata = { title: "Subscription ended" };
 export const dynamic = "force-dynamic";
 
 /**
- * Where the app layout sends everyone in a company whose AI Build Pro
+ * Where the app layout sends everyone in a company whose AI Build Pros
  * subscription has lapsed. Outside the (app) group on purpose -- inside
  * it, the layout's own redirect would send this page to itself.
  */
@@ -39,7 +39,7 @@ export default async function BillingLockedPage({
       <div className="auth-card">
         <h1 className="auth-title">{companyName}&apos;s subscription has ended</h1>
         <p className="auth-sub">
-          The AI Build Pro subscription for {companyName} is no longer active, so the CRM is
+          The AI Build Pros subscription for {companyName} is no longer active, so the CRM is
           locked. Nothing has been deleted — everything comes back as soon as the subscription
           is renewed.
         </p>

@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { pickSubscription } from "@/lib/billing/subscription";
 
 /**
- * A company's AI Build Pro subscription, as kept in company_billing (0175).
+ * A company's AI Build Pros subscription, as kept in company_billing (0175).
  *
  * Read and written through the service-role client: the table has no
  * write policies at all, so a company's own Admin cannot mark a lapsed

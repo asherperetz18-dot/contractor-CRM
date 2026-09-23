@@ -93,7 +93,7 @@ export default async function AppLayout({
     getCompanyBilling(profile.company_id),
   ]);
 
-  // A lapsed AI Build Pro subscription. Row-level security already hides
+  // A lapsed AI Build Pros subscription. Row-level security already hides
   // the company's data (0175); this is the part that tells them why.
   // Platform admins are exempt there too, so they can still look in.
   if (isBillingLocked(billing?.status) && !isPlatformAdmin(profile)) redirect("/billing-locked");
