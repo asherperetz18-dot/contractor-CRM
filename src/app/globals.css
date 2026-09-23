@@ -10513,3 +10513,57 @@ textarea.est-item-desc:disabled {
   align-items: center;
   flex-wrap: wrap;
 }
+
+/* ── Estimate Status board ────────────────────────────────────────── */
+.est-status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin: 0 0 14px;
+}
+.est-status-filters .field {
+  min-width: 170px;
+  flex: 0 1 auto;
+}
+.est-status-filters input[type="search"] {
+  min-width: 200px;
+}
+.est-status-count {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.est-status-table th,
+.est-status-table td {
+  white-space: nowrap;
+}
+/* The one column allowed to wrap, so eight columns still fit a laptop
+   without the document title deciding the table's width. */
+.est-status-table .est-status-doc {
+  white-space: normal;
+  min-width: 220px;
+  max-width: 360px;
+}
+.est-status-none {
+  color: var(--ink-soft);
+}
+.est-status-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.est-status-preview {
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .est-status-filters .field {
+    flex: 1 1 calc(50% - 14px);
+    min-width: 0;
+  }
+  .est-status-filters input[type="search"] {
+    min-width: 0;
+  }
+}
