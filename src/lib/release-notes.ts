@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.141.0",
+    date: "2026-09-23",
+    notes: [
+      "Google Calendar sync, both ways. Open Settings › Google Calendar (or the 📆 Google Calendar button on the Calendar page) and connect your own Google account: your appointments appear on your Google Calendar with the client, address, notes and a link back to the CRM.",
+      "Move or resize an appointment in Google and the CRM follows; delete it in Google and the CRM marks it Cancelled. Cancelled and No-show appointments come off Google, and reassigning one moves it to the new rep's calendar.",
+      "Office and Admin users can also connect one company-wide Google Calendar that receives every appointment.",
+      "Syncs run every 15 minutes, with a Sync now button for right away. Events you create yourself in Google are never copied into the CRM.",
+      "Requires a Google OAuth client on the deployment and migration 0173 in Supabase; until then the page says what's missing.",
+    ],
+  },
+  {
     version: "1.140.0",
     date: "2026-09-22",
     notes: [
