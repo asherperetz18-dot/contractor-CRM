@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.141.1",
+    date: "2026-09-23",
+    notes: [
+      "Settings › Google Calendar is easier to read: the two connection cards match the rest of Settings, the text is normal size instead of small italics, and the Connect button sits inside its card instead of hanging off the bottom edge.",
+    ],
+  },
+  {
     version: "1.141.0",
     date: "2026-09-23",
     notes: [
