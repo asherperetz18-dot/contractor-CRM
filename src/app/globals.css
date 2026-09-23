@@ -10653,6 +10653,16 @@ textarea.est-item-desc:disabled {
 .tc-sharing-blocked {
   background: #9a3412;
 }
+.tc-pill-btn {
+  margin-left: 10px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+}
 
 /* Status chips: one idea-color per status. Green and red stay reserved
    for money (.claude/skills/semantic-chips); "location off" is an alarm. */

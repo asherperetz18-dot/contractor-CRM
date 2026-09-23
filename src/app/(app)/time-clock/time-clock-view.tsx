@@ -135,8 +135,8 @@ export function TimeClockView({
             {state === "break" ? "Back from break" : "Clock in"}
           </button>
           <p className="hint-note">
-            Allow location when your phone asks. Location only updates while the CRM is open on your screen — the
-            phone app (coming next) will keep it going with the phone in your pocket.
+            Allow location when your phone asks. In the CRM phone app, sharing keeps going with your phone locked;
+            in a phone browser, only while the CRM is on screen.
           </p>
         </>
       )}
