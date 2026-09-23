@@ -4,6 +4,9 @@ Known shortcuts, deferred work, and things left deliberately unfinished — logg
 
 ---
 
+**New tenant tables aren't covered by the subscription lockout until re-applied.**
+What: 0175's restrictive `billing_lock` policy is stamped onto the tenant tables that existed when it ran. A later migration that adds a table with a `company_id` must end with `select public.apply_billing_lock_policies();`, or a lapsed company can still read that one table through the API. Also, a company that renews after an unpaid (not canceled) subscription keeps the old unpaid subscription on its Stripe customer until someone cancels it in Stripe. Why: an event trigger that stamps new tables automatically is more machinery than one line per migration. Impact: none in the UI — the layout still locks the whole app; only a direct API call is exposed. Where: `supabase/migrations/0175_subscription_lockout.sql`, `src/lib/actions/billing.ts` (`renewSubscription`).
+
 **Lead cost is dollars, not cents.**
 What: `leads.lead_cost` (0023), `company_profile.default_lead_cost` (0089) and `lead_sources.default_lead_cost` (0166) are `numeric` dollars while every other money column is integer cents — `marketing_spend.amount_cents` (0165), on the same settings page, is cents. Why: `lead_cost` predates the cents rule, and the contact card, Lead Refunds and the analytics fallback all read it as dollars; the two defaults feed it, so they match it rather than convert inside the trigger. Impact: one family of columns to remember when a lead's cost meets a cents total. A cents migration across all three plus their readers is the cure. Where: `supabase/migrations/0089_default_lead_cost.sql`, `supabase/migrations/0166_lead_source_default_cost.sql`, `src/lib/actions/marketing-analytics.ts`.
 

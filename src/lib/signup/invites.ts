@@ -31,6 +31,9 @@ export type SignupInvite = {
   company_name: string | null;
   expires_at: string;
   consumed_at: string | null;
+  // The Stripe customer a paid signup bought as. Null on a manual invite,
+  // which has no subscription to keep an eye on.
+  stripe_customer_id: string | null;
 };
 
 export function registerUrl(rawToken: string): string {
@@ -283,7 +286,7 @@ export async function loadUsableInvite(
   const admin = createAdminClient();
   const { data } = await admin
     .from("signup_invites")
-    .select("id, email, company_name, expires_at, consumed_at")
+    .select("id, email, company_name, expires_at, consumed_at, stripe_customer_id")
     .eq("token_hash", hashToken(raw))
     .maybeSingle();
 

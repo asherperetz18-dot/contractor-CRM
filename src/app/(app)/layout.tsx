@@ -38,6 +38,8 @@ import { DailyBriefButton } from "./daily-brief";
 import { NotificationBell } from "./notification-bell";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
+import { getCompanyBilling } from "@/lib/billing/company-billing";
+import { billingBanner, isBillingLocked } from "@/lib/billing/subscription";
 import { version } from "../../../package.json";
 
 // Per-company favicon (the browser tab icon), since this app is
@@ -77,7 +79,7 @@ export default async function AppLayout({
   // saved. Both used to be fresh database reads on every navigation --
   // four queries between them -- for values that change when somebody
   // edits a settings page and not otherwise.
-  const [company, overrides, companies, liveUsers] = await Promise.all([
+  const [company, overrides, companies, liveUsers, billing] = await Promise.all([
     getCompanyChrome(profile.company_id),
     getRoleVisibility(profile.company_id),
     getCurrentUserCompanies(),
@@ -86,7 +88,16 @@ export default async function AppLayout({
     // costing a round trip of its own, and is skipped entirely for the
     // roles that never see the button.
     isStrictAdmin(profile) ? getLiveUsers() : Promise.resolve(null),
+    // Cached like the chrome, and dropped by the Stripe webhook the moment
+    // the subscription changes.
+    getCompanyBilling(profile.company_id),
   ]);
+
+  // A lapsed AI Build Pro subscription. Row-level security already hides
+  // the company's data (0175); this is the part that tells them why.
+  // Platform admins are exempt there too, so they can still look in.
+  if (isBillingLocked(billing?.status) && !isPlatformAdmin(profile)) redirect("/billing-locked");
+  const paymentWarning = billingBanner(billing?.status);
   const logoUrl = company.logo_url;
   const companyName = company.name?.trim();
   const timeFormat: TimeFormat = company.time_format ?? "12h";
@@ -211,6 +222,16 @@ export default async function AppLayout({
           />
 
           <main className="main">
+            {paymentWarning && (
+              <div className="est-locked-banner">
+                {paymentWarning}{" "}
+                {isAdminRole(profile) ? (
+                  <Link href="/settings/billing">Update payment</Link>
+                ) : (
+                  "Ask your company's admin to update it."
+                )}
+              </div>
+            )}
             <PageGate roles={profile.roles} overrides={overrides}>
               {children}
             </PageGate>

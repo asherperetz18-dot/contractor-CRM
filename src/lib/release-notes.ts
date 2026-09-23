@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.147.0",
+    date: "2026-09-23",
+    notes: [
+      "New Settings → Subscription page: Office and Admin users can update the card the AI Build Pro plan is paid with, download invoices, or cancel.",
+      "If a card payment for the subscription fails, a yellow notice across the top says so while Stripe retries. If the subscription ends, the CRM locks and shows a page to renew it. Nothing is deleted, and everything comes back the moment it's renewed.",
+    ],
+  },
+  {
     version: "1.146.0",
     date: "2026-09-23",
     notes: [
