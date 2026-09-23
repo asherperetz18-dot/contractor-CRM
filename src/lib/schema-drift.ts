@@ -44,6 +44,12 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "portal_payments", column: "reference", migration: "0151_portal_payments_manual_columns.sql" },
   { table: "portal_payments", column: "note", migration: "0151_portal_payments_manual_columns.sql" },
   { table: "profiles", column: "dashboard_panel_order", migration: "0162_dashboard_rollup.sql" },
+  { table: "time_clock_settings", column: "tracked_roles", migration: "0174_time_clock.sql" },
+  { table: "time_punches", column: "end_reason", migration: "0174_time_clock.sql" },
+  { table: "location_pings", column: "accuracy_m", migration: "0174_time_clock.sql" },
+  { table: "site_visits", column: "arrived_at", migration: "0174_time_clock.sql" },
+  { table: "time_punch_changes", column: "old_punch", migration: "0174_time_clock.sql" },
+  { table: "tracking_notices", column: "accepted_at", migration: "0174_time_clock.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };
