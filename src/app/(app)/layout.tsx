@@ -22,6 +22,7 @@ import { LiveUsersButton } from "./live-users-button";
 import { getLiveUsers } from "@/lib/actions/presence";
 import { getCompanyChrome, getRoleVisibility } from "@/lib/data/company-chrome";
 import { ActivityTracker } from "./activity-tracker";
+import { LocationSharer } from "./location-sharer";
 import { VoiceDialer } from "./voice-dialer";
 import { UpdateNotice } from "./update-notice";
 import { WhatsNewNotice } from "./whats-new-notice";
@@ -168,6 +169,7 @@ export default async function AppLayout({
           </div>
         </div>
         <ActivityTracker />
+        <LocationSharer />
         <VoiceDialer />
         <ScreenShareEngine
           selfId={profile.id}

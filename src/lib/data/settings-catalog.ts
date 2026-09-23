@@ -151,7 +151,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/lead-sources",
       },
       { title: "Marketing Messages", desc: "Reusable marketing texts & emails your team can send from any lead", icon: "✉" },
-      { title: "Geofencing", desc: "Geofence radius, alerts, and check-in behavior", icon: "📡" },
+      {
+        title: "Time Clock & Tracking",
+        desc: "Who clocks in, job-zone size, overtime and late rules, and how long location trails are kept",
+        icon: "📡",
+        href: "/settings/time-clock",
+      },
     ],
   },
   {

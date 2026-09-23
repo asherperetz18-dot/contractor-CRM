@@ -463,7 +463,10 @@ export type PageKey =
   | "calendar"
   | "schedule"
   | "contracts"
-  | "estimate-status";
+  | "estimate-status"
+  | "time-clock"
+  | "team-map"
+  | "timesheets";
 
 // Registry entries carrying this group are not a collapsible sidebar
 // section -- they render as top-level links, in registry order. Role
@@ -560,6 +563,11 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // it is not Accounting either. Key unchanged, so saved Role
   // Visibility overrides and the route are untouched.
   { key: "salespeople", label: "Salespeople", href: "/salespeople", group: "Staff" },
+  // The time clock: everyone clocks in here; the office watches the
+  // live map and approves hours on Timesheets (migration 0174).
+  { key: "time-clock", label: "Time Clock", href: "/time-clock", group: "Staff" },
+  { key: "team-map", label: "Team Map", href: "/team-map", group: "Staff" },
+  { key: "timesheets", label: "Timesheets", href: "/timesheets", group: "Staff" },
   // Production is one collapsible sidebar section: the sold work and the
   // money that follows it. The board keeps its "production" key so saved
   // Role Visibility overrides and the /production route are untouched;
@@ -693,6 +701,13 @@ const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
 // Most roles default to full access; Call Center and Dispatch default to
 // the pages their job actually needs.
 export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
+  // Anyone who works may need to clock in; whether they do is the
+  // company's Time Clock setting, not the menu's.
+  if (pageKey === "time-clock") return true;
+  // Where everyone is right now, and what they're paid for: the office's.
+  if ((pageKey === "team-map" || pageKey === "timesheets") && role !== "Office" && role !== "Admin") {
+    return false;
+  }
   // A bookkeeper files receipts and chases money. They are not given the
   // pipeline, the dialer or the contact book -- every one of those is
   // also the customers' names and phone numbers, and none of it is

@@ -10567,3 +10567,234 @@ textarea.est-item-desc:disabled {
     min-width: 0;
   }
 }
+
+/* ── Time clock, Team Map, Timesheets (0174) ─────────────────────── */
+.tc-phone {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tc-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tc-center {
+  align-items: center;
+  text-align: center;
+}
+.tc-caps {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ink-soft);
+}
+.tc-big {
+  font-family: var(--font-data);
+  font-size: 44px;
+  line-height: 1.1;
+}
+.tc-mono {
+  font-family: var(--font-data);
+}
+.tc-soft {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.tc-here {
+  border-color: #99d5cf;
+  background: #effaf8;
+}
+.tc-notice p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.tc-actions {
+  display: flex;
+  gap: 10px;
+}
+.tc-btn {
+  flex: 1;
+  min-height: 52px;
+  font-size: 16px;
+}
+.tc-btn-go {
+  min-height: 60px;
+  font-size: 18px;
+}
+.tc-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.tc-sharing-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: calc(100vw - 32px);
+  background: #0f766e;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(20, 32, 46, 0.2);
+}
+.tc-sharing-blocked {
+  background: #9a3412;
+}
+
+/* Status chips: one idea-color per status. Green and red stay reserved
+   for money (.claude/skills/semantic-chips); "location off" is an alarm. */
+.tc-chip {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.tc-chip-at-job { background: #dff3f0; color: #0f5e59; }
+.tc-chip-office { background: #eceff3; color: #3b4656; }
+.tc-chip-driving { background: #e3edf6; color: #1f4566; }
+.tc-chip-stopped { background: #fbeedb; color: #8a4a0c; }
+.tc-chip-no-signal { background: #fde7dc; color: #8a2d0c; border: 1px solid #e8a07f; }
+.tc-chip-break { background: #ede7fb; color: #4c2a9e; }
+.tc-chip-off { background: #f1f1ee; color: #5a6878; }
+
+.tc-map-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tc-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+}
+.tc-map {
+  min-height: 520px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ebe7dc;
+}
+.tc-map-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--ink-soft);
+}
+.tc-people {
+  gap: 0;
+  padding: 0;
+  align-self: start;
+}
+.tc-person {
+  padding: 12px 14px;
+  border-bottom: 1px solid #efede4;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tc-person:last-child {
+  border-bottom: none;
+}
+
+.tc-sheet-actions {
+  margin-bottom: 12px;
+  align-items: center;
+}
+.tc-table-wrap {
+  overflow-x: auto;
+}
+.tc-row {
+  cursor: pointer;
+}
+.tc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--blueprint);
+  cursor: pointer;
+  text-align: left;
+}
+.tc-detail {
+  background: #faf9f5;
+}
+.tc-punch {
+  padding: 8px 0;
+  border-bottom: 1px solid #efede4;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tc-history {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.tc-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.tc-editor .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tc-editor-reason {
+  flex: 1;
+  min-width: 220px;
+}
+
+.tc-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 1100px;
+}
+.tc-settings > .chip-row {
+  grid-column: 1 / -1;
+}
+.tc-settings .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tc-h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.tc-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .tc-map-layout,
+  .tc-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tc-map {
+    min-height: 360px;
+  }
+}

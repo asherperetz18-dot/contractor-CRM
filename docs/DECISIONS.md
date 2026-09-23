@@ -784,3 +784,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Changes made in Google take up to 15 minutes to land (push notification channels are the upgrade if that ever matters; the link table already carries what they need). Editing a title, client or notes in Google is overwritten by the next CRM push — Google is a mirror for the fields the CRM owns. Disconnecting leaves the existing Google copies in place. The 30-day pull window means an appointment older than a month moved in Google is not pulled; the CRM copy stands.
 
+
+## 073 — Location is tracked only while on the clock, and attendance is written by the server
+
+**Context:** The owner wanted live tracking of reps and crews from the start, with hours feeding payroll and attendance. Tracking people is legally and socially sensitive, and a web page can only read location while it is on screen.
+
+**Decision:** Tracking is tied to the time clock (0174): a fix is accepted only while its sender has an open punch — enforced by the `location_pings` insert policy, not by the app — and clocking out or starting a break stops it. Each person accepts a notice before their first clock-in, and trails are deleted after the company's retention (default 90 days) while hours and arrivals are kept. Workers write their own punches but only "now" (policy + a guard trigger: a worker can close their own open punch but never move a clock-in or reopen a closed one); Office/Admin corrections go through `correctPunch`, which records raw before/after snapshots in the append-only `time_punch_changes` (the change-tracking skill). Site visits are written only with the service role from the pings, so nobody can hand-craft their own attendance. Zones are appointment addresses geocoded through the existing `address_geocode` cache (Census geocoder) — no new API key. A shift with a break is two punches, so hours are a plain sum. Hours are filed on the company-local day the punch started.
+
+**Consequence:** Until the phone app ships, location updates only while the CRM is open on screen; hours and attendance still work. Late and no-show counts on Timesheets are only for people who clocked in that week, so reps not yet using the clock are not flagged. A punch that spans midnight counts entirely on the day it started.

@@ -36,11 +36,11 @@ type NwsPeriod = {
   probabilityOfPrecipitation: { value: number | null } | null;
 };
 
-function normalizeAddress(address: string): string {
+export function normalizeAddress(address: string): string {
   return address.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-async function geocodeViaCensus(
+export async function geocodeViaCensus(
   address: string
 ): Promise<{ lat: number; lng: number } | null> {
   const url =

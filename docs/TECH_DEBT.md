@@ -83,3 +83,9 @@ What: the main Dashboard's boxes drag to a saved order (`profiles.dashboard_pane
 **Google Calendar sync is polled, not pushed.**
 What: changes made in Google reach the CRM on the next 15-minute cron run (or Sync now), not instantly; Google's push channels (`events.watch`) are not used. Why: channels need a public endpoint, renewal every few days and a channel id per connection — worth it only if the delay ever bites. Impact: a rep who moves an appointment in Google and then looks at the CRM inside the same 15 minutes sees the old slot. Where: `src/lib/google-calendar/sync.ts`, `src/app/api/cron/google-calendar-sync/route.ts`.
 
+
+**Live location stops when the CRM leaves the screen.**
+What: the location sharer runs in the browser, which stops reporting when the phone locks or the tab is in the background. Why: background location needs a native app; the web CRM ships first so hours and attendance work now (decision #073). Impact: the Team Map shows "Location off" for anyone whose phone is in their pocket, and arrivals are only logged while the CRM is open. The cure: the installable phone app (Capacitor wrapper + background-location plugin) posting to the same `/api/location`. Where: `src/app/(app)/location-sharer.tsx`.
+
+**Office edits to hours are audited in the action, not by a trigger.**
+What: `correctPunch` writes `time_punch_changes`; an Office/Admin user editing `time_punches` directly through the Supabase API would bypass the history (RLS allows it — the audit does not). Why: the action is the only writer the app has; a trigger would also fire on the cron's auto clock-out and the worker's own clock-out. Impact: none through the app. The cure if needed: a `before update` trigger that records only updates by Office/Admin. Where: `src/lib/actions/time-clock.ts`, `supabase/migrations/0174_time_clock.sql`.

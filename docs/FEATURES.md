@@ -8,6 +8,7 @@ What exists, split by domain since the full inventory is too large for one file.
 - [Billing, Payments & Commissions](features/billing-payments-commissions.md) — bills to pay, collections, P&L, dispatcher and sales-rep commissions, Stripe.
 - [Scheduling & Communications](features/scheduling-communications.md) — schedule/calendar, SMS, voice, CallRail, inbound email, call/text reporting.
 - [Marketing & Analytics](features/marketing-analytics.md) — the marketing dashboard (sources as a funnel, weekly trend, team, spend by source, bought-list toggle), rep performance report, Facebook Lead Ads, social links.
+- [Time Clock & Tracking](features/time-clock-tracking.md) — clock in/out, live location while on the clock, automatic job arrivals, Team Map, Timesheets.
 - [Admin, Settings & Platform](features/admin-settings-platform.md) — auth/onboarding, the customer portal shell, platform admin, and the company Settings grid.
 
 ## Adding an entry
