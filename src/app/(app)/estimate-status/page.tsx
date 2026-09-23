@@ -1,10 +1,8 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { canViewEstimates, isStrictAdmin, moneyCents } from "@/lib/data/types";
+import { canViewEstimates, isStrictAdmin } from "@/lib/data/types";
 import { estimateFlowStatus } from "@/lib/estimate-flow-status";
-import { Badge } from "@/components/ui/badge";
-import { ApproveEstimateButton } from "@/components/approve-estimate-button";
+import { EstimateStatusView, type StatusRow } from "./estimate-status-view";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +54,9 @@ export default async function EstimateStatusPage() {
   const [{ data: docs }, { data: companyRow }] = await Promise.all([
     supabase
       .from("estimates")
-      .select("id, doc_number, title, status, kind, total_cents, lead_id, approved_at, signed_at, updated_at")
+      .select(
+        "id, doc_number, title, status, kind, total_cents, lead_id, approved_at, signed_at, updated_at, assigned_to, sales_rep_1, sales_rep_2, sent_at, viewed_at"
+      )
       .eq("company_id", profile.company_id)
       .in("status", ["Draft", "Sent", "Viewed", "Signed"])
       .or("kind.is.null,kind.neq.completion")
@@ -80,6 +80,11 @@ export default async function EstimateStatusPage() {
           approved_at: string | null;
           signed_at: string | null;
           updated_at: string | null;
+          assigned_to: string | null;
+          sales_rep_1: string | null;
+          sales_rep_2: string | null;
+          sent_at: string | null;
+          viewed_at: string | null;
         }[]
       >(),
     supabase
@@ -115,19 +120,62 @@ export default async function EstimateStatusPage() {
     : { data: [] as never[] };
   const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
 
-  const closerIds = [
-    ...new Set((leads ?? []).map((l) => l.closer_id).filter(Boolean)),
-  ] as string[];
-  const { data: closers } = closerIds.length
+  // Everyone the rows name -- closers and both rep seats -- in one
+  // read. Rep 1 falls back to the document's assigned_to when the seat
+  // was never set, the same reading sale-credit.ts gives it.
+  const rep1Of = (r: { sales_rep_1: string | null; assigned_to: string | null }) =>
+    r.sales_rep_1 || r.assigned_to || null;
+  const personIds = [
+    ...new Set([
+      ...(leads ?? []).map((l) => l.closer_id),
+      ...rows.map(rep1Of),
+      ...rows.map((r) => r.sales_rep_2),
+    ]),
+  ].filter(Boolean) as string[];
+  const { data: people } = personIds.length
     ? await supabase
         .from("profiles")
         .select("id, name, email")
-        .in("id", closerIds)
+        .in("id", personIds)
         .returns<{ id: string; name: string | null; email: string | null }[]>()
     : { data: [] as never[] };
-  const closerNameById = new Map(
-    (closers ?? []).map((p) => [p.id, p.name || p.email || "the closer"])
-  );
+  const nameById = new Map((people ?? []).map((p) => [p.id, p.name || p.email || "Unnamed"]));
+  const nameOf = (id: string | null) => (id ? (nameById.get(id) ?? "Unnamed") : null);
+
+  const statusRows: StatusRow[] = rows.map((r) => {
+    const lead = r.lead_id ? leadById.get(r.lead_id) : undefined;
+    const customer =
+      [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || lead?.company_name || "—";
+    const closerId = lead?.closer_id ?? null;
+    const flow = estimateFlowStatus({
+      status: r.status,
+      approvedAt: r.approved_at,
+      approvalRequired,
+      closerId,
+      closerName: closerId ? (nameById.get(closerId) ?? "the closer") : null,
+      viewerId: profile.id,
+    });
+    const rep1Id = rep1Of(r);
+    const rep2Id = r.sales_rep_2 || null;
+    return {
+      id: r.id,
+      docNumber: r.doc_number,
+      title: r.title,
+      customer,
+      totalCents: r.total_cents,
+      closerId,
+      closerName: nameOf(closerId),
+      rep1Id,
+      rep1Name: nameOf(rep1Id),
+      rep2Id,
+      rep2Name: nameOf(rep2Id),
+      sentAt: r.sent_at,
+      viewedAt: r.viewed_at,
+      flowKey: flow.key,
+      flowLabel: flow.label,
+      flowColor: flow.color,
+    };
+  });
 
   return (
     <>
@@ -141,65 +189,7 @@ export default async function EstimateStatusPage() {
         </div>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="empty-label">
-          Nothing in flight. Documents appear here the moment a draft exists, and signed ones
-          drop off after 30 days.
-        </p>
-      ) : (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Customer</th>
-                <th className="right">Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const lead = r.lead_id ? leadById.get(r.lead_id) : undefined;
-                const customer =
-                  [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
-                  lead?.company_name ||
-                  "—";
-                const closerId = lead?.closer_id ?? null;
-                const flow = estimateFlowStatus({
-                  status: r.status,
-                  approvedAt: r.approved_at,
-                  approvalRequired,
-                  closerId,
-                  closerName: closerId ? closerNameById.get(closerId) : null,
-                  viewerId: profile.id,
-                });
-                return (
-                  <tr key={r.id}>
-                    <td>
-                      <Link href={`/estimates/${r.id}`}>
-                        {r.doc_number || "Draft"}
-                        {r.title ? ` · ${r.title}` : ""}
-                      </Link>
-                    </td>
-                    <td>{customer}</td>
-                    <td className="right mono">
-                      {r.total_cents ? moneyCents(r.total_cents) : "—"}
-                    </td>
-                    <td>
-                      <span className="est-status-cell">
-                        <Badge color={flow.color}>{flow.label}</Badge>
-                        {canApprove && flow.key === "awaiting_approval" && (
-                          <ApproveEstimateButton estimateId={r.id} />
-                        )}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <EstimateStatusView rows={statusRows} canApprove={canApprove} />
     </>
   );
 }

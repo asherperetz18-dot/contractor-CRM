@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.142.0",
+    date: "2026-09-23",
+    notes: [
+      "Estimate Status shows who's on each document: Closer, Rep 1 and Rep 2 columns sit between the document and the customer, so the table fills the screen instead of leaving a gap.",
+      "A new Client view column says whether the customer has opened the document (and when), or that it was sent and not opened yet, with a Preview link that opens what the customer sees.",
+      "Filters above the table: Status, Closer, Rep (matches either seat) and a customer search, with an 'N of M in flight' count and a Clear button. Closer and Rep lists only offer people who have documents on the board.",
+    ],
+  },
+  {
     version: "1.141.1",
     date: "2026-09-23",
     notes: [
