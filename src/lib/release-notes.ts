@@ -21,13 +21,20 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.143.0",
+    version: "1.144.0",
     date: "2026-09-23",
     notes: [
       "New Time Clock (Staff menu): clock in, take a break and clock out from your phone. While you're on the clock the CRM shares your location and logs your arrival at each appointment automatically. Sharing stops when you clock out.",
       "New Team Map for the office: everyone on the clock, live — at a job, driving, stopped somewhere else, or location off.",
       "New Timesheets for the office: weekly hours per person, time on site, late arrivals, overtime and missed clock-outs, with a Fix button that keeps a permanent history of every change, and a CSV export for payroll.",
       "Settings › Time Clock & Tracking: choose who clocks in, the job-zone size, overtime and late rules, the office address, and how long location trails are kept.",
+    ],
+  },
+  {
+    version: "1.143.0",
+    date: "2026-09-23",
+    notes: [
+      "The sidebar's standard order is now Dashboard, Marketing Analytics, Dispatch Dashboard, Calendar, Schedule, Estimates & Contracts, Production, Accounting, Dispatch, Call Center, Staff, Estimate Status, Estimate Approvals — and \"Reset to standard order\" on Settings › Menu Order goes back to exactly that.",
     ],
   },
   {

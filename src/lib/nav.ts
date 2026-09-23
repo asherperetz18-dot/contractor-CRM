@@ -1,6 +1,7 @@
 import {
   navEntryKey,
   sortNavEntries,
+  STANDARD_NAV_ORDER,
   type NavEntry,
   type NavGroupItem,
   type NavLinkItem,
@@ -157,7 +158,9 @@ function buildNav(): NavEntry[] {
     icon: "✓",
   });
   entries.push({ type: "link", href: "/settings", label: "Admin Settings", icon: "⚙" });
-  return entries;
+  // The registry's order is grouping, not the menu; the menu's built-in
+  // order is STANDARD_NAV_ORDER.
+  return sortNavEntries(entries, STANDARD_NAV_ORDER);
 }
 
 export const NAV: NavEntry[] = buildNav();
