@@ -170,7 +170,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "🔔",
         href: "/settings/appointment-notifications",
       },
-      { title: "Google Calendar", desc: "OAuth connection and sync settings for Google Calendar", icon: "📆" },
+      {
+        title: "Google Calendar",
+        desc: "Connect your own Google Calendar (and one for the company) so appointments sync both ways",
+        icon: "📆",
+        href: "/settings/google-calendar",
+      },
     ],
   },
   {

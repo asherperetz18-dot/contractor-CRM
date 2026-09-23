@@ -23,6 +23,7 @@ import {
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/safe-path";
 import { rescheduleEvent } from "@/lib/actions/events";
@@ -643,14 +644,22 @@ export function CalendarBoard({
           <h1 className="module-title">Calendar</h1>
           <p className="module-sub">{filteredEvents.length} total appointments</p>
         </div>
-        {canWrite && (
-          <button
-            className="btn-primary"
-            onClick={() => openNewOnDate(selectedDate || cursorDate)}
-          >
-            + New Appointment
-          </button>
-        )}
+        <div className="cal-toolbar-actions">
+          {/* Every rep can connect their own Google Calendar, and this
+              is their way to that page -- the Settings grid is
+              Office/Admin only. */}
+          <Link href="/settings/google-calendar" className="btn-ghost">
+            📆 Google Calendar
+          </Link>
+          {canWrite && (
+            <button
+              className="btn-primary"
+              onClick={() => openNewOnDate(selectedDate || cursorDate)}
+            >
+              + New Appointment
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="chip-row no-margin cal-status-chips">

@@ -10439,3 +10439,38 @@ textarea.est-item-desc:disabled {
     padding: 8px 12px;
   }
 }
+
+/* ── Settings › Google Calendar ──────────────────────────────────── */
+.gcal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  max-width: 980px;
+}
+.gcal-card {
+  margin: 0 0 14px;
+}
+.gcal-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.gcal-rules {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+.gcal-rules li {
+  margin-bottom: 6px;
+}
+.btn-primary.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.cal-toolbar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}

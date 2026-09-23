@@ -34,6 +34,7 @@ Every tenant-scoped table carries `company_id`; there is no query pattern anywhe
 | `appointment-reminders` | — | Texts leads 2–20h ahead of their appointment. |
 | `callrail-backfill` | — | Syncs/backfills CallRail call data into leads. |
 | `backup` (nightly) | nightly | Full data export, same logic the manual Backup settings page uses. |
+| `google-calendar-sync` | every 15 min | Pull then push for every connected Google Calendar (per-rep and company-wide). |
 
 ## Where to look for X
 
