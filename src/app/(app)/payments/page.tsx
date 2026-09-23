@@ -13,7 +13,7 @@ import {
   type PortalPayment,
   type SignedContract,
 } from "@/lib/data/types";
-import { getStripeEnv } from "@/lib/stripe-env";
+import { companyHasOwnStripe } from "@/lib/stripe-company";
 import {
   PaymentsView,
   type BilledPhaseRow,
@@ -73,9 +73,8 @@ export default async function PaymentsPage() {
   }
 
   const supabase = await createClient();
-  const env = getStripeEnv();
 
-  const [payments, contracts, billedPhases] = await Promise.all([
+  const [payments, contracts, billedPhases, stripeConnected] = await Promise.all([
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
@@ -102,6 +101,8 @@ export default async function PaymentsPage() {
         .order("due_date")
         .range(from, to)
     ),
+    // The company's own account -- the only one its customers can pay into.
+    companyHasOwnStripe(profile.company_id),
   ]);
 
   const leadIds = [
@@ -241,7 +242,7 @@ export default async function PaymentsPage() {
         </div>
       </div>
 
-      {!env && (
+      {!stripeConnected && (
         <p className="hint-note">
           Stripe isn&apos;t connected yet, so customers can&apos;t pay online — set it up in Admin
           Settings &rarr; Portal Payments. Signed contract totals below are still accurate.

@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.147.1",
+    date: "2026-09-23",
+    notes: [
+      "Customer deposits now always go into your company's own Stripe account, connected under Settings → Portal Payments. A company that hasn't connected one doesn't show an online Pay button, instead of falling back to the AI Build Pros account.",
+    ],
+  },
+  {
     version: "1.147.0",
     date: "2026-09-23",
     notes: [
