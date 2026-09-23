@@ -40,9 +40,9 @@ type ColumnDoc = Pick<Estimate, "kind" | "status" | "expires_at">;
  * The status is the effective one, so a lapsed expiry files a Sent
  * contract under Closed without anything sweeping the table on a timer.
  */
-export function boardColumnFor(e: ColumnDoc): BoardColumnKey | null {
+export function boardColumnFor(e: ColumnDoc, now: Date = new Date()): BoardColumnKey | null {
   if (!isSellableKind(e.kind)) return null;
-  const status = effectiveEstimateStatus(e);
+  const status = effectiveEstimateStatus(e, now);
   if (status === "Draft") return "draft";
   if (status === "Sent") return "sent";
   if (status === "Viewed") return "viewed";
@@ -147,7 +147,7 @@ type ScopeDoc = ColumnDoc & Pick<Estimate, "signed_at">;
 export function matchesScope(e: ScopeDoc, scope: BoardScope | null, now: Date = new Date()): boolean {
   if (!scope) return true;
   if (scope === "awaiting") {
-    const col = boardColumnFor(e);
+    const col = boardColumnFor(e, now);
     return col === "sent" || col === "viewed";
   }
   if (scope === "signedMonth") return signedThisMonth(e, now);
@@ -170,7 +170,7 @@ export type BoardCardStats = {
  * number (the estimates funnel learned this first).
  */
 export function boardCardStats(docs: StatsDoc[], now: Date = new Date()): BoardCardStats {
-  const board = docs.filter((e) => boardColumnFor(e) !== null);
+  const board = docs.filter((e) => boardColumnFor(e, now) !== null);
   const tally = (rows: StatsDoc[]) => ({
     count: rows.length,
     totalCents: rows.reduce((sum, e) => sum + (e.total_cents || 0), 0),
