@@ -29,7 +29,7 @@ declare global {
 
 let loadPromise: Promise<void> | null = null;
 
-function loadGooglePlaces(apiKey: string): Promise<void> {
+export function loadGooglePlaces(apiKey: string): Promise<void> {
   if (window.google?.maps?.places) return Promise.resolve();
   if (loadPromise) return loadPromise;
   // Deliberately not using loading=async here: that mode defers loading
