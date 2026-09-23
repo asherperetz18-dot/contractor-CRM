@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.146.0",
+    date: "2026-09-23",
+    notes: [
+      "Every estimate now shows its rep at the top, next to the customer's name and address. Until it's signed, the rep is whoever holds the lead, and a link opens the lead card to change it. A signed contract shows the rep who sold it.",
+    ],
+  },
+  {
     version: "1.145.2",
     date: "2026-09-23",
     notes: [

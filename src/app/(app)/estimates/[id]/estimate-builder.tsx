@@ -133,6 +133,7 @@ export function EstimateBuilder({
   paid,
   changeOrderBilling = NO_CHANGE_ORDER_BILLING,
   lead,
+  rep,
   canEdit,
   canSend = true,
   sendHoldNote = null,
@@ -152,6 +153,9 @@ export function EstimateBuilder({
    *  the mirror rows this contract's schedule carries. */
   changeOrderBilling?: ChangeOrderBilling[];
   lead: BuilderLead | null;
+  /** The salesperson for the header. Unsigned it follows the lead, so
+   *  it is changed on the lead card; signed it is who sold the job. */
+  rep?: { name: string | null; followsLead: boolean };
   canEdit: boolean;
   /** The Send Estimates switch. Off = drafts only: Save stays, everything
    *  that would put the document in front of the customer goes. */
@@ -482,6 +486,19 @@ export function EstimateBuilder({
           <p className="module-sub">
             {customer}
             {lead?.address ? ` · ${lead.address}` : ""}
+            {rep && (
+              <>
+                {" · "}Rep: <strong>{rep.name ?? "Unassigned"}</strong>
+                {rep.followsLead && lead && (
+                  <>
+                    {" "}
+                    <a href={`/contacts?openLead=${lead.id}&from=/estimates/${estimate.id}`}>
+                      (from the lead — change it there)
+                    </a>
+                  </>
+                )}
+              </>
+            )}
           </p>
         </div>
         <div className="est-header-actions">
