@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   estimateStatusFilterOptions,
+  statusBoardRep1Id,
   filterEstimateStatusRows,
   type EstimateStatusFilter,
   type FilterableStatusRow,
@@ -53,4 +54,34 @@ test("search matches the customer's name, case-insensitively, trimmed", () => {
   assert.equal(filterEstimateStatusRows(rows, { ...NONE, search: "  godley " }).length, 1);
   assert.equal(filterEstimateStatusRows(rows, { ...NONE, search: "VANCE" }).length, 1);
   assert.equal(filterEstimateStatusRows(rows, { ...NONE, search: "nobody" }).length, 0);
+});
+
+test("an unsigned document's rep 1 follows whoever holds the lead now", () => {
+  // EST-1032: raised while Brendan held the lead, lead since handed to
+  // Simon. The board said Brendan and filtered under him.
+  assert.equal(
+    statusBoardRep1Id({ status: "Sent", salesRep1: null, estimateAssignedTo: "brendan", leadAssignedTo: "simon" }),
+    "simon"
+  );
+});
+
+test("a signed document's rep 1 stays who it was stamped with", () => {
+  assert.equal(
+    statusBoardRep1Id({ status: "Signed", salesRep1: null, estimateAssignedTo: "brendan", leadAssignedTo: "simon" }),
+    "brendan"
+  );
+});
+
+test("a set salesperson seat wins over the lead", () => {
+  assert.equal(
+    statusBoardRep1Id({ status: "Sent", salesRep1: "dana", estimateAssignedTo: "brendan", leadAssignedTo: "simon" }),
+    "dana"
+  );
+});
+
+test("an unassigned lead falls back to the document's stamp", () => {
+  assert.equal(
+    statusBoardRep1Id({ status: "Draft", salesRep1: null, estimateAssignedTo: "brendan", leadAssignedTo: null }),
+    "brendan"
+  );
 });

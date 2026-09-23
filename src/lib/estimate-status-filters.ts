@@ -1,4 +1,5 @@
 import type { FlowStatusKey } from "./estimate-flow-status";
+import { effectiveEstimateRepId } from "./data/types.ts";
 
 /**
  * The Estimate Status board's filters. Options come from the rows on
@@ -54,5 +55,29 @@ export function filterEstimateStatusRows<T extends FilterableStatusRow>(
       (!f.closer || r.closerId === f.closer) &&
       (!f.rep || r.rep1Id === f.rep || r.rep2Id === f.rep) &&
       (!q || r.customer.toLowerCase().includes(q))
+  );
+}
+
+/**
+ * Who the board shows (and filters) as Rep 1. A set salesperson seat
+ * wins; otherwise the same rule as the estimates list and the
+ * customer's copy -- an unsigned document follows whoever holds the
+ * lead now, a signed one keeps who it was stamped with. Reading the
+ * creation stamp alone left a draft under the rep who happened to hold
+ * the lead that day, long after it was handed on.
+ */
+export function statusBoardRep1Id(input: {
+  status: string;
+  salesRep1: string | null;
+  estimateAssignedTo: string | null;
+  leadAssignedTo: string | null | undefined;
+}): string | null {
+  return (
+    input.salesRep1 ||
+    effectiveEstimateRepId({
+      status: input.status,
+      estimateAssignedTo: input.estimateAssignedTo,
+      leadAssignedTo: input.leadAssignedTo,
+    })
   );
 }
