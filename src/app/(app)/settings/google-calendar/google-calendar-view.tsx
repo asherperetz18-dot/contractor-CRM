@@ -74,19 +74,20 @@ function ConnectionCard({
   const expired = Boolean(info?.lastError && /reconnect/i.test(info.lastError));
 
   return (
-    <div className="second-contact-block gcal-card">
-      <div className="second-contact-head">
-        <span>{title}</span>
+    <div className="cp-card gcal-card">
+      <div className="gcal-card-head">
+        <div className="cp-card-head">{title}</div>
         {info && !expired && <Badge color="#2F855A">Connected</Badge>}
         {info && expired && <Badge color="#B7791F">Reconnect needed</Badge>}
       </div>
-      <p className="hint-note" style={{ marginTop: 0 }}>{intro}</p>
+      <p className="cp-card-sub">{intro}</p>
 
       {info ? (
         <>
-          <p className="hint-note">
-            Connected as <strong>{info.email ?? "Google account"}</strong>. {info.linked} appointment
-            {info.linked === 1 ? "" : "s"} on this calendar. Last sync: {when(info.lastSyncedAt)}.
+          <p className="gcal-status">
+            Connected as <strong>{info.email ?? "Google account"}</strong>
+            <br />
+            {info.linked} appointment{info.linked === 1 ? "" : "s"} on this calendar · last sync {when(info.lastSyncedAt)}
           </p>
           {info.lastError && <p className="error-note">{info.lastError}</p>}
           <div className="gcal-actions">
@@ -104,9 +105,11 @@ function ConnectionCard({
           {note && <p className="hint-note">{note}</p>}
         </>
       ) : (
-        <a href={connectHref} className={`btn-primary${disabled ? " is-disabled" : ""}`} aria-disabled={disabled}>
-          Connect Google Calendar
-        </a>
+        <div className="gcal-actions">
+          <a href={connectHref} className={`btn-primary${disabled ? " is-disabled" : ""}`} aria-disabled={disabled}>
+            Connect Google Calendar
+          </a>
+        </div>
       )}
       {error && <p className="error-note">{error}</p>}
     </div>
@@ -168,9 +171,9 @@ export function GoogleCalendarView({
         )}
       </div>
 
-      <div className="second-contact-block gcal-card">
-        <div className="second-contact-head"><span>How the sync works</span></div>
-        <ul className="hint-note gcal-rules">
+      <div className="cp-card gcal-card gcal-rules-card">
+        <div className="cp-card-head">How the sync works</div>
+        <ul className="gcal-rules">
           <li>Appointments from the last 7 days onward go to Google; older history stays in the CRM.</li>
           <li>Move or resize an appointment in Google and the CRM follows. Delete it in Google and the CRM marks it Cancelled.</li>
           <li>Cancelled and No-show appointments come off Google. Reassigning an appointment moves it to the new rep&apos;s calendar.</li>
