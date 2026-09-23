@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { stripeClient } from "@/lib/stripe-env";
+import { getStripeEnv, stripeClient } from "@/lib/stripe-env";
+import { syncCustomerBilling } from "@/lib/billing/company-billing";
 import { portalBaseUrl } from "@/lib/portal/session";
 import type { AuthFormState } from "@/lib/actions/auth";
 import { passwordProblem } from "@/lib/auth/password";
@@ -193,6 +194,15 @@ export async function completeSignup(
     return { error: companyError ?? "Couldn't create the company." };
   }
   await recordInviteResult(invite.id, companyId, profileId);
+
+  // Ties the new company to the subscription it was bought on, so a later
+  // cancellation or failed renewal reaches it. Best effort: the customer
+  // has paid and must get their account whatever Stripe says right now,
+  // and the next billing event links them anyway.
+  const stripeEnv = getStripeEnv();
+  if (invite.stripe_customer_id && stripeEnv) {
+    await syncCustomerBilling(stripeClient(stripeEnv), invite.stripe_customer_id);
+  }
 
   if (existingId) {
     return {

@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripeClient, type StripeEnv } from "@/lib/stripe-env";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
 import { provisionSignup } from "@/lib/signup/provision";
+import { customerIdFromEvent } from "@/lib/billing/subscription";
+import { syncCustomerBilling } from "@/lib/billing/company-billing";
 
 /**
  * Applies a verified Stripe event to the payment record.
@@ -81,6 +83,18 @@ export async function handleStripeWebhook(
       }
       return NextResponse.json({ ok: true });
     }
+  }
+
+  // An AI Build Pro subscription renewing, failing or ending. Platform
+  // endpoint only, for the same reason as signup above: a contractor's
+  // own Stripe account never sells the CRM.
+  const billingCustomer = companyId ? null : customerIdFromEvent(event);
+  if (billingCustomer) {
+    const synced = await syncCustomerBilling(stripe, billingCustomer);
+    // Retried rather than dropped: a missed cancellation is a company
+    // using the CRM unpaid, and a missed renewal is a paying one locked out.
+    if (!synced.ok) return NextResponse.json({ error: synced.error }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   const applyToSession = async (sessionId: string, patch: Record<string, unknown>) => {
