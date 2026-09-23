@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.148.0",
+    date: "2026-09-23",
+    notes: [
+      "Bills to Pay → Paid now also lists the bills you saved on a project with \"Already paid\" switched on, under \"Paid on entry\", with the receipt, vendor, job, date paid and amount. They show there read-only; change or remove one from the project's Bills.",
+    ],
+  },
+  {
     version: "1.147.1",
     date: "2026-09-23",
     notes: [

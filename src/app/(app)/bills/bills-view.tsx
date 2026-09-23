@@ -12,6 +12,7 @@ import {
   leadDisplayName,
   moneyCents,
   vendorLabel,
+  type JobExpense,
   type Lead,
   type Vendor,
 } from "@/lib/data/types";
@@ -71,11 +72,17 @@ export function BillsView({
   payments,
   vendors,
   jobLeads,
+  receipts,
+  receiptLeads,
 }: {
   bills: VendorBill[];
   payments: VendorBillPayment[];
   vendors: Vendor[];
   jobLeads: Lead[];
+  /** Job costs saved as "Already paid" -- never a bill, still paid out. */
+  receipts: JobExpense[];
+  /** Jobs behind those receipts that jobLeads doesn't carry. */
+  receiptLeads: Lead[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("outstanding");
@@ -89,7 +96,10 @@ export function BillsView({
   const [error, setError] = useState("");
 
   const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
-  const leadById = useMemo(() => new Map(jobLeads.map((l) => [l.id, l])), [jobLeads]);
+  const leadById = useMemo(
+    () => new Map([...receiptLeads, ...jobLeads].map((l) => [l.id, l])),
+    [jobLeads, receiptLeads]
+  );
   const paymentsByBill = useMemo(() => {
     const m = new Map<string, VendorBillPayment[]>();
     for (const p of payments) {
@@ -181,7 +191,7 @@ export function BillsView({
   const tabDef: { key: Tab; label: string; count: number }[] = [
     { key: "outstanding", label: "All Outstanding", count: open.length },
     { key: "scheduled", label: "Scheduled", count: scheduled.length },
-    { key: "paid", label: "Paid", count: paid.length },
+    { key: "paid", label: "Paid", count: paid.length + receipts.length },
     { key: "void", label: "Voided", count: voided.length },
   ];
 
@@ -257,7 +267,7 @@ export function BillsView({
 
       {error && <p className="error-note">{error}</p>}
 
-      {shown.length === 0 ? (
+      {shown.length === 0 && !(tab === "paid" && receipts.length > 0) ? (
         <div className="empty-state">
           <p className="empty-label">Nothing here</p>
           <p className="empty-hint">
@@ -427,6 +437,14 @@ export function BillsView({
             </div>
           </div>
         ))
+      )}
+
+      {tab === "paid" && receipts.length > 0 && (
+        <PaidOnEntry
+          receipts={receipts}
+          vendorById={vendorById}
+          leadById={leadById}
+        />
       )}
 
       {adding && (
@@ -783,5 +801,71 @@ export function PaymentModal({
         </button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Costs saved on a job with "Already paid" on -- the receipt from the
+ * supply-house counter. They never were a bill, so they have no Pay,
+ * Edit or Void; they are listed so the Paid tab holds every dollar paid
+ * out, the same rows the project's Bills window shows under Paid.
+ * Change or remove one from the job's costs.
+ */
+function PaidOnEntry({
+  receipts,
+  vendorById,
+  leadById,
+}: {
+  receipts: JobExpense[];
+  vendorById: Map<string, Vendor>;
+  leadById: Map<string, Lead>;
+}) {
+  const total = receipts.reduce((s, r) => s + r.amount_cents, 0);
+  return (
+    <div className="bills-group">
+      <div className="bills-group-head">
+        <strong>Paid on entry — receipts filed straight to the job</strong>
+        <span className="mono">{moneyCents(total)}</span>
+      </div>
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Receipt</th>
+              <th>Vendor / What for</th>
+              <th>Job</th>
+              <th>Date paid</th>
+              <th className="right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {receipts.map((r) => {
+              const vend = r.vendor_id ? vendorById.get(r.vendor_id) : null;
+              const lead = leadById.get(r.lead_id);
+              return (
+                <tr key={r.id}>
+                  <td>
+                    {r.receipt_url ? (
+                      <ReceiptThumb url={r.receipt_url} path={r.receipt_path ?? null} />
+                    ) : (
+                      <span className="est-tax-note">none</span>
+                    )}
+                  </td>
+                  <td>
+                    <strong>{vend ? vendorLabel(vend) : r.vendor || "—"}</strong>
+                    {(r.description || r.category) && (
+                      <div className="est-tax-note">{r.description || r.category}</div>
+                    )}
+                  </td>
+                  <td>{lead ? leadDisplayName(lead) : "Unknown job"}</td>
+                  <td className="mono">{fmtDay(r.spent_on)}</td>
+                  <td className="right mono">{moneyCents(r.amount_cents)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

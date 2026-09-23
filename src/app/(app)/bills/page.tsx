@@ -2,8 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import { type Lead } from "@/lib/data/types";
-import type { VendorBillRow as VendorBill, VendorBillPaymentRow } from "@/lib/data/bills";
+import { type JobExpense, type Lead } from "@/lib/data/types";
+import {
+  paidOnEntryReceipts,
+  type VendorBillRow as VendorBill,
+  type VendorBillPaymentRow,
+} from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { BillsView } from "./bills-view";
 
@@ -37,7 +41,7 @@ export default async function BillsPage() {
   const supabase = await createClient();
   const companyId = profile.company_id;
 
-  const [bills, payments, vendorsRes, leads] = await Promise.all([
+  const [bills, payments, vendorsRes, leads, expenses] = await Promise.all([
     selectAll<VendorBill>((f, t) =>
       supabase
         .from("vendor_bills")
@@ -73,10 +77,40 @@ export default async function BillsPage() {
         return lead as Lead;
       })
     ),
+    // Job costs saved as "Already paid" never become a bill, so the Paid
+    // tab lists them from here -- otherwise a receipt filed from
+    // Projects is on the job but nowhere on this page.
+    selectAll<JobExpense>((f, t) =>
+      supabase
+        .from("job_expenses")
+        .select(
+          "id, company_id, lead_id, estimate_payment_id, vendor, vendor_id, category, description, " +
+            "amount_cents, spent_on, source, qb_txn_id, qb_txn_type, qb_project_id, created_at, " +
+            "receipt_url, receipt_path"
+        )
+        .eq("company_id", companyId)
+        .range(f, t)
+    ),
   ]);
 
   // The inner join can return one row per signed document.
   const uniqueLeads = [...new Map(leads.map((l) => [l.id, l])).values()];
+  const receipts = paidOnEntryReceipts(expenses, payments);
+
+  // A receipt's job is almost always a signed one, but a job whose
+  // contract was later voided would otherwise head its group as
+  // "Unknown job". Only the ids actually referenced are fetched.
+  const known = new Set(uniqueLeads.map((l) => l.id));
+  const missing = [...new Set(receipts.map((r) => r.lead_id))].filter((id) => !known.has(id));
+  const receiptLeads = missing.length
+    ? ((
+        await supabase
+          .from("leads")
+          .select("id, first_name, last_name, company_name, address")
+          .eq("company_id", companyId)
+          .in("id", missing)
+      ).data ?? []) as Lead[]
+    : [];
 
   return (
     <BillsView
@@ -84,6 +118,8 @@ export default async function BillsPage() {
       payments={payments}
       vendors={vendorsRes.vendors ?? []}
       jobLeads={uniqueLeads}
+      receipts={receipts}
+      receiptLeads={receiptLeads}
     />
   );
 }
