@@ -108,6 +108,28 @@ const LEGACY_NAV_KEYS: Record<string, string> = {
   "group:Dispatch": "group:Dispatch (Leads Mgmt.)",
 };
 
+/**
+ * The built-in sidebar order: what a company with no saved order sees,
+ * and what "Reset to standard order" on Settings › Menu Order returns
+ * to. Keys are navEntryKey values. Admin Settings is left out on
+ * purpose -- sortNavEntries pins it last regardless.
+ */
+export const STANDARD_NAV_ORDER: string[] = [
+  "/",
+  "/marketing-analytics",
+  "/dispatch-dashboard",
+  "/calendar",
+  "/schedule",
+  "/estimates",
+  "group:Production",
+  "group:Accounting",
+  "group:Dispatch",
+  "group:Call Center",
+  "group:Staff",
+  "/estimate-status",
+  "/estimate-approvals",
+];
+
 export function sortNavEntries(
   entries: NavEntry[],
   order: string[] | null | undefined
