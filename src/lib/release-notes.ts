@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.145.1",
+    date: "2026-09-23",
+    notes: [
+      "The CRM phone app now carries the AI Build Pros logo on its icon and its opening screen, instead of a placeholder.",
+    ],
+  },
+  {
     version: "1.145.0",
     date: "2026-09-23",
     notes: [
