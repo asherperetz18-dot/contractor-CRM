@@ -36,6 +36,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Original prototype, kept for reference only — not part of the app.
     "reference/**",
+    // The phone-app shell: its own package and generated native projects.
+    "mobile/**",
   ]),
 ]);
 

@@ -1,0 +1,18 @@
+{
+  "appId": "com.aibuildpros.crm",
+  "appName": "AI Build Pros CRM",
+  "webDir": "www",
+  "server": {
+    "url": "https://crm.aibuildpros.com",
+    "cleartext": false,
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "useLegacyBridge": true
+  },
+  "plugins": {
+    "CapacitorCookies": {
+      "enabled": true
+    }
+  }
+}
