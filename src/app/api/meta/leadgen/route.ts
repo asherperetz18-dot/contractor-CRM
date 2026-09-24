@@ -1,10 +1,8 @@
-import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyNewLead } from "@/lib/notify-new-lead";
 import { withRouteObservability } from "@/lib/observability/observe";
-
-const GRAPH_VERSION = "v21.0";
+import { GRAPH_VERSION, verifyMetaSignature, webhookSignatureCheck } from "@/lib/meta/facebook-login";
 
 type MetaConfig = {
   company_id: string;
@@ -12,6 +10,8 @@ type MetaConfig = {
   meta_page_access_token: string | null;
   meta_verify_token: string | null;
   meta_app_secret: string | null;
+  /** 'facebook_login' when connected through the CRM's own app (0178). */
+  meta_connected_via: string | null;
 };
 
 // No session here (public webhook), so the incoming payload has to say
@@ -27,22 +27,30 @@ const CONFIG_COLUMNS =
 
 async function getMetaConfigByPage(pageId: string) {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
+    .from("company_profile")
+    .select(`${CONFIG_COLUMNS}, meta_connected_via`)
+    .eq("meta_page_id", pageId)
+    .maybeSingle();
+  if (!error) return data as MetaConfig | null;
+  // Migration 0178 not run yet: every Page is still a manual one, and a
+  // missing column must never drop the lead.
+  const { data: legacy } = await admin
     .from("company_profile")
     .select(CONFIG_COLUMNS)
     .eq("meta_page_id", pageId)
     .maybeSingle();
-  return data as MetaConfig | null;
+  return legacy ? ({ ...legacy, meta_connected_via: null } as MetaConfig) : null;
 }
 
 async function getMetaConfigByVerifyToken(token: string) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("company_profile")
-    .select(CONFIG_COLUMNS)
+    .select("company_id")
     .eq("meta_verify_token", token)
     .maybeSingle();
-  return data as MetaConfig | null;
+  return data;
 }
 
 // Meta calls this once, when you register the webhook, to confirm you
@@ -52,22 +60,17 @@ async function handleGet(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("hub.verify_token");
   const challenge = req.nextUrl.searchParams.get("hub.challenge");
 
-  // The token itself picks the company -- each one has its own.
-  const config = token ? await getMetaConfigByVerifyToken(token) : null;
+  // The CRM's own app (Connect with Facebook) registers once with the
+  // deployment's token; a manually set-up app uses its company's own.
+  const platformToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
+  const verified =
+    Boolean(token && platformToken && token === platformToken) ||
+    Boolean(token && (await getMetaConfigByVerifyToken(token)));
 
-  if (mode === "subscribe" && config) {
+  if (mode === "subscribe" && verified) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return NextResponse.json({ error: "Verification failed" }, { status: 403 });
-}
-
-function verifySignature(rawBody: string, signatureHeader: string | null, appSecret: string) {
-  if (!signatureHeader) return false;
-  const expected =
-    "sha256=" + crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex");
-  const a = Buffer.from(signatureHeader);
-  const b = Buffer.from(expected);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 type MetaLeadgenChange = {
@@ -111,7 +114,7 @@ async function handlePost(req: NextRequest) {
   for (const entry of payload.entry ?? []) {
     // Parsed before the signature check only to learn which Page this is
     // for -- nothing from the body is trusted until that check passes,
-    // and each company signs with its own app secret.
+    // and which secret signs it depends on how the Page was connected.
     const pageId = entry.changes?.find((c) => c.value?.page_id)?.value.page_id ?? entry.id;
     if (!pageId) continue;
 
@@ -122,11 +125,13 @@ async function handlePost(req: NextRequest) {
       continue;
     }
 
-    if (config.meta_app_secret) {
-      const sig = req.headers.get("x-hub-signature-256");
-      if (!verifySignature(rawBody, sig, config.meta_app_secret)) {
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-      }
+    const check = webhookSignatureCheck(config, process.env.META_APP_SECRET);
+    if (
+      check.kind === "reject" ||
+      (check.kind === "verify" &&
+        !verifyMetaSignature(rawBody, req.headers.get("x-hub-signature-256"), check.secret))
+    ) {
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     for (const change of entry.changes ?? []) {

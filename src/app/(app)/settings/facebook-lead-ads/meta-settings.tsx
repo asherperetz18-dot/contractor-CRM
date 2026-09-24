@@ -9,12 +9,24 @@ function randomToken() {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
+/**
+ * The older setup: the company's own Meta app, its Page token pasted by
+ * hand. Kept behind "Advanced" for companies already running on it and
+ * for deployments without the CRM's own app; Connect with Facebook
+ * (facebook-connect.tsx) is the way in for everyone else.
+ */
 export function MetaSettings({
   config,
   origin,
+  open,
+  problem,
 }: {
   config: MetaConfigInput;
   origin: string;
+  /** Unfolded when this setup is the one in use, or the only one available. */
+  open: boolean;
+  /** Facebook refused the stored token, in words. */
+  problem: string | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -38,17 +50,10 @@ export function MetaSettings({
   const webhookUrl = `${origin}/api/meta/leadgen`;
 
   return (
-    <div>
-      <div className="module-toolbar">
-        <div>
-          <h1 className="module-title">Facebook Lead Ads</h1>
-          <p className="module-sub">
-            Auto-import leads from Facebook/Instagram Lead Ads
-          </p>
-        </div>
-      </div>
-
-      <div className="cp-card">
+    <details className="cp-card fbl-card fbl-advanced" open={open}>
+      <summary>Advanced: connect with your own Meta app</summary>
+      <div className="fbl-advanced-body">
+        {problem && <p className="error-note">{problem}</p>}
         <div className="cp-card-head">📘 Setup (done in Meta&apos;s dashboard)</div>
         <p className="cp-card-sub">
           This part happens on Meta&apos;s side, at{" "}
@@ -141,6 +146,6 @@ export function MetaSettings({
           </div>
         </div>
       </div>
-    </div>
+    </details>
   );
 }

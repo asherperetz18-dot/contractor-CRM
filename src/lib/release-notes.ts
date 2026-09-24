@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.154.0",
+    date: "2026-09-24",
+    notes: [
+      "Settings → Facebook Lead Ads has a Connect with Facebook button: sign in with the account that runs your business Page (Business Manager is fine), pick the Page, and its lead-form leads start arriving in Contacts & Leads. No developer app or tokens to copy.",
+      "The same page now tells you when Facebook stops accepting the connection, with a Reconnect button, instead of leads quietly stopping.",
+      "Switch Page or Disconnect from the same card. The old manual setup is still there under Advanced for anyone already using it.",
+    ],
+  },
+  {
     version: "1.153.0",
     date: "2026-09-24",
     notes: [
