@@ -698,6 +698,12 @@ body {
   color: #fff;
   border-color: var(--ink);
 }
+/* The count on a selected chip: the pill set no text color, so it took
+   the chip's white onto its pale background and the number vanished. */
+.chip-active .count-pill {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
 
 .stat-grid {
   display: grid;

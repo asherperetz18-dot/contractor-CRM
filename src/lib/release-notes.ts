@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.149.0",
+    date: "2026-09-24",
+    notes: [
+      "Bills you saved as \"Already paid\" now have an ✎ Edit button, both in Bills to Pay → Paid and in a project's 🧾 Bills window. Fix the job, vendor, what it was for, the amount, the date paid or the receipt, or delete the bill.",
+      "Paid bills saved without a receipt show a 📎 Attach button. Click it or drop the photo or PDF on it.",
+      "Bills synced from QuickBooks stay locked, because the next sync would undo an edit.",
+      "The count on the selected tab (for example Paid) is readable again. It was white on white.",
+    ],
+  },
+  {
     version: "1.148.0",
     date: "2026-09-23",
     notes: [

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
+import { canEditJobCosts } from "@/lib/data/expense-edit";
 import { type JobExpense, type Lead } from "@/lib/data/types";
 import {
   paidOnEntryReceipts,
@@ -120,6 +121,7 @@ export default async function BillsPage() {
       jobLeads={uniqueLeads}
       receipts={receipts}
       receiptLeads={receiptLeads}
+      canEditCosts={canEditJobCosts(profile)}
     />
   );
 }
