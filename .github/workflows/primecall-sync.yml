@@ -1,0 +1,24 @@
+name: PrimeCall Sync
+
+on:
+  schedule:
+    # Every 15 minutes -- the live feed carries calls within seconds;
+    # this re-reads the last 3 hours to fill anything it missed.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Import this many days of history instead (no new-lead texts)"
+        required: false
+        default: ""
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Re-read recent PrimeCall calls
+        run: |
+          set -euo pipefail
+          DAYS="${{ github.event.inputs.days || '' }}"
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/primecall-sync?days=${DAYS}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
