@@ -817,3 +817,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A company must connect its own Stripe under Settings → Portal Payments before its customers can pay online. The deployment key is used only for self-serve signup and subscription billing.
 
+## 077 — A bill says which contract it's for when the customer has more than one
+
+**Context:** A cost belongs to a contract through its phase (`costsForContract`); an unfiled cost is attributed only when the customer holds exactly one contract. Projects' "+ Add bill" never asked for a phase, so on a customer with two contracts (Mari: EST-1106 and EST-1117) every receipt counted toward neither, and the commission statement read "Job costs not recorded yet" on a job 100% collected with $32k of bills in.
+
+**Decision:** When the customer holds more than one contract, "+ Add bill" and "✎ Edit" ask "Which contract?" — the choice is a phase, grouped by contract with its change orders' phases under it (`contractFilingOptions`), and saving refuses a blank choice. Opened from a project row, the row's contract is pre-picked. Options are read with the admin client (`getJobFilingOptions`) because Field records receipts but cannot open estimates; only document numbers, titles and phase names come back, never an amount. Every save checks the phase is on that job (`phaseIsOnJob`) — the write policy only checks the company. Bills already saved unassigned are counted per contract row (`unassignedJobCosts`) and flagged on the statement with a link to file them.
+
+**Consequence:** A one-contract customer sees no new question. The one-job statement (`?job=<contract id>`) itemises exactly the bills the commission counts, one bill at a time through the same rule, so the list always adds up to the costs line.
+

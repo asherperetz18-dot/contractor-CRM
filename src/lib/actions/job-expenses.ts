@@ -5,7 +5,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import { canManageCosts, type JobExpense, type JobExpenseInput } from "@/lib/data/types";
+import {
+  canManageCosts,
+  contractFilingOptions,
+  type ContractFilingOption,
+  type JobExpense,
+  type JobExpenseInput,
+} from "@/lib/data/types";
 import {
   canEditJobCosts,
   expenseEditLock,
@@ -202,6 +208,10 @@ export async function createJobExpense(
     const confirmed = await confirmReceiptUpload(admin, receipt.path);
     if (confirmed.error || !confirmed.fields) return { error: confirmed.error };
     receiptFields = confirmed.fields;
+  }
+
+  if (input.estimatePaymentId && !(await phaseIsOnJob(profile.company_id, input.leadId, input.estimatePaymentId))) {
+    return { error: "That contract isn't on this job." };
   }
 
   const supabase = await createClient();
@@ -410,6 +420,14 @@ export async function updateJobExpense(
     if (!lead) return { error: "Job not found." };
   }
 
+  if (
+    patch.estimate_payment_id &&
+    patch.estimate_payment_id !== row.estimate_payment_id &&
+    !(await phaseIsOnJob(companyId, patch.lead_id, patch.estimate_payment_id))
+  ) {
+    return { error: "That contract isn't on this job." };
+  }
+
   let receiptFields: { receipt_url: string; receipt_path: string } | null = null;
   if (receipt?.path) {
     const confirmed = await confirmNewReceipt(companyId, patch.lead_id, receipt);
@@ -482,4 +500,82 @@ export async function setJobExpenseReceipt(
   revalidatePath("/estimates");
   revalidatePath("/bills");
   return {};
+}
+
+/**
+ * Is this payment phase on one of this job's documents? The write policy
+ * checks only the cost's company, so a phase id from another job -- or
+ * another company -- would otherwise file the cost against a contract it
+ * has nothing to do with.
+ */
+async function phaseIsOnJob(companyId: string, leadId: string, phaseId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: phase } = await admin
+    .from("estimate_payments")
+    .select("estimate_id")
+    .eq("id", phaseId)
+    .maybeSingle<{ estimate_id: string }>();
+  if (!phase) return false;
+  const { data: doc } = await admin
+    .from("estimates")
+    .select("id")
+    .eq("id", phase.estimate_id)
+    .eq("lead_id", leadId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+  return !!doc;
+}
+
+/**
+ * The "Which contract?" choices for a bill on this job. Only asked when
+ * the customer holds more than one contract -- with one, an unfiled
+ * cost is already that contract's.
+ *
+ * Read with the admin client because Field records receipts but cannot
+ * open estimates; what comes back is document numbers, titles and phase
+ * names, never an amount, and only for a job in this company.
+ */
+export async function getJobFilingOptions(
+  leadId: string
+): Promise<{ error?: string; options?: ContractFilingOption[] }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageCosts(profile)) return { error: "You don't have access to record costs." };
+
+  const admin = createAdminClient();
+  const { data: docs } = await admin
+    .from("estimates")
+    .select("id, doc_number, title, kind, parent_estimate_id")
+    .eq("lead_id", leadId)
+    .eq("company_id", profile.company_id)
+    .eq("status", "Signed");
+  const list = (docs ?? []) as {
+    id: string;
+    doc_number: string;
+    title: string | null;
+    kind: string | null;
+    parent_estimate_id: string | null;
+  }[];
+  if (list.length === 0) return { options: [] };
+
+  // select * so cancelled_at rides along where its migration has run.
+  const { data: phases } = await admin
+    .from("estimate_payments")
+    .select("*")
+    .in(
+      "estimate_id",
+      list.map((d) => d.id)
+    );
+  return {
+    options: contractFilingOptions(
+      list,
+      (phases ?? []) as {
+        id: string;
+        estimate_id: string;
+        name: string | null;
+        sort_order: number;
+        cancelled_at?: string | null;
+      }[]
+    ),
+  };
 }

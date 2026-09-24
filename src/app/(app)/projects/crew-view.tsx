@@ -40,7 +40,10 @@ export function CrewProjectsView({
 }) {
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // A lead id from a row's button, "any" from the page-level one.
-  const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  // "any" from the toolbar; a row passes its job and contract.
+  const [receiptFor, setReceiptFor] = useState<
+    "any" | { leadId: string; estimateId: string } | null
+  >(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
 
   const itemsByEstimate = useMemo(() => {
@@ -99,7 +102,7 @@ export function CrewProjectsView({
             <button
               type="button"
               className={jobChipClass("addBill")}
-              onClick={() => setReceiptFor(j.leadId)}
+              onClick={() => setReceiptFor({ leadId: j.leadId, estimateId: j.estimateId })}
             >
               + Add bill
             </button>
@@ -160,7 +163,8 @@ export function CrewProjectsView({
         // unpaid bill is the office's job, so the switch is hidden.
         <AddBillModal
           jobs={jobOptionsFromProjects(jobs)}
-          initialLeadId={receiptFor === "any" ? undefined : receiptFor}
+          initialLeadId={receiptFor === "any" ? undefined : receiptFor.leadId}
+          initialEstimateId={receiptFor === "any" ? undefined : receiptFor.estimateId}
           canBills={false}
           onClose={() => setReceiptFor(null)}
         />

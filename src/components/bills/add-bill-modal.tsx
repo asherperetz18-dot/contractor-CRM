@@ -11,6 +11,7 @@ import { centsFromInput, moneyCents, vendorLabel, type Vendor } from "@/lib/data
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/components/uploads/file-drop";
+import { ContractPicker } from "./contract-picker";
 import "@/components/ui/receipt-thumb.css";
 
 export type BillJobOption = { leadId: string; label: string };
@@ -69,6 +70,7 @@ const today = () => {
 export function AddBillModal({
   jobs,
   initialLeadId,
+  initialEstimateId,
   lockJob,
   phases,
   canBills,
@@ -81,6 +83,8 @@ export function AddBillModal({
   jobs: BillJobOption[];
   /** Pre-picked job, when the modal was opened from a specific row. */
   initialLeadId?: string;
+  /** The contract on that row, so "Which contract?" starts answered. */
+  initialEstimateId?: string;
   /** The job is fixed (opened from inside one contract). */
   lockJob?: boolean;
   /** The job's payment phases, when the caller knows them. */
@@ -101,6 +105,8 @@ export function AddBillModal({
   const router = useRouter();
   const [leadId, setLeadId] = useState(initialLeadId || (jobs.length === 1 ? jobs[0].leadId : ""));
   const [phaseId, setPhaseId] = useState("");
+  // Set by ContractPicker when the customer holds several contracts.
+  const [contractRequired, setContractRequired] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>(vendorsProp ?? []);
   const [vendorId, setVendorId] = useState("");
   const [vendorText, setVendorText] = useState("");
@@ -163,6 +169,9 @@ export function AddBillModal({
           ? "Pick the job — or switch off “Already paid” to file it as an overhead bill."
           : "Pick the job this bill belongs to."
       );
+    }
+    if (leadId && !phases && contractRequired && !phaseId) {
+      return setError("Pick which contract this bill is for.");
     }
     if (!cents) return setError("Enter the amount.");
     if (!date) return setError("Enter the date.");
@@ -275,6 +284,15 @@ export function AddBillModal({
                 ))}
               </select>
             </Field>
+          )}
+          {!phases && leadId && (
+            <ContractPicker
+              leadId={leadId}
+              value={phaseId}
+              onChange={setPhaseId}
+              preferEstimateId={leadId === initialLeadId ? initialEstimateId : undefined}
+              onRequired={setContractRequired}
+            />
           )}
           {phases && phases.length > 0 && leadId && (
             <Field label="Phase">

@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.150.0",
+    date: "2026-09-24",
+    notes: [
+      "Commission statement: a new Job picker shows one job's commission on its own. It lists the contract, lead cost, every bill, net profit, the commission pool and each salesperson's share. It also shows what's still needed before it can be paid, the customer's payments, and what's already been paid out. Click any job name on the statement to open the same view.",
+      "When a customer has more than one contract, + Add bill and ✎ Edit now ask \"Which contract?\". From a project row, it's picked for you. Before this, those bills counted toward none of the customer's contracts, so the commission said \"Job costs not recorded yet\".",
+      "Bills already saved without a contract are now flagged on the commission statement, with a link to assign them.",
+    ],
+  },
+  {
     version: "1.149.0",
     date: "2026-09-24",
     notes: [
