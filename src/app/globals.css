@@ -10859,3 +10859,70 @@ textarea.est-item-desc:disabled {
     min-height: 360px;
   }
 }
+
+/* ── Settings › Facebook Lead Ads ────────────────────────────────── */
+.cp-card.fbl-card {
+  margin-bottom: 14px;
+}
+.fbl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.fbl-head .cp-card-head {
+  margin: 0;
+}
+.fbl-status {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.fbl-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 4px 0 2px;
+}
+/* Links dressed as buttons take room in the card and match the height
+   of the real button beside them. */
+.fbl-actions a.btn-primary,
+.fbl-actions a.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  text-decoration: none;
+  line-height: normal;
+}
+.fbl-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.fbl-page {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.fbl-page.is-picked {
+  border-color: var(--blueprint);
+  background: rgba(45, 95, 138, 0.06);
+}
+.fbl-advanced > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  min-height: 28px;
+}
+.fbl-advanced-body {
+  margin-top: 14px;
+}
