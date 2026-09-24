@@ -167,7 +167,10 @@ async function insertUnknownCallerLead(
   return { leadId: (inserted as { id: string }).id, created: true };
 }
 
-async function createLeadFromCallRail(
+/** A contact for a caller nobody has, plus the new-lead text. Shared by
+ *  every phone integration that files unknown callers (CallRail,
+ *  PrimeCall) so they all go through the same race guard. */
+export async function createLeadForCaller(
   admin: Admin,
   companyId: string,
   input: {
@@ -288,7 +291,7 @@ export async function processCallRailCall(
   if (match.kind === "none") {
     // The lock inside create_lead_for_unknown_caller may reveal that
     // someone else just made this contact; then we file against theirs.
-    const made = await createLeadFromCallRail(admin, companyId, {
+    const made = await createLeadForCaller(admin, companyId, {
       name: call.customer_name ?? null,
       phone: from,
       source: leadSource(call.source),
@@ -400,7 +403,7 @@ export async function processCallRailForm(
     return { skipped: "noted on existing lead" };
   }
 
-  const made = await createLeadFromCallRail(admin, companyId, {
+  const made = await createLeadForCaller(admin, companyId, {
     name,
     phone,
     email,
@@ -433,7 +436,7 @@ export async function processCallRailText(
     await appendLeadNote(admin, companyId, existing, `${body} (CallRail)`);
     return { skipped: "noted on existing lead" };
   }
-  const made = await createLeadFromCallRail(admin, companyId, {
+  const made = await createLeadForCaller(admin, companyId, {
     name: null,
     phone,
     source: "CallRail",

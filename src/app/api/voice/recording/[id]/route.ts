@@ -7,6 +7,8 @@ import {
   getCallRailForCompany,
 } from "@/lib/callrail-company";
 import { recordingResponseInit, upstreamRecordingHeaders } from "@/lib/recording-range";
+import { getPrimeCallForCompany, recordingAccessUrl } from "@/lib/primecall-company";
+import { PRIMECALL_RECORDING_PREFIX } from "@/lib/primecall-sync";
 
 export async function GET(
   req: NextRequest,
@@ -39,6 +41,31 @@ export async function GET(
   // served whole, the recording could only ever be played from the
   // start. See src/lib/recording-range.ts.
   const range = req.headers.get("range");
+
+  // PrimeCall calls: the row holds the call id, not a URL -- the audio
+  // link NetSapiens hands out can expire, so a fresh one is asked for
+  // on every play, with the company's key.
+  if (recordingUrl.startsWith(PRIMECALL_RECORDING_PREFIX)) {
+    const creds = await getPrimeCallForCompany(data.company_id);
+    if (!creds) return NextResponse.json({ error: "PrimeCall not connected." }, { status: 500 });
+    const mediaUrl = await recordingAccessUrl(creds, recordingUrl.slice(PRIMECALL_RECORDING_PREFIX.length));
+    if (!mediaUrl) return NextResponse.json({ error: "No recording." }, { status: 404 });
+    // Plain first (normally a signed link); then carrying the key, and
+    // only to PrimeCall's own server, never to a third-party host.
+    let audio = await fetch(mediaUrl, { headers: upstreamRecordingHeaders(range) });
+    if (!audio.ok && new URL(mediaUrl).origin === creds.server) {
+      audio = await fetch(mediaUrl, {
+        headers: upstreamRecordingHeaders(range, { Authorization: `Bearer ${creds.apiKey}` }),
+      });
+    }
+    if (!audio.ok || !audio.body) {
+      return NextResponse.json(
+        { error: `Could not fetch recording (PrimeCall answered ${audio.status}).` },
+        { status: 502 }
+      );
+    }
+    return new NextResponse(audio.body, recordingResponseInit(audio));
+  }
 
   // CallRail calls: the stored URL is their dashboard player, which
   // demands a CallRail login nobody's reps have. Their API hands out a

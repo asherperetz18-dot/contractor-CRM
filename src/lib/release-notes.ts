@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.153.0",
+    date: "2026-09-24",
+    notes: [
+      "New Settings → PrimeCall Phone System: connect your PrimeCall office phones, and every call in or out shows up in Call Reports and on the caller's contact card, with the recording to play.",
+      "Someone who calls your PrimeCall number and isn't in the CRM yet becomes a new lead in Unsorted, and the office gets the usual new-lead text.",
+      "Each call is credited to the person whose email matches their PrimeCall extension. The settings page shows which extension belongs to whom.",
+    ],
+  },
+  {
     version: "1.152.0",
     date: "2026-09-24",
     notes: [

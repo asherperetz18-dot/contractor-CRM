@@ -406,6 +406,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/callrail",
       },
       {
+        title: "PrimeCall Phone System",
+        desc: "Office phone calls land in Call Reports and on the caller's card; unknown callers become leads",
+        icon: "☎",
+        href: "/settings/primecall",
+      },
+      {
         title: "Google Local Services Ads",
         desc: "Auto-import Google Guarantee leads from Google Local Services Ads into Contacts & Leads",
         icon: "🔍",

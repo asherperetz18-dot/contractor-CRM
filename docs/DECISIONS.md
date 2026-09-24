@@ -833,3 +833,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Old "Already paid" costs stay as they are (their ✎ Edit still works); new ones are bill payments, corrected in Bills to Pay, whose Edit now also works on paid bills (never below what's paid, and the linked job costs follow). A vendor name is now required on a paid receipt too — QuickBooks can't hold a bill without one. No sync is built yet.
 
+
+## 079 — PrimeCall's live feed is a nudge, not a data source
+
+**Context:** PrimeCall is a reseller of the NetSapiens platform, whose v2 API offers event subscriptions that post each finished CDR to a URL. NetSapiens does not sign those posts, the posted shape is documented only loosely, and the CDR `call-direction` integer has no published meaning.
+
+**Decision:** The webhook URL carries a per-company secret, and a verified post only triggers a re-read of the last 30 minutes from the CDR API, the same read the 15-minute sweep does. Nothing in the post body is written anywhere, so a forged or oddly shaped post can't create a call or a lead. Direction comes from which API filter (Inbound / Missed / Outbound) returned the row, and legs are grouped on `call-orig-call-id`, so a ring group's three legs are one call. Rows are keyed on that id (`call_logs.primecall_call_id`, unique per company); a re-read refreshes only status, duration, recording and an empty rep, never disposition or the lead link. Extensions map to CRM users by email (exactly one match, or no rep) rather than through a mapping screen.
+
+**Consequence:** Each finished leg costs three small API reads, which is fine for one office's call volume. If NetSapiens is ever found to put a field somewhere other than where `cdrsToCalls` reads it, the fix and its test are in one pure module. Outbound calls to numbers not in the contact book are not logged at all.
