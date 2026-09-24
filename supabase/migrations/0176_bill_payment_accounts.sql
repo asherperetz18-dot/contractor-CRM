@@ -39,14 +39,20 @@ create index if not exists payment_accounts_company_idx on payment_accounts (com
 
 alter table payment_accounts enable row level security;
 
--- Read by anyone who records costs (Field picks "paid from" at the
--- counter); written by the same roles that run Bills to Pay.
+-- Read by everyone who records costs -- Field included, who picks "Paid
+-- from" at the counter (can_manage_costs_in_company leaves Field out, so
+-- the roles are named here); written by the roles that run Bills to Pay.
 drop policy if exists "payment_accounts_select" on payment_accounts;
 create policy "payment_accounts_select" on payment_accounts for select
   to authenticated
   using (
-    company_id in (select public.current_member_company_ids())
-    and can_manage_costs_in_company(company_id)
+    exists (
+      select 1 from public.company_members m
+      where m.profile_id = auth.uid()
+        and m.company_id = payment_accounts.company_id
+        and m.status = 'Active'
+        and m.roles && array['Office', 'Admin', 'Bookkeeping', 'Production', 'Field']::app_role[]
+    )
   );
 
 drop policy if exists "payment_accounts_write" on payment_accounts;
