@@ -229,7 +229,11 @@ export function ProjectsView({
     "any" | { leadId: string; estimateId: string } | null
   >(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
-  const [receiptsFor, setReceiptsFor] = useState<{ leadId: string; label: string } | null>(null);
+  const [receiptsFor, setReceiptsFor] = useState<{
+    leadId: string;
+    estimateId: string;
+    label: string;
+  } | null>(null);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
   const [documentsFor, setDocumentsFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
@@ -475,6 +479,7 @@ export function ProjectsView({
       {receiptsFor && (
         <JobReceipts
           leadId={receiptsFor.leadId}
+          estimateId={receiptsFor.estimateId}
           jobLabel={receiptsFor.label}
           canEdit={canEditCosts}
           jobs={jobOptionsFromProjects(sorted)}
@@ -935,7 +940,7 @@ export function ProjectsView({
                             type="button"
                             className={jobChipClass("bills")}
                             onClick={() =>
-                              setReceiptsFor({ leadId: p.leadId, label: p.customer })
+                              setReceiptsFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })
                             }
                           >
                             🧾 Bills

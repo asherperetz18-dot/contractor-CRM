@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.151.0",
+    date: "2026-09-24",
+    notes: [
+      "A project's 🧾 Bills window now shows which contract each paid bill counts toward, when the customer has more than one contract. Bills not assigned to any contract get a yellow warning, because sales commission doesn't count them. Click \"Assign all to EST-…\", or the button on one row, to put them on that project's contract.",
+      "The bottom of that window also shows how much is counted on this project's contract (the figure its commission uses) next to the total across all contracts.",
+    ],
+  },
+  {
     version: "1.150.0",
     date: "2026-09-24",
     notes: [

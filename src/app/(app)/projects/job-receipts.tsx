@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getJobExpenses } from "@/lib/actions/job-expenses";
+import {
+  fileCostsToContract,
+  getJobExpenses,
+  getJobFilingOptions,
+} from "@/lib/actions/job-expenses";
 import { getOpenJobBills } from "@/lib/actions/vendor-bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { Modal } from "@/components/ui/modal";
@@ -10,7 +14,13 @@ import { ReceiptThumb } from "@/components/ui/receipt-peek";
 import { AttachExpenseReceipt, EditPaidBillModal } from "@/components/bills/edit-paid-bill-modal";
 import type { BillJobOption } from "@/components/bills/add-bill-modal";
 import { expenseEditLock } from "@/lib/data/expense-edit";
-import { moneyCents, vendorLabel, type JobExpense, type Vendor } from "@/lib/data/types";
+import {
+  moneyCents,
+  vendorLabel,
+  type ContractFilingOption,
+  type JobExpense,
+  type Vendor,
+} from "@/lib/data/types";
 import type { OpenJobBill } from "@/lib/data/bills";
 
 const fmtDay = (s: string) =>
@@ -26,15 +36,23 @@ const fmtDay = (s: string) =>
  * showing as a thumbnail. The same rows Bills to Pay and the contract's
  * Job costs show; this view answers the quicker question, "what has
  * this job bought, and what do we still owe on it?".
+ *
+ * On a customer with several contracts it also says which contract each
+ * paid bill counts toward -- the commission report only counts a bill
+ * on the contract it is filed to, so a bill here with no contract is
+ * one no commission sees. The row's own contract is one click away.
  */
 export function JobReceipts({
   leadId,
+  estimateId,
   jobLabel,
   canEdit,
   jobs,
   onClose,
 }: {
   leadId: string;
+  /** The project row's contract: "Assign to" files bills here. */
+  estimateId: string;
   jobLabel: string;
   /** Edit / Attach on the paid rows (the cost-write roles). */
   canEdit: boolean;
@@ -46,22 +64,29 @@ export function JobReceipts({
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<JobExpense | null>(null);
+  const [filing, setFiling] = useState<{
+    options: ContractFilingOption[];
+    phaseContract: Record<string, string>;
+  }>({ options: [], phaseContract: {} });
+  const [assigning, setAssigning] = useState(false);
   // Bumped after an edit, attach or delete so the lists reload.
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [res, bills, vend] = await Promise.all([
+      const [res, bills, vend, fil] = await Promise.all([
         getJobExpenses(leadId),
         getOpenJobBills(leadId),
         getVendors(true),
+        getJobFilingOptions(leadId),
       ]);
       if (cancelled) return;
       if (res.error) setError(res.error);
       setRows(res.expenses ?? []);
       setOpen(bills.bills ?? []);
       setVendors(vend.vendors ?? []);
+      setFiling({ options: fil.options ?? [], phaseContract: fil.phaseContract ?? {} });
     })();
     return () => {
       cancelled = true;
@@ -75,6 +100,31 @@ export function JobReceipts({
   };
   const total = (rows ?? []).reduce((s, r) => s + r.amount_cents, 0);
   const unpaid = open.reduce((s, b) => s + b.remaining_cents, 0);
+
+  // Only a customer with several contracts has anything to sort out: with
+  // one, every bill is that contract's.
+  const multi = filing.options.length > 1;
+  const docNumber = (id: string) =>
+    filing.options.find((o) => o.estimateId === id)?.label.split(" · ")[0] ?? "Another contract";
+  const contractOf = (r: JobExpense) =>
+    r.estimate_payment_id ? (filing.phaseContract[r.estimate_payment_id] ?? null) : null;
+  const unassigned = multi ? (rows ?? []).filter((r) => !contractOf(r)) : [];
+  const unassignedCents = unassigned.reduce((s, r) => s + r.amount_cents, 0);
+  const onThis = multi
+    ? (rows ?? []).filter((r) => contractOf(r) === estimateId).reduce((s, r) => s + r.amount_cents, 0)
+    : total;
+  const thisDoc = filing.options.some((o) => o.estimateId === estimateId)
+    ? docNumber(estimateId)
+    : null;
+
+  async function assign(ids: string[]) {
+    setAssigning(true);
+    setError("");
+    const res = await fileCostsToContract(ids, estimateId);
+    setAssigning(false);
+    if (res.error) return setError(res.error);
+    setReload((n) => n + 1);
+  }
 
   return (
     <>
@@ -138,6 +188,32 @@ export function JobReceipts({
               <strong>Paid</strong>
               <span className="mono">{moneyCents(total)}</span>
             </div>
+            {unassigned.length > 0 && (
+              <div className="stmt-warning">
+                <strong>
+                  {unassigned.length} bill{unassigned.length === 1 ? "" : "s"} (
+                  {moneyCents(unassignedCents)}) {unassigned.length === 1 ? "isn't" : "aren't"}{" "}
+                  assigned to a contract.
+                </strong>{" "}
+                This customer has {filing.options.length} contracts, so sales commission counts{" "}
+                {unassigned.length === 1 ? "it" : "them"} toward none of them.
+                {canEdit && thisDoc && (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn-primary small"
+                      disabled={assigning}
+                      onClick={() => void assign(unassigned.map((r) => r.id))}
+                    >
+                      {assigning ? "Assigning…" : `Assign all ${unassigned.length} to ${thisDoc}`}
+                    </button>{" "}
+                    <span className="est-tax-note">
+                      or use each row&rsquo;s button if some belong to another contract.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
             {rows.length === 0 ? (
               <p className="empty-hint">Nothing paid on this job yet.</p>
             ) : (
@@ -149,6 +225,7 @@ export function JobReceipts({
                       <th>Date paid</th>
                       <th>Vendor</th>
                       <th>What for</th>
+                      {multi && <th>Contract</th>}
                       <th className="right">Amount</th>
                       {canEdit && <th></th>}
                     </tr>
@@ -175,6 +252,29 @@ export function JobReceipts({
                           {r.description || r.category || "—"}
                           {r.source === "bill" && <div className="est-tax-note">paid from Bills to Pay</div>}
                         </td>
+                        {multi && (
+                          <td>
+                            {contractOf(r) ? (
+                              contractOf(r) === estimateId ? (
+                                <strong>{docNumber(estimateId)}</strong>
+                              ) : (
+                                <span className="est-tax-note">{docNumber(contractOf(r)!)}</span>
+                              )
+                            ) : canEdit && thisDoc ? (
+                              <button
+                                type="button"
+                                className="btn-ghost small"
+                                disabled={assigning}
+                                title="Not assigned to a contract, so no commission counts it"
+                                onClick={() => void assign([r.id])}
+                              >
+                                ⚠ Assign to {thisDoc}
+                              </button>
+                            ) : (
+                              <span className="stmt-warning-inline">⚠ Not assigned</span>
+                            )}
+                          </td>
+                        )}
                         <td className="right mono">{moneyCents(r.amount_cents)}</td>
                         {canEdit && (
                           <td className="right">
@@ -190,14 +290,22 @@ export function JobReceipts({
                   </tbody>
                   <tfoot>
                     <tr>
-                      <td colSpan={4}>
-                        <strong>Total spent</strong>
+                      <td colSpan={multi ? 5 : 4}>
+                        <strong>Total spent{multi ? " — every contract" : ""}</strong>
                       </td>
                       <td className="right mono">
                         <strong>{moneyCents(total)}</strong>
                       </td>
                       {canEdit && <td></td>}
                     </tr>
+                    {multi && thisDoc && (
+                      /* The number commission uses for this row's job. */
+                      <tr>
+                        <td colSpan={5}>Counted on {thisDoc} (what its commission uses)</td>
+                        <td className="right mono">{moneyCents(onThis)}</td>
+                        {canEdit && <td></td>}
+                      </tr>
+                    )}
                   </tfoot>
                 </table>
               </div>
