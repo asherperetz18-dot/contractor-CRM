@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
-import { AddBillModal } from "@/components/bills/add-bill-modal";
+import { AddBillModal, type BillJobOption } from "@/components/bills/add-bill-modal";
+import { AttachExpenseReceipt, EditPaidBillModal } from "@/components/bills/edit-paid-bill-modal";
+import { expenseEditLock } from "@/lib/data/expense-edit";
 import {
   billRemainingCents,
   centsFromInput,
@@ -74,6 +76,7 @@ export function BillsView({
   jobLeads,
   receipts,
   receiptLeads,
+  canEditCosts,
 }: {
   bills: VendorBill[];
   payments: VendorBillPayment[];
@@ -83,6 +86,8 @@ export function BillsView({
   receipts: JobExpense[];
   /** Jobs behind those receipts that jobLeads doesn't carry. */
   receiptLeads: Lead[];
+  /** May fix or delete a paid-on-entry receipt (the cost-write roles). */
+  canEditCosts: boolean;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("outstanding");
@@ -442,8 +447,11 @@ export function BillsView({
       {tab === "paid" && receipts.length > 0 && (
         <PaidOnEntry
           receipts={receipts}
+          vendors={vendors}
           vendorById={vendorById}
           leadById={leadById}
+          canEdit={canEditCosts}
+          onError={setError}
         />
       )}
 
@@ -806,21 +814,36 @@ export function PaymentModal({
 
 /**
  * Costs saved on a job with "Already paid" on -- the receipt from the
- * supply-house counter. They never were a bill, so they have no Pay,
- * Edit or Void; they are listed so the Paid tab holds every dollar paid
- * out, the same rows the project's Bills window shows under Paid.
- * Change or remove one from the job's costs.
+ * supply-house counter. They never were a bill, so they have no Pay or
+ * Void; Edit fixes or deletes the cost itself (QuickBooks rows stay
+ * locked -- the next sync would overwrite them). Listed so the Paid tab
+ * holds every dollar paid out, the same rows the project's Bills window
+ * shows under Paid.
  */
 function PaidOnEntry({
   receipts,
+  vendors,
   vendorById,
   leadById,
+  canEdit,
+  onError,
 }: {
   receipts: JobExpense[];
+  vendors: Vendor[];
   vendorById: Map<string, Vendor>;
   leadById: Map<string, Lead>;
+  canEdit: boolean;
+  onError: (msg: string) => void;
 }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState<JobExpense | null>(null);
   const total = receipts.reduce((s, r) => s + r.amount_cents, 0);
+  const jobs: BillJobOption[] = [...leadById.values()]
+    .map((l) => ({
+      leadId: l.id,
+      label: `${leadDisplayName(l)}${l.address ? ` — ${l.address}` : ""}`,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
   return (
     <div className="bills-group">
       <div className="bills-group-head">
@@ -836,17 +859,25 @@ function PaidOnEntry({
               <th>Job</th>
               <th>Date paid</th>
               <th className="right">Amount</th>
+              {canEdit && <th></th>}
             </tr>
           </thead>
           <tbody>
             {receipts.map((r) => {
               const vend = r.vendor_id ? vendorById.get(r.vendor_id) : null;
               const lead = leadById.get(r.lead_id);
+              const lock = expenseEditLock(r);
               return (
                 <tr key={r.id}>
                   <td>
                     {r.receipt_url ? (
                       <ReceiptThumb url={r.receipt_url} path={r.receipt_path ?? null} />
+                    ) : canEdit && !lock ? (
+                      <AttachExpenseReceipt
+                        expense={r}
+                        onError={onError}
+                        onDone={() => router.refresh()}
+                      />
                     ) : (
                       <span className="est-tax-note">none</span>
                     )}
@@ -860,12 +891,31 @@ function PaidOnEntry({
                   <td>{lead ? leadDisplayName(lead) : "Unknown job"}</td>
                   <td className="mono">{fmtDay(r.spent_on)}</td>
                   <td className="right mono">{moneyCents(r.amount_cents)}</td>
+                  {canEdit && (
+                    <td className="right">
+                      {lock ? (
+                        <span className="est-tax-note">{lock}</span>
+                      ) : (
+                        <button className="btn-ghost small" onClick={() => setEditing(r)}>
+                          ✎ Edit
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      {editing && (
+        <EditPaidBillModal
+          expense={editing}
+          jobs={jobs}
+          vendors={vendors}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   );
 }

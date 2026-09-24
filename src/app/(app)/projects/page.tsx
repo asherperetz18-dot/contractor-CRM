@@ -1,4 +1,5 @@
 import { companyToday } from "@/lib/data/company-today";
+import { canEditJobCosts } from "@/lib/data/expense-edit";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -88,6 +89,7 @@ export default async function ProjectsPage({
       canManage={isAdminRole(profile) && holdReady}
       canAddCosts={canManageCosts(profile)}
       canBills={canManageBills(profile)}
+      canEditCosts={canEditJobCosts(profile)}
       canUploadPhotos={canUploadLeadFiles(profile)}
       canSeeDocChips={isAdminRole(profile) || profile.roles.includes("Production")}
       canFileDocs={canEditChecklists(profile)}

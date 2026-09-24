@@ -7,6 +7,9 @@ import { getOpenJobBills } from "@/lib/actions/vendor-bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { Modal } from "@/components/ui/modal";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
+import { AttachExpenseReceipt, EditPaidBillModal } from "@/components/bills/edit-paid-bill-modal";
+import type { BillJobOption } from "@/components/bills/add-bill-modal";
+import { expenseEditLock } from "@/lib/data/expense-edit";
 import { moneyCents, vendorLabel, type JobExpense, type Vendor } from "@/lib/data/types";
 import type { OpenJobBill } from "@/lib/data/bills";
 
@@ -27,16 +30,24 @@ const fmtDay = (s: string) =>
 export function JobReceipts({
   leadId,
   jobLabel,
+  canEdit,
+  jobs,
   onClose,
 }: {
   leadId: string;
   jobLabel: string;
+  /** Edit / Attach on the paid rows (the cost-write roles). */
+  canEdit: boolean;
+  jobs: BillJobOption[];
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<JobExpense[] | null>(null);
   const [open, setOpen] = useState<OpenJobBill[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState<JobExpense | null>(null);
+  // Bumped after an edit, attach or delete so the lists reload.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +66,7 @@ export function JobReceipts({
     return () => {
       cancelled = true;
     };
-  }, [leadId]);
+  }, [leadId, reload]);
 
   const vendorById = new Map(vendors.map((v) => [v.id, v]));
   const nameOf = (vendorId: string | null, text: string | null) => {
@@ -66,115 +77,145 @@ export function JobReceipts({
   const unpaid = open.reduce((s, b) => s + b.remaining_cents, 0);
 
   return (
-    <Modal title={`Bills — ${jobLabel}`} onClose={onClose} wide>
-      {error && <p className="error-note">{error}</p>}
-      {rows === null ? (
-        <p className="empty-hint">Loading bills…</p>
-      ) : rows.length === 0 && open.length === 0 ? (
-        <p className="empty-hint">No bills on this job yet.</p>
-      ) : (
-        <>
-          {open.length > 0 && (
-            <>
-              <div className="bills-group-head">
-                <strong>Not paid yet</strong>
-                <span className="mono">{moneyCents(unpaid)}</span>
-              </div>
-              <div className="table-scroll" style={{ marginBottom: 14 }}>
+    <>
+      <Modal title={`Bills — ${jobLabel}`} onClose={onClose} wide>
+        {error && <p className="error-note">{error}</p>}
+        {rows === null ? (
+          <p className="empty-hint">Loading bills…</p>
+        ) : rows.length === 0 && open.length === 0 ? (
+          <p className="empty-hint">No bills on this job yet.</p>
+        ) : (
+          <>
+            {open.length > 0 && (
+              <>
+                <div className="bills-group-head">
+                  <strong>Not paid yet</strong>
+                  <span className="mono">{moneyCents(unpaid)}</span>
+                </div>
+                <div className="table-scroll" style={{ marginBottom: 14 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Receipt</th>
+                        <th>Bill date</th>
+                        <th>Vendor</th>
+                        <th>What for</th>
+                        <th className="right">Left to pay</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {open.map((b) => (
+                        <tr key={b.id}>
+                          <td>
+                            {b.receipt_url ? (
+                              <ReceiptThumb url={b.receipt_url} path={b.receipt_path} />
+                            ) : (
+                              <span className="est-tax-note">none</span>
+                            )}
+                          </td>
+                          <td>{b.bill_date ? fmtDay(b.bill_date) : "—"}</td>
+                          <td>{nameOf(b.vendor_id, b.vendor_name)}</td>
+                          <td>{b.reference || "—"}</td>
+                          <td className="right mono">
+                            {moneyCents(b.remaining_cents)}
+                            {b.remaining_cents < b.amount_cents && (
+                              <div className="est-tax-note">of {moneyCents(b.amount_cents)}</div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="est-tax-note" style={{ marginTop: -8, marginBottom: 14 }}>
+                  Pay these from <Link href="/bills">Bills to Pay</Link> — each payment lands below
+                  as a cost.
+                </p>
+              </>
+            )}
+
+            <div className="bills-group-head">
+              <strong>Paid</strong>
+              <span className="mono">{moneyCents(total)}</span>
+            </div>
+            {rows.length === 0 ? (
+              <p className="empty-hint">Nothing paid on this job yet.</p>
+            ) : (
+              <div className="table-scroll">
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th>Receipt</th>
-                      <th>Bill date</th>
+                      <th>Date paid</th>
                       <th>Vendor</th>
                       <th>What for</th>
-                      <th className="right">Left to pay</th>
+                      <th className="right">Amount</th>
+                      {canEdit && <th></th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {open.map((b) => (
-                      <tr key={b.id}>
+                    {rows.map((r) => (
+                      <tr key={r.id}>
                         <td>
-                          {b.receipt_url ? (
-                            <ReceiptThumb url={b.receipt_url} path={b.receipt_path} />
+                          {r.receipt_url ? (
+                            <ReceiptThumb url={r.receipt_url} path={r.receipt_path ?? null} />
+                          ) : canEdit && !expenseEditLock(r) ? (
+                            <AttachExpenseReceipt
+                              expense={r}
+                              onError={setError}
+                              onDone={() => setReload((n) => n + 1)}
+                            />
                           ) : (
                             <span className="est-tax-note">none</span>
                           )}
                         </td>
-                        <td>{b.bill_date ? fmtDay(b.bill_date) : "—"}</td>
-                        <td>{nameOf(b.vendor_id, b.vendor_name)}</td>
-                        <td>{b.reference || "—"}</td>
-                        <td className="right mono">
-                          {moneyCents(b.remaining_cents)}
-                          {b.remaining_cents < b.amount_cents && (
-                            <div className="est-tax-note">of {moneyCents(b.amount_cents)}</div>
-                          )}
+                        <td>{fmtDay(r.spent_on)}</td>
+                        <td>{nameOf(r.vendor_id, r.vendor)}</td>
+                        <td>
+                          {r.description || r.category || "—"}
+                          {r.source === "bill" && <div className="est-tax-note">paid from Bills to Pay</div>}
                         </td>
+                        <td className="right mono">{moneyCents(r.amount_cents)}</td>
+                        {canEdit && (
+                          <td className="right">
+                            {!expenseEditLock(r) && (
+                              <button className="btn-ghost small" onClick={() => setEditing(r)}>
+                                ✎ Edit
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4}>
+                        <strong>Total spent</strong>
+                      </td>
+                      <td className="right mono">
+                        <strong>{moneyCents(total)}</strong>
+                      </td>
+                      {canEdit && <td></td>}
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
-              <p className="est-tax-note" style={{ marginTop: -8, marginBottom: 14 }}>
-                Pay these from <Link href="/bills">Bills to Pay</Link> — each payment lands below
-                as a cost.
-              </p>
-            </>
-          )}
-
-          <div className="bills-group-head">
-            <strong>Paid</strong>
-            <span className="mono">{moneyCents(total)}</span>
-          </div>
-          {rows.length === 0 ? (
-            <p className="empty-hint">Nothing paid on this job yet.</p>
-          ) : (
-            <div className="table-scroll">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Receipt</th>
-                    <th>Date paid</th>
-                    <th>Vendor</th>
-                    <th>What for</th>
-                    <th className="right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id}>
-                      <td>
-                        {r.receipt_url ? (
-                          <ReceiptThumb url={r.receipt_url} path={r.receipt_path ?? null} />
-                        ) : (
-                          <span className="est-tax-note">none</span>
-                        )}
-                      </td>
-                      <td>{fmtDay(r.spent_on)}</td>
-                      <td>{nameOf(r.vendor_id, r.vendor)}</td>
-                      <td>
-                        {r.description || r.category || "—"}
-                        {r.source === "bill" && <div className="est-tax-note">paid from Bills to Pay</div>}
-                      </td>
-                      <td className="right mono">{moneyCents(r.amount_cents)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={4}>
-                      <strong>Total spent</strong>
-                    </td>
-                    <td className="right mono">
-                      <strong>{moneyCents(total)}</strong>
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </>
+            )}
+          </>
+        )}
+      </Modal>
+      {editing && (
+        // Beside the Bills window, not inside it -- Modal has no portal,
+        // and nested it would render inside this one's scrolling body.
+        <EditPaidBillModal
+          expense={editing}
+          jobs={jobs}
+          vendors={vendors}
+          onSaved={() => setReload((n) => n + 1)}
+          onClose={() => setEditing(null)}
+        />
       )}
-    </Modal>
+    </>
   );
 }

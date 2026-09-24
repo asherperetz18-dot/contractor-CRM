@@ -7,6 +7,12 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { canManageCosts, type JobExpense, type JobExpenseInput } from "@/lib/data/types";
 import {
+  canEditJobCosts,
+  expenseEditLock,
+  jobExpensePatch,
+  type JobExpenseEdit,
+} from "@/lib/data/expense-edit";
+import {
   createDriveShortcut,
   deleteFileFromDrive,
   getOrCreateCategoryFolder,
@@ -300,22 +306,180 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
   // the bill still points at it. Deleting it here would blank the bill's
   // thumbnail on the checkbook page.
   const row = data[0] as { receipt_path?: string | null; source?: string | null };
-  const receiptPath = row.source === "bill" ? null : row.receipt_path;
-  if (receiptPath) {
-    try {
-      if (receiptPath.startsWith("drive:")) {
-        const token = await getValidAccessToken(profile.company_id);
-        if (token?.accessToken) {
-          await deleteFileFromDrive(receiptPath.slice("drive:".length), token.accessToken);
-        }
-      } else if (receiptPath.startsWith("receipts/")) {
-        await createAdminClient().storage.from(RECEIPT_BUCKET).remove([receiptPath]);
+  if (row.source !== "bill") await removeReceiptFile(profile.company_id, row.receipt_path ?? null);
+
+  revalidatePath("/estimates");
+  return {};
+}
+
+/** Best effort: a cleanup hiccup must never undo the row change it follows. */
+async function removeReceiptFile(companyId: string, receiptPath: string | null): Promise<void> {
+  if (!receiptPath) return;
+  try {
+    if (receiptPath.startsWith("drive:")) {
+      const token = await getValidAccessToken(companyId);
+      if (token?.accessToken) {
+        await deleteFileFromDrive(receiptPath.slice("drive:".length), token.accessToken);
       }
-    } catch {
-      // ignore -- the cost is gone, which is what was asked.
+    } else if (receiptPath.startsWith("receipts/")) {
+      await createAdminClient().storage.from(RECEIPT_BUCKET).remove([receiptPath]);
     }
+  } catch {
+    // ignore
+  }
+}
+
+type EditableRow = {
+  id: string;
+  lead_id: string;
+  estimate_payment_id: string | null;
+  source: string;
+  receipt_path: string | null;
+};
+
+/**
+ * The cost as it stands, refused unless this person may edit it. Read
+ * through the company-scoped client, so another tenant's id is simply
+ * "not found".
+ */
+async function loadEditable(
+  expenseId: string
+): Promise<{ error: string } | { row: EditableRow; companyId: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canEditJobCosts(profile)) return { error: "You don't have access to edit costs." };
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("job_expenses")
+    .select("id, lead_id, estimate_payment_id, source, receipt_path")
+    .eq("id", expenseId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle();
+  if (!data) return { error: "That cost wasn't found." };
+  const row = data as EditableRow;
+  const lock = expenseEditLock(row);
+  if (lock) return { error: `${lock} — change it there.` };
+  return { row, companyId: profile.company_id };
+}
+
+/**
+ * Checks a freshly uploaded receipt against the slot it must have come
+ * from (this company's job) and that it actually landed. Same rules as
+ * createJobExpense.
+ */
+async function confirmNewReceipt(
+  companyId: string,
+  leadId: string,
+  receipt: UploadedReceipt
+): Promise<{ error?: string; fields?: { receipt_url: string; receipt_path: string } }> {
+  if (!receiptPathBelongs(receipt.path, companyId, leadId)) {
+    return { error: "That receipt doesn't belong to this job." };
+  }
+  return confirmReceiptUpload(createAdminClient(), receipt.path);
+}
+
+/**
+ * Corrects a cost saved by hand -- the "Already paid" receipt with the
+ * wrong amount, vendor, date or job -- optionally swapping its receipt.
+ * The old file is removed only after the row points at the new one.
+ */
+export async function updateJobExpense(
+  expenseId: string,
+  input: JobExpenseEdit,
+  receipt?: UploadedReceipt | null
+): Promise<{ error?: string }> {
+  const loaded = await loadEditable(expenseId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { row, companyId } = loaded;
+
+  const res = jobExpensePatch(input, row);
+  if ("error" in res) return { error: res.error };
+  const patch = res.patch;
+
+  const supabase = await createClient();
+  if (patch.lead_id !== row.lead_id) {
+    // The write policy checks the company column, not the job's -- a
+    // lead id from another company would pass it untouched.
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id")
+      .eq("id", patch.lead_id)
+      .eq("company_id", companyId)
+      .maybeSingle();
+    if (!lead) return { error: "Job not found." };
+  }
+
+  let receiptFields: { receipt_url: string; receipt_path: string } | null = null;
+  if (receipt?.path) {
+    const confirmed = await confirmNewReceipt(companyId, patch.lead_id, receipt);
+    if (confirmed.error || !confirmed.fields) return { error: confirmed.error };
+    receiptFields = confirmed.fields;
+  }
+
+  const { data, error } = await supabase
+    .from("job_expenses")
+    .update({ ...patch, ...(receiptFields ?? {}), updated_at: new Date().toISOString() })
+    .eq("id", expenseId)
+    .eq("company_id", companyId)
+    .select("id");
+  if (error || !data?.length) {
+    if (receiptFields) await createAdminClient().storage.from(RECEIPT_BUCKET).remove([receipt!.path]);
+    return { error: error?.message || "That cost couldn't be updated." };
+  }
+
+  if (receipt?.path && receiptFields) {
+    await removeReceiptFile(companyId, row.receipt_path);
+    await promoteReceiptToDrive(
+      companyId,
+      patch.lead_id,
+      expenseId,
+      receipt.path,
+      receipt.fileName,
+      receipt.contentType
+    );
   }
 
   revalidatePath("/estimates");
+  revalidatePath("/bills");
+  return {};
+}
+
+/** Attaches (or replaces) the receipt on a cost saved without one. */
+export async function setJobExpenseReceipt(
+  expenseId: string,
+  receipt: UploadedReceipt
+): Promise<{ error?: string }> {
+  const loaded = await loadEditable(expenseId);
+  if ("error" in loaded) return { error: loaded.error };
+  const { row, companyId } = loaded;
+
+  const confirmed = await confirmNewReceipt(companyId, row.lead_id, receipt);
+  if (confirmed.error || !confirmed.fields) return { error: confirmed.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("job_expenses")
+    .update({ ...confirmed.fields, updated_at: new Date().toISOString() })
+    .eq("id", expenseId)
+    .eq("company_id", companyId)
+    .select("id");
+  if (error || !data?.length) {
+    await createAdminClient().storage.from(RECEIPT_BUCKET).remove([receipt.path]);
+    return { error: error?.message || "The receipt couldn't be attached." };
+  }
+
+  await removeReceiptFile(companyId, row.receipt_path);
+  await promoteReceiptToDrive(
+    companyId,
+    row.lead_id,
+    expenseId,
+    receipt.path,
+    receipt.fileName,
+    receipt.contentType
+  );
+
+  revalidatePath("/estimates");
+  revalidatePath("/bills");
   return {};
 }

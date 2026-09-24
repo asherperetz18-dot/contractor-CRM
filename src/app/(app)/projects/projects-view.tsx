@@ -149,6 +149,7 @@ export function ProjectsView({
   canManage,
   canAddCosts,
   canBills,
+  canEditCosts,
   canUploadPhotos,
   canSeeDocChips,
   canFileDocs,
@@ -166,6 +167,8 @@ export function ProjectsView({
   canAddCosts: boolean;
   /** May file an unpaid bill (Bookkeeping, Office, Admin). */
   canBills: boolean;
+  /** May fix or delete a paid bill after saving it (never Field). */
+  canEditCosts: boolean;
   canUploadPhotos: boolean;
   /** The document shortcuts: receipts list, client-view contract and
    *  change orders. Office, Admin and Production -- never Field. */
@@ -469,6 +472,8 @@ export function ProjectsView({
         <JobReceipts
           leadId={receiptsFor.leadId}
           jobLabel={receiptsFor.label}
+          canEdit={canEditCosts}
+          jobs={jobOptionsFromProjects(sorted)}
           onClose={() => setReceiptsFor(null)}
         />
       )}
