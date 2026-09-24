@@ -273,6 +273,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "🏗️",
         href: "/settings/vendors",
       },
+      {
+        title: "Payment Accounts",
+        desc: "Bank accounts, cards and cash that bills are paid from — the \"Paid from\" on every payment",
+        icon: "🏦",
+        href: "/settings/payment-accounts",
+      },
       { title: "QuickBooks Integration", desc: "Connect QuickBooks, map fields, configure sync, matching rules", icon: "🔗" },
       {
         title: "Portal Payments",

@@ -4,6 +4,9 @@ Known shortcuts, deferred work, and things left deliberately unfinished — logg
 
 ---
 
+**Bills are shaped for QuickBooks, but nothing syncs yet.**
+What: bills and their payments carry everything a QuickBooks Bill / Bill Payment needs (vendor, job, method, "paid from" account, check/ref #) plus empty `qb_bill_id`, `qb_payment_id`, `qb_synced_at` and `payment_accounts.qb_account_id` (0176), but there is no QuickBooks connection or sync job. Also: a paid bill can't be moved onto or off a job without removing its payments first (the job costs they wrote would be orphaned), and Field/Production can't correct a bill payment they entered — only Bills to Pay can. Why: the owner asked for the data to be sync-ready now and the sync later. Impact: bookkeeping still enters bills in QuickBooks by hand. Where: `supabase/migrations/0176_bill_payment_accounts.sql`, `src/lib/actions/vendor-bills.ts` (`createBillWithPayments`, `writeBillPayment`, `updateVendorBill`).
+
 **New tenant tables aren't covered by the subscription lockout until re-applied.**
 What: 0175's restrictive `billing_lock` policy is stamped onto the tenant tables that existed when it ran. A later migration that adds a table with a `company_id` must end with `select public.apply_billing_lock_policies();`, or a lapsed company can still read that one table through the API. Also, a company that renews after an unpaid (not canceled) subscription keeps the old unpaid subscription on its Stripe customer until someone cancels it in Stripe. Why: an event trigger that stamps new tables automatically is more machinery than one line per migration. Impact: none in the UI — the layout still locks the whole app; only a direct API call is exposed. Where: `supabase/migrations/0175_subscription_lockout.sql`, `src/lib/actions/billing.ts` (`renewSubscription`).
 

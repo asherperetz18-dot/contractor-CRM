@@ -825,3 +825,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** A one-contract customer sees no new question. The one-job statement (`?job=<contract id>`) itemises exactly the bills the commission counts, one bill at a time through the same rule, so the list always adds up to the costs line.
 
+## 078 — A bill entered as paid is a bill plus payments, not a bare job cost
+
+**Context:** "+ Add bill" with "Already paid" wrote one `job_expenses` row and nothing else: no method, no account, no way to record $800 on the Amex and $300 by check, and nothing QuickBooks could ever read as a bill. The owner asked for a payment-method dropdown and partial / split payments, "all compatible to QuickBooks sync in future".
+
+**Decision:** Every bill entered as paid is now a `vendor_bills` row plus one `vendor_bill_payments` row per payment line (`createBillWithPayments`) — the shape Bills to Pay already used, and the shape QuickBooks Online records (one Bill, a Bill Payment each). Each payment carries its method (ACH added), check/ref number and a "Paid from" account from the new `payment_accounts` list (0176), which will map to QuickBooks bank / credit-card accounts. Empty `qb_bill_id` / `qb_payment_id` / `qb_synced_at` columns are in place so a future sync never sends anything twice. Bills to Pay's Pay button and the new form share one writer (`writeBillPayment`), so both produce identical rows and job costs. Field (and anyone else who can't run Bills to Pay) records through the same action with the admin client, after the job, vendor, phase and accounts are proven to be the company's, and may only save a bill paid in full — they can't leave one owing. Part-paid bills leave the remainder open in Bills to Pay.
+
+**Consequence:** Old "Already paid" costs stay as they are (their ✎ Edit still works); new ones are bill payments, corrected in Bills to Pay, whose Edit now also works on paid bills (never below what's paid, and the linked job costs follow). A vendor name is now required on a paid receipt too — QuickBooks can't hold a bill without one. No sync is built yet.
+

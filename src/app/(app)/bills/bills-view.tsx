@@ -23,7 +23,9 @@ import {
   BILL_PAYMENT_METHOD_LABEL,
   billPaymentMethodLabel,
   billReferenceLabel,
+  paymentAccountLabel,
   type BillPaymentMethod,
+  type PaymentAccount,
   type VendorBillRow as VendorBill,
   type VendorBillPaymentRow as VendorBillPayment,
 } from "@/lib/data/bills";
@@ -77,6 +79,7 @@ export function BillsView({
   receipts,
   receiptLeads,
   canEditCosts,
+  accounts,
 }: {
   bills: VendorBill[];
   payments: VendorBillPayment[];
@@ -88,6 +91,9 @@ export function BillsView({
   receiptLeads: Lead[];
   /** May fix or delete a paid-on-entry receipt (the cost-write roles). */
   canEditCosts: boolean;
+  /** "Paid from" accounts, archived included so old payments still name
+   *  theirs. Empty until migration 0176 runs. */
+  accounts: PaymentAccount[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("outstanding");
@@ -101,6 +107,7 @@ export function BillsView({
   const [error, setError] = useState("");
 
   const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
+  const accountById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
   const leadById = useMemo(
     () => new Map([...receiptLeads, ...jobLeads].map((l) => [l.id, l])),
     [jobLeads, receiptLeads]
@@ -384,7 +391,10 @@ export function BillsView({
                                 {rowPayments.length} payment{rowPayments.length === 1 ? "" : "s"}
                               </button>
                             )}{" "}
-                            {!b.voided_at && rem === b.amount_cents && (
+                            {/* Paid bills too: vendor, job, what for and a
+                                bigger total stay fixable; the server keeps the
+                                total at or above what's been paid. */}
+                            {!b.voided_at && (
                               <button
                                 className="btn-ghost small"
                                 disabled={busy}
@@ -413,6 +423,9 @@ export function BillsView({
                                   {billPaymentMethodLabel(p.method) ? ` · ${billPaymentMethodLabel(p.method)}` : ""}
                                   {p.check_number
                                     ? ` · ${p.method && p.method !== "check" ? "ref" : "check"} #${p.check_number}`
+                                    : ""}
+                                  {p.paid_from_account_id && accountById.get(p.paid_from_account_id)
+                                    ? ` · from ${paymentAccountLabel(accountById.get(p.paid_from_account_id)!)}`
                                     : ""}
                                   {p.note ? ` · ${p.note}` : ""}
                                   {p.job_expense_id ? " · filed as job cost" : ""}
@@ -514,6 +527,7 @@ export function BillsView({
           bill={paying}
           vendorName={vendorName(paying)}
           remainingCents={remaining(paying)}
+          accounts={accounts.filter((a) => !a.archived_at)}
           busy={busy}
           onSave={async (input) => {
             if (await run(() => recordBillPayment(paying.id, input))) setPaying(null);
@@ -725,6 +739,7 @@ export function PaymentModal({
   bill,
   vendorName,
   remainingCents,
+  accounts,
   busy,
   onSave,
   onClose,
@@ -732,6 +747,7 @@ export function PaymentModal({
   bill: VendorBill;
   vendorName: string;
   remainingCents: number;
+  accounts: PaymentAccount[];
   busy: boolean;
   onSave: (input: {
     amountCents: number;
@@ -739,6 +755,7 @@ export function PaymentModal({
     method: BillPaymentMethod;
     checkNumber?: string | null;
     note?: string | null;
+    paidFromAccountId?: string | null;
   }) => void;
   onClose: () => void;
 }) {
@@ -747,6 +764,7 @@ export function PaymentModal({
   const [method, setMethod] = useState<BillPaymentMethod>("check");
   const [checkNumber, setCheckNumber] = useState("");
   const [note, setNote] = useState("");
+  const [account, setAccount] = useState("");
 
   return (
     <Modal title={`Record payment — ${vendorName}`} onClose={() => { if (!busy) onClose(); }}>
@@ -788,6 +806,19 @@ export function PaymentModal({
           <span>{billReferenceLabel(method)}</span>
           <input value={checkNumber} disabled={busy} onChange={(e) => setCheckNumber(e.target.value)} placeholder="optional" />
         </label>
+        {accounts.length > 0 && (
+          <label className="field">
+            <span>Paid from</span>
+            <select value={account} disabled={busy} onChange={(e) => setAccount(e.target.value)}>
+              <option value="">Not set</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {paymentAccountLabel(a)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="field">
           <span>Note</span>
           <input value={note} disabled={busy} onChange={(e) => setNote(e.target.value)} placeholder="optional" />
@@ -802,7 +833,14 @@ export function PaymentModal({
           className="btn-primary"
           disabled={busy}
           onClick={() =>
-            onSave({ amountCents: centsFromInput(amount), paidOn, method, checkNumber, note })
+            onSave({
+              amountCents: centsFromInput(amount),
+              paidOn,
+              method,
+              checkNumber,
+              note,
+              paidFromAccountId: account || null,
+            })
           }
         >
           {busy ? "Recording…" : "Record payment"}

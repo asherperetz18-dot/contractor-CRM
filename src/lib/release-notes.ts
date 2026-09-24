@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.152.0",
+    date: "2026-09-24",
+    notes: [
+      "+ Add bill now asks \"Paid?\": Not paid yet, Paid in part, or Paid in full. For each payment, pick how it was paid (Check, Card, Cash, Zelle, ACH, Wire or Other), the account it came from, the check or reference number, and the date. You can add as many payments as needed, for example $800 on the card and $300 by check. Whatever isn't paid yet waits in Bills to Pay.",
+      "New Settings → Payment Accounts: list the bank accounts, cards and cash you pay vendors from. They appear as \"Paid from\" when you add a bill, and in Bills to Pay's Pay window.",
+      "In Bills to Pay you can now edit a bill that's already paid or part paid (vendor, job, what it was for, or a larger total). The job's costs update to match.",
+      "Bills are now recorded the way QuickBooks records them (one bill, with a payment for each payment), so they'll be ready when QuickBooks sync is added.",
+    ],
+  },
+  {
     version: "1.151.0",
     date: "2026-09-24",
     notes: [
