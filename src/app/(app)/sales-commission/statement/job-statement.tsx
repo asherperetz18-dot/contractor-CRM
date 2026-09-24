@@ -78,7 +78,7 @@ export function JobStatement({
           <Link href={`/estimates/${first.estimateId}#job-costs`}>
             Assign them on {first.docNumber} → Job costs
           </Link>{" "}
-          (or ✎ Edit each one and pick &ldquo;Which contract?&rdquo;).
+          or, faster: Projects → this job → 🧾 Bills → &ldquo;Assign all to {first.docNumber}&rdquo;.
         </div>
       )}
 

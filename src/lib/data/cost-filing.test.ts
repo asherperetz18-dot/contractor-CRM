@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { contractFilingOptions, costsForContract, unassignedJobCosts } from "./types.ts";
+import {
+  contractFilingOptions,
+  contractOfCost,
+  costsForContract,
+  unassignedJobCosts,
+} from "./types.ts";
 
 // ── Which contract a bill belongs to ─────────────────────────────────
 
@@ -73,4 +78,16 @@ test("with one contract, an unfiled bill is that contract's -- nothing unassigne
     }),
     { count: 0, cents: 0 }
   );
+});
+
+// ── Which contract a saved bill is on ────────────────────────────────
+
+test("a bill's contract is read off its phase -- the same way commission reads it", () => {
+  assert.equal(contractOfCost("p2b", docs, phases), "c2");
+  // A change order's phase belongs to its contract.
+  assert.equal(contractOfCost("pco", docs, phases), "c2");
+  // A cancelled phase still files to its contract: commission counts it there.
+  assert.equal(contractOfCost("p1x", docs, phases), "c1");
+  assert.equal(contractOfCost(null, docs, phases), null);
+  assert.equal(contractOfCost("gone", docs, phases), null);
 });

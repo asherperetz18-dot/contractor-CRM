@@ -3150,6 +3150,26 @@ export function contractFilingOptions(
     .filter((o) => o.phases.length > 0);
 }
 
+/**
+ * Which contract a saved bill counts toward, read off its phase the way
+ * the commission report reads it: a contract's own phases and its
+ * change orders' phases, cancelled or not. Null when it is filed to no
+ * phase on this job -- on a customer with several contracts, a bill
+ * that counts toward none of them.
+ */
+export function contractOfCost(
+  phaseId: string | null,
+  docs: { id: string; kind: string | null; parent_estimate_id: string | null }[],
+  phases: { id: string; estimate_id: string }[]
+): string | null {
+  if (!phaseId) return null;
+  const phase = phases.find((p) => p.id === phaseId);
+  const doc = phase && docs.find((d) => d.id === phase.estimate_id);
+  if (!doc) return null;
+  if ((doc.kind ?? "contract") === "contract") return doc.id;
+  return doc.kind === "change_order" ? doc.parent_estimate_id : null;
+}
+
 // ── Sales rep commission ─────────────────────────────────────────────
 
 export type RepCommission = {

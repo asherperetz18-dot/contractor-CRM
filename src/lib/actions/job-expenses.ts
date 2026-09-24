@@ -8,6 +8,7 @@ import { selectAll } from "@/lib/data/select-all";
 import {
   canManageCosts,
   contractFilingOptions,
+  contractOfCost,
   type ContractFilingOption,
   type JobExpense,
   type JobExpenseInput,
@@ -535,19 +536,28 @@ async function phaseIsOnJob(companyId: string, leadId: string, phaseId: string):
  * open estimates; what comes back is document numbers, titles and phase
  * names, never an amount, and only for a job in this company.
  */
-export async function getJobFilingOptions(
-  leadId: string
-): Promise<{ error?: string; options?: ContractFilingOption[] }> {
+export async function getJobFilingOptions(leadId: string): Promise<{
+  error?: string;
+  options?: ContractFilingOption[];
+  /** Phase id -> the contract it counts toward (commission's reading). */
+  phaseContract?: Record<string, string>;
+}> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canManageCosts(profile)) return { error: "You don't have access to record costs." };
+  return loadFiling(profile.company_id, leadId);
+}
 
+async function loadFiling(
+  companyId: string,
+  leadId: string
+): Promise<{ options: ContractFilingOption[]; phaseContract: Record<string, string> }> {
   const admin = createAdminClient();
   const { data: docs } = await admin
     .from("estimates")
     .select("id, doc_number, title, kind, parent_estimate_id")
     .eq("lead_id", leadId)
-    .eq("company_id", profile.company_id)
+    .eq("company_id", companyId)
     .eq("status", "Signed");
   const list = (docs ?? []) as {
     id: string;
@@ -556,26 +566,79 @@ export async function getJobFilingOptions(
     kind: string | null;
     parent_estimate_id: string | null;
   }[];
-  if (list.length === 0) return { options: [] };
+  if (list.length === 0) return { options: [], phaseContract: {} };
 
   // select * so cancelled_at rides along where its migration has run.
-  const { data: phases } = await admin
+  const { data: phaseRows } = await admin
     .from("estimate_payments")
     .select("*")
     .in(
       "estimate_id",
       list.map((d) => d.id)
     );
-  return {
-    options: contractFilingOptions(
-      list,
-      (phases ?? []) as {
-        id: string;
-        estimate_id: string;
-        name: string | null;
-        sort_order: number;
-        cancelled_at?: string | null;
-      }[]
-    ),
-  };
+  const phases = (phaseRows ?? []) as {
+    id: string;
+    estimate_id: string;
+    name: string | null;
+    sort_order: number;
+    cancelled_at?: string | null;
+  }[];
+  const phaseContract: Record<string, string> = {};
+  for (const p of phases) {
+    const contract = contractOfCost(p.id, list, phases);
+    if (contract) phaseContract[p.id] = contract;
+  }
+  return { options: contractFilingOptions(list, phases), phaseContract };
+}
+
+/**
+ * Files bills to one contract in a click -- the project row's own -- so
+ * the commission report counts them. Each goes to the contract's first
+ * phase, the same default "+ Add bill" uses from a project row; a bill
+ * already on another of the customer's contracts is left where it is.
+ */
+export async function fileCostsToContract(
+  expenseIds: string[],
+  estimateId: string
+): Promise<{ error?: string; filed?: number }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canEditJobCosts(profile)) return { error: "You don't have access to edit costs." };
+  if (expenseIds.length === 0) return { filed: 0 };
+
+  const supabase = await createClient();
+  const { data: contract } = await supabase
+    .from("estimates")
+    .select("id, lead_id")
+    .eq("id", estimateId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; lead_id: string }>();
+  if (!contract) return { error: "Contract not found." };
+
+  const { options, phaseContract } = await loadFiling(profile.company_id, contract.lead_id);
+  const phaseId = options.find((o) => o.estimateId === estimateId)?.phases[0]?.id;
+  if (!phaseId) return { error: "That contract has no payment phases to file bills to." };
+
+  const { data: rows } = await supabase
+    .from("job_expenses")
+    .select("id, estimate_payment_id")
+    .in("id", expenseIds)
+    .eq("lead_id", contract.lead_id)
+    .eq("company_id", profile.company_id);
+  const ids = ((rows ?? []) as { id: string; estimate_payment_id: string | null }[])
+    .filter((r) => !r.estimate_payment_id || !phaseContract[r.estimate_payment_id])
+    .map((r) => r.id);
+  if (ids.length === 0) return { filed: 0 };
+
+  const { data, error } = await supabase
+    .from("job_expenses")
+    .update({ estimate_payment_id: phaseId, updated_at: new Date().toISOString() })
+    .in("id", ids)
+    .eq("company_id", profile.company_id)
+    .select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath("/estimates");
+  revalidatePath("/projects");
+  return { filed: data?.length ?? 0 };
 }
