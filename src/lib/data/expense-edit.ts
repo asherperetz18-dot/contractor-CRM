@@ -34,6 +34,9 @@ export type JobExpenseEdit = {
   description: string;
   amountCents: number;
   spentOn: string;
+  /** The phase picked under "Which contract?" ("" = not filed). Left
+   *  out when the window offered no choice (a one-contract customer). */
+  estimatePaymentId?: string;
 };
 
 export type JobExpensePatch = {
@@ -59,7 +62,12 @@ export function jobExpensePatch(
       lead_id: input.leadId,
       // A phase is one job's payment row; carried onto another job it
       // would file the cost under a contract it has nothing to do with.
-      estimate_payment_id: input.leadId === current.lead_id ? current.estimate_payment_id : null,
+      estimate_payment_id:
+        input.estimatePaymentId !== undefined
+          ? input.estimatePaymentId || null
+          : input.leadId === current.lead_id
+            ? current.estimate_payment_id
+            : null,
       vendor_id: input.vendorId || null,
       // One name per supplier, same rule as createJobExpense.
       vendor: input.vendorId ? null : input.vendor.trim() || null,

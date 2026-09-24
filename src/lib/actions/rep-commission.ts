@@ -10,6 +10,7 @@ import {
   isAdminRole,
   isStrictAdmin,
   costsForContract,
+  unassignedJobCosts,
   paidTotalCents,
   commissionHolds,
   commissionQualifiedAt,
@@ -430,6 +431,26 @@ export type RepCommissionRow = {
   /** The share, once every hold is clear. Nil until then. */
   payableCents: number;
   detail: RepCommission;
+  /** The customer's bills no contract claims (several contracts, bill
+   *  filed to none) -- why a job with receipts still reads uncosted. */
+  unassignedCosts: { count: number; cents: number };
+  /** Only on the job asked for with detailFor: the one-job statement. */
+  job?: JobCommissionDetail;
+};
+
+export type JobCommissionDetail = {
+  leadId: string;
+  certificateSignedAt: string | null;
+  /** The bills this contract counts, newest first. */
+  costLines: {
+    id: string;
+    spentOn: string;
+    vendor: string;
+    what: string | null;
+    amountCents: number;
+  }[];
+  /** Customer money that counts as collected, oldest first. */
+  payments: { paidAt: string | null; kind: string | null; method: string | null; amountCents: number }[];
 };
 
 /**
@@ -441,6 +462,8 @@ export type RepCommissionRow = {
 export async function getRepCommissions(opts?: {
   /** Admins only; ignored for a rep, who always gets their own. */
   repId?: string;
+  /** A contract id: its rows also carry the one-job breakdown. */
+  detailFor?: string;
 }): Promise<{
   error?: string;
   rows?: RepCommissionRow[];
@@ -483,11 +506,23 @@ export async function getRepCommissions(opts?: {
 
   const leadIds = [...new Set(contracts.map((c) => c.lead_id))];
   const [expenses, paid, leads, phases] = await Promise.all([
-    selectAll<{ lead_id: string; amount_cents: number; estimate_payment_id: string | null }>(
+    selectAll<{
+      id: string;
+      lead_id: string;
+      amount_cents: number;
+      estimate_payment_id: string | null;
+      vendor: string | null;
+      vendor_id: string | null;
+      description: string | null;
+      category: string | null;
+      spent_on: string;
+    }>(
       (from, to) =>
         supabase
           .from("job_expenses")
-          .select("lead_id, amount_cents, estimate_payment_id")
+          .select(
+            "id, lead_id, amount_cents, estimate_payment_id, vendor, vendor_id, description, category, spent_on"
+          )
           .eq("company_id", profile.company_id)
           .in("lead_id", leadIds)
           .range(from, to)
@@ -497,10 +532,12 @@ export async function getRepCommissions(opts?: {
       amount_cents: number;
       status: "pending" | "succeeded" | "failed" | "cancelled";
       paid_at: string | null;
+      kind: string | null;
+      method: string | null;
     }>((from, to) =>
       supabase
         .from("portal_payments")
-        .select("estimate_id, amount_cents, status, paid_at")
+        .select("estimate_id, amount_cents, status, paid_at, kind, method")
         .eq("company_id", profile.company_id)
         .range(from, to)
     ),
@@ -528,6 +565,17 @@ export async function getRepCommissions(opts?: {
   ]);
 
   const nameById = new Map(members.map((m) => [m.id, m.name || m.email || "Unnamed"]));
+  // Vendor names only for the one-job statement's itemised bills.
+  const vendorNameById = new Map<string, string>();
+  if (opts?.detailFor) {
+    const { data: vendorRows } = await supabase
+      .from("vendors")
+      .select("id, name")
+      .eq("company_id", profile.company_id);
+    for (const v of (vendorRows ?? []) as { id: string; name: string }[]) {
+      vendorNameById.set(v.id, v.name);
+    }
+  }
   const assignedByLead = new Map(leads.map((l) => [l.id, l.assigned_to]));
   const customerByLead = new Map(
     leads.map((l) => [
@@ -564,11 +612,18 @@ export async function getRepCommissions(opts?: {
     const contractPhaseIds = new Set(
       phases.filter((p) => docIds.has(p.estimate_id)).map((p) => p.id)
     );
+    const leadExpenses = expenses.filter((e) => e.lead_id === c.lead_id);
+    const leadHasOneContract = (contractsPerLead.get(c.lead_id) ?? 1) === 1;
     const { cents: expensesCents, counted } = costsForContract({
-      leadExpenses: expenses.filter((e) => e.lead_id === c.lead_id),
+      leadExpenses,
       contractPhaseIds,
       allPhaseIds,
-      leadHasOneContract: (contractsPerLead.get(c.lead_id) ?? 1) === 1,
+      leadHasOneContract,
+    });
+    const unassignedCosts = unassignedJobCosts({
+      leadExpenses,
+      allPhaseIds,
+      contractsOnLead: contractsPerLead.get(c.lead_id) ?? 1,
     });
 
     // Every document on the job, not just the contract. Change orders are
@@ -584,6 +639,44 @@ export async function getRepCommissions(opts?: {
         .map((p) => p.paid_at as string)
         .sort()
         .at(-1) ?? null;
+
+    // The one-job statement's itemised lines. The same rule as
+    // costsForContract, one bill at a time, so the list always adds up
+    // to the costs figure above it.
+    const job: JobCommissionDetail | undefined =
+      opts?.detailFor === c.id
+        ? {
+            leadId: c.lead_id,
+            certificateSignedAt: certificate?.signed_at ?? null,
+            costLines: leadExpenses
+              .filter(
+                (e) =>
+                  costsForContract({
+                    leadExpenses: [e],
+                    contractPhaseIds,
+                    allPhaseIds,
+                    leadHasOneContract,
+                  }).counted > 0
+              )
+              .sort((a, b) => b.spent_on.localeCompare(a.spent_on))
+              .map((e) => ({
+                id: e.id,
+                spentOn: e.spent_on,
+                vendor: (e.vendor_id && vendorNameById.get(e.vendor_id)) || e.vendor || "—",
+                what: e.description || e.category,
+                amountCents: e.amount_cents,
+              })),
+            payments: jobPayments
+              .filter((p) => p.status === "succeeded")
+              .sort((a, b) => (a.paid_at ?? "").localeCompare(b.paid_at ?? ""))
+              .map((p) => ({
+                paidAt: p.paid_at,
+                kind: p.kind,
+                method: p.method,
+                amountCents: p.amount_cents,
+              })),
+          }
+        : undefined;
 
     const repOne = c.sales_rep_1 ?? assignedByLead.get(c.lead_id) ?? null;
     const detail = computeRepCommission({
@@ -643,6 +736,8 @@ export async function getRepCommissions(opts?: {
         // commission -- the rule is the job is done and paid for.
         payableCents: holds.length === 0 ? shareCents : 0,
         detail,
+        unassignedCosts,
+        job,
       });
     }
   }

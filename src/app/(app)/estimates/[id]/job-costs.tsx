@@ -118,7 +118,7 @@ export const JobCosts = memo(function JobCosts({
   const nothingYet = expenses.length === 0 && openBills.length === 0;
 
   return (
-    <section className="est-pay">
+    <section className="est-pay" id="job-costs">
       <div className="est-pay-head">
         <div>
           <h2 className="est-pay-title">Job costs</h2>

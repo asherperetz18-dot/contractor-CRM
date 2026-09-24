@@ -7674,6 +7674,51 @@ a.portal-header-stars:hover {
   background: var(--panel);
 }
 
+/* The one-job statement: the breakdown runs full width so each bill
+   gets its own line, and the pay conditions read as a checklist. */
+.stmt-breakdown {
+  max-width: 560px;
+}
+.stmt-sub {
+  padding-left: 16px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.stmt-checks {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stmt-ok {
+  color: var(--success);
+}
+.stmt-no {
+  color: var(--danger);
+}
+.stmt-warning {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border: 1px solid #ecd9a8;
+  border-radius: 8px;
+  background: #fdf7e6;
+  font-size: 13px;
+}
+.stmt-warning-inline {
+  color: var(--danger);
+  margin-top: 2px;
+}
+/* A job name opens its own statement; on paper it is just the name. */
+.stmt-job-link {
+  color: inherit;
+  text-decoration: none;
+}
+.stmt-job-link:hover {
+  text-decoration: underline;
+}
+
 .stmt-quick {
   display: flex;
   flex-wrap: wrap;

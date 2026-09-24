@@ -3068,6 +3068,88 @@ export function costsForContract(input: {
   return { cents, counted };
 }
 
+/**
+ * The customer's bills that no contract can claim: filed to no phase
+ * (or a phase since removed) while the customer holds more than one
+ * contract. costsForContract leaves each of these out of every
+ * contract, so on the commission report the job reads "costs not
+ * recorded" however many receipts are in -- this is what to go and file.
+ */
+export function unassignedJobCosts(input: {
+  leadExpenses: { amount_cents: number; estimate_payment_id: string | null }[];
+  allPhaseIds: Set<string>;
+  contractsOnLead: number;
+}): { count: number; cents: number } {
+  if (input.contractsOnLead <= 1) return { count: 0, cents: 0 };
+  let count = 0;
+  let cents = 0;
+  for (const e of input.leadExpenses) {
+    if (!e.estimate_payment_id || !input.allPhaseIds.has(e.estimate_payment_id)) {
+      count += 1;
+      cents += e.amount_cents;
+    }
+  }
+  return { count, cents };
+}
+
+export type ContractFilingOption = {
+  estimateId: string;
+  label: string;
+  /** Where a bill can be filed: this contract's phases, then its
+   *  change orders'. A cost belongs to a contract through its phase. */
+  phases: { id: string; name: string }[];
+};
+
+/**
+ * The "Which contract?" choices for a bill on one customer: each signed
+ * contract with the phases a cost can be filed to. Change orders count
+ * toward their contract (costsForContract reads them that way), so
+ * their phases sit under it. A contract with no live phase has nowhere
+ * to file a cost and is left out.
+ */
+export function contractFilingOptions(
+  docs: {
+    id: string;
+    doc_number: string;
+    title: string | null;
+    kind: string | null;
+    parent_estimate_id: string | null;
+  }[],
+  phases: {
+    id: string;
+    estimate_id: string;
+    name: string | null;
+    sort_order: number;
+    cancelled_at?: string | null;
+  }[]
+): ContractFilingOption[] {
+  const live = phases
+    .filter((p) => !p.cancelled_at)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const phasesOf = (docId: string) => live.filter((p) => p.estimate_id === docId);
+  return docs
+    .filter((d) => (d.kind ?? "contract") === "contract")
+    .sort((a, b) => a.doc_number.localeCompare(b.doc_number))
+    .map((c) => {
+      const own = phasesOf(c.id).map((p) => ({ id: p.id, name: p.name || "Unnamed phase" }));
+      const fromChangeOrders = docs
+        .filter((d) => d.parent_estimate_id === c.id && d.kind === "change_order")
+        .sort((a, b) => a.doc_number.localeCompare(b.doc_number))
+        .flatMap((co) =>
+          phasesOf(co.id).map((p) => ({
+            id: p.id,
+            name: `${co.doc_number} · ${p.name || "Unnamed phase"}`,
+          }))
+        );
+      return {
+        estimateId: c.id,
+        label: c.title ? `${c.doc_number} · ${c.title}` : c.doc_number,
+        phases: [...own, ...fromChangeOrders],
+      };
+    })
+    .filter((o) => o.phases.length > 0);
+}
+
 // ── Sales rep commission ─────────────────────────────────────────────
 
 export type RepCommission = {

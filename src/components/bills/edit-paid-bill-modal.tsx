@@ -16,6 +16,7 @@ import { centsFromInput, moneyCents, vendorLabel, type JobExpense, type Vendor }
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/components/uploads/file-drop";
+import { ContractPicker } from "./contract-picker";
 import type { BillJobOption } from "./add-bill-modal";
 import type { UploadedReceipt } from "@/lib/receipts";
 import "@/components/ui/receipt-thumb.css";
@@ -58,6 +59,8 @@ export function EditPaidBillModal({
 }) {
   const router = useRouter();
   const [leadId, setLeadId] = useState(expense.lead_id);
+  const [phaseId, setPhaseId] = useState(expense.estimate_payment_id ?? "");
+  const [contractRequired, setContractRequired] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>(vendorsProp ?? []);
   const [vendorId, setVendorId] = useState(expense.vendor_id ?? "");
   const [vendorText, setVendorText] = useState(expense.vendor ?? "");
@@ -101,6 +104,7 @@ export function EditPaidBillModal({
     const cents = centsFromInput(amount);
     if (!cents) return setError("Enter the amount.");
     if (!date) return setError("Enter the date paid.");
+    if (contractRequired && !phaseId) return setError("Pick which contract this bill is for.");
     setError("");
     setSaving(true);
     try {
@@ -112,7 +116,17 @@ export function EditPaidBillModal({
       }
       const res = await updateJobExpense(
         expense.id,
-        { leadId, vendorId, vendor: vendorText, description, amountCents: cents, spentOn: date },
+        {
+          leadId,
+          vendorId,
+          vendor: vendorText,
+          description,
+          amountCents: cents,
+          spentOn: date,
+          // Only when the window asked: a one-contract customer's cost
+          // keeps whatever phase the contract page filed it to.
+          ...(contractRequired ? { estimatePaymentId: phaseId } : {}),
+        },
         receipt
       );
       if (res.error) return setError(res.error);
@@ -146,7 +160,13 @@ export function EditPaidBillModal({
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0 }}>
         <div className="qr-form">
           <Field label="Job">
-            <select value={leadId} onChange={(e) => setLeadId(e.target.value)}>
+            <select
+              value={leadId}
+              onChange={(e) => {
+                setLeadId(e.target.value);
+                setPhaseId("");
+              }}
+            >
               {jobOptions.map((j) => (
                 <option key={j.leadId} value={j.leadId}>
                   {j.label}
@@ -154,6 +174,12 @@ export function EditPaidBillModal({
               ))}
             </select>
           </Field>
+          <ContractPicker
+            leadId={leadId}
+            value={phaseId}
+            onChange={setPhaseId}
+            onRequired={setContractRequired}
+          />
           <Field label="Vendor">
             <select
               value={vendorId}

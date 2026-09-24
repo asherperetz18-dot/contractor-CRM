@@ -224,7 +224,10 @@ export function ProjectsView({
   );
   // Which job the bill modal opens on: a lead id from a row's chip,
   // "any" from the page-level button, null when closed.
-  const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  // "any" from the toolbar; a row passes its job and contract.
+  const [receiptFor, setReceiptFor] = useState<
+    "any" | { leadId: string; estimateId: string } | null
+  >(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [receiptsFor, setReceiptsFor] = useState<{ leadId: string; label: string } | null>(null);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
@@ -452,7 +455,8 @@ export function ProjectsView({
       {receiptFor && (
         <AddBillModal
           jobs={jobOptionsFromProjects(sorted)}
-          initialLeadId={receiptFor === "any" ? "" : receiptFor}
+          initialLeadId={receiptFor === "any" ? "" : receiptFor.leadId}
+          initialEstimateId={receiptFor === "any" ? undefined : receiptFor.estimateId}
           canBills={canBills}
           defaultPaid
           onClose={() => setReceiptFor(null)}
@@ -921,7 +925,7 @@ export function ProjectsView({
                           <button
                             type="button"
                             className={jobChipClass("addBill")}
-                            onClick={() => setReceiptFor(p.leadId)}
+                            onClick={() => setReceiptFor({ leadId: p.leadId, estimateId: p.estimateId })}
                           >
                             + Add bill
                           </button>

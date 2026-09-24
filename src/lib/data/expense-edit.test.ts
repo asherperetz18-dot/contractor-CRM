@@ -62,3 +62,12 @@ test("refuses a missing job, amount or date", () => {
   assert.ok("error" in jobExpensePatch({ ...input, amountCents: 0 }, current));
   assert.ok("error" in jobExpensePatch({ ...input, spentOn: "" }, current));
 });
+
+test("a contract picked in the window wins -- including moving it to 'not filed'", () => {
+  const picked = jobExpensePatch({ ...input, estimatePaymentId: "ph9" }, current);
+  assert.ok("patch" in picked);
+  assert.equal(picked.patch.estimate_payment_id, "ph9");
+  const cleared = jobExpensePatch({ ...input, estimatePaymentId: "" }, current);
+  assert.ok("patch" in cleared);
+  assert.equal(cleared.patch.estimate_payment_id, null);
+});
