@@ -50,7 +50,8 @@ test("the reference box is named for the method, and old rows read back plainly"
   assert.equal(billReferenceLabel("check"), "Check #");
   assert.equal(billReferenceLabel("zelle"), "Confirmation #");
   assert.equal(billReferenceLabel("card"), "Last 4 / receipt #");
-  assert.equal(billPaymentMethodLabel("wire"), "Wire / bank transfer");
+  assert.equal(billPaymentMethodLabel("wire"), "Wire");
+  assert.equal(billPaymentMethodLabel("ach"), "ACH / bank transfer");
   // A payment recorded before migration 0124 has no method at all.
   assert.equal(billPaymentMethodLabel(null), null);
   assert.equal(billPaymentMethodLabel(undefined), null);

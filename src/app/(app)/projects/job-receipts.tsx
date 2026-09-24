@@ -250,7 +250,11 @@ export function JobReceipts({
                         <td>{nameOf(r.vendor_id, r.vendor)}</td>
                         <td>
                           {r.description || r.category || "—"}
-                          {r.source === "bill" && <div className="est-tax-note">paid from Bills to Pay</div>}
+                          {r.source === "bill" && (
+                            <div className="est-tax-note">
+                              a bill payment — change it in <Link href="/bills">Bills to Pay</Link>
+                            </div>
+                          )}
                         </td>
                         {multi && (
                           <td>

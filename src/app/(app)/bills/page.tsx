@@ -10,6 +10,7 @@ import {
   type VendorBillPaymentRow,
 } from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
+import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
 import { BillsView } from "./bills-view";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ export default async function BillsPage() {
   const supabase = await createClient();
   const companyId = profile.company_id;
 
-  const [bills, payments, vendorsRes, leads, expenses] = await Promise.all([
+  const [bills, payments, vendorsRes, leads, expenses, accountsRes] = await Promise.all([
     selectAll<VendorBill>((f, t) =>
       supabase
         .from("vendor_bills")
@@ -92,6 +93,7 @@ export default async function BillsPage() {
         .eq("company_id", companyId)
         .range(f, t)
     ),
+    getPaymentAccounts(true),
   ]);
 
   // The inner join can return one row per signed document.
@@ -122,6 +124,7 @@ export default async function BillsPage() {
       receipts={receipts}
       receiptLeads={receiptLeads}
       canEditCosts={canEditJobCosts(profile)}
+      accounts={accountsRes.accounts}
     />
   );
 }

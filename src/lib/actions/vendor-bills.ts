@@ -5,8 +5,15 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import { billRemainingCents, canManageBills } from "@/lib/data/types";
-import { BILL_PAYMENT_METHODS, billPaymentMethodLabel, type OpenJobBill } from "@/lib/data/bills";
+import { billRemainingCents, canManageBills, canManageCosts } from "@/lib/data/types";
+import {
+  BILL_PAYMENT_METHODS,
+  billPaymentMethodLabel,
+  planBillPayments,
+  type BillPaymentLine,
+  type OpenJobBill,
+} from "@/lib/data/bills";
+import { phaseIsOnJob } from "@/lib/data/job-phase-check";
 import {
   RECEIPT_BUCKET,
   confirmReceiptUpload,
@@ -269,6 +276,42 @@ export async function updateVendorBill(
   const { company_id: _co, ...fields } = c.row;
 
   const supabase = await createClient();
+  // A bill with payments can still be corrected -- vendor, job, what for,
+  // a bigger total -- but never below what has already been paid, and
+  // the job costs its payments wrote follow the change.
+  const [{ data: current }, { data: paidRows }] = await Promise.all([
+    supabase
+      .from("vendor_bills")
+      .select("lead_id")
+      .eq("id", billId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle<{ lead_id: string | null }>(),
+    supabase
+      .from("vendor_bill_payments")
+      .select("amount_cents, job_expense_id")
+      .eq("bill_id", billId)
+      .eq("company_id", profile.company_id),
+  ]);
+  if (!current) return { error: "That bill couldn't be found." };
+  const paid = (paidRows ?? []) as { amount_cents: number; job_expense_id: string | null }[];
+  const paidCents = paid.reduce((sum, p) => sum + p.amount_cents, 0);
+  if (paidCents > fields.amount_cents) {
+    return { error: `Already paid ${(paidCents / 100).toFixed(2)} — the total can't be less than that.` };
+  }
+  if (paid.length > 0 && !current.lead_id !== !fields.lead_id) {
+    return {
+      error:
+        "This bill has payments. To move it onto or off a job, remove its payments first, then record them again.",
+    };
+  }
+  if (
+    fields.lead_id &&
+    input.estimatePaymentId &&
+    !(await phaseIsOnJob(profile.company_id, fields.lead_id, input.estimatePaymentId))
+  ) {
+    return { error: "That contract isn't on this job." };
+  }
+
   const { data, error } = await supabase
     .from("vendor_bills")
     .update({ ...fields, updated_at: new Date().toISOString() })
@@ -277,6 +320,25 @@ export async function updateVendorBill(
     .select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "That bill couldn't be updated." };
+
+  const costIds = paid.map((p) => p.job_expense_id).filter((id): id is string => !!id);
+  if (costIds.length && fields.lead_id) {
+    await createAdminClient()
+      .from("job_expenses")
+      .update({
+        lead_id: fields.lead_id,
+        vendor_id: fields.vendor_id,
+        vendor: fields.vendor_name,
+        ...(input.estimatePaymentId !== undefined
+          ? { estimate_payment_id: input.estimatePaymentId || null }
+          : fields.lead_id !== current.lead_id
+            ? { estimate_payment_id: null }
+            : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", costIds)
+      .eq("company_id", profile.company_id);
+  }
   revalidatePath("/bills");
   revalidatePath("/projects");
   revalidatePath("/estimates");
@@ -324,6 +386,8 @@ export async function recordBillPayment(
      *  method's reference is. The column kept its old name. */
     checkNumber?: string | null;
     note?: string | null;
+    /** The payment_accounts row it came out of (migration 0176). */
+    paidFromAccountId?: string | null;
   }
 ): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
@@ -360,70 +424,18 @@ export async function recordBillPayment(
   if (!bill) return { error: "That bill couldn't be found." };
   if (bill.voided_at) return { error: "This bill is voided — un-void it first." };
 
-  // The job cost first, so the payment row can point at it. Admin
-  // client with the same validation createJobExpense does by hand: the
-  // lead is already proven to belong to this company via the bill.
-  // The phase the bill was filed to and its receipt file ride along, so
-  // the cost lands where the bill sat and the thumbnail follows the
-  // money -- nobody re-files or re-attaches anything.
-  let jobExpenseId: string | null = null;
-  if (bill.lead_id) {
-    const admin = createAdminClient();
-    const { data: exp, error: expError } = await admin
-      .from("job_expenses")
-      .insert({
-        company_id: profile.company_id,
-        lead_id: bill.lead_id,
-        estimate_payment_id: bill.estimate_payment_id ?? null,
-        vendor_id: bill.vendor_id,
-        vendor: bill.vendor_id ? null : bill.vendor_name,
-        description: [
-          bill.reference,
-          method ? `paid by ${billPaymentMethodLabel(method)}` : "bill payment",
-        ]
-          .filter(Boolean)
-          .join(" — "),
-        amount_cents: amount,
-        spent_on: input.paidOn,
-        source: "bill",
-        receipt_url: bill.receipt_url ?? null,
-        receipt_path: bill.receipt_path ?? null,
-        created_by: profile.id,
-      })
-      .select("id")
-      .single();
-    if (expError) return { error: expError.message };
-    jobExpenseId = (exp as { id: string }).id;
+  if (input.paidFromAccountId && !(await accountsInCompany(profile.company_id, [input.paidFromAccountId]))) {
+    return { error: "That account isn't one of yours." };
   }
-
-  // Typed as a plain record on purpose: handing insert() a conditional
-  // object (with or without `method`) trips its excess-property check.
-  const paymentRow: Record<string, unknown> = {
-    company_id: profile.company_id,
-    bill_id: billId,
-    amount_cents: amount,
-    paid_on: input.paidOn,
-    check_number: input.checkNumber?.trim() || null,
-    note: input.note?.trim() || null,
-    job_expense_id: jobExpenseId,
-    created_by: profile.id,
-  };
-  if (method) paymentRow.method = method;
-  let { error } = await supabase.from("vendor_bill_payments").insert(paymentRow);
-  // The method column arrives with migration 0124. On a database where it
-  // hasn't run yet, record the payment without it rather than refuse the
-  // payment -- the money moved either way; only the "how" is lost.
-  if (error && method && /schema cache/i.test(error.message) && /method/.test(error.message)) {
-    delete paymentRow.method;
-    ({ error } = await supabase.from("vendor_bill_payments").insert(paymentRow));
-  }
-  if (error) {
-    // The payment never happened; don't leave its cost behind.
-    if (jobExpenseId) {
-      await createAdminClient().from("job_expenses").delete().eq("id", jobExpenseId);
-    }
-    return { error: error.message };
-  }
+  const res = await writeBillPayment(supabase, profile.company_id, profile.id, bill, {
+    amountCents: amount,
+    paidOn: input.paidOn,
+    method,
+    reference: input.checkNumber ?? "",
+    note: input.note ?? null,
+    paidFromAccountId: input.paidFromAccountId ?? "",
+  });
+  if (res.error) return { error: res.error };
   revalidatePath("/bills");
   revalidatePath("/estimates");
   revalidatePath("/projects");
@@ -478,4 +490,200 @@ export async function setBillVoided(billId: string, voided: boolean): Promise<{ 
   revalidatePath("/projects");
   revalidatePath("/estimates");
   return {};
+}
+
+type PayableBill = {
+  id: string;
+  lead_id: string | null;
+  vendor_id: string | null;
+  vendor_name: string | null;
+  reference: string | null;
+  estimate_payment_id?: string | null;
+  receipt_url?: string | null;
+  receipt_path?: string | null;
+};
+
+type DbClient = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>;
+
+/** Are all these "paid from" accounts this company's? */
+async function accountsInCompany(companyId: string, ids: string[]): Promise<boolean> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return true;
+  const { data } = await createAdminClient()
+    .from("payment_accounts")
+    .select("id")
+    .in("id", unique)
+    .eq("company_id", companyId);
+  return (data?.length ?? 0) === unique.length;
+}
+
+/**
+ * One payment against a bill: on a job-linked bill, first the job cost
+ * (so Projects' Spent, P&L and commission count the money the day it
+ * moves), then the payment row pointing at it. The phase the bill was
+ * filed to and its receipt ride along onto the cost. Any failure takes
+ * the cost back out -- a cost with no payment is money that never left.
+ *
+ * Shared by Bills to Pay's Pay button and "+ Add bill"'s payment lines,
+ * so both write exactly the rows a future QuickBooks sync reads: one
+ * Bill Payment per row, its account and method on it.
+ */
+async function writeBillPayment(
+  db: DbClient,
+  companyId: string,
+  profileId: string,
+  bill: PayableBill,
+  line: Omit<BillPaymentLine, "method"> & { method: string; note?: string | null }
+): Promise<{ error?: string; jobExpenseId?: string | null }> {
+  let jobExpenseId: string | null = null;
+  if (bill.lead_id) {
+    const { data: exp, error: expError } = await createAdminClient()
+      .from("job_expenses")
+      .insert({
+        company_id: companyId,
+        lead_id: bill.lead_id,
+        estimate_payment_id: bill.estimate_payment_id ?? null,
+        vendor_id: bill.vendor_id,
+        vendor: bill.vendor_id ? null : bill.vendor_name,
+        description: [
+          bill.reference,
+          line.method ? `paid by ${billPaymentMethodLabel(line.method)}` : "bill payment",
+        ]
+          .filter(Boolean)
+          .join(" — "),
+        amount_cents: line.amountCents,
+        spent_on: line.paidOn,
+        source: "bill",
+        receipt_url: bill.receipt_url ?? null,
+        receipt_path: bill.receipt_path ?? null,
+        created_by: profileId,
+      })
+      .select("id")
+      .single();
+    if (expError) return { error: expError.message };
+    jobExpenseId = (exp as { id: string }).id;
+  }
+
+  // A plain record on purpose: optional columns are added only when set,
+  // so a database missing 0124 (method) or 0176 (account) still saves.
+  const paymentRow: Record<string, unknown> = {
+    company_id: companyId,
+    bill_id: bill.id,
+    amount_cents: line.amountCents,
+    paid_on: line.paidOn,
+    check_number: line.reference?.trim() || null,
+    note: line.note?.trim() || null,
+    job_expense_id: jobExpenseId,
+    created_by: profileId,
+  };
+  if (line.method) paymentRow.method = line.method;
+  if (line.paidFromAccountId) paymentRow.paid_from_account_id = line.paidFromAccountId;
+  let { error } = await db.from("vendor_bill_payments").insert(paymentRow);
+  // The method column arrives with migration 0124. Without it, keep the
+  // payment and lose only the "how" -- the money moved either way.
+  if (error && line.method && /schema cache/i.test(error.message) && /method/.test(error.message)) {
+    delete paymentRow.method;
+    ({ error } = await db.from("vendor_bill_payments").insert(paymentRow));
+  }
+  if (error) {
+    if (jobExpenseId) {
+      await createAdminClient().from("job_expenses").delete().eq("id", jobExpenseId);
+    }
+    return { error: error.message };
+  }
+  return { jobExpenseId };
+}
+
+/**
+ * "+ Add bill" with money already out: the bill and every payment line
+ * in one save -- paid in full, or in part with the rest left owing in
+ * Bills to Pay. Each line is its own payment with its own method and
+ * "paid from" account, the shape QuickBooks records a bill in (one Bill,
+ * a Bill Payment per payment).
+ *
+ * Field records receipts at the counter but has no access to Bills to
+ * Pay, so this writes with the admin client after doing by hand what the
+ * policies would: company forced, job, vendor, phase and accounts all
+ * proven to be this company's. Field (anyone who can't run Bills to
+ * Pay) must pay the bill in full -- they can't leave one owing.
+ */
+export async function createBillWithPayments(
+  input: BillInput & { payments: BillPaymentLine[] }
+): Promise<{ error?: string; leftCents?: number }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageCosts(profile)) return { error: "You don't have access to record costs." };
+  const runsBills = canManageBills(profile);
+  if (!runsBills && !input.leadId) return { error: "Pick the job this bill belongs to." };
+
+  const c = cleanBill(profile.company_id, input);
+  if ("error" in c) return { error: c.error };
+  const plan = planBillPayments(c.row.amount_cents, input.payments, { allowPartial: runsBills });
+  if ("error" in plan) return { error: plan.error };
+
+  const admin = createAdminClient();
+  if (input.leadId) {
+    const { data: lead } = await admin
+      .from("leads")
+      .select("id")
+      .eq("id", input.leadId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!lead) return { error: "Job not found." };
+  }
+  if (input.vendorId) {
+    const { data: vendor } = await admin
+      .from("vendors")
+      .select("id")
+      .eq("id", input.vendorId)
+      .eq("company_id", profile.company_id)
+      .maybeSingle();
+    if (!vendor) return { error: "Vendor not found." };
+  }
+  if (
+    input.estimatePaymentId &&
+    input.leadId &&
+    !(await phaseIsOnJob(profile.company_id, input.leadId, input.estimatePaymentId))
+  ) {
+    return { error: "That contract isn't on this job." };
+  }
+  if (!(await accountsInCompany(profile.company_id, input.payments.map((p) => p.paidFromAccountId)))) {
+    return { error: "That account isn't one of yours." };
+  }
+
+  const r = await receiptFieldsFor(profile.company_id, input.leadId || null, input.receipt);
+  if (r.error) return { error: r.error };
+
+  const { data: billRow, error: billError } = await admin
+    .from("vendor_bills")
+    .insert({ ...c.row, ...(r.fields ?? {}), created_by: profile.id })
+    .select("*")
+    .single();
+  if (billError || !billRow) {
+    if (r.fields) await admin.storage.from(RECEIPT_BUCKET).remove([r.fields.receipt_path]);
+    return { error: plainDbError(billError?.message ?? "The bill couldn't be saved.") };
+  }
+  const bill = billRow as PayableBill;
+
+  // All or nothing: a half-recorded set of payments would misstate what
+  // left the bank, so any failure takes the bill and its costs back out.
+  const costIds: string[] = [];
+  for (const line of input.payments) {
+    const res = await writeBillPayment(admin, profile.company_id, profile.id, bill, {
+      ...line,
+      amountCents: Math.round(line.amountCents),
+    });
+    if (res.error) {
+      if (costIds.length) await admin.from("job_expenses").delete().in("id", costIds);
+      await admin.from("vendor_bills").delete().eq("id", bill.id);
+      if (r.fields) await admin.storage.from(RECEIPT_BUCKET).remove([r.fields.receipt_path]);
+      return { error: res.error };
+    }
+    if (res.jobExpenseId) costIds.push(res.jobExpenseId);
+  }
+
+  revalidatePath("/bills");
+  revalidatePath("/projects");
+  revalidatePath("/estimates");
+  return { leftCents: plan.leftCents };
 }

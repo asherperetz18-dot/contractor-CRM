@@ -27,6 +27,7 @@ import {
   getValidAccessToken,
   uploadBlobToDrive,
 } from "@/lib/actions/google-drive";
+import { phaseIsOnJob } from "@/lib/data/job-phase-check";
 import {
   MAX_RECEIPT_BYTES,
   RECEIPT_BUCKET,
@@ -503,29 +504,6 @@ export async function setJobExpenseReceipt(
   return {};
 }
 
-/**
- * Is this payment phase on one of this job's documents? The write policy
- * checks only the cost's company, so a phase id from another job -- or
- * another company -- would otherwise file the cost against a contract it
- * has nothing to do with.
- */
-async function phaseIsOnJob(companyId: string, leadId: string, phaseId: string): Promise<boolean> {
-  const admin = createAdminClient();
-  const { data: phase } = await admin
-    .from("estimate_payments")
-    .select("estimate_id")
-    .eq("id", phaseId)
-    .maybeSingle<{ estimate_id: string }>();
-  if (!phase) return false;
-  const { data: doc } = await admin
-    .from("estimates")
-    .select("id")
-    .eq("id", phase.estimate_id)
-    .eq("lead_id", leadId)
-    .eq("company_id", companyId)
-    .maybeSingle();
-  return !!doc;
-}
 
 /**
  * The "Which contract?" choices for a bill on this job. Only asked when

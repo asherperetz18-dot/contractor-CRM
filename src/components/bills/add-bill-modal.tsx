@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createJobExpense, createReceiptUploadUrl } from "@/lib/actions/job-expenses";
-import { createVendorBills } from "@/lib/actions/vendor-bills";
+import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
+import { createBillWithPayments, createVendorBills } from "@/lib/actions/vendor-bills";
+import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
+import type { PaymentAccount } from "@/lib/data/bills";
+import { PaymentLines, linesForSave, newPaymentLine, type PaymentLineDraft } from "./payment-lines";
 import { createVendor, getVendors } from "@/lib/actions/vendors";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
@@ -57,10 +60,13 @@ const today = () => {
  *
  * A receipt and a bill are the same thing at two moments: a bill is
  * what the vendor is owed, a receipt is that bill once it is paid. So
- * there is one form with one switch -- "Already paid". Off, the entry
- * lands in Bills to Pay and becomes a job cost the day it is paid. On,
- * it goes straight to the job's costs, the way a receipt snapped at the
- * supply-house counter should.
+ * there is one form with three answers to "Paid?": not yet (it lands in
+ * Bills to Pay), in part, or in full. Paid money is entered as payment
+ * lines -- method, the account it came out of, amount, check/ref number,
+ * date -- one per payment, so $800 on the Amex and $300 by check is
+ * recorded as exactly that. Every line becomes a bill payment and a job
+ * cost the same day; whatever is left stays owing in Bills to Pay. That
+ * is also how QuickBooks records a bill (a Bill, a Bill Payment each).
  *
  * Save bill saves and closes -- one bill, done. Save & add another
  * keeps the form open for the phone-at-the-counter case: a stack of
@@ -95,7 +101,7 @@ export function AddBillModal({
   canBills: boolean;
   /** Bills to Pay: an overhead bill with no job (fuel, the office). */
   allowNoJob?: boolean;
-  /** Where the "Already paid" switch starts. */
+  /** Where "Paid?" starts: true is "Paid in full". */
   defaultPaid?: boolean;
   /** Vendor list, when the caller already has it; fetched otherwise. */
   vendors?: Vendor[];
@@ -115,7 +121,14 @@ export function AddBillModal({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(today);
   const [dueDate, setDueDate] = useState("");
-  const [paid, setPaid] = useState(canBills ? (defaultPaid ?? true) : true);
+  // Anyone who can't run Bills to Pay (Field, Production) only records
+  // money already out, in full -- they can't leave a bill owing.
+  const [payMode, setPayMode] = useState<"unpaid" | "partial" | "full">(
+    canBills ? ((defaultPaid ?? true) ? "full" : "unpaid") : "full"
+  );
+  const paid = payMode !== "unpaid";
+  const [lines, setLines] = useState<PaymentLineDraft[]>(() => [newPaymentLine(today())]);
+  const [accounts, setAccounts] = useState<PaymentAccount[]>([]);
   const [file, setFile] = useState<File | null>(null);
   // The emailed PDF or receipt photo can be dragged straight onto the row.
   const { dragOver: receiptDragOver, dropProps: receiptDropProps } = useFileDrop((files) =>
@@ -125,6 +138,10 @@ export function AddBillModal({
   const [saving, setSaving] = useState(false);
   const [savedNote, setSavedNote] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    getPaymentAccounts().then((res) => setAccounts(res.accounts));
+  }, []);
 
   useEffect(() => {
     if (vendorsProp) return;
@@ -139,7 +156,6 @@ export function AddBillModal({
   );
   useEffect(() => () => { if (filePreview) URL.revokeObjectURL(filePreview); }, [filePreview]);
 
-  const vendor = vendors.find((v) => v.id === vendorId) ?? null;
   const unpaidAllowed = canBills;
 
   async function saveVendor() {
@@ -163,20 +179,23 @@ export function AddBillModal({
 
   async function save(andAnother = false) {
     const cents = centsFromInput(amount);
-    if (!leadId && (paid || !allowNoJob)) {
-      return setError(
-        paid && allowNoJob
-          ? "Pick the job — or switch off “Already paid” to file it as an overhead bill."
-          : "Pick the job this bill belongs to."
-      );
-    }
+    if (!leadId && !allowNoJob) return setError("Pick the job this bill belongs to.");
     if (leadId && !phases && contractRequired && !phaseId) {
       return setError("Pick which contract this bill is for.");
     }
     if (!cents) return setError("Enter the amount.");
     if (!date) return setError("Enter the date.");
     if (vendorId === "__new") return setError("Save the new vendor first, or pick one from the list.");
-    if (!paid && !vendorId && !vendorText.trim()) return setError("Name the vendor.");
+    if (!vendorId && !vendorText.trim()) return setError("Name the vendor.");
+    const payments = linesForSave(lines, cents, payMode === "full");
+    if (paid) {
+      const sum = payments.reduce((t, l) => t + l.amountCents, 0);
+      if (payments.some((l) => !l.amountCents)) return setError("Every payment needs an amount.");
+      if (sum > cents) return setError("The payments add up to more than the bill.");
+      if (payMode === "full" && sum < cents) {
+        return setError("Paid in full: the payments must add up to the whole bill — or pick “Paid in part”.");
+      }
+    }
     setError("");
     setSavedNote("");
     setSaving(true);
@@ -200,37 +219,23 @@ export function AddBillModal({
         uploaded = { path: signed.path, fileName: shrunk.name, contentType: shrunk.type || null };
       }
 
+      const bill = {
+        vendorId: vendorId || null,
+        vendorName: vendorText,
+        leadId: leadId || null,
+        // Only when a phase was actually picked. Sending null would
+        // still write the column, and on a database where migration
+        // 0123 hasn't run yet that column doesn't exist.
+        estimatePaymentId: phaseId || undefined,
+        reference: description,
+        amountCents: cents,
+        billDate: date,
+        dueDate: dueDate || null,
+        receipt: uploaded,
+      };
       const res = paid
-        ? await createJobExpense(
-            {
-              leadId,
-              estimatePaymentId: phaseId || null,
-              vendorId: vendorId || null,
-              vendor: vendorText,
-              category: vendor?.default_category ?? "",
-              description,
-              amountCents: cents,
-              spentOn: date,
-            },
-            uploaded
-          )
-        : await createVendorBills([
-            {
-              vendorId: vendorId || null,
-              vendorName: vendorText,
-              leadId: leadId || null,
-              // Only when a phase was actually picked. Sending null would
-              // still write the column, and on a database where migration
-              // 0123 hasn't run yet that column doesn't exist -- the save
-              // failed on the Bills page, which has no phase picker at all.
-              estimatePaymentId: phaseId || undefined,
-              reference: description,
-              amountCents: cents,
-              billDate: date,
-              dueDate: dueDate || null,
-              receipt: uploaded,
-            },
-          ]);
+        ? await createBillWithPayments({ ...bill, payments })
+        : await createVendorBills([bill]);
       if (res.error) return setError(res.error);
 
       onSaved?.();
@@ -244,10 +249,15 @@ export function AddBillModal({
       // stack is usually from the same counter on the same day.
       setAmount("");
       setDescription("");
+      // Same method, account and date for the next receipt; fresh amounts.
+      setLines((ls) => [{ ...ls[0], amount: "", reference: "" }]);
       setFile(null);
       if (fileInput.current) fileInput.current.value = "";
+      const left = "leftCents" in res ? (res.leftCents ?? 0) : cents;
       setSavedNote(
-        `Saved ${moneyCents(cents)} ${paid ? "to the job's costs" : "to Bills to Pay"} — add the next one.`
+        `Saved ${moneyCents(cents)}${
+          !paid ? " to Bills to Pay" : left > 0 ? ` — ${moneyCents(left)} left in Bills to Pay` : " — paid in full"
+        }. Add the next one.`
       );
     } catch {
       // Flaky site cellular is this form's home turf. Without a catch a
@@ -264,8 +274,8 @@ export function AddBillModal({
     <Modal title="Add a bill" onClose={() => { if (!saving) onClose(); }}>
       <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0 }}>
         <p className="module-sub" style={{ marginTop: 0, marginBottom: 12 }}>
-          A receipt is a bill that&rsquo;s already paid. Paid goes to the job&rsquo;s costs;
-          not paid yet goes to Bills to Pay and lands on the job when you pay it.
+          A receipt is a bill that&rsquo;s already paid. What&rsquo;s paid goes to the job&rsquo;s
+          costs now; anything not paid yet waits in Bills to Pay.
         </p>
         <div className="qr-form">
           {lockJob && (
@@ -276,7 +286,7 @@ export function AddBillModal({
           {!lockJob && (
             <Field label="Job">
               <select value={leadId} onChange={(e) => { setLeadId(e.target.value); setPhaseId(""); }}>
-                <option value="">{allowNoJob && !paid ? "No job — overhead" : "Choose a job…"}</option>
+                <option value="">{allowNoJob ? "No job — overhead" : "Choose a job…"}</option>
                 {jobs.map((j) => (
                   <option key={j.leadId} value={j.leadId}>
                     {j.label}
@@ -360,7 +370,7 @@ export function AddBillModal({
             />
           </Field>
           <div className="qr-pair">
-            <Field label="Amount">
+            <Field label="Bill total">
               <input
                 inputMode="decimal"
                 placeholder="0.00"
@@ -368,28 +378,62 @@ export function AddBillModal({
                 onChange={(e) => setAmount(e.target.value)}
               />
             </Field>
-            <Field label={paid ? "Date paid" : "Bill date"}>
+            <Field label="Bill date">
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
-            {!paid && (
+            {payMode !== "full" && (
               <Field label="Due date">
                 <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
               </Field>
             )}
           </div>
 
-          {unpaidAllowed && (
-            <label className="bill-paid-toggle">
-              <input type="checkbox" checked={paid} onChange={(e) => setPaid(e.target.checked)} />
-              <span>
-                <strong>{paid ? "Already paid" : "Not paid yet"}</strong>
-                <span className="est-tax-note">
-                  {paid
-                    ? "Goes straight into the job's costs (Spent)."
-                    : "Goes to Bills to Pay. It joins the job's costs the day you pay it."}
-                </span>
+          {unpaidAllowed ? (
+            // Not <Field>: that is a <label>, and a click on its text would
+            // press the first button inside it.
+            <div className="field">
+              <span className="field-label">Paid?</span>
+              <div className="bill-pay-mode" role="radiogroup" aria-label="Paid?">
+                {(
+                  [
+                    ["unpaid", "Not paid yet"],
+                    ["partial", "Paid in part"],
+                    ["full", "Paid in full"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={payMode === mode}
+                    className={payMode === mode ? "on" : ""}
+                    onClick={() => setPayMode(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="est-tax-note">
+                {payMode === "unpaid"
+                  ? "Goes to Bills to Pay. It joins the job's costs the day you pay it."
+                  : payMode === "partial"
+                    ? "What's paid goes into the job's costs now; the rest waits in Bills to Pay."
+                    : "Goes straight into the job's costs (Spent)."}
               </span>
-            </label>
+            </div>
+          ) : (
+            <p className="est-tax-note" style={{ margin: 0 }}>
+              Paid in full — how was it paid?
+            </p>
+          )}
+          {paid && (
+            <PaymentLines
+              lines={lines}
+              onChange={setLines}
+              accounts={accounts}
+              totalCents={centsFromInput(amount)}
+              full={payMode === "full"}
+            />
           )}
         </div>
 
