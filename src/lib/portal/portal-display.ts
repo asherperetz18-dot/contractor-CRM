@@ -32,6 +32,14 @@ export function estimateMoneyChip(e: {
   return null;
 }
 
+/** An invoice (a permit fee billed back): what's still due, or paid. */
+export function invoiceMoneyChip(e: { totalCents: number; paidCents: number }): PortalChip {
+  const owed = Math.max(0, e.totalCents - e.paidCents);
+  if (owed === 0) return { label: "Paid", tone: "green" };
+  const due = (owed / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  return { label: `${due} due`, tone: "amber" };
+}
+
 /** `step` is the zero-based index of the current step. */
 export function journeyProgress(step: number, total: number) {
   return {

@@ -35,6 +35,10 @@ export function PortalEstimateActions({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // An invoice has nothing to sign or decline: the Pay card above it is
+  // the whole action, and a cancelled one says so on the document.
+  if (kind === "invoice") return null;
+
   if (status === "Signed") {
     return (
       <div className="portal-card estdoc-result estdoc-result-ok">

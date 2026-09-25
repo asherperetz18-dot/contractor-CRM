@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shouldAutoOpenNewEstimate } from "./quick-create.ts";
+import { quickCreateDialog, shouldAutoOpenNewEstimate } from "./quick-create.ts";
 
 /**
  * Quick Create -> New Estimate lands on /estimates?new=1 and the page
@@ -21,4 +21,11 @@ test("without the param the page opens normally", () => {
 test("no create permission means no dialog, param or not", () => {
   assert.equal(shouldAutoOpenNewEstimate("1", false), false);
   assert.equal(shouldAutoOpenNewEstimate(null, false), false);
+});
+
+test("?new=invoice opens the New invoice window instead of a new estimate", () => {
+  assert.equal(quickCreateDialog("invoice", true), "invoice");
+  assert.equal(quickCreateDialog("1", true), "estimate");
+  assert.equal(quickCreateDialog(null, true), null);
+  assert.equal(quickCreateDialog("invoice", false), null);
 });

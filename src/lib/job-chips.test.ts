@@ -19,6 +19,8 @@ const ALL_KINDS: JobChipKind[] = [
   "checklist",
   "contract",
   "changeOrder",
+  "addInvoice",
+  "invoices",
   "addBill",
   "bills",
   "permits",
@@ -37,6 +39,12 @@ test("money in is green, money out is red — and the two never share a class", 
     assert.equal(jobChipGroup(kind), "moneyOut");
   }
   assert.doesNotMatch(jobChipClass("contract"), /proj-chip-out/);
+  // An invoice bills the customer: money in, whatever it's for.
+  for (const kind of ["addInvoice", "invoices"] as const) {
+    assert.match(jobChipClass(kind), /proj-chip-in/, `${kind} must wear the money-in green`);
+    assert.doesNotMatch(jobChipClass(kind), /proj-chip-out/);
+    assert.equal(jobChipGroup(kind), "moneyIn");
+  }
   assert.doesNotMatch(jobChipClass("bills"), /proj-chip-in/);
 });
 
@@ -47,6 +55,12 @@ test("the add-a-bill chip is an action, not a record: dashed on top of its red",
   assert.match(jobChipClass("addBill"), /proj-chip-add/);
   assert.match(jobChipClass("addBill"), /proj-chip-out/);
   assert.doesNotMatch(jobChipClass("bills"), /proj-chip-add/);
+});
+
+test("the add-an-invoice chip is the money-in twin of + Add bill: dashed on its green", () => {
+  assert.match(jobChipClass("addInvoice"), /proj-chip-add/);
+  assert.match(jobChipClass("addInvoice"), /proj-chip-in/);
+  assert.doesNotMatch(jobChipClass("invoices"), /proj-chip-add/);
 });
 
 test("every chip shares the one pill shape", () => {

@@ -2,7 +2,7 @@
  * The quick chips on a job row (Projects table and crew cards), colored
  * by what they mean so the row is scanned by color before it's read:
  *
- *   green  = money coming IN   (the contract, its change orders)
+ *   green  = money coming IN   (the contract, its change orders, invoices)
  *   red    = money going OUT   (+ Add bill, the job's bills)
  *   blue   = progress          (the checklist)
  *   indigo = the paperwork pile (permits & files)
@@ -18,6 +18,8 @@ export type JobChipKind =
   | "checklist"
   | "contract"
   | "changeOrder"
+  | "addInvoice"
+  | "invoices"
   | "addBill"
   | "bills"
   | "permits"
@@ -40,6 +42,8 @@ const CHIP_GROUP: Record<JobChipKind, JobChipGroup> = {
   checklist: "progress",
   contract: "moneyIn",
   changeOrder: "moneyIn",
+  addInvoice: "moneyIn",
+  invoices: "moneyIn",
   addBill: "moneyOut",
   bills: "moneyOut",
   permits: "records",
@@ -54,6 +58,10 @@ const CHIP_COLOR: Record<JobChipKind, string> = {
   checklist: "",
   contract: "proj-chip-in",
   changeOrder: "proj-chip-in",
+  // Bills the customer for an extra (a permit fee): the money-in twin
+  // of "+ Add bill" -- green, dashed because it creates a record.
+  addInvoice: "proj-chip-in proj-chip-add",
+  invoices: "proj-chip-in",
   // The one chip that CREATES a record instead of opening one: same
   // red as Bills (both are money out), but dashed — the add affordance
   // — so "+ Add bill" and "Bills" can't be mistaken for twins.

@@ -10,3 +10,13 @@ export function shouldAutoOpenNewEstimate(
 ): boolean {
   return canCreate && !!newParam;
 }
+
+/** Which window Quick Create's ?new= opens on /estimates: New Invoice
+ *  sends ?new=invoice, New Estimate ?new=1. Same permission gate. */
+export function quickCreateDialog(
+  newParam: string | null,
+  canCreate: boolean
+): "estimate" | "invoice" | null {
+  if (!shouldAutoOpenNewEstimate(newParam, canCreate)) return null;
+  return newParam === "invoice" ? "invoice" : "estimate";
+}

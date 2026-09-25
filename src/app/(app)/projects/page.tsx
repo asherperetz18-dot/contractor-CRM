@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
+  canCreateEstimates,
   canEditChecklists,
   canManageBills,
   canManageCosts,
@@ -93,6 +94,7 @@ export default async function ProjectsPage({
       canUploadPhotos={canUploadLeadFiles(profile)}
       canSeeDocChips={isAdminRole(profile) || profile.roles.includes("Production")}
       canFileDocs={canEditChecklists(profile)}
+      canInvoice={canCreateEstimates(profile)}
       checklistReady={!clErr}
       checklistItems={(checklistRows as ChecklistRow[]) ?? []}
       templates={

@@ -3,9 +3,16 @@ import { zoneForCompany } from "@/lib/data/company-today";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
-import { socialHref, type Event, type Profile, type SmsMessage } from "@/lib/data/types";
+import {
+  paidTotalCents,
+  socialHref,
+  type Event,
+  type PortalPayment,
+  type Profile,
+  type SmsMessage,
+} from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
-import { PortalHome, type PortalDoc, type PortalEstimate } from "./portal-home";
+import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
 
 type EstimateRow = {
   id: string;
@@ -14,6 +21,7 @@ type EstimateRow = {
   status: string;
   total_cents: number;
   deposit_cents: number | null;
+  kind: string | null;
 };
 
 export const metadata = {
@@ -78,16 +86,16 @@ export default async function PortalHomePage() {
     // half-built estimate is not something to show a customer.
     admin
       .from("estimates")
-      .select("id, doc_number, title, status, total_cents, deposit_cents")
+      .select("id, doc_number, title, status, total_cents, deposit_cents, kind")
       .eq("lead_id", viewer.lead.id)
       .in("status", ["Sent", "Viewed", "Signed", "Declined"])
       .order("created_at", { ascending: false })
       .returns<EstimateRow[]>(),
     admin
       .from("portal_payments")
-      .select("estimate_id, kind, status")
+      .select("estimate_id, kind, status, amount_cents")
       .eq("lead_id", viewer.lead.id)
-      .returns<{ estimate_id: string; kind: string; status: string }[]>(),
+      .returns<{ estimate_id: string; kind: string; status: PortalPayment["status"]; amount_cents: number }[]>(),
     // Licence and insurance. Read with the service role because a
     // customer has no Supabase session -- the portal token already
     // established who they are and which company they belong to.
@@ -127,7 +135,18 @@ export default async function PortalHomePage() {
   ].filter((l) => l.href);
 
   // A deposit is only owed on a signed contract, and only until it lands.
-  const estimates: PortalEstimate[] = (estimateRows ?? []).map((e) => {
+  // Invoices (a permit fee billed back) get their own card: nothing to
+  // sign, just something to pay -- and they are not a step in the job.
+  const invoices: PortalInvoice[] = (estimateRows ?? [])
+    .filter((e) => e.kind === "invoice" && e.status === "Signed")
+    .map((e) => ({
+      id: e.id,
+      doc_number: e.doc_number,
+      title: e.title,
+      totalCents: e.total_cents,
+      paidCents: paidTotalCents((paymentRows ?? []).filter((p) => p.estimate_id === e.id)),
+    }));
+  const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
     const depositPaid = (paymentRows ?? []).some(
       (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"
     );
@@ -147,6 +166,7 @@ export default async function PortalHomePage() {
       messages={(messages as SmsMessage[]) ?? []}
       reps={(reps as Profile[]) ?? []}
       estimates={estimates}
+      invoices={invoices}
       companyName={companyRow?.name || "Your Contractor"}
       companyPhone={companyRow?.phone || null}
       companyLogo={companyRow?.logo_url || null}

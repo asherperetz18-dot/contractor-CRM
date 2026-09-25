@@ -18,6 +18,7 @@ import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
 import { JobReceipts } from "./job-receipts";
+import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
 import {
@@ -48,6 +49,8 @@ export type ProjectCard = {
   changeOrderCount: number;
   /** The contract's child documents, for the client-view shortcuts. */
   changeOrders: { id: string; docNumber: string; title: string | null }[];
+  /** Invoices billed on this job (a permit fee billed back). */
+  invoices: { id: string; docNumber: string; title: string | null }[];
   rollup: ProjectRollup;
   /** Bills on this job that are not paid yet. Not part of Spent -- the
    *  money hasn't left -- but shown beside it so an open bill is never
@@ -153,6 +156,7 @@ export function ProjectsView({
   canUploadPhotos,
   canSeeDocChips,
   canFileDocs,
+  canInvoice,
   checklistReady,
   checklistItems,
   templates,
@@ -175,6 +179,8 @@ export function ProjectsView({
   canSeeDocChips: boolean;
   /** Moving files between jobs: Office/Admin/Production. */
   canFileDocs: boolean;
+  /** May bill the customer an invoice (the phase-billing roles). */
+  canInvoice: boolean;
   checklistReady: boolean;
   checklistItems: ChecklistItemRow[];
   templates: { id: string; name: string; count: number }[];
@@ -235,6 +241,15 @@ export function ProjectsView({
     label: string;
   } | null>(null);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
+  const [invoicesFor, setInvoicesFor] = useState<ProjectCard | null>(null);
+  // The New invoice window: this job, and the cost it starts from when
+  // opened by a bill's "Bill to client".
+  const [invoiceFor, setInvoiceFor] = useState<{
+    leadId: string;
+    estimateId: string;
+    costId?: string;
+  } | null>(null);
+  const [invoiceNote, setInvoiceNote] = useState<string | null>(null);
   const [documentsFor, setDocumentsFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
@@ -483,6 +498,14 @@ export function ProjectsView({
           jobLabel={receiptsFor.label}
           canEdit={canEditCosts}
           jobs={jobOptionsFromProjects(sorted)}
+          onBillToClient={
+            canInvoice
+              ? (costId) => {
+                  setInvoiceFor({ leadId: receiptsFor.leadId, estimateId: receiptsFor.estimateId, costId });
+                  setReceiptsFor(null);
+                }
+              : undefined
+          }
           onClose={() => setReceiptsFor(null)}
         />
       )}
@@ -494,6 +517,33 @@ export function ProjectsView({
           canFile={canFileDocs}
           onClose={() => setDocumentsFor(null)}
         />
+      )}
+      {invoiceFor && (
+        <NewInvoiceModal
+          leadId={invoiceFor.leadId}
+          contractId={invoiceFor.estimateId}
+          costId={invoiceFor.costId ?? null}
+          onClose={() => setInvoiceFor(null)}
+          onIssued={({ note }) => {
+            setInvoiceFor(null);
+            setInvoiceNote(note);
+            router.refresh();
+          }}
+        />
+      )}
+      {invoicesFor && (
+        <Modal title={`Invoices — ${invoicesFor.customer}`} onClose={() => setInvoicesFor(null)}>
+          <ul className="co-link-list">
+            {invoicesFor.invoices.map((inv) => (
+              <li key={inv.id}>
+                <Link href={`/estimates/${inv.id}`}>
+                  🧾 {inv.docNumber}
+                  {inv.title ? ` · ${inv.title}` : ""}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Modal>
       )}
       {changeOrdersFor && (
         <Modal
@@ -511,6 +561,15 @@ export function ProjectsView({
             ))}
           </ul>
         </Modal>
+      )}
+
+      {invoiceNote && (
+        <p className="hint-note" role="status">
+          {invoiceNote}{" "}
+          <button type="button" className="btn-ghost small" onClick={() => setInvoiceNote(null)}>
+            OK
+          </button>
+        </p>
       )}
 
       {/* Every card answers a click with the thing that itemizes its
@@ -919,6 +978,31 @@ export function ProjectsView({
                               </button>
                             )}
                           </>
+                        )}
+                        {canInvoice && p.status !== "cancelled" && (
+                          /* Bill the customer for an extra -- a permit
+                             fee, a dumpster -- on top of the contract. */
+                          <button
+                            type="button"
+                            className={jobChipClass("addInvoice")}
+                            onClick={() => setInvoiceFor({ leadId: p.leadId, estimateId: p.estimateId })}
+                          >
+                            + Invoice
+                          </button>
+                        )}
+                        {canSeeDocChips && p.invoices.length === 1 && (
+                          <Link className={jobChipClass("invoices")} href={`/estimates/${p.invoices[0].id}`}>
+                            🧾 {p.invoices[0].docNumber}
+                          </Link>
+                        )}
+                        {canSeeDocChips && p.invoices.length > 1 && (
+                          <button
+                            type="button"
+                            className={jobChipClass("invoices")}
+                            onClick={() => setInvoicesFor(p)}
+                          >
+                            🧾 Invoices ({p.invoices.length})
+                          </button>
                         )}
                       </span>
                       <span className="proj-chip-group">
