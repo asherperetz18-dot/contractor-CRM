@@ -31,14 +31,20 @@ export function RecordPayment({
   phaseId,
   suggestedCents,
   label,
+  startOpen = false,
+  onDone,
 }: {
   estimateId: string;
   phaseId?: string | null;
   suggestedCents: number;
   label: string;
+  /** Opened from somewhere else (a Transactions line): the form shows
+   *  straight away, and onDone closes it after a save or Cancel. */
+  startOpen?: boolean;
+  onDone?: () => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [amount, setAmount] = useState((suggestedCents / 100).toFixed(2));
   const [method, setMethod] = useState<ManualPaymentMethod>("check");
   const [reference, setReference] = useState("");
@@ -70,6 +76,7 @@ export function RecordPayment({
       setNote("");
       if (res.warning) setWarning(res.warning);
       router.refresh();
+      onDone?.();
     });
   }
 
@@ -163,7 +170,14 @@ export function RecordPayment({
         <button className="btn-primary" onClick={save} disabled={pending || centsFromInput(amount) <= 0}>
           {pending ? "Recording…" : `Record ${moneyCents(centsFromInput(amount))}`}
         </button>
-        <button className="btn-ghost" onClick={() => setOpen(false)} disabled={pending}>
+        <button
+          className="btn-ghost"
+          onClick={() => {
+            setOpen(false);
+            onDone?.();
+          }}
+          disabled={pending}
+        >
           Cancel
         </button>
       </div>

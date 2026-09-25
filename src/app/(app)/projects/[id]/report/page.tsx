@@ -4,6 +4,16 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { documentStatusLabel } from "@/lib/data/invoices";
+import { getJobLedger } from "@/lib/actions/job-ledger";
+import type { LedgerKind } from "@/lib/data/job-ledger";
+
+const LEDGER_TYPE: Record<LedgerKind, string> = {
+  in: "Paid in",
+  clearing: "Clearing",
+  out: "Paid out",
+  owed: "Owed to you",
+  unpaid_bill: "Bill unpaid",
+};
 import { selectAll } from "@/lib/data/select-all";
 import {
   canViewEstimates,
@@ -91,6 +101,8 @@ export default async function ProjectReportPage({
   const { id } = await params;
   const sp = await searchParams;
   const clientView = sp.view === "client";
+  // Internal copy only: every dollar on the job, the Projects row's list.
+  const ledger = clientView ? null : ((await getJobLedger(id)).ledger ?? null);
   const supabase = await createClient();
   // The company's calendar (data/company-today): "Prepared" and overdue
   // read on the office wall clock, and a timestamp prints on the day it
@@ -503,6 +515,50 @@ export default async function ProjectReportPage({
             </>
           )}
 
+          {/* The internal copy prints every dollar on one timeline -- the
+              same list the Projects row opens -- in place of the separate
+              payments and costs tables. The client copy keeps showing only
+              their payments. Falls back to those tables if the list can't
+              be read. */}
+          {ledger && (
+            <>
+              <h2 className="estdoc-terms-head">All transactions</h2>
+              {ledger.entries.length === 0 ? (
+                <p className="estdoc-muted">No money in or out on this job yet.</p>
+              ) : (
+                <table className="estdoc-items estdoc-schedule-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>What</th>
+                      <th className="estdoc-num">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledger.entries.map((e) => (
+                      <tr key={e.id}>
+                        <td>{shortDate(e.date)}</td>
+                        <td>{LEDGER_TYPE[e.kind]}</td>
+                        <td>
+                          {e.title}
+                          {e.detail && <div className="estdoc-muted">{e.detail}</div>}
+                          {e.billedOn && <div className="estdoc-muted">Billed to the customer on {e.billedOn}</div>}
+                        </td>
+                        <td className="estdoc-num mono">
+                          {e.kind === "in" ? "+" : e.kind === "out" ? "−" : ""}
+                          {moneyCents(e.amountCents)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {!ledger && (
+          <>
           <h2 className="estdoc-terms-head">Payments received</h2>
           {settled.length === 0 ? (
             <p className="estdoc-muted">Nothing collected yet.</p>
@@ -542,7 +598,10 @@ export default async function ProjectReportPage({
             </p>
           )}
 
-          {!clientView && shownExpenses.length > 0 && (
+          </>
+          )}
+
+          {!clientView && !ledger && shownExpenses.length > 0 && (
             <>
               <h2 className="estdoc-terms-head">Job costs</h2>
               <table className="estdoc-items estdoc-schedule-table">

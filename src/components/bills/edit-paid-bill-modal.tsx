@@ -42,7 +42,7 @@ async function uploadReceipt(
 /**
  * Fixes a bill saved as "Already paid": job, vendor, what for, amount,
  * date paid, the receipt -- or deletes it. Opened from Bills to Pay's
- * Paid tab and the project's Bills window alike.
+ * Paid tab and a project's Transactions list alike.
  */
 export function EditPaidBillModal({
   expense,
