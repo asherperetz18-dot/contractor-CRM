@@ -21,10 +21,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.155.1",
+    version: "1.156.1",
     date: "2026-09-25",
     notes: [
       "The client portal's browser tab now shows your company logo, the same one at the top of the page, instead of the old AI Build Pros icon.",
+    ],
+  },
+  {
+    version: "1.156.0",
+    date: "2026-09-25",
+    notes: [
+      "Settings → Users & Roles has a new Send Without Approval switch. Turn it on for a closer (or anyone you trust to price a job) and, while estimate approval is switched on, their estimates go straight to the customer instead of waiting for an Admin.",
+      "Their send still counts as the approval, in their name: the contact's history notes that they sent it without waiting for an Admin.",
+      "Only an Admin can turn this switch on or off. Everyone else's estimates still wait for approval as before.",
     ],
   },
   {

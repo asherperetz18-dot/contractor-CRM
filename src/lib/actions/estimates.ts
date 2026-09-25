@@ -18,7 +18,7 @@ import { fillContract, lateContractValues } from "@/lib/contracts/merge";
 import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
-import { approvalHoldsSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
+import { approvalOnSend, approvalHoldMessage, selfApprovalNote } from "@/lib/estimate-approval-gate";
 import { defaultEstimateNarrative, paragraphsToHtml } from "@/lib/estimate-email-copy";
 import {
   balanceAfterDepositCents,
@@ -313,9 +313,9 @@ async function closerHoldError(
 }
 
 /**
- * The approval gate's hold on a document leaving Draft (0136). Null when
- * the document may go; otherwise the message to show whoever pressed
- * Send.
+ * The approval gate on a document leaving Draft (0136). An error when
+ * the document may not go; otherwise whether this send approves it in
+ * the sender's name (Send Without Approval, 0179).
  *
  * The trigger enforces the same rule on the status change -- but the
  * send action emails or texts the customer BEFORE it changes the
@@ -324,11 +324,11 @@ async function closerHoldError(
  * said "never sent", and the link the customer holds is turned away by
  * the portal. Asked here first, nothing goes out.
  */
-async function approvalHoldError(
+async function approvalGate(
   companyId: string,
   estimateId: string,
-  canApprove: boolean
-): Promise<string | null> {
+  sender: { canApprove: boolean; sendsWithoutApproval: boolean }
+): Promise<{ error: string } | { selfApprove: boolean }> {
   const admin = createAdminClient();
   const [{ data: company }, { data: doc }] = await Promise.all([
     admin
@@ -343,12 +343,56 @@ async function approvalHoldError(
       .eq("company_id", companyId)
       .maybeSingle<{ doc_number: string | null; approved_at: string | null }>(),
   ]);
-  const held = approvalHoldsSend({
+  const decision = approvalOnSend({
     approvalRequired: company?.require_estimate_approval === true,
     approvedAt: doc?.approved_at ?? null,
+    sendsWithoutApproval: sender.sendsWithoutApproval,
   });
-  return held ? approvalHoldMessage(doc?.doc_number ?? null, { canApprove }) : null;
+  if (decision === "hold") {
+    return { error: approvalHoldMessage(doc?.doc_number ?? null, { canApprove: sender.canApprove }) };
+  }
+  return { selfApprove: decision === "self-approve" };
 }
+
+/**
+ * A trusted sender's send approves the document in their name, just
+ * before its status changes -- the 0136 trigger lets a document out of
+ * Draft once approved_at is set -- and says so on the contact, the same
+ * record an admin's approval leaves.
+ */
+async function recordSelfApproval(input: {
+  companyId: string;
+  estimateId: string;
+  leadId: string | null;
+  docNumber: string | null;
+  userId: string;
+  senderName: string | null;
+}): Promise<void> {
+  const admin = createAdminClient();
+  await admin
+    .from("estimates")
+    .update({ approved_at: new Date().toISOString(), approved_by: input.userId })
+    .eq("id", input.estimateId)
+    .eq("company_id", input.companyId)
+    .eq("status", "Draft")
+    .is("approved_at", null);
+  if (input.leadId) {
+    await admin.from("lead_notes").insert({
+      company_id: input.companyId,
+      lead_id: input.leadId,
+      author_id: input.userId,
+      body: selfApprovalNote(input.docNumber, input.senderName),
+    });
+  }
+}
+
+type EstimateSender = {
+  companyId: string;
+  userId: string;
+  senderName: string | null;
+  canApprove: boolean;
+  sendsWithoutApproval: boolean;
+};
 
 // An editor who also holds the Send Estimates switch, and -- on a lead
 // with a closer -- the closer themselves (or Office/Admin). Guards
@@ -358,7 +402,7 @@ async function approvalHoldError(
 // permission.
 async function requireEstimateSender(
   estimateId: string
-): Promise<{ error: string } | { companyId: string; userId: string; canApprove: boolean }> {
+): Promise<{ error: string } | EstimateSender> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canCreateEstimates(profile))
@@ -366,7 +410,13 @@ async function requireEstimateSender(
   if (!canSendEstimates(profile)) return { error: SEND_NOT_ALLOWED };
   const hold = await closerHoldError(profile, estimateId);
   if (hold) return { error: hold };
-  return { companyId: profile.company_id, userId: profile.id, canApprove: isStrictAdmin(profile) };
+  return {
+    companyId: profile.company_id,
+    userId: profile.id,
+    senderName: profile.name || profile.email || null,
+    canApprove: isStrictAdmin(profile),
+    sendsWithoutApproval: profile.can_send_without_approval,
+  };
 }
 
 // The detail route is /estimates/<estimate id>. Pipeline is refreshed too
@@ -861,10 +911,10 @@ export async function markEstimateSent(estimateId: string): Promise<{ error?: st
   const supabase = await createClient();
   const { data: estimate, error: readError } = await supabase
     .from("estimates")
-    .select("id, lead_id, status, total_cents, kind")
+    .select("id, lead_id, status, total_cents, kind, doc_number")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
-    .maybeSingle<SendEstimateRow>();
+    .maybeSingle<SendEstimateRow & { doc_number: string | null }>();
   if (readError) return { error: readError.message };
   if (!estimate) return { error: "Estimate not found." };
   if (estimate.status !== "Draft") return { error: "This estimate has already been sent." };
@@ -876,9 +926,25 @@ export async function markEstimateSent(estimateId: string): Promise<{ error?: st
     return { error: "Add at least one line item before sending." };
   }
 
+  // The trigger would refuse the status change anyway; asking first
+  // says what to do instead of naming a database error.
+  const approval = await approvalGate(guard.companyId, estimateId, guard);
+  if ("error" in approval) return approval;
+
   // Before the status flips, so the contract carries its price the first
   // time anyone can open it.
   await fillContractMoney(estimateId, guard.companyId);
+
+  if (approval.selfApprove) {
+    await recordSelfApproval({
+      companyId: guard.companyId,
+      estimateId,
+      leadId: estimate.lead_id,
+      docNumber: estimate.doc_number,
+      userId: guard.userId,
+      senderName: guard.senderName,
+    });
+  }
 
   const now = new Date().toISOString();
   const { data: updated, error } = await supabase
@@ -1145,8 +1211,8 @@ export async function sendEstimateToCustomer(
   // Before a single message goes out: with approval switched on, an
   // unapproved document must be refused here, not by the trigger after
   // the customer already has the link.
-  const approvalHold = await approvalHoldError(guard.companyId, estimateId, guard.canApprove);
-  if (approvalHold) return { error: approvalHold };
+  const approval = await approvalGate(guard.companyId, estimateId, guard);
+  if ("error" in approval) return approval;
 
   const { data: lead } = await admin
     .from("leads")
@@ -1362,6 +1428,17 @@ export async function sendEstimateToCustomer(
   }
 
   await fillContractMoney(estimateId, guard.companyId);
+
+  if (approval.selfApprove) {
+    await recordSelfApproval({
+      companyId: guard.companyId,
+      estimateId,
+      leadId: estimate.lead_id,
+      docNumber: estimate.doc_number,
+      userId: guard.userId,
+      senderName: guard.senderName,
+    });
+  }
 
   const now = new Date().toISOString();
   // Checked, not fire-and-forget: the database can refuse this change
@@ -1929,13 +2006,14 @@ export async function markSignedOnPaper(
   // approval trigger refuses just the same -- asked here, before the
   // signer rows and the contact note are written for a status change
   // that then never happens.
+  let selfApprove = false;
   if (estimate.status === "Draft") {
-    const approvalHold = await approvalHoldError(
-      profile.company_id,
-      estimateId,
-      isStrictAdmin(profile)
-    );
-    if (approvalHold) return { error: approvalHold };
+    const approval = await approvalGate(profile.company_id, estimateId, {
+      canApprove: isStrictAdmin(profile),
+      sendsWithoutApproval: profile.can_send_without_approval,
+    });
+    if ("error" in approval) return approval;
+    selfApprove = approval.selfApprove;
   }
 
   const admin = createAdminClient();
@@ -1969,6 +2047,17 @@ export async function markSignedOnPaper(
       signed_at: signedIso,
       signature_name: signerName,
       signature_type: "paper",
+    });
+  }
+
+  if (selfApprove) {
+    await recordSelfApproval({
+      companyId: profile.company_id,
+      estimateId,
+      leadId: estimate.lead_id,
+      docNumber: estimate.doc_number,
+      userId: profile.id,
+      senderName: profile.name || profile.email || null,
     });
   }
 
