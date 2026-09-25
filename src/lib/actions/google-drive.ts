@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
+import { driveTrashRequest } from "@/lib/files/drive-trash";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -303,6 +304,12 @@ export async function createDriveShortcut(
   });
   if (!res.ok) return null;
   return ((await res.json()) as { id: string }).id;
+}
+
+/** Moves a file to the Drive trash, where it can be restored for 30 days. */
+export async function trashFileInDrive(fileId: string, accessToken: string): Promise<void> {
+  const { url, init } = driveTrashRequest(fileId, accessToken);
+  await fetch(url, init);
 }
 
 export async function deleteFileFromDrive(fileId: string, accessToken: string): Promise<void> {
