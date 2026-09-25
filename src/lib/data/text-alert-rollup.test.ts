@@ -198,4 +198,8 @@ test("text_alert_rollup keys, filters and caps exactly as the mirror does", () =
   assert.match(sql, new RegExp(String.raw`limit ${FRESH_CAP}\b`));
   assert.match(sql, new RegExp(String.raw`left\(coalesce\(w\.body, ''\), ${PREVIEW_CHARS}\)`));
   assert.match(sql, /w\.direction = 'inbound' and w\.created_at > p_since/);
+  // The toast names the client the way every screen does (clientName):
+  // the company for a company contact, never its contact person.
+  assert.match(sql, /when l\.contact_type = 'Company' then coalesce\(l\.company_name, ''\)/);
+  assert.match(sql, /else trim\(concat_ws\(' ', l\.first_name, l\.last_name\)\)/);
 });

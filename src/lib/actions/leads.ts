@@ -1,6 +1,7 @@
 "use server";
 
 import { companyToday } from "@/lib/data/company-today";
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -387,6 +388,8 @@ export async function resolveLeadRefund(id: string, status: "Received" | "Denied
 
 export async function convertLeadToJob(lead: {
   id: string;
+  contact_type: string | null;
+  company_name: string | null;
   first_name: string | null;
   last_name: string | null;
   address: string | null;
@@ -395,8 +398,7 @@ export async function convertLeadToJob(lead: {
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
-  const name =
-    `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() + " — Project";
+  const name = clientName(lead) + " — Project";
 
   const { error: jobError } = await supabase.from("jobs").insert({
     lead_id: lead.id,
@@ -599,19 +601,18 @@ export async function findDuplicateLeads(
   const { data } = await supabase
     .from("leads")
     .select(
-      "id, first_name, last_name, company_name, phone, phone2, phone3, second_contact_phone, email, stage"
+      "id, contact_type, first_name, last_name, company_name, phone, phone2, phone3, second_contact_phone, email, stage"
     )
     .eq("company_id", profile.company_id);
 
   const out: DuplicateLeadMatch[] = [];
   for (const l of (data ?? []) as {
-    id: string; first_name: string | null; last_name: string | null;
+    id: string; contact_type: string | null; first_name: string | null; last_name: string | null;
     company_name: string | null; phone: string | null;
     phone2: string | null; phone3: string | null;
     second_contact_phone: string | null; email: string | null; stage: string;
   }[]) {
-    const name =
-      (l.company_name || `${l.first_name ?? ""} ${l.last_name ?? ""}`).trim() || "Unnamed";
+    const name = clientName(l) || "Unnamed";
     const phoneHit =
       p.length === 10 &&
       [l.phone, l.phone2, l.phone3, l.second_contact_phone].some(

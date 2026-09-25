@@ -1,3 +1,5 @@
+import { clientName } from "./data/client-name.ts";
+
 /**
  * A signed contract is the moment work becomes real, so it puts the job
  * on the Production Board by itself — left to a hand-run "convert to
@@ -14,6 +16,8 @@ export type JobSeedEstimate = {
 };
 
 export type JobSeedLead = {
+  contact_type?: string | null;
+  company_name?: string | null;
   first_name: string | null;
   last_name: string | null;
   address: string | null;
@@ -76,8 +80,8 @@ export function productionJobRow(
 
   // Same shape the pipeline's "convert to job" gives a name, so a job
   // reads the same whichever door it came in through.
-  const person = `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim();
-  const name = person ? `${person} — Project` : estimate.title?.trim() || "New Project";
+  const client = clientName(lead);
+  const name = client ? `${client} — Project` : estimate.title?.trim() || "New Project";
   return {
     lead_id: estimate.lead_id,
     company_id: estimate.company_id,

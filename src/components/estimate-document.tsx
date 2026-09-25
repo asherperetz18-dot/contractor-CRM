@@ -25,6 +25,7 @@ import {
 import { fillContract, lateContractValues, parseContract } from "@/lib/contracts/merge";
 import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
 import { OptionalItemCheckbox } from "@/components/optional-item-checkbox";
+import { clientCompanyName, clientName, clientContactName } from "@/lib/data/client-name";
 
 export type DocumentCompany = {
   name: string | null;
@@ -43,6 +44,8 @@ export type DocumentCompany = {
 };
 
 export type DocumentCustomer = {
+  contact_type?: string | null;
+  company_name?: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -227,8 +230,10 @@ export function EstimateDocument({
   // Photos with no line of their own: site context rather than the
   // justification for one charge.
   const documentPhotos = byItem.get(null) ?? [];
-  const customerName =
-    [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim() || "Customer";
+  const customerName = clientName(customer) || "Customer";
+  const customerContact = clientContactName(customer);
+  // A company cannot sign; its person signs for it, and the line says so.
+  const signsFor = clientCompanyName(customer);
 
   // CSLB requires the licence number on California home-improvement
   // contracts, and a signed estimate becomes one.
@@ -301,6 +306,7 @@ export function EstimateDocument({
         <div>
           <div className="estdoc-label">{isInvoice ? "Bill to" : "Prepared for"}</div>
           <div className="estdoc-strong">{customerName}</div>
+          {customerContact && <div className="estdoc-muted">Attn: {customerContact}</div>}
           {customer?.address && <div className="estdoc-muted">{customer.address}</div>}
           <div className="estdoc-muted">
             {[customer?.phone, customer?.email].filter(Boolean).join(" · ")}
@@ -682,7 +688,11 @@ export function EstimateDocument({
                 </div>
                 <div className="estdoc-strong">{s.name}</div>
                 <div className="estdoc-muted">
-                  {s.party === "company" ? "Contractor" : "Customer"}
+                  {s.party === "company"
+                    ? "Contractor"
+                    : signsFor
+                      ? `Customer, on behalf of ${signsFor}`
+                      : "Customer"}
                   {s.signed_at ? ` · signed ${signedOnLabel(s.signed_at, zone)}` : ""}
                 </div>
                 {evidence && <div className="estdoc-muted">{evidence}</div>}

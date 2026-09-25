@@ -1,5 +1,6 @@
 "use client";
 
+import { clientName } from "@/lib/data/client-name";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -34,6 +35,8 @@ import { NewEstimateDialog } from "../estimates/new-estimate-dialog";
 
 export type ContractLead = {
   id: string;
+  contact_type: string | null;
+  company_name: string | null;
   first_name: string | null;
   last_name: string | null;
   address: string | null;
@@ -117,7 +120,7 @@ export function ContractsView({
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
     if (!lead) return "Unknown customer";
-    return [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unnamed lead";
+    return clientName(lead) || "Unnamed lead";
   }
 
   // The server already sends only kind='contract'; the guard keeps a

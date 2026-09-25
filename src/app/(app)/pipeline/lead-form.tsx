@@ -1,5 +1,6 @@
 "use client";
 
+import { clientName } from "@/lib/data/client-name";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
@@ -314,7 +315,7 @@ export function LeadForm({
   // from the active pipeline, and logged so there's a record of who did it.
   async function handleQuickExit(stage: string) {
     if (!lead) return;
-    const who = [form.first_name, form.last_name].filter(Boolean).join(" ") || "this contact";
+    const who = clientName(form) || "this contact";
     if (!confirm(`Move ${who} to ${stage}? They'll drop out of the active pipeline.`)) return;
 
     setQuickExitPending(stage);
@@ -505,10 +506,7 @@ export function LeadForm({
   async function handleBook() {
     if (!lead) return;
     setPending(true);
-    const contactName =
-      form.contact_type === "Company"
-        ? form.company_name
-        : `${form.first_name} ${form.last_name}`.trim();
+    const contactName = clientName(form);
     const result = await bookAppointmentForLead(lead.id, lead.stage, {
       title: `${booking.eventType} — ${contactName}`,
       date: booking.date,

@@ -90,7 +90,7 @@ export default async function EstimatePreviewPage({
         .maybeSingle<DocumentCompany>(),
       supabase
         .from("leads")
-        .select("first_name, last_name, email, phone, address")
+        .select("contact_type, company_name, first_name, last_name, email, phone, address")
         .eq("id", estimate.lead_id)
         .maybeSingle<DocumentCustomer>(),
     ]);

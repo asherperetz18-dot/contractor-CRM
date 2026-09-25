@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { collectsOnDocument } from "@/lib/data/invoices";
 import { selectAll } from "@/lib/data/select-all";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 type SlimLead = {
   id: string;
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -88,7 +90,7 @@ export default async function CollectPage() {
     ? await selectAll<SlimLead>((f, t) =>
         supabase
           .from("leads")
-          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .select("id, contact_type, first_name, last_name, company_name, address, assigned_to")
           .eq("company_id", companyId)
           .in("id", leadIds)
           .range(f, t)
@@ -115,8 +117,7 @@ export default async function CollectPage() {
   const label = (leadId: string) => {
     const l = leadById.get(leadId);
     return {
-      customer:
-        l?.company_name || [l?.first_name, l?.last_name].filter(Boolean).join(" ") || "Unnamed",
+      customer: clientName(l) || "Unnamed",
       address: l?.address ?? null,
       rep: l?.assigned_to ? (repById.get(l.assigned_to) ?? null) : null,
     };

@@ -1,3 +1,5 @@
+import { personName } from "./data/client-name.ts";
+
 export type WebhookLeadFields = {
   first_name: string | null;
   last_name: string | null;
@@ -66,7 +68,7 @@ export function webhookLeadFields(
  * name when there is one, else the surest handle we have on them. */
 export function webhookLeadConfirmation(lead: WebhookLeadFields): string {
   return (
-    [lead.first_name, lead.last_name].filter(Boolean).join(" ") ||
+    personName(lead) ||
     lead.phone ||
     lead.email ||
     "The lead"

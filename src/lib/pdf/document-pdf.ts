@@ -1,4 +1,5 @@
 import { dayLabel } from "@/lib/company-clock";
+import { clientCompanyName, clientName, clientContactName } from "@/lib/data/client-name";
 import "server-only";
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
@@ -52,6 +53,7 @@ export type DocumentPdfBundle = {
     timezone: string | null;
   } | null;
   customer: {
+    contact_type?: string | null;
     first_name: string | null;
     last_name: string | null;
     company_name?: string | null;
@@ -305,12 +307,12 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   }
 
   // 3. Parties
-  const customerName =
-    customer?.company_name ||
-    [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") ||
-    "Customer";
+  const customerName = clientName(customer) || "Customer";
+  const customerAttn = clientContactName(customer);
+  const signsFor = clientCompanyName(customer);
   w.text("PREPARED FOR", { size: 8, color: MUTED });
   w.text(customerName, { font: w.bold, size: 11 });
+  if (customerAttn) w.text(`Attn: ${customerAttn}`, { size: 9, color: MUTED });
   if (customer?.address) w.text(customer.address, { size: 9, color: MUTED });
   const custContact = [customer?.phone, customer?.email].filter(Boolean).join(" - ");
   if (custContact) w.text(custContact, { size: 9, color: MUTED });
@@ -500,7 +502,7 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
       w.y -= 8;
       const evidence = signatureEvidenceLine(s, zone);
       w.text(
-        `${s.name} - ${s.party === "company" ? "Contractor" : "Customer"}${
+        `${s.name} - ${s.party === "company" ? "Contractor" : signsFor ? `Customer, on behalf of ${signsFor}` : "Customer"}${
           s.signed_at ? ` - signed ${signedOnLabel(s.signed_at, zone)}` : ""
         }`,
         { size: 9, color: MUTED, gapAfter: evidence ? 2 : 8 }
