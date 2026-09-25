@@ -176,6 +176,7 @@ export function CrewProjectsView({
           jobLabel={photosFor.label}
           canUpload
           canFile={false}
+          canDelete={false}
           onClose={() => setPhotosFor(null)}
         />
       )}
