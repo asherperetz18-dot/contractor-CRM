@@ -1,5 +1,6 @@
 "use client";
 
+import { clientName } from "@/lib/data/client-name";
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
@@ -77,9 +78,7 @@ function contactName(c: {
   first_name: string | null;
   last_name: string | null;
 }): string {
-  const person = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
-  if (c.contact_type === "Company" && c.company_name) return c.company_name;
-  return person || c.company_name || "Unnamed";
+  return clientName(c) || c.company_name || "Unnamed";
 }
 
 export function AnalyticsView({

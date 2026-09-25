@@ -85,9 +85,15 @@ async function ensureProductionJob(
       admin.from("jobs").select("id").eq("lead_id", estimate.lead_id).limit(1),
       admin
         .from("leads")
-        .select("first_name, last_name, address")
+        .select("contact_type, company_name, first_name, last_name, address")
         .eq("id", estimate.lead_id)
-        .maybeSingle<{ first_name: string | null; last_name: string | null; address: string | null }>(),
+        .maybeSingle<{
+          contact_type: string | null;
+          company_name: string | null;
+          first_name: string | null;
+          last_name: string | null;
+          address: string | null;
+        }>(),
     ]);
     const row = productionJobRow(
       {

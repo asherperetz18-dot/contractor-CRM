@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -211,10 +212,17 @@ export async function getDispatcherCommissions(): Promise<{
   // than by a document number nobody remembers.
   const { data: leadRows } = await admin
     .from("leads")
-    .select("id, dispatcher_id, first_name, last_name")
+    .select("id, dispatcher_id, contact_type, company_name, first_name, last_name")
     .in("id", leadIds)
     .returns<
-      { id: string; dispatcher_id: string | null; first_name: string | null; last_name: string | null }[]
+      {
+        id: string;
+        dispatcher_id: string | null;
+        contact_type: string | null;
+        company_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+      }[]
     >();
   const dispatcherByLead = new Map(
     (leadRows ?? [])
@@ -224,7 +232,7 @@ export async function getDispatcherCommissions(): Promise<{
   const customerByLead = new Map(
     (leadRows ?? []).map((l) => [
       l.id,
-      [l.first_name, l.last_name].filter(Boolean).join(" ").trim() || "Unnamed",
+      clientName(l) || "Unnamed",
     ])
   );
 

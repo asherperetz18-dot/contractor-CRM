@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
@@ -101,17 +102,18 @@ export async function getTextAlerts(sinceIso: string | null): Promise<{
   if (leadIds.length) {
     const { data: leads } = await supabase
       .from("leads")
-      .select("id, first_name, last_name, company_name")
+      .select("id, contact_type, first_name, last_name, company_name")
       .in("id", leadIds);
     for (const l of (leads as {
       id: string;
+      contact_type: string | null;
       first_name: string | null;
       last_name: string | null;
       company_name: string | null;
     }[]) ?? []) {
       names.set(
         l.id,
-        [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || ""
+        clientName(l)
       );
     }
   }

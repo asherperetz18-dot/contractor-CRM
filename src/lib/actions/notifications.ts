@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -162,7 +163,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
       worksLeads
         ? supabase
             .from("leads")
-            .select("id, first_name, last_name, company_name, project_type, source, created_at, created_by")
+            .select("id, contact_type, first_name, last_name, company_name, project_type, source, created_at, created_by")
             .eq("company_id", companyId)
             .gte("created_at", since7d)
             .order("created_at", { ascending: false })
@@ -195,6 +196,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   type Paid = { id: string; estimate_id: string; amount_cents: number; paid_at: string };
   type Lead = {
     id: string;
+    contact_type: string | null;
     first_name: string | null;
     last_name: string | null;
     company_name: string | null;
@@ -253,17 +255,17 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
       ? supabase.from("estimates").select("id, doc_number, title").in("id", estimateIds)
       : Promise.resolve({ data: [] }),
     apptLeadIds.length
-      ? supabase.from("leads").select("id, first_name, last_name, company_name").in("id", apptLeadIds)
+      ? supabase.from("leads").select("id, contact_type, first_name, last_name, company_name").in("id", apptLeadIds)
       : Promise.resolve({ data: [] }),
   ]);
   const docById = new Map<string, string>();
   for (const d of (docsRes.data ?? []) as { id: string; doc_number: string; title: string | null }[]) {
     docById.set(d.id, d.title ? `${d.doc_number} · ${d.title}` : d.doc_number);
   }
-  const personName = (l: Pick<Lead, "first_name" | "last_name" | "company_name">) =>
-    [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || "";
+  const personName = (l: Pick<Lead, "contact_type" | "first_name" | "last_name" | "company_name">) =>
+    clientName(l);
   const leadNameById = new Map<string, string>();
-  for (const l of (apptLeadsRes.data ?? []) as Pick<Lead, "id" | "first_name" | "last_name" | "company_name">[]) {
+  for (const l of (apptLeadsRes.data ?? []) as Pick<Lead, "id" | "contact_type" | "first_name" | "last_name" | "company_name">[]) {
     leadNameById.set(l.id, personName(l));
   }
 

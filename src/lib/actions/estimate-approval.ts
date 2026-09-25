@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -82,7 +83,7 @@ export async function getPendingApprovals(): Promise<{
   const { data, error } = await supabase
     .from("estimates")
     .select(
-      "id, doc_number, title, status, total_cents, kind, updated_at, created_by, leads(first_name, last_name, company_name)"
+      "id, doc_number, title, status, total_cents, kind, updated_at, created_by, leads(contact_type, first_name, last_name, company_name)"
     )
     .eq("company_id", profile.company_id)
     .eq("status", "Draft")
@@ -93,7 +94,12 @@ export async function getPendingApprovals(): Promise<{
 
   const rows = (data ?? []) as unknown as (Omit<PendingApproval, "customer" | "writtenBy"> & {
     created_by: string | null;
-    leads: { first_name: string | null; last_name: string | null; company_name: string | null } | null;
+    leads: {
+      contact_type: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      company_name: string | null;
+    } | null;
   })[];
 
   // One lookup for every author on the list rather than one per row.
@@ -117,10 +123,7 @@ export async function getPendingApprovals(): Promise<{
       total_cents: r.total_cents,
       kind: r.kind,
       updated_at: r.updated_at,
-      customer:
-        r.leads?.company_name ||
-        [r.leads?.first_name, r.leads?.last_name].filter(Boolean).join(" ").trim() ||
-        null,
+      customer: clientName(r.leads) || null,
       writtenBy: r.created_by ? (byId.get(r.created_by) ?? null) : null,
     })),
   };

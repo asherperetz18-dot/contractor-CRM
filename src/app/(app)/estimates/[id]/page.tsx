@@ -8,6 +8,7 @@ import { approvalOnSend, approvalHoldMessage } from "@/lib/estimate-approval-gat
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { estimateRepLine } from "@/lib/estimate-rep-line";
+import { clientName } from "@/lib/data/client-name";
 import { CompletionEditor } from "./completion-editor";
 import { InvoiceView, type InvoiceLineCost } from "./invoice-view";
 
@@ -55,7 +56,7 @@ export default async function EstimateDetailPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("leads")
-      .select("id, first_name, last_name, email, phone, address, second_contact_email, assigned_to")
+      .select("id, contact_type, company_name, first_name, last_name, email, phone, address, second_contact_email, assigned_to")
       .eq("id", estimate.lead_id)
       .maybeSingle<BuilderLead & { assigned_to: string | null }>(),
   ]);
@@ -70,9 +71,7 @@ export default async function EstimateDetailPage({
         estimate={estimate}
         signers={(signers ?? []) as EstimateSigner[]}
         customer={{
-          name:
-            [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() ||
-            "Unnamed lead",
+          name: clientName(lead) || "Unnamed lead",
           address: lead?.address ?? null,
           email: lead?.email ?? null,
           secondContactEmail: lead?.second_contact_email ?? null,
@@ -116,7 +115,7 @@ export default async function EstimateDetailPage({
         paid={(paidRows ?? []) as PortalPayment[]}
         customer={{
           id: estimate.lead_id,
-          name: [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() || "Customer",
+          name: clientName(lead) || "Customer",
           phone: lead?.phone ?? null,
         }}
         parent={parentRow ?? null}

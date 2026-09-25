@@ -1,3 +1,4 @@
+import { clientName, type ClientNameFields } from "@/lib/data/client-name";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
@@ -131,11 +132,10 @@ async function processCompany(
         if (row.lead_id) {
           const { data: lead } = await admin
             .from("leads")
-            .select("first_name, last_name")
+            .select("contact_type, company_name, first_name, last_name")
             .eq("id", row.lead_id)
             .single();
-          const l = lead as { first_name: string | null; last_name: string | null } | null;
-          leadName = `${l?.first_name ?? ""} ${l?.last_name ?? ""}`.trim();
+          leadName = clientName(lead as ClientNameFields | null);
         }
         const body = reminderBody(row, leadName);
         const result = await sendTwilioSms(repPhone, body, twilioEnv);

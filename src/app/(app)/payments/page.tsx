@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
@@ -32,6 +33,7 @@ type ContractRow = SignedContract & {
 
 type LeadRow = {
   id: string;
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -116,7 +118,7 @@ export default async function PaymentsPage() {
       ? selectAll<LeadRow>((from, to) =>
           supabase
             .from("leads")
-            .select("id, first_name, last_name, company_name, assigned_to")
+            .select("id, contact_type, first_name, last_name, company_name, assigned_to")
             .eq("company_id", profile.company_id)
             .in("id", leadIds)
             .range(from, to)
@@ -136,11 +138,7 @@ export default async function PaymentsPage() {
   const repById = new Map(members.map((m) => [m.id, m.name]));
   const nameOf = (leadId: string | null) => {
     const l = leads.find((x) => x.id === leadId);
-    return (
-      l?.company_name ||
-      [l?.first_name, l?.last_name].filter(Boolean).join(" ").trim() ||
-      "—"
-    );
+    return clientName(l) || "—";
   };
   const repOf = (leadId: string | null | undefined) => {
     const l = leads.find((x) => x.id === leadId);

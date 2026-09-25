@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -74,9 +75,15 @@ export async function createCompletionCertificate(
   const [{ data: lead }, { data: settings }, { data: changes }] = await Promise.all([
     supabase
       .from("leads")
-      .select("first_name, last_name, address")
+      .select("contact_type, company_name, first_name, last_name, address")
       .eq("id", contract.lead_id)
-      .maybeSingle<{ first_name: string | null; last_name: string | null; address: string | null }>(),
+      .maybeSingle<{
+        contact_type: string | null;
+        company_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        address: string | null;
+      }>(),
     supabase
       .from("company_profile")
       .select("name, address, phone, email, license_number")
@@ -110,7 +117,7 @@ export async function createCompletionCertificate(
     contract_no: contract.doc_number,
     contract_date: day(completedOn),
     completion_date: day(completedOn),
-    client_name: [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim(),
+    client_name: clientName(lead),
     project_address: lead?.address,
     contract_total: moneyCents(contract.total_cents),
     company_name: settings?.name,

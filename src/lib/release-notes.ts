@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.159.0",
+    date: "2026-09-25",
+    notes: [
+      "A company client is now named for the company everywhere — estimates, contracts, invoices, the customer's copy and PDF, Projects, Payments, P&L, commission, alerts and new Production jobs. Before, most of these showed the contact person instead.",
+      "The contact person shows under the company: \"Contact: Josh Martinez\" on the estimate page and \"Attn: Josh Martinez\" on the customer's copy. On the signature line the person signs \"on behalf of\" the company.",
+      "Emails and texts still greet the person by name.",
+    ],
+  },
+  {
     version: "1.158.5",
     date: "2026-09-25",
     notes: [

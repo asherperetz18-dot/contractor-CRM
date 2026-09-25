@@ -1,6 +1,7 @@
 "use server";
 
 import { addDays } from "@/lib/company-clock";
+import { clientName, personName } from "@/lib/data/client-name";
 import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -497,10 +498,10 @@ export async function createEstimate(
   // retyping what the lead record already knows.
   const { data: lead, error: leadError } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, email, phone, address, assigned_to, company_id, second_contact_first_name, second_contact_last_name, second_contact_phone, second_contact_email")
+    .select("id, contact_type, company_name, first_name, last_name, email, phone, address, assigned_to, company_id, second_contact_first_name, second_contact_last_name, second_contact_phone, second_contact_email")
     .eq("id", leadId)
     .eq("company_id", guard.companyId)
-    .maybeSingle<LeadRow & { address: string | null }>();
+    .maybeSingle<LeadRow & { address: string | null; contact_type: string | null; company_name: string | null }>();
   if (leadError) return { error: leadError.message };
   if (!lead) return { error: "Lead not found." };
 
@@ -542,7 +543,9 @@ export async function createEstimate(
   // was landing on the eighth.
   const expiresAt = addDays(await companyToday(), expiryDays);
 
-  const customerFullName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
+  // The contract's client is the company for a company contact; the
+  // person still signs, under it (signer rows below).
+  const customerFullName = clientName(lead);
   const repName = await repDisplayName(supabase, lead.assigned_to ?? guard.userId);
   // Money and dates are left out on purpose: nothing is priced yet at
   // creation, so a total merged in here would be $0.00 on every contract.
@@ -595,7 +598,8 @@ export async function createEstimate(
   // customer signer is missing, so listing both here is what enforces
   // it. Change orders and completion certificates copy these rows, so
   // both names follow the job to its end.
-  const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
+  // The person signs -- for a company client, on its behalf.
+  const customerName = personName(lead);
   const secondRow = lead as unknown as {
     second_contact_first_name: string | null;
     second_contact_last_name: string | null;
@@ -1343,7 +1347,8 @@ export async function sendEstimateToCustomer(
   }
 
   if (wantsEmail && resolved.to.length > 0) {
-    const customerName = [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim();
+    // A greeting is to the person ("Hi Josh Martinez"), never the company.
+    const customerName = personName(lead);
     const mail = buildEstimateEmail({
       customerName: customerName || null,
       company: {

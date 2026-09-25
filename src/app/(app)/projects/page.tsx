@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { companyToday } from "@/lib/data/company-today";
 import { canEditJobCosts } from "@/lib/data/expense-edit";
 import { createClient } from "@/lib/supabase/server";
@@ -227,7 +228,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
     ? await selectAll<ProjectLead>((from, to) =>
         admin
           .from("leads")
-          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .select("id, contact_type, first_name, last_name, company_name, address, assigned_to")
           .eq("company_id", companyId)
           .in("id", leadIds)
           .range(from, to)
@@ -262,9 +263,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
         title: contract.title ?? "",
         leadId: contract.lead_id,
         customer:
-          lead?.company_name ||
-          [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
-          "Unnamed customer",
+          clientName(lead) || "Unnamed customer",
         address: lead?.address ?? null,
         status: contract.project_on_hold
           ? ("on_hold" as const)

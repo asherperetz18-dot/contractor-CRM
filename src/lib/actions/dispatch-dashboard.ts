@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
@@ -247,9 +248,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
     const l = e.leads;
     const lead_name = !l
       ? null
-      : l.contact_type === "Company"
-        ? l.company_name || "Unnamed Company"
-        : `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim() || "Unnamed";
+      : clientName(l) || (l.contact_type === "Company" ? "Unnamed Company" : "Unnamed");
     return {
       id: e.id,
       time: e.time,

@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { dayLabel, isoDateInZone } from "@/lib/company-clock";
 import { getCompanyZone } from "@/lib/data/company-today";
 import Link from "next/link";
@@ -44,6 +45,7 @@ type Company = {
 
 type ReportLead = {
   id: string;
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -162,7 +164,7 @@ export default async function ProjectReportPage({
       .eq("lead_id", contract.lead_id),
     supabase
       .from("leads")
-      .select("id, first_name, last_name, company_name, address, phone, email, assigned_to")
+      .select("id, contact_type, first_name, last_name, company_name, address, phone, email, assigned_to")
       .eq("id", contract.lead_id)
       .maybeSingle<ReportLead>(),
     supabase
@@ -325,10 +327,7 @@ export default async function ProjectReportPage({
           ? "Complete"
           : "In progress";
 
-  const customer =
-    lead?.company_name ||
-    [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
-    "Unnamed customer";
+  const customer = clientName(lead) || "Unnamed customer";
   const jobAddress = contract.job_address ?? lead?.address ?? null;
   const repName = (repProfile as { name: string | null } | null)?.name ?? null;
   const items = (checklistRows as ChecklistRow[] | null) ?? [];

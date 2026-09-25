@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { clientName } from "@/lib/data/client-name";
 import {
   createDriveShortcut,
   deleteFileFromDrive,
@@ -621,10 +622,10 @@ async function backupDocumentsBatch(
 
     const { data: lead } = await admin
       .from("leads")
-      .select("first_name, last_name, company_name, address, phone, email")
+      .select("contact_type, first_name, last_name, company_name, address, phone, email")
       .eq("id", estimate.lead_id)
       .maybeSingle<{
-        first_name: string | null; last_name: string | null; company_name: string | null;
+        contact_type: string | null; first_name: string | null; last_name: string | null; company_name: string | null;
         address: string | null; phone: string | null; email: string | null;
       }>();
     const parent = estimate.parent_estimate_id
@@ -658,8 +659,7 @@ async function backupDocumentsBatch(
     const folder = await getOrCreateCategoryFolder(category, accessToken, rootFolderId);
     if (!folder) continue;
 
-    const customerName =
-      lead?.company_name || [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "";
+    const customerName = clientName(lead);
     const pdfName = `${row.doc_number}${customerName ? " - " + customerName : ""}.pdf`.replace(
       /[\/:*?"<>|]/g,
       "-"

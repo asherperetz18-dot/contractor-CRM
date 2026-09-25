@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewEstimates, isStrictAdmin } from "@/lib/data/types";
@@ -108,11 +109,12 @@ export default async function EstimateStatusPage() {
   const { data: leads } = leadIds.length
     ? await supabase
         .from("leads")
-        .select("id, first_name, last_name, company_name, closer_id, assigned_to")
+        .select("id, contact_type, first_name, last_name, company_name, closer_id, assigned_to")
         .in("id", leadIds)
         .returns<
           {
             id: string;
+            contact_type: string | null;
             first_name: string | null;
             last_name: string | null;
             company_name: string | null;
@@ -152,8 +154,7 @@ export default async function EstimateStatusPage() {
 
   const statusRows: StatusRow[] = rows.map((r) => {
     const lead = r.lead_id ? leadById.get(r.lead_id) : undefined;
-    const customer =
-      [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || lead?.company_name || "—";
+    const customer = clientName(lead) || "—";
     const closerId = lead?.closer_id ?? null;
     const flow = estimateFlowStatus({
       status: r.status,
