@@ -4934,10 +4934,73 @@ a.stat-card {
   min-height: 100vh;
   background: var(--bg, #f4f2ee);
 }
+/* The dark banner the portal opens on -- the sign-in gate's navy, with
+   the gate's blue accent run on into the brand orange and gold. */
+.portal-hero {
+  position: relative;
+  color: #fff;
+  padding-bottom: 72px;
+  background: radial-gradient(ellipse at top right, #2f4a6e 0%, #253449 35%, #16202f 80%);
+}
+.portal-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: linear-gradient(90deg, #1f6feb 0%, #4c9aff 45%, #f0913f 75%, #e6c34a 100%);
+}
+.portal-hero-body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 22px 16px 0;
+}
+.portal-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9fc7ff;
+  margin: 0 0 6px;
+}
+.portal-hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.portal-hero-chip {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.portal-hero-chip-now {
+  background: rgba(31, 111, 235, 0.25);
+  border-color: rgba(120, 170, 255, 0.5);
+  color: #cfe0ff;
+}
+.portal-hero-chip-done {
+  background: rgba(47, 133, 90, 0.25);
+  border-color: rgba(92, 200, 140, 0.5);
+  color: #b6f0cf;
+}
+.portal-signout {
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.portal-signout:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
 .portal-header {
-  background: #fff;
-  border-bottom: 1px solid #e3e0da;
-  padding: 12px 20px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 14px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4949,9 +5012,14 @@ a.stat-card {
   gap: 10px;
   min-width: 0;
 }
+/* On a white chip: most uploaded logos are dark ink on transparent,
+   which would vanish on the navy banner. */
 .portal-logo {
-  height: 32px;
+  height: 36px;
   width: auto;
+  padding: 3px;
+  border-radius: 8px;
+  background: #fff;
 }
 .portal-company {
   font-family: var(--font-oswald), sans-serif;
@@ -4961,26 +5029,35 @@ a.stat-card {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Pulled up so the tab bar sits on the banner's bottom edge. */
 .portal-main {
   max-width: 720px;
-  margin: 0 auto;
-  padding: 24px 16px 64px;
+  margin: -52px auto 0;
+  padding: 0 16px 48px;
+  position: relative;
 }
 /* The company's signature line under everything: quiet until a link is
    hovered, and pill-shaped targets big enough for thumbs. */
 .portal-footer {
   max-width: 720px;
   margin: 0 auto;
-  padding: 0 16px 40px;
+  padding: 16px 16px 28px;
   text-align: center;
+}
+.portal-footer-card {
+  background: linear-gradient(135deg, #16202f 0%, #253449 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 22px 18px;
 }
 .portal-footer-title {
   display: block;
   font-size: 12px;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  opacity: 0.55;
-  margin-bottom: 10px;
+  color: #9fc7ff;
+  margin-bottom: 12px;
 }
 .portal-footer-links {
   display: flex;
@@ -4988,57 +5065,101 @@ a.stat-card {
   justify-content: center;
   gap: 8px;
 }
+/* Each network in its own brand colour (socialLinkClass), so the
+   customer finds the one they use without reading the labels. */
 .portal-social-link {
   display: inline-block;
-  padding: 6px 14px;
-  border: 1px solid rgba(184, 134, 11, 0.5);
+  padding: 8px 15px;
   border-radius: 999px;
   font-size: 13px;
-  /* Darker than true gold on purpose -- #ffd700-style gold vanishes on
-     the portal's off-white background. */
-  color: #a4770a;
+  font-weight: 600;
+  color: #fff;
   text-decoration: none;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.14);
 }
 .portal-social-link:hover {
-  background: #b8860b;
-  color: #fff;
-  border-color: #b8860b;
+  filter: brightness(1.1);
 }
-/* Red by request, same red as the portal's Review & Sign button so the
-   page keeps to one accent. */
+.portal-social-facebook {
+  background: #1877f2;
+}
+.portal-social-instagram {
+  background: linear-gradient(45deg, #f58529, #dd2a7b 55%, #8134af);
+}
+.portal-social-linkedin {
+  background: #0a66c2;
+}
+.portal-social-youtube {
+  background: #e02424;
+}
+.portal-social-tiktok {
+  background: #000;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.portal-social-yelp {
+  background: #d32323;
+}
+.portal-social-google {
+  background: #fff;
+  color: #14202e;
+}
+/* Gold on the navy footer card (owner's pick, over the earlier red). */
 .portal-footer-stars {
   display: block;
-  margin-top: 14px;
-  font-size: 20px;
+  margin-top: 16px;
+  font-size: 24px;
   letter-spacing: 8px;
-  color: #c02626;
+  color: #ffc940;
   text-decoration: none;
 }
 a.portal-footer-stars:hover {
-  color: #9a1e1e;
+  color: #ffd76b;
+}
+.portal-footer-stars-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  letter-spacing: normal;
+  color: #c9d6e8;
 }
 /* The header echo: smaller, centered between brand and Sign out, and
    dropped entirely where a phone-width header can't spare the room. */
 .portal-header-stars {
   font-size: 15px;
   letter-spacing: 5px;
-  color: #c02626;
+  color: #ffc940;
   text-decoration: none;
   white-space: nowrap;
 }
 a.portal-header-stars:hover {
-  color: #9a1e1e;
+  color: #ffd76b;
 }
 @media (max-width: 560px) {
   .portal-header-stars {
     display: none;
   }
+  .portal-greeting {
+    font-size: 28px;
+  }
+  .portal-tabs {
+    width: 100%;
+  }
+  .portal-tab {
+    flex: 1;
+    padding: 9px 8px;
+  }
+  .portal-call-btn {
+    margin-left: 0;
+    width: 100%;
+    text-align: center;
+  }
 }
 .portal-greeting {
   font-family: var(--font-oswald), sans-serif;
-  font-size: 26px;
-  margin: 0 0 4px;
+  font-size: 32px;
+  line-height: 1.1;
+  color: #fff;
+  margin: 0 0 10px;
 }
 .portal-subline {
   color: #5c5c5c;
@@ -5046,36 +5167,125 @@ a.portal-header-stars:hover {
 }
 .portal-tabs {
   display: flex;
-  gap: 8px;
-  margin-bottom: 18px;
-  flex-wrap: wrap;
-}
-.portal-tab {
-  border: 1px solid #ddd8d0;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px;
+  margin-bottom: 16px;
   background: #fff;
   border-radius: 999px;
-  padding: 8px 16px;
+  box-shadow: 0 6px 20px rgba(20, 32, 46, 0.12);
+}
+.portal-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  border-radius: 999px;
+  padding: 9px 18px;
   font-size: 14px;
+  font-weight: 600;
+  color: #667085;
   cursor: pointer;
 }
 .portal-tab-active {
-  background: #1f2937;
+  background: #16202f;
   color: #fff;
-  border-color: #1f2937;
+}
+.portal-tab-count {
+  background: #1f6feb;
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
 }
 .portal-card {
   background: #fff;
-  border-radius: 12px;
+  border-radius: 16px;
   padding: 20px;
-  margin-bottom: 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(20, 32, 46, 0.06), 0 8px 24px rgba(20, 32, 46, 0.05);
 }
 .portal-card-title {
-  font-size: 15px;
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6b6b6b;
+  letter-spacing: 0.08em;
+  color: #667085;
   margin: 0 0 14px;
+}
+/* A card's heading with its tinted icon. The icon's colour is the
+   card's idea: violet appointments, blue paperwork, amber licences. */
+.portal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.portal-card-head .portal-card-title {
+  margin: 0;
+}
+.portal-ico {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.portal-ico svg {
+  width: 17px;
+  height: 17px;
+}
+.portal-ico-blue {
+  background: #e8f0fe;
+  color: #1f6feb;
+}
+.portal-ico-green {
+  background: #e6f4ec;
+  color: #2f855a;
+}
+.portal-ico-amber {
+  background: #fdf0e3;
+  color: #c7691b;
+}
+.portal-ico-violet {
+  background: #efeafd;
+  color: #6d4bd8;
+}
+.portal-ico-slate {
+  background: #eef0f3;
+  color: #667085;
+}
+.portal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.portal-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.portal-chip-blue {
+  background: #e8f0fe;
+  color: #1a56c4;
+}
+.portal-chip-green {
+  background: #e6f4ec;
+  color: #22663f;
+}
+.portal-chip-amber {
+  background: #fdf0e3;
+  color: #9a4f10;
+}
+.portal-chip-slate {
+  background: #eef0f3;
+  color: #475467;
 }
 .portal-empty {
   color: #7a7a7a;
@@ -5083,47 +5293,137 @@ a.portal-header-stars:hover {
   margin: 0;
 }
 
+.portal-progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.portal-progress-top strong {
+  font-size: 17px;
+}
+.portal-progress-top span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f855a;
+  white-space: nowrap;
+}
+.portal-progress-bar {
+  height: 8px;
+  background: #eef0f3;
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+.portal-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #1f6feb, #2f855a);
+}
+/* Down the card on a phone, across it from tablet width up. */
 .portal-journey {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 .portal-step {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 7px 0;
-  color: #9a9a9a;
+  padding: 5px 0;
+  font-size: 14px;
+  color: #98a2b3;
 }
 .portal-step-dot {
-  width: 26px;
-  height: 26px;
+  position: relative;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  border: 2px solid currentColor;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   flex-shrink: 0;
+  background: #eef0f3;
+  color: #98a2b3;
+}
+.portal-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 36px;
+  left: 14px;
+  width: 3px;
+  height: 10px;
+  background: #e4e7ec;
 }
 .portal-step-done {
-  color: #2f855a;
+  color: #14202e;
+}
+.portal-step-done::after {
+  background: #cfe9da !important;
+}
+/* Every step already behind the customer keeps its own tint. */
+.portal-step-done:nth-child(1) .portal-step-dot {
+  background: #e8f0fe;
+  color: #1f6feb;
+}
+.portal-step-done:nth-child(2) .portal-step-dot {
+  background: #efeafd;
+  color: #6d4bd8;
+}
+.portal-step-done:nth-child(3) .portal-step-dot {
+  background: #fdf0e3;
+  color: #c7691b;
+}
+.portal-step-done:nth-child(4) .portal-step-dot {
+  background: #e0f2fe;
+  color: #0e7490;
 }
 .portal-step-current {
-  color: #1f2937;
-  font-weight: 600;
+  color: #2f855a;
+  font-weight: 700;
 }
 .portal-step-current .portal-step-dot {
-  background: #1f2937;
+  background: linear-gradient(135deg, #2f855a, #3aa872);
   color: #fff;
+  box-shadow: 0 0 0 5px #dff3e8;
+}
+@media (min-width: 561px) {
+  .portal-journey {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+  }
+  .portal-step {
+    flex-direction: column;
+    gap: 8px;
+    padding: 0;
+    text-align: center;
+    font-size: 12.5px;
+  }
+  .portal-step-dot {
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
+  }
+  .portal-step:not(:last-child)::after {
+    top: 16px;
+    left: calc(50% + 17px);
+    right: calc(-50% + 17px);
+    width: auto;
+    height: 3px;
+  }
 }
 
 .portal-appt {
   border-top: 1px solid #eee9e2;
   padding: 14px 0;
 }
-.portal-appt:first-of-type {
+.portal-card-head + .portal-appt {
   border-top: none;
   padding-top: 0;
 }
@@ -5137,6 +5437,40 @@ a.portal-header-stars:hover {
 }
 .portal-appt-past {
   color: #8a8a8a;
+}
+.portal-appt-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #efeafd;
+  border: 1px dashed #c9bbf5;
+}
+.portal-appt-empty p {
+  margin: 0;
+  font-size: 14px;
+  color: #3d2f7a;
+}
+.portal-appt-empty strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+.portal-call-btn {
+  margin-left: auto;
+  background: #6d4bd8;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.portal-call-btn:hover {
+  background: #5a3bc2;
 }
 .portal-appt-actions {
   display: flex;
@@ -6579,30 +6913,62 @@ a.portal-header-stars:hover {
 
 /* Licence and insurance on the customer's portal. Big enough to tap on a
    phone, which is where most of them will open it. */
+.portal-trust {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #e6f4ec;
+  color: #22663f;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.portal-trust::before {
+  content: "🛡 ";
+}
+.portal-docs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
 .portal-doc {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 4px;
-  border-top: 1px solid var(--line);
+  padding: 12px;
+  border: 1px solid #ebe7df;
+  border-radius: 12px;
   text-decoration: none;
   color: inherit;
 }
-.portal-doc:first-of-type {
-  border-top: none;
+.portal-doc:hover {
+  border-color: #c7691b;
 }
-.portal-doc-icon {
-  font-size: 22px;
-  line-height: 1;
+.portal-doc-ins:hover {
+  border-color: #1f6feb;
+}
+.portal-doc-text {
+  min-width: 0;
 }
 .portal-doc-title {
   display: block;
   font-weight: 600;
+  font-size: 14px;
+  line-height: 1.25;
 }
 .portal-doc-kind {
   display: block;
   font-size: 12px;
-  color: var(--ink-soft);
+  font-weight: 600;
+  margin-top: 2px;
+  color: #c7691b;
+}
+.portal-doc-ins .portal-doc-kind {
+  color: #1f6feb;
+}
+.portal-doc-go {
+  margin-left: auto;
+  color: #b0b6c0;
+  font-size: 18px;
 }
 
 /* A sixteen-section contract sits in here, so it needs the shape of a
@@ -7936,9 +8302,10 @@ a.portal-header-stars:hover {
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid #dfe8f3;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7faff 0%, #f1f8f4 100%);
   text-decoration: none;
   color: inherit;
 }
@@ -7946,7 +8313,7 @@ a.portal-header-stars:hover {
   margin-top: 10px;
 }
 .portal-est:hover {
-  border-color: var(--ink-soft);
+  border-color: #1f6feb;
 }
 .portal-est-main {
   min-width: 0;
@@ -7960,33 +8327,41 @@ a.portal-header-stars:hover {
   color: var(--ink-soft);
   margin-top: 2px;
 }
-.portal-est-due {
-  margin-top: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #8a6d0b;
-}
-.portal-est-paid {
-  margin-top: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--success);
-}
 .portal-est-side {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
+  gap: 8px;
   flex-shrink: 0;
 }
 .portal-est-total {
   font-family: var(--font-data);
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 600;
 }
 .portal-est-go {
+  display: inline-block;
+  background: #16202f;
+  color: #fff;
   font-size: 13px;
-  color: var(--ink-soft);
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 999px;
+}
+.portal-est:hover .portal-est-go {
+  background: #253449;
+}
+/* On a phone the total drops under the title, beside its button. */
+@media (max-width: 560px) {
+  .portal-est {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .portal-est-side {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
 }
 
 /* Money that is genuinely late. Red, and only while it is true -- same
@@ -9102,7 +9477,7 @@ textarea.est-item-desc:disabled {
   font-weight: 600;
   font-size: 13px;
   padding: 7px 14px;
-  border-radius: 8px;
+  border-radius: 999px;
   white-space: nowrap;
 }
 .portal-est:hover .portal-est-sign-btn {
