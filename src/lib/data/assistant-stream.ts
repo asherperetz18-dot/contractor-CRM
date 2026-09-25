@@ -99,9 +99,9 @@ export function aiFailureMessage(
     // The API's own reason names the offending field — first line only,
     // capped, because it's a diagnostic to quote, not an essay.
     const line = detail?.split("\n")[0]?.trim().slice(0, 160);
-    return `The AI assistant hit a server error (HTTP ${status}${line ? `: ${line}` : ""}). Try again — if it keeps happening, send Claude that message.`;
+    return `The AI hit a server error (HTTP ${status}${line ? `: ${line}` : ""}). Try again — if it keeps happening, send Claude that message.`;
   }
-  return "The AI assistant is temporarily unavailable. Try again shortly.";
+  return "The AI is temporarily unavailable. Try again shortly.";
 }
 
 export function sanitizeHistory(raw: unknown): ChatMessage[] {

@@ -356,7 +356,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     cards: [
       { title: "GoHighLevel Connection", desc: "GHL API connection, location selection, sync toggle", icon: "🔗" },
       { title: "GHL Field Mappings", desc: "Map GHL contact and lead fields to app fields", icon: "🗺" },
-      { title: "OpenAI API Key", desc: "API key used to power AI features (estimates, analysis, assistant)", icon: "🔑" },
       {
         title: "Scope Library",
         desc: "Examples of your own scopes of work that the AI generator learns its structure and wording from",
