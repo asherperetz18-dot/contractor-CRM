@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.2",
+    date: "2026-09-25",
+    notes: [
+      "Fix: AI Estimator and AI Analysis now work when \"Claude Haiku 4.5 — fastest\" is the model picked in Settings. Before, Generate with AI, the AI line items, lead analysis and AI call notes all failed on Haiku with \"adaptive thinking is not supported on this model\".",
+    ],
+  },
+  {
     version: "1.158.1",
     date: "2026-09-25",
     notes: [

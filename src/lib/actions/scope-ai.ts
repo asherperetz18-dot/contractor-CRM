@@ -1,6 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { thinkingFor } from "@/lib/ai-models";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates } from "@/lib/data/types";
@@ -261,7 +262,7 @@ export async function generateScopeWithAI(
       model: loaded.settings.ai_estimator_model || "claude-opus-5",
       max_tokens: 3000,
       system,
-      thinking: { type: "adaptive" },
+      ...thinkingFor(loaded.settings.ai_estimator_model || "claude-opus-5"),
       messages: [{ role: "user", content: input }],
     });
     if (response.stop_reason === "refusal") return { error: "The model declined that request." };
@@ -346,7 +347,7 @@ export async function generatePricedLines(
       model: loaded.settings.ai_estimator_model || "claude-opus-5",
       max_tokens: 4000,
       system,
-      thinking: { type: "adaptive" },
+      ...thinkingFor(loaded.settings.ai_estimator_model || "claude-opus-5"),
       messages: [{ role: "user", content: input }],
     });
     if (response.stop_reason === "refusal") return { error: "The model declined that request." };

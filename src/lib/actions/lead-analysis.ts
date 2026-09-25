@@ -1,6 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { thinkingFor } from "@/lib/ai-models";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -203,7 +204,7 @@ Reply with ONLY a JSON object, no code fences:
       model: settingsRow.ai_analysis_model || "claude-opus-5",
       max_tokens: 2500,
       system,
-      thinking: { type: "adaptive" },
+      ...thinkingFor(settingsRow.ai_analysis_model || "claude-opus-5"),
       messages: [{ role: "user", content: bundle }],
     });
     if (response.stop_reason === "refusal") {
