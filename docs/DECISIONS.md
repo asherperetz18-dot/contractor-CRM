@@ -850,3 +850,11 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Meta has to approve the app (App Review with Business Verification) for `leads_retrieval`, `pages_manage_metadata`, `pages_manage_ads`, `pages_read_engagement`, `pages_show_list` and `business_management` before companies whose people aren't app testers can connect. A Page belongs to one company (0178's unique index; the connect path refuses it too), since the webhook finds the company by Page id. The settings page makes one Graph call per load.
 
+
+## 081 — Sending without approval is a per-person switch that approves in the sender's name
+
+**Context:** With estimate approval switched on (0136), a closer at the kitchen table had to wait for an Admin before the customer could get the estimate. The owner asked for a Users & Roles switch that lets chosen people, closers in particular, send without that wait.
+
+**Decision:** A per-person flag, `company_members.can_send_without_approval` (0179), off by default. It works for anyone who can send, not only closers. The owner picks the people, and tying it to the closer seat would miss a trusted rep with no closer on the lead. It doesn't bypass the gate. The rule (`approvalOnSend`, pure and tested) answers "self-approve", and the send stamps `approved_at`/`approved_by` with the sender just before the status change. So the 0136 trigger needs no change, the document still says who let it go, and a line goes on the contact's timeline like an admin's approval does. An existing admin approval is never overwritten. Only an Admin can change the flag: the gate exists to check Office's sends too, and Office can edit `company_members` under RLS. The action refuses non-Admins, and a trigger in 0179 refuses the column change in the database for any signed-in non-Admin (super admins and the service role pass). Admins read "Always" (they approve their own). The switch shows only for people who can send.
+
+**Consequence:** Mark Sent now asks the approval gate in the app before flipping the status. It used to leave the refusal to the trigger's database error. The stamp is written just before the status change: if that change then fails, the draft stays approved in the trusted sender's name, and anyone who can send may then send it.

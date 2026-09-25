@@ -52,6 +52,7 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "tracking_notices", column: "accepted_at", migration: "0174_time_clock.sql" },
   { table: "company_profile", column: "primecall_domain", migration: "0177_primecall.sql" },
   { table: "call_logs", column: "primecall_call_id", migration: "0177_primecall.sql" },
+  { table: "company_members", column: "can_send_without_approval", migration: "0179_send_without_approval.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

@@ -4,7 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { paidTotalCents } from "@/lib/data/types";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
-import { approvalHoldsSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
+import { approvalOnSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { estimateRepLine } from "@/lib/estimate-rep-line";
@@ -100,10 +100,14 @@ export default async function EstimateDetailPage({
       .select("require_estimate_approval")
       .eq("company_id", profile.company_id)
       .maybeSingle<{ require_estimate_approval: boolean | null }>();
-    const held = approvalHoldsSend({
-      approvalRequired: gate?.require_estimate_approval === true,
-      approvedAt: estimate.approved_at,
-    });
+    // "self-approve" is not a hold: a person trusted to send without
+    // approval keeps their Send button, and the send records it.
+    const held =
+      approvalOnSend({
+        approvalRequired: gate?.require_estimate_approval === true,
+        approvedAt: estimate.approved_at,
+        sendsWithoutApproval: profile.can_send_without_approval,
+      }) === "hold";
     if (held) {
       sendHoldApprovable = isStrictAdmin(profile);
       sendHold = approvalHoldMessage(estimate.doc_number, { canApprove: sendHoldApprovable });

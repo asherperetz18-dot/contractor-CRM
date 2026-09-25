@@ -22,6 +22,7 @@ import {
   updateCanDeleteLeads,
   updateCanCreateEstimates,
   updateCanSendEstimates,
+  updateCanSendWithoutApproval,
   updateCanViewEstimates,
   updateCanViewFinancials,
   updateCanViewProfitLoss,
@@ -217,6 +218,10 @@ export function UsersRolesTable({
     await runSwitch(u, () => updateCanSendEstimates(u.id, !u.can_send_estimates));
   }
 
+  async function handleToggleSendWithoutApproval(u: MemberRow) {
+    await runSwitch(u, () => updateCanSendWithoutApproval(u.id, !u.can_send_without_approval));
+  }
+
   async function handleToggleViewFinancials(u: MemberRow) {
     await runSwitch(u, () => updateCanViewFinancials(u.id, !u.can_view_financials));
   }
@@ -366,6 +371,7 @@ export function UsersRolesTable({
               <th>View Estimates</th>
               <th>Create Estimates</th>
               <th>Send Estimates</th>
+              <th>Send Without Approval</th>
               <th>View Financials</th>
               <th>View Profit &amp; Loss</th>
               <th className="right">Status</th>
@@ -598,6 +604,47 @@ export function UsersRolesTable({
                     </span>
                   )}
                 </td>
+                {/* Send Without Approval. Only matters while estimate
+                    approval is switched on: this person's sends then
+                    approve themselves, in their name, instead of waiting.
+                    Admins approve their own anyway. Anyone who cannot
+                    send has nothing to skip. Only an Admin may change it
+                    -- the gate checks Office's sends too. */}
+                <td>
+                  {u.roles.includes("Admin") || isSuperAdmin(u) ? (
+                    <span className="ur-add-phone" title="Admins approve documents themselves">
+                      Always
+                    </span>
+                  ) : u.roles.includes("Office") ||
+                    ((u.roles.includes("Production") || u.can_create_estimates) &&
+                      u.can_send_estimates) ? (
+                    <button
+                      type="button"
+                      className="ur-toggle-btn"
+                      disabled={!isAdmin}
+                      onClick={() => isAdmin && handleToggleSendWithoutApproval(u)}
+                      title={
+                        !isAdmin
+                          ? "Only an Admin can change who sends without approval"
+                          : u.can_send_without_approval
+                            ? "Turn off — this person's estimates wait for an Admin's approval again"
+                            : "Let this person send estimates without waiting for an Admin's approval"
+                      }
+                    >
+                      <span
+                        className={
+                          "toggle-track" + (u.can_send_without_approval ? " toggle-on" : "")
+                        }
+                      >
+                        <span className="toggle-thumb" />
+                      </span>
+                    </button>
+                  ) : (
+                    <span className="ur-add-phone" title="Turn on Send Estimates first">
+                      —
+                    </span>
+                  )}
+                </td>
                 {/* View Financials: Bills to Pay, Money to Collect,
                     Payments. Office, Admin and Bookkeeping hold these by
                     role, so they read "Always" rather than showing a
@@ -686,7 +733,7 @@ export function UsersRolesTable({
                   {/* Left-aligned explicitly: as the row's last cell it
                       would otherwise inherit the Status column's right
                       alignment and hang off the edge. */}
-                  <td colSpan={12} style={{ paddingTop: 0, textAlign: "left" }}>
+                  <td colSpan={13} style={{ paddingTop: 0, textAlign: "left" }}>
                     <p className="error-note" style={{ margin: 0 }} role="alert">
                       {switchError.message}
                     </p>
