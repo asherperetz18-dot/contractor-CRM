@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.155.0",
+    date: "2026-09-25",
+    notes: [
+      "The client portal has a fresh, more colourful look: your customers now land on a dark branded banner with their name, and each section has its own colour and icon.",
+      "Project status shows a progress bar and \"Step 3 of 5\", and the estimate shows coloured tags (Signed, Deposit paid, deposit due) so customers see where things stand at a glance.",
+      "With nothing booked, customers get a one-tap Call button; licences and insurance show as tiles; social links wear each network's own colour, and the review stars are now gold.",
+    ],
+  },
+  {
     version: "1.154.0",
     date: "2026-09-24",
     notes: [
