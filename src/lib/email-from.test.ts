@@ -64,13 +64,22 @@ test("characters sendEmail refuses (emoji, em dash) are dropped, never failing t
   assert.ok([...from].every((ch) => ch.charCodeAt(0) <= 255));
 });
 
-test("no usable company name leaves the platform sender as it was", () => {
-  assert.equal(
-    companyFromHeader({ email_from: null, email_from_name: null, name: null }, PLATFORM),
+test("an empty profile name falls back to the company's account name", () => {
+  // company_profile.name is optional; companies.name always exists.
+  const from = companyFromHeader(
+    { email_from: null, email_from_name: null, name: null, company_name: "Smart Hvac System" },
     PLATFORM
   );
-  assert.equal(
-    companyFromHeader({ email_from: null, email_from_name: "  ", name: "🏠" }, PLATFORM),
-    PLATFORM
-  );
+  assert.equal(from, "Smart Hvac System <info@lahomecontractor.com>");
+});
+
+test("with no usable name at all, the bare address -- never the platform's own name", () => {
+  for (const company of [
+    { email_from: null, email_from_name: null, name: null },
+    { email_from: null, email_from_name: "  ", name: "🏠", company_name: "" },
+  ]) {
+    const from = companyFromHeader(company, PLATFORM);
+    assert.equal(from, "info@lahomecontractor.com");
+    assert.ok(!from.includes("La Home Contractor"));
+  }
 });
