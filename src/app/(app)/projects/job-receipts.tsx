@@ -8,6 +8,7 @@ import {
   getJobFilingOptions,
 } from "@/lib/actions/job-expenses";
 import { getOpenJobBills } from "@/lib/actions/vendor-bills";
+import { getInvoiceSetup } from "@/lib/actions/invoices";
 import { getVendors } from "@/lib/actions/vendors";
 import { Modal } from "@/components/ui/modal";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
@@ -48,6 +49,7 @@ export function JobReceipts({
   jobLabel,
   canEdit,
   jobs,
+  onBillToClient,
   onClose,
 }: {
   leadId: string;
@@ -57,6 +59,9 @@ export function JobReceipts({
   /** Edit / Attach on the paid rows (the cost-write roles). */
   canEdit: boolean;
   jobs: BillJobOption[];
+  /** "Bill to client" on a paid cost: opens a new invoice starting from
+   *  it. Absent for roles that can't invoice. */
+  onBillToClient?: (costId: string) => void;
   onClose: () => void;
 }) {
   const [rows, setRows] = useState<JobExpense[] | null>(null);
@@ -69,19 +74,27 @@ export function JobReceipts({
     phaseContract: Record<string, string>;
   }>({ options: [], phaseContract: {} });
   const [assigning, setAssigning] = useState(false);
+  // Cost id -> the invoice it's already billed on.
+  const [billedOn, setBilledOn] = useState<Record<string, string>>({});
   // Bumped after an edit, attach or delete so the lists reload.
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [res, bills, vend, fil] = await Promise.all([
+      const [res, bills, vend, fil, inv] = await Promise.all([
         getJobExpenses(leadId),
         getOpenJobBills(leadId),
         getVendors(true),
         getJobFilingOptions(leadId),
+        onBillToClient ? getInvoiceSetup(leadId) : Promise.resolve(null),
       ]);
       if (cancelled) return;
+      setBilledOn(
+        Object.fromEntries(
+          (inv?.setup?.costs ?? []).filter((c) => c.billedOn).map((c) => [c.id, c.billedOn as string])
+        )
+      );
       if (res.error) setError(res.error);
       setRows(res.expenses ?? []);
       setOpen(bills.bills ?? []);
@@ -91,6 +104,9 @@ export function JobReceipts({
     return () => {
       cancelled = true;
     };
+    // onBillToClient only switches the lookup on; a new function
+    // identity each render must not reload the window.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, reload]);
 
   const vendorById = new Map(vendors.map((v) => [v.id, v]));
@@ -227,7 +243,7 @@ export function JobReceipts({
                       <th>What for</th>
                       {multi && <th>Contract</th>}
                       <th className="right">Amount</th>
-                      {canEdit && <th></th>}
+                      {(canEdit || onBillToClient) && <th></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -280,13 +296,28 @@ export function JobReceipts({
                           </td>
                         )}
                         <td className="right mono">{moneyCents(r.amount_cents)}</td>
-                        {canEdit && (
+                        {(canEdit || onBillToClient) && (
                           <td className="right">
-                            {!expenseEditLock(r) && (
-                              <button className="btn-ghost small" onClick={() => setEditing(r)}>
-                                ✎ Edit
-                              </button>
-                            )}
+                            <span className="inv-row-actions">
+                              {onBillToClient &&
+                                (billedOn[r.id] ? (
+                                  <span className="est-tax-note">Billed on {billedOn[r.id]}</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn-ghost small inv-bill-btn"
+                                    title="Invoice the customer for this cost"
+                                    onClick={() => onBillToClient(r.id)}
+                                  >
+                                    Bill to client
+                                  </button>
+                                ))}
+                              {canEdit && !expenseEditLock(r) && (
+                                <button className="btn-ghost small" onClick={() => setEditing(r)}>
+                                  ✎ Edit
+                                </button>
+                              )}
+                            </span>
                           </td>
                         )}
                       </tr>
@@ -300,14 +331,14 @@ export function JobReceipts({
                       <td className="right mono">
                         <strong>{moneyCents(total)}</strong>
                       </td>
-                      {canEdit && <td></td>}
+                      {(canEdit || onBillToClient) && <td></td>}
                     </tr>
                     {multi && thisDoc && (
                       /* The number commission uses for this row's job. */
                       <tr>
                         <td colSpan={5}>Counted on {thisDoc} (what its commission uses)</td>
                         <td className="right mono">{moneyCents(onThis)}</td>
-                        {canEdit && <td></td>}
+                        {(canEdit || onBillToClient) && <td></td>}
                       </tr>
                     )}
                   </tfoot>

@@ -9,6 +9,7 @@ import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { estimateRepLine } from "@/lib/estimate-rep-line";
 import { CompletionEditor } from "./completion-editor";
+import { InvoiceView, type InvoiceLineCost } from "./invoice-view";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,49 @@ export default async function EstimateDetailPage({
         canEdit={canCreateEstimates(profile)}
         canSend={canSendEstimates(profile)}
         canDelete={canDeleteLeads(profile)}
+      />
+    );
+  }
+
+  // An invoice (a permit fee billed back) has nothing to build or send
+  // for signature: its page is what was billed, what's come in, and the
+  // Pay link / Record payment / Cancel that act on it.
+  if (estimate.kind === "invoice") {
+    const lines = (items ?? []) as (EstimateItem & { source_expense_id?: string | null })[];
+    const costIds = lines.map((i) => i.source_expense_id).filter((id): id is string => !!id);
+    const [{ data: costRows }, { data: parentRow }] = await Promise.all([
+      costIds.length
+        ? supabase
+            .from("job_expenses")
+            .select("id, receipt_url, receipt_path, spent_on, amount_cents")
+            .eq("company_id", profile.company_id)
+            .in("id", costIds)
+            .returns<InvoiceLineCost[]>()
+        : Promise.resolve({ data: [] as InvoiceLineCost[] }),
+      estimate.parent_estimate_id
+        ? supabase
+            .from("estimates")
+            .select("id, doc_number")
+            .eq("id", estimate.parent_estimate_id)
+            .eq("company_id", profile.company_id)
+            .maybeSingle<{ id: string; doc_number: string }>()
+        : Promise.resolve({ data: null }),
+    ]);
+    return (
+      <InvoiceView
+        invoice={estimate}
+        items={lines}
+        phase={((payments ?? []) as EstimatePayment[])[0] ?? null}
+        paid={(paidRows ?? []) as PortalPayment[]}
+        customer={{
+          id: estimate.lead_id,
+          name: [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() || "Customer",
+          phone: lead?.phone ?? null,
+        }}
+        parent={parentRow ?? null}
+        costs={Object.fromEntries((costRows ?? []).map((c) => [c.id, c]))}
+        canBill={canCreateEstimates(profile)}
+        canRecord={canManageBills(profile)}
       />
     );
   }

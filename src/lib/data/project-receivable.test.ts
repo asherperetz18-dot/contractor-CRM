@@ -190,3 +190,27 @@ test("triage puts a job drowning in unpaid bills first, even with cash in hand",
   const deeper = { ...drowning, unpaidBillsCents: 900_000 };
   assert.ok(projectTriageOrder(deeper, drowning) < 0);
 });
+
+test("an invoice's money counts toward collected, and its amount toward what % collected is of", () => {
+  // $10,000 contract fully paid, plus a $400 permit invoice paid: the
+  // job is 100% collected, not 104%. Sold stays the contract -- an
+  // invoice is not a sale.
+  const rollup = computeProjectRollup({
+    contractTotalCents: 1_000_000,
+    signedChangeOrderCents: 0,
+    invoicedCents: 40_000,
+    payments: [
+      { status: "succeeded", amount_cents: 1_000_000 },
+      { status: "succeeded", amount_cents: 40_000 },
+    ],
+    receivableCents: 0,
+    filedCostCents: 40_000,
+    unfiledCostCents: 0,
+    ownsUnfiledCosts: true,
+  });
+  assert.equal(rollup.soldCents, 1_000_000);
+  assert.equal(rollup.collectedCents, 1_040_000);
+  assert.equal(rollup.collectedPct, 100);
+  // The permit is paid out and paid back: it nets to nothing.
+  assert.equal(rollup.netCashCents, 1_000_000);
+});

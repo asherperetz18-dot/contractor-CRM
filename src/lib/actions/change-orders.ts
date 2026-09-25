@@ -55,7 +55,9 @@ export async function createChangeOrder(
   const { count } = await supabase
     .from("estimates")
     .select("id", { count: "exact", head: true })
-    .eq("parent_estimate_id", parentId);
+    .eq("parent_estimate_id", parentId)
+    // Invoices on the contract are numbered INV-, not -CO<n>.
+    .neq("kind", "invoice");
 
   const { data: created, error } = await supabase
     .from("estimates")

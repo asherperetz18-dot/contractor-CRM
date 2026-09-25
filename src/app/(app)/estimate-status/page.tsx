@@ -60,7 +60,8 @@ export default async function EstimateStatusPage() {
       )
       .eq("company_id", profile.company_id)
       .in("status", ["Draft", "Sent", "Viewed", "Signed"])
-      .or("kind.is.null,kind.neq.completion")
+      // Sales documents: not the completion certificate, not invoices.
+      .or("kind.is.null,kind.not.in.(completion,invoice)")
       // Signed rows only while fresh; a Signed row missing signed_at
       // (older data) falls back to its updated_at, same as the paper
       // trail would read it.

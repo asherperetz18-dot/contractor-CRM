@@ -7,6 +7,7 @@ import { canViewEstimates, type Estimate, type EstimateItem, type EstimateSigner
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { getParentContract } from "@/lib/actions/change-orders";
 import { getEstimatePhotos } from "@/lib/actions/estimate-files";
+import { invoiceReceiptAttachments } from "@/lib/data/invoice-receipts";
 import { getEstimateGroups } from "@/lib/actions/estimate-groups";
 import {
   EstimateDocument,
@@ -103,7 +104,7 @@ export default async function EstimatePreviewPage({
         </div>
         <div className="est-header-actions">
           <Link className="btn-ghost" href={`/estimates/${id}`}>
-            Back to editor
+            {estimate.kind === "invoice" ? "Back to invoice" : "Back to editor"}
           </Link>
           <PrintButton title={title} />
         </div>
@@ -116,7 +117,12 @@ export default async function EstimatePreviewPage({
           signers={(signers ?? []) as EstimateSigner[]}
           payments={(payments ?? []) as EstimatePayment[]}
           paid={(paidRows ?? []) as PortalPayment[]}
-          photos={(await getEstimatePhotos(id)).photos ?? []}
+          photos={[
+            ...(estimate.kind === "invoice"
+              ? await invoiceReceiptAttachments(supabase, profile.company_id, (items ?? []) as EstimateItem[])
+              : []),
+            ...((await getEstimatePhotos(id)).photos ?? []),
+          ]}
           sections={(await getEstimateGroups(id)).groups ?? []}
           company={company ?? null}
           customer={lead ?? null}

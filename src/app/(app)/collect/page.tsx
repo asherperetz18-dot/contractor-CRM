@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { collectsOnDocument } from "@/lib/data/invoices";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewFinancials } from "@/lib/data/accounting-access";
@@ -97,10 +98,9 @@ export default async function CollectPage() {
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(members.map((m) => [m.id, m.name]));
   // Phases live on contracts; a signed change order appends its phase to
-  // the parent. Signed, un-voided contracts are the live book.
-  const liveContracts = estimates.filter(
-    (e) => (e.kind ?? "contract") === "contract" && e.status === "Signed"
-  );
+  // the parent. Signed, un-voided contracts are the live book -- and
+  // issued invoices (a permit fee billed back), each one billed phase.
+  const liveContracts = estimates.filter((e) => collectsOnDocument(e));
   const contractById = new Map(liveContracts.map((e) => [e.id, e]));
 
   const paidByPhase = new Map<string, number>();

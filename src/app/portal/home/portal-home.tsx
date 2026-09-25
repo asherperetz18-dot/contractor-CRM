@@ -29,6 +29,7 @@ import {
 import {
   estimateMoneyChip,
   estimateStatusChip,
+  invoiceMoneyChip,
   journeyProgress,
   socialLinkClass,
 } from "@/lib/portal/portal-display";
@@ -62,6 +63,15 @@ export type PortalEstimate = {
   deposit_cents: number | null;
   depositPaid: boolean;
   amountDueCents: number;
+};
+
+/** A bill for an extra on the job (a permit fee). */
+export type PortalInvoice = {
+  id: string;
+  doc_number: string;
+  title: string | null;
+  totalCents: number;
+  paidCents: number;
 };
 
 type Tab = "Overview" | "Photos" | "Messages";
@@ -214,6 +224,7 @@ export function PortalHome({
   messages,
   reps,
   estimates,
+  invoices = [],
   companyName,
   companyPhone,
   companyLogo,
@@ -226,6 +237,7 @@ export function PortalHome({
   messages: SmsMessage[];
   reps: Profile[];
   estimates: PortalEstimate[];
+  invoices?: PortalInvoice[];
   companyName: string;
   companyPhone: string | null;
   companyLogo: string | null;
@@ -495,6 +507,42 @@ export function PortalHome({
                           <span className="portal-est-sign-btn">Review &amp; Sign →</span>
                         ) : (
                           <span className="portal-est-go">View →</span>
+                        )}
+                      </div>
+                    </a>
+                  );
+                })}
+              </section>
+            )}
+
+            {/* Bills for extras on the job -- a permit fee. Nothing to
+                sign, so each one says what's due and goes to its Pay
+                button. */}
+            {invoices.length > 0 && (
+              <section className="portal-card">
+                <CardHead icon="estimate" tone="blue">
+                  {invoices.length === 1 ? "Your invoice" : "Your invoices"}
+                </CardHead>
+                {invoices.map((inv) => {
+                  const money = invoiceMoneyChip(inv);
+                  return (
+                    <a key={inv.id} className="portal-est" href={`/portal/estimates/${inv.id}`}>
+                      <div className="portal-est-main">
+                        <div className="portal-est-title">{inv.title || "Invoice"}</div>
+                        <div className="portal-est-sub">{inv.doc_number}</div>
+                        <div className="portal-chips">
+                          <span className={`portal-chip portal-chip-${money.tone}`}>
+                            {money.tone === "green" ? "✓ " : ""}
+                            {money.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="portal-est-side">
+                        <span className="portal-est-total">{formatMoney(inv.totalCents)}</span>
+                        {money.tone === "green" ? (
+                          <span className="portal-est-go">View →</span>
+                        ) : (
+                          <span className="portal-est-sign-btn">Pay →</span>
                         )}
                       </div>
                     </a>

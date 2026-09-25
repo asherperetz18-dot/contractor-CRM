@@ -44,7 +44,9 @@ export default async function ProductionPage() {
       .in("lead_id", leadIds)
       .returns<{ id: string; lead_id: string | null; kind: string | null; signed_at: string | null }[]>();
     (signed ?? [])
-      .filter((e) => e.kind !== "change_order" && e.kind !== "completion")
+      // The contract is the project: not its change orders, certificate
+      // or invoices.
+      .filter((e) => (e.kind ?? "contract") === "contract")
       // Latest signature wins when a lead has several signed documents.
       .sort((a, b) => (a.signed_at ?? "").localeCompare(b.signed_at ?? ""))
       .forEach((e) => {

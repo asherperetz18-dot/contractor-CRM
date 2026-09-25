@@ -959,11 +959,14 @@ export async function markEstimateSent(estimateId: string): Promise<{ error?: st
 
   // A signed estimate outranks a merely sent one, so a later draft going
   // out must not overwrite the value of work already won.
+  // Contracts only: an invoice (a permit fee billed back) is Signed too,
+  // but it isn't what the job is worth.
   const { data: signed } = await supabase
     .from("estimates")
     .select("total_cents")
     .eq("lead_id", estimate.lead_id)
     .eq("status", "Signed")
+    .or("kind.is.null,kind.eq.contract")
     .order("signed_at", { ascending: false })
     .limit(1)
     .returns<{ total_cents: number }[]>();
@@ -1775,15 +1778,21 @@ export async function getEstimatesForLead(
     return { estimates: [], canCreate: false, canView: false, paidCents: 0 };
 
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data: docs } = await supabase
     .from("estimates")
-    .select("id, doc_number, title, status, total_cents")
+    .select("id, doc_number, title, status, total_cents, kind")
     .eq("lead_id", leadId)
     .eq("company_id", profile.company_id)
     .order("created_at", { ascending: false })
-    .returns<LeadEstimateSummary[]>();
+    .returns<(LeadEstimateSummary & { kind: string | null })[]>();
+  // Invoices aren't estimates to open or start from -- a customer billed
+  // only a permit fee still gets "+ Estimate" -- but money paid on them
+  // is money in, so it stays in the paid figure.
+  const data = (docs ?? [])
+    .filter((e) => e.kind !== "invoice")
+    .map(({ kind: _kind, ...e }) => e);
 
-  const ids = (data ?? []).map((e) => e.id);
+  const ids = (docs ?? []).map((e) => e.id);
   let paidCents = 0;
   if (ids.length) {
     const { data: paidRows } = await supabase
@@ -1795,7 +1804,7 @@ export async function getEstimatesForLead(
   }
 
   return {
-    estimates: data ?? [],
+    estimates: data,
     canCreate: canCreateEstimates(profile),
     canView: true,
     paidCents,

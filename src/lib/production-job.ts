@@ -49,7 +49,9 @@ export function backfillSeeds(
 ): SignedContractSeed[] {
   const byLead = new Map<string, SignedContractSeed>();
   for (const doc of signed) {
-    if (doc.kind === "change_order" || doc.kind === "completion") continue;
+    // Only a contract is a job -- not a change order, a completion
+    // certificate or an invoice (an allow-list, so a new kind stays out).
+    if ((doc.kind ?? "contract") !== "contract") continue;
     if (!doc.lead_id || existingJobLeadIds.has(doc.lead_id)) continue;
     const held = byLead.get(doc.lead_id);
     if (!held || (doc.signed_at ?? "") > (held.signed_at ?? "")) byLead.set(doc.lead_id, doc);
@@ -63,8 +65,9 @@ export function productionJobRow(
   hasExistingJob: boolean
 ): ProductionJobInsert | null {
   // A change order adds to a job already on the board; a completion
-  // certificate closes one. Neither is new work.
-  if (estimate.kind === "change_order" || estimate.kind === "completion") return null;
+  // certificate closes one; an invoice bills an extra on it. None is
+  // new work.
+  if ((estimate.kind ?? "contract") !== "contract") return null;
   if (!estimate.lead_id || !lead) return null;
   // One job per lead, however many documents get signed — a revision
   // re-signed or a second contract on the same customer must not stack

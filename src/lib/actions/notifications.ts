@@ -140,6 +140,8 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
               .from("estimates")
               .select("id, doc_number, title, signed_at")
               .eq("company_id", companyId)
+              // An invoice is issued, not signed by anyone.
+              .neq("kind", "invoice")
               .gte("signed_at", since48h);
             if (ownDocsOnly) q = q.eq("assigned_to", me);
             return q.order("signed_at", { ascending: false }).limit(10);

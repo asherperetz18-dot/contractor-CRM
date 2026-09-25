@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { shouldAutoOpenNewEstimate } from "@/lib/data/quick-create";
+import { quickCreateDialog } from "@/lib/data/quick-create";
 import {
   effectiveEstimateRepId,
   moneyCents,
@@ -22,6 +22,7 @@ import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funn
 import { saveFunnelOrder } from "@/lib/actions/funnel-order";
 import { useFunnelOrder } from "./funnel-order-prefs";
 import { NewEstimateDialog } from "./new-estimate-dialog";
+import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { FilterSelect } from "@/components/filter-select";
 
 export type EstimateLead = {
@@ -122,6 +123,8 @@ export function EstimatesView({
   const searchParams = useSearchParams();
   const [bucket, setBucket] = useState<Bucket>("drafts");
   const [creating, setCreating] = useState(false);
+  // Quick Create's New Invoice: bill a customer an extra (a permit fee).
+  const [invoicing, setInvoicing] = useState(false);
 
   // Quick Create's New Estimate lands here as /estimates?new=1 and the
   // dialog opens by itself. Same idiom as Contacts' openLead: the open
@@ -132,7 +135,9 @@ export function EstimatesView({
   const newParam = searchParams.get("new");
   if (newParam && !consumedNew) {
     setConsumedNew(true);
-    if (shouldAutoOpenNewEstimate(newParam, canCreate)) setCreating(true);
+    const dialog = quickCreateDialog(newParam, canCreate);
+    if (dialog === "estimate") setCreating(true);
+    if (dialog === "invoice") setInvoicing(true);
   } else if (!newParam && consumedNew) {
     // Param stripped -- reset the guard so the next Quick Create click
     // (which puts ?new=1 back) opens the dialog again.
@@ -258,7 +263,9 @@ export function EstimatesView({
           <p className="module-sub">
             {(() => {
               const contracts = estimates.filter((e) => isSellableKind(e.kind)).length;
-              const changes = estimates.length - contracts;
+              const changes = estimates.filter(
+                (e) => !isSellableKind(e.kind) && e.kind !== "invoice"
+              ).length;
               if (contracts === 0 && changes === 0) return "No estimates yet";
               return (
                 `${contracts} document${contracts === 1 ? "" : "s"}` +
@@ -474,6 +481,13 @@ export function EstimatesView({
             })}
           </tbody>
         </table>
+      )}
+
+      {invoicing && (
+        <NewInvoiceModal
+          onClose={() => setInvoicing(false)}
+          onIssued={({ id }) => router.push(`/estimates/${id}`)}
+        />
       )}
 
       {creating && (

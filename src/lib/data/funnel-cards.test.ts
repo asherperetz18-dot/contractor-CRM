@@ -108,3 +108,17 @@ test("a lapsed expiry files a Sent document under Declined, not Proposals", () =
   assert.equal(funnelCardStats(docs, "sent", nobody, repOf).count, 0);
   assert.equal(funnelCardStats(docs, "declined", nobody, repOf).count, 1);
 });
+
+test("an invoice sits on no funnel card: it's not a sale, and not an attachment to one either", () => {
+  const docs = [
+    doc({ kind: "change_order", status: "Signed", total_cents: 40_000 }),
+    doc({ kind: "invoice", status: "Signed", total_cents: 41_250 }),
+  ];
+  // Attached counts the change order alone -- a $412.50 permit fee is
+  // not the job growing.
+  assert.deepEqual(funnelCardStats(docs, "changes", nobody, repOf), {
+    count: 1,
+    totalCents: 40_000,
+  });
+  assert.deepEqual(funnelCardStats(docs, "signed", nobody, repOf), { count: 0, totalCents: 0 });
+});

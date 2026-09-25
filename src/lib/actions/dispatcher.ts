@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
+import { addsToContractValue } from "@/lib/data/invoices";
 import {
   computeDispatcherCommissions,
   commissionHolds,
@@ -261,11 +262,13 @@ export async function getDispatcherCommissions(): Promise<{
   function releaseFor(contract: DocRow) {
     const children = childrenByParent.get(contract.id) ?? [];
     const changeOrders = children
-      .filter((c) => c.status === "Signed" && (c.kind ?? "contract") !== "completion")
+      .filter((c) => addsToContractValue(c))
       .reduce((s, c) => s + c.total_cents, 0);
     const jobValueCents = contract.total_cents + changeOrders;
 
-    const docIds = [contract.id, ...children.map((c) => c.id)];
+    // An invoice (a permit fee billed back) is neither part of the sale
+    // nor money that pays it off.
+    const docIds = [contract.id, ...children.filter((c) => c.kind !== "invoice").map((c) => c.id)];
     const jobPayments = (payments ?? []).filter((p) => docIds.includes(p.estimate_id));
     const collectedOnJob = jobPayments.reduce((s, p) => s + p.amount_cents, 0);
     const lastPaymentAt =

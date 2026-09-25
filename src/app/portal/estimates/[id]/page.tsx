@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, readPortalSession } from "@/lib/portal/session";
 import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
+import { invoiceReceiptAttachments } from "@/lib/data/invoice-receipts";
 import { getParentContract } from "@/lib/actions/change-orders";
 import {
   EstimateDocument,
@@ -116,7 +117,13 @@ export default async function PortalEstimatePage({
       .returns<EstimateGroup[]>(),
   ]);
 
-  const photos: EstimatePhoto[] = (photoRows ?? []).map((r) => ({
+  const photos: EstimatePhoto[] = [
+    // An invoice line billed back from a cost carries that cost's
+    // receipt, so the customer sees what the city actually charged.
+    ...(estimate.kind === "invoice"
+      ? await invoiceReceiptAttachments(admin, estimate.company_id, (items ?? []) as EstimateItem[])
+      : []),
+    ...(photoRows ?? []).map((r) => ({
     id: r.id,
     estimate_id: r.estimate_id,
     estimate_item_id: r.estimate_item_id,
@@ -128,7 +135,8 @@ export default async function PortalEstimatePage({
     content_type: r.lead_files?.content_type ?? null,
     file_path: r.lead_files?.file_path ?? null,
     storage_provider: r.lead_files?.storage_provider ?? null,
-  }));
+  })),
+  ];
 
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);

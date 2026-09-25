@@ -3,6 +3,7 @@ import { getCompanyZone } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { documentStatusLabel } from "@/lib/data/invoices";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canViewEstimates,
@@ -216,7 +217,12 @@ export default async function ProjectReportPage({
   const paid = (paidRaw as PortalPayment[] | null) ?? [];
   const leadExpenses = (expensesRaw as JobExpense[] | null) ?? [];
 
-  const signedChangeOrders = changeOrders.filter((e) => e.status === "Signed");
+  // Invoices (a permit fee billed back) are money owed on the job, never
+  // part of what was sold -- same split as the Projects board.
+  const signedChangeOrders = changeOrders.filter((e) => e.status === "Signed" && e.kind !== "invoice");
+  const invoicedCents = changeOrders
+    .filter((e) => e.kind === "invoice" && e.status === "Signed")
+    .reduce((s, e) => s + e.total_cents, 0);
   const ownPhaseIds = new Set(phases.map((p) => p.id));
 
   // The schedule the report prints is the contract's own. A signed change
@@ -259,6 +265,7 @@ export default async function ProjectReportPage({
   const rollup = computeProjectRollup({
     contractTotalCents: contract.total_cents,
     signedChangeOrderCents: signedChangeOrders.reduce((s, e) => s + e.total_cents, 0),
+    invoicedCents,
     payments: paid,
     receivableCents: phaseReceivableCents(phases, paid),
     filedCostCents: filedExpenses.reduce((s, e) => s + e.amount_cents, 0),
@@ -421,7 +428,11 @@ export default async function ProjectReportPage({
                     <strong>{d.doc_number}</strong>
                     {d.id !== contract.id && (
                       <div className="estdoc-muted">
-                        {(d.kind ?? "") === "completion" ? "Completion certificate" : "Change order"}
+                        {(d.kind ?? "") === "completion"
+                          ? "Completion certificate"
+                          : d.kind === "invoice"
+                            ? "Invoice"
+                            : "Change order"}
                       </div>
                     )}
                   </td>
@@ -429,7 +440,7 @@ export default async function ProjectReportPage({
                   <td>
                     {d.id === contract.id && contract.status === "Void"
                       ? "Cancelled"
-                      : d.status}
+                      : documentStatusLabel(d.kind, d.status)}
                   </td>
                   <td className="estdoc-muted">{shortDate(d.signed_at)}</td>
                   <td className="estdoc-num mono">

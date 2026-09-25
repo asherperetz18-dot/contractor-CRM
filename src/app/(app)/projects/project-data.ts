@@ -12,6 +12,7 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import { paidCommissionByEstimate } from "@/lib/data/commission-payouts";
+import { contractChildDocs } from "@/lib/data/invoices";
 import type { ProjectCard } from "./projects-view";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
@@ -171,11 +172,18 @@ export async function buildProjectCards(
   );
 
   const cards: ProjectCard[] = contracts.map((contract) => {
-    const changeOrders = estimates.filter((e) => e.parent_estimate_id === contract.id);
+    // Invoices (a permit fee billed back) are owed on the job but are
+    // not sales: their money joins collected and receivable, never sold.
+    const { changeOrders, invoices } = contractChildDocs(
+      estimates.filter((e) => e.parent_estimate_id === contract.id)
+    );
     const signedChangeOrders = changeOrders.filter((e) => e.status === "Signed");
     const signedChangeOrderCents = signedChangeOrders.reduce((s, e) => s + e.total_cents, 0);
+    const invoicedCents = invoices
+      .filter((e) => e.status === "Signed")
+      .reduce((s, e) => s + e.total_cents, 0);
     // Every document the project's money can arrive against.
-    const docIds = new Set([contract.id, ...changeOrders.map((e) => e.id)]);
+    const docIds = new Set([contract.id, ...changeOrders.map((e) => e.id), ...invoices.map((e) => e.id)]);
 
     const ownPhases = payments.filter((p) => docIds.has(p.estimate_id));
     const ownPhaseIds = new Set(ownPhases.map((p) => p.id));
@@ -202,6 +210,7 @@ export async function buildProjectCards(
     const rollup = computeProjectRollup({
       contractTotalCents: contract.total_cents,
       signedChangeOrderCents,
+      invoicedCents,
       payments: docPayments,
       receivableCents: phaseReceivableCents(ownPhases, docPayments),
       filedCostCents,
@@ -240,6 +249,7 @@ export async function buildProjectCards(
       changeOrders: changeOrders
         .filter((e) => e.status !== "Void")
         .map((e) => ({ id: e.id, docNumber: e.doc_number, title: e.title })),
+      invoices: invoices.map((e) => ({ id: e.id, docNumber: e.doc_number, title: e.title })),
       // The job site outranks the billing address: an investor with
       // three properties needs three rows that say which house is which.
       address: (contract as { job_address?: string | null }).job_address ?? lead?.address ?? null,

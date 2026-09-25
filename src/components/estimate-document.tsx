@@ -188,6 +188,9 @@ export function EstimateDocument({
 }) {
   const sig = signatureProgress(signers);
   const isChangeOrder = estimate.kind === "change_order";
+  // A bill for an extra on the job (a permit fee): no signature, no
+  // schedule -- the Pay card under the document is its payment terms.
+  const isInvoice = estimate.kind === "invoice";
   // A completion certificate records acceptance, not a price. Its line
   // items and totals are all zero, and printing "$0.00" beside a document
   // about a $5,400 job invites exactly the wrong conclusion.
@@ -267,11 +270,12 @@ export function EstimateDocument({
               signing it has no way to tell the difference. */}
           {isChangeOrder && <div className="estdoc-doctype">CHANGE ORDER</div>}
           {priceless && <div className="estdoc-doctype">CERTIFICATE OF COMPLETION</div>}
+          {isInvoice && <div className="estdoc-doctype">INVOICE</div>}
           <div className="estdoc-docnum">{estimate.doc_number}</div>
           <div className="estdoc-muted">Issued {longDate(estimate.issued_at ?? estimate.created_at)}</div>
-          {(isChangeOrder || priceless) && parent && (
+          {(isChangeOrder || priceless || isInvoice) && parent && (
             <div className="estdoc-muted">
-              To contract {parent.doc_number}
+              {isInvoice ? "For contract" : "To contract"} {parent.doc_number}
               {parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}
             </div>
           )}
@@ -295,7 +299,7 @@ export function EstimateDocument({
 
       <section className="estdoc-parties">
         <div>
-          <div className="estdoc-label">Prepared for</div>
+          <div className="estdoc-label">{isInvoice ? "Bill to" : "Prepared for"}</div>
           <div className="estdoc-strong">{customerName}</div>
           {customer?.address && <div className="estdoc-muted">{customer.address}</div>}
           <div className="estdoc-muted">
@@ -303,8 +307,8 @@ export function EstimateDocument({
           </div>
         </div>
         <div>
-          <div className="estdoc-label">Project</div>
-          <div className="estdoc-strong">{estimate.title || "Estimate"}</div>
+          <div className="estdoc-label">{isInvoice ? "For" : "Project"}</div>
+          <div className="estdoc-strong">{estimate.title || (isInvoice ? "Invoice" : "Estimate")}</div>
         </div>
         {/* Only when it differs from the client's address above --
             repeating the same address twice reads as filler, but a
@@ -492,7 +496,7 @@ export function EstimateDocument({
           </div>
         )}
         <div className="estdoc-total-row estdoc-grand">
-          <span>{isChangeOrder ? "This change order" : "Total"}</span>
+          <span>{isChangeOrder ? "This change order" : isInvoice ? "Amount due" : "Total"}</span>
           <span>{moneyCents(estimate.total_cents)}</span>
         </div>
         {/* What the contract becomes. A customer asked to approve $400
@@ -521,7 +525,7 @@ export function EstimateDocument({
           contract's existing schedule, so printing a second schedule here
           would offer the customer payment terms that do not govern
           anything -- two schedules for one job, disagreeing. */}
-      {!isChangeOrder && (estimate.deposit_cents || payments.length > 0) && (
+      {!isChangeOrder && !isInvoice && (estimate.deposit_cents || payments.length > 0) && (
         <section className="estdoc-schedule">
           <div className="estdoc-label">Payment schedule</div>
           <table className="estdoc-items estdoc-schedule-table">

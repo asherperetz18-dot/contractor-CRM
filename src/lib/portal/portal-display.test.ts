@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   estimateMoneyChip,
   estimateStatusChip,
+  invoiceMoneyChip,
   journeyProgress,
   socialLinkClass,
 } from "./portal-display.ts";
@@ -72,4 +73,19 @@ test("each social network gets its own button colour", () => {
 
 test("an unknown network still renders as a plain button", () => {
   assert.equal(socialLinkClass("Pinterest"), "portal-social-link");
+});
+
+test("an invoice's chip says what's still due, then that it's paid", () => {
+  assert.deepEqual(invoiceMoneyChip({ totalCents: 44_750, paidCents: 0 }), {
+    label: "$447.50 due",
+    tone: "amber",
+  });
+  assert.deepEqual(invoiceMoneyChip({ totalCents: 44_750, paidCents: 40_000 }), {
+    label: "$47.50 due",
+    tone: "amber",
+  });
+  assert.deepEqual(invoiceMoneyChip({ totalCents: 44_750, paidCents: 44_750 }), {
+    label: "Paid",
+    tone: "green",
+  });
 });
