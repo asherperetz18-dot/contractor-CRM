@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.155.1",
+    date: "2026-09-25",
+    notes: [
+      "The client portal's browser tab now shows your company logo, the same one at the top of the page, instead of the old AI Build Pros icon.",
+    ],
+  },
+  {
     version: "1.155.0",
     date: "2026-09-25",
     notes: [
