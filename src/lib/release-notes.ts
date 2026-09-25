@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.4",
+    date: "2026-09-25",
+    notes: [
+      "Fix: a company whose profile has no name filled in now also sends email under its own account name, never \"La Home Contractor\".",
+    ],
+  },
+  {
     version: "1.158.3",
     date: "2026-09-25",
     notes: [
