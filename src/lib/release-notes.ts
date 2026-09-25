@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.159.0",
+    date: "2026-09-25",
+    notes: [
+      "Office and Admin can delete a photo from a job's Photos window — tap the ✕ on its corner. A photo kept in Google Drive goes to Drive's trash for 30 days, so a mistake can be undone.",
+      "Photo filed under the wrong job? \"Remove from job\" under it moves it back to the customer's unfiled photos without deleting anything.",
+      "\"Deleted photos\" at the bottom of the Photos window shows who deleted which photo and when.",
+    ],
+  },
+  {
     version: "1.158.5",
     date: "2026-09-25",
     notes: [
