@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.157.0",
+    date: "2026-09-25",
+    notes: [
+      "New: invoice a customer for extras like a permit fee. Every project row has a green \"+ Invoice\" chip, and each paid bill in the job's 🧾 Bills window has \"Bill to client\", which fills in the invoice with that cost.",
+      "Invoices need no signature. Send by text and the customer gets a Pay link; they see the lines, the receipt for each billed cost, and a Pay button in their portal. A check or cash is recorded with Record payment, same as a contract.",
+      "Invoices count as money in on Payments, Money to Collect, Projects and Profit & Loss. They are not sales, so the sales totals and rep commission don't change.",
+      "Billed costs are at cost unless you tick \"Add markup\". A cost can't be billed twice, and an invoice sent by mistake can be cancelled from its page until money comes in on it.",
+      "Quick Create → New Invoice now works: search for the customer, with or without a contract.",
+    ],
+  },
+  {
     version: "1.156.0",
     date: "2026-09-25",
     notes: [
