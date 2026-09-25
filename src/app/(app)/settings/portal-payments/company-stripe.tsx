@@ -96,6 +96,13 @@ export function CompanyStripe() {
           Set <code>APP_ENCRYPTION_KEY</code> in the deployment environment and redeploy.
         </p>
       )}
+      {status.unreadable && status.encryptionReady && (
+        <p className="error-note">
+          A Stripe key ending <span className="mono">{status.last4}</span> is saved, but this
+          server can&apos;t read it, so customers can&apos;t pay online. Paste your Stripe secret
+          key and webhook signing secret again below.
+        </p>
+      )}
       {error && <p className="error-note">{error}</p>}
       {note && <p className="hint-note">{note}</p>}
 
