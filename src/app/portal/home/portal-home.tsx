@@ -26,6 +26,12 @@ import {
   portalSignOut,
   portalUploadFile,
 } from "@/lib/actions/portal";
+import {
+  estimateMoneyChip,
+  estimateStatusChip,
+  journeyProgress,
+  socialLinkClass,
+} from "@/lib/portal/portal-display";
 
 type PortalFile = {
   id: string;
@@ -113,6 +119,80 @@ function journeyStep(stage: string, estimates: PortalEstimate[]): number | null 
   return 0;
 }
 
+// Line icons for the card headings, drawn in the heading's tone colour.
+const ICONS = {
+  status: <path d="M3 12h4l3 8 4-16 3 8h4" />,
+  estimate: (
+    <>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6M8 13h8M8 17h5" />
+    </>
+  ),
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4M8 3v4M3 10h18" />
+    </>
+  ),
+  shield: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />,
+  shieldCheck: (
+    <>
+      <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  badge: (
+    <>
+      <circle cx="12" cy="9" r="5" />
+      <path d="M9 13l-2 8 5-3 5 3-2-8" />
+    </>
+  ),
+  photo: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="9" cy="10" r="2" />
+      <path d="M21 16l-5-5-8 8" />
+    </>
+  ),
+  chat: <path d="M4 5h16v11H9l-5 4z" />,
+};
+
+type IconTone = "blue" | "green" | "amber" | "violet" | "slate";
+
+function PortalIcon({ name, tone }: { name: keyof typeof ICONS; tone: IconTone }) {
+  return (
+    <span className={`portal-ico portal-ico-${tone}`} aria-hidden="true">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {ICONS[name]}
+      </svg>
+    </span>
+  );
+}
+
+function CardHead({
+  icon,
+  tone,
+  children,
+}: {
+  icon: keyof typeof ICONS;
+  tone: IconTone;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="portal-card-head">
+      <PortalIcon name={icon} tone={tone} />
+      <h2 className="portal-card-title">{children}</h2>
+    </div>
+  );
+}
+
 function formatMoney(cents: number) {
   return (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
@@ -170,6 +250,7 @@ export function PortalHome({
   const reviewHref = socialLinks.find((l) => l.label === "Google Reviews")?.href;
 
   const step = journeyStep(lead.stage, estimates);
+  const progress = step === null ? null : journeyProgress(step, JOURNEY.length);
   const todayISO = new Date().toISOString().slice(0, 10);
   const upcoming = events.filter((e) => e.date >= todayISO && e.status !== "Cancelled");
   const past = events.filter((e) => e.date < todayISO || e.status === "Cancelled");
@@ -249,46 +330,71 @@ export function PortalHome({
 
   return (
     <div className="portal-shell">
-      <header className="portal-header">
-        <div className="portal-header-brand">
-          {companyLogo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={companyLogo} alt="" className="portal-logo" />
+      {/* The dark banner carries the brand and the greeting, and the tab
+          bar overlaps its bottom edge -- the same navy as the sign-in
+          gate, so the customer lands somewhere that looks like the page
+          they signed in from. */}
+      <section className="portal-hero">
+        <header className="portal-header">
+          <div className="portal-header-brand">
+            {companyLogo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={companyLogo} alt="" className="portal-logo" />
+            )}
+            <span className="portal-company">{companyName}</span>
+          </div>
+          {/* The compact echo of the footer stars. Deliberately not the
+              whole social row: the header is fought over by the brand and
+              Sign out, and the customer came for their project, not our
+              Facebook page. Hidden on narrow screens where even stars
+              would crowd the company name. */}
+          {socialLinks.length > 0 &&
+            (reviewHref ? (
+              <a
+                href={reviewHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="portal-header-stars"
+                aria-label="Leave us a five-star review"
+              >
+                ★★★★★
+              </a>
+            ) : (
+              <span className="portal-header-stars" aria-hidden="true">
+                ★★★★★
+              </span>
+            ))}
+          <form action={portalSignOut}>
+            <button type="submit" className="portal-signout">
+              Sign out
+            </button>
+          </form>
+        </header>
+
+        <div className="portal-hero-body">
+          <p className="portal-eyebrow">Your project portal</p>
+          <h1 className="portal-greeting">Hi {lead.first_name || leadDisplayName(lead)}</h1>
+          {(lead.project_type || step !== null) && (
+            <div className="portal-hero-chips">
+              {lead.project_type && <span className="portal-hero-chip">{lead.project_type}</span>}
+              {step !== null && (
+                <span
+                  className={
+                    step === JOURNEY.length - 1
+                      ? "portal-hero-chip portal-hero-chip-done"
+                      : "portal-hero-chip portal-hero-chip-now"
+                  }
+                >
+                  {step === JOURNEY.length - 1 ? "✓ " : ""}
+                  {JOURNEY[step]}
+                </span>
+              )}
+            </div>
           )}
-          <span className="portal-company">{companyName}</span>
         </div>
-        {/* The compact echo of the footer stars. Deliberately not the
-            whole social row: the header is fought over by the brand and
-            Sign out, and the customer came for their project, not our
-            Facebook page. Hidden on narrow screens where even stars
-            would crowd the company name. */}
-        {socialLinks.length > 0 &&
-          (reviewHref ? (
-            <a
-              href={reviewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="portal-header-stars"
-              aria-label="Leave us a five-star review"
-            >
-              ★★★★★
-            </a>
-          ) : (
-            <span className="portal-header-stars" aria-hidden="true">
-              ★★★★★
-            </span>
-          ))}
-        <form action={portalSignOut}>
-          <button type="submit" className="btn-ghost small">
-            Sign out
-          </button>
-        </form>
-      </header>
+      </section>
 
       <main className="portal-main">
-        <h1 className="portal-greeting">Hi {lead.first_name || leadDisplayName(lead)}</h1>
-        {lead.project_type && <p className="portal-subline">{lead.project_type}</p>}
-
         <nav className="portal-tabs">
           {(["Overview", "Photos", "Messages"] as Tab[]).map((t) => (
             <button
@@ -298,7 +404,9 @@ export function PortalHome({
               onClick={() => setTab(t)}
             >
               {t}
-              {t === "Photos" && files.length > 0 && ` (${files.length})`}
+              {t === "Photos" && files.length > 0 && (
+                <span className="portal-tab-count">{files.length}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -309,7 +417,20 @@ export function PortalHome({
           <>
             {step !== null && (
               <section className="portal-card">
-                <h2 className="portal-card-title">Project status</h2>
+                <CardHead icon="status" tone="green">
+                  Project status
+                </CardHead>
+                {progress && (
+                  <>
+                    <div className="portal-progress-top">
+                      <strong>{JOURNEY[step]}</strong>
+                      <span>{progress.label}</span>
+                    </div>
+                    <div className="portal-progress-bar">
+                      <i style={{ width: `${progress.percent}%` }} />
+                    </div>
+                  </>
+                )}
                 <ol className="portal-journey">
                   {JOURNEY.map((label, i) => (
                     <li
@@ -322,7 +443,9 @@ export function PortalHome({
                             : "portal-step"
                       }
                     >
-                      <span className="portal-step-dot">{i < step ? "✓" : i + 1}</span>
+                      <span className="portal-step-dot">
+                        {i < step ? "✓" : i === step && i === JOURNEY.length - 1 ? "★" : i + 1}
+                      </span>
                       <span className="portal-step-label">{label}</span>
                     </li>
                   ))}
@@ -336,54 +459,66 @@ export function PortalHome({
                 became unreachable. */}
             {estimates.length > 0 && (
               <section className="portal-card">
-                <h2 className="portal-card-title">
+                <CardHead icon="estimate" tone="blue">
                   {estimates.length === 1 ? "Your estimate" : "Your estimates"}
-                </h2>
-                {estimates.map((e) => (
-                  <a key={e.id} className="portal-est" href={`/portal/estimates/${e.id}`}>
-                    <div className="portal-est-main">
-                      <div className="portal-est-title">{e.title || "Project estimate"}</div>
-                      <div className="portal-est-sub">
-                        {e.doc_number}
-                        {e.status === "Signed"
-                          ? " · Signed"
-                          : e.status === "Declined"
-                            ? " · Declined"
-                            : " · Awaiting your signature"}
-                      </div>
-                      {/* Money still owed is the one thing worth
-                          surfacing here rather than a page deeper. */}
-                      {e.amountDueCents > 0 && (
-                        <div className="portal-est-due">
-                          {formatMoney(e.amountDueCents)} deposit due
+                </CardHead>
+                {estimates.map((e) => {
+                  const status = estimateStatusChip(e.status);
+                  // Money still owed is the one thing worth surfacing
+                  // here rather than a page deeper.
+                  const money = estimateMoneyChip(e);
+                  return (
+                    <a key={e.id} className="portal-est" href={`/portal/estimates/${e.id}`}>
+                      <div className="portal-est-main">
+                        <div className="portal-est-title">{e.title || "Project estimate"}</div>
+                        <div className="portal-est-sub">{e.doc_number}</div>
+                        <div className="portal-chips">
+                          <span className={`portal-chip portal-chip-${status.tone}`}>
+                            {status.label}
+                          </span>
+                          {money && (
+                            <span className={`portal-chip portal-chip-${money.tone}`}>
+                              {money.tone === "green" ? "✓ " : ""}
+                              {money.label}
+                            </span>
+                          )}
                         </div>
-                      )}
-                      {e.depositPaid && <div className="portal-est-paid">Deposit paid</div>}
-                    </div>
-                    <div className="portal-est-side">
-                      <span className="portal-est-total">{formatMoney(e.total_cents)}</span>
-                      {/* A document waiting on the customer's signature
-                          gets a button that says so, in a colour that
-                          says so -- "View" in quiet grey asks nothing of
-                          anybody, which is exactly how estimates sit
-                          unsigned for a week. */}
-                      {e.status !== "Signed" && e.status !== "Declined" ? (
-                        <span className="portal-est-sign-btn">Review &amp; Sign →</span>
-                      ) : (
-                        <span className="portal-est-go">View →</span>
-                      )}
-                    </div>
-                  </a>
-                ))}
+                      </div>
+                      <div className="portal-est-side">
+                        <span className="portal-est-total">{formatMoney(e.total_cents)}</span>
+                        {/* A document waiting on the customer's signature
+                            gets a button that says so, in a colour that
+                            says so -- "View" in quiet grey asks nothing of
+                            anybody, which is exactly how estimates sit
+                            unsigned for a week. */}
+                        {e.status !== "Signed" && e.status !== "Declined" ? (
+                          <span className="portal-est-sign-btn">Review &amp; Sign →</span>
+                        ) : (
+                          <span className="portal-est-go">View →</span>
+                        )}
+                      </div>
+                    </a>
+                  );
+                })}
               </section>
             )}
 
             <section className="portal-card">
-              <h2 className="portal-card-title">Upcoming appointments</h2>
+              <CardHead icon="calendar" tone="violet">
+                Upcoming appointments
+              </CardHead>
               {upcoming.length === 0 ? (
-                <p className="portal-empty">
-                  Nothing scheduled right now. {companyPhone && `Call us at ${companyPhone} to book.`}
-                </p>
+                <div className="portal-appt-empty">
+                  <p>
+                    <strong>Nothing scheduled right now</strong>
+                    {companyPhone && "Want to book a visit? Give us a call."}
+                  </p>
+                  {companyPhone && (
+                    <a className="portal-call-btn" href={`tel:${companyPhone.replace(/[^\d+]/g, "")}`}>
+                      📞 {companyPhone}
+                    </a>
+                  )}
+                </div>
               ) : (
                 upcoming.map((ev) => (
                   <div key={ev.id} className="portal-appt">
@@ -452,7 +587,9 @@ export function PortalHome({
 
             {past.length > 0 && (
               <section className="portal-card">
-                <h2 className="portal-card-title">Past appointments</h2>
+                <CardHead icon="calendar" tone="slate">
+                  Past appointments
+                </CardHead>
                 {past.map((ev) => (
                   <div key={ev.id} className="portal-appt portal-appt-past">
                     <div className="portal-appt-when">
@@ -474,27 +611,38 @@ export function PortalHome({
                 meant to remove. Expired ones never reach here. */}
             {documents.length > 0 && (
               <section className="portal-card">
-                <h2 className="portal-card-title">Licence &amp; insurance</h2>
-                <p className="portal-empty" style={{ marginTop: 0 }}>
-                  {companyName} is licensed and insured. Tap to open or download.
+                <CardHead icon="shieldCheck" tone="amber">
+                  Licence &amp; insurance
+                </CardHead>
+                <p className="portal-trust">
+                  {companyName} is licensed and insured. Tap any document to open it.
                 </p>
-                {documents.map((d) => (
-                  <a
-                    key={d.id}
-                    className="portal-doc"
-                    href={d.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <span className="portal-doc-icon" aria-hidden="true">
-                      {d.kind === "insurance" ? "🛡" : "📜"}
-                    </span>
-                    <span>
-                      <span className="portal-doc-title">{d.title}</span>
-                      <span className="portal-doc-kind">{docKindLabel(d.kind)}</span>
-                    </span>
-                  </a>
-                ))}
+                <div className="portal-docs">
+                  {documents.map((d) => {
+                    const insurance = d.kind === "insurance";
+                    return (
+                      <a
+                        key={d.id}
+                        className={insurance ? "portal-doc portal-doc-ins" : "portal-doc"}
+                        href={d.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <PortalIcon
+                          name={insurance ? "shield" : "badge"}
+                          tone={insurance ? "blue" : "amber"}
+                        />
+                        <span className="portal-doc-text">
+                          <span className="portal-doc-title">{d.title}</span>
+                          <span className="portal-doc-kind">{docKindLabel(d.kind)}</span>
+                        </span>
+                        <span className="portal-doc-go" aria-hidden="true">
+                          ›
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
               </section>
             )}
           </>
@@ -502,7 +650,9 @@ export function PortalHome({
 
         {tab === "Photos" && (
           <section className="portal-card">
-            <h2 className="portal-card-title">Photos &amp; documents</h2>
+            <CardHead icon="photo" tone="violet">
+              Photos &amp; documents
+            </CardHead>
             <label
               className={`portal-upload${dragOver ? " drag-over" : ""}`}
               {...dropProps}
@@ -593,7 +743,9 @@ export function PortalHome({
 
         {tab === "Messages" && (
           <section className="portal-card">
-            <h2 className="portal-card-title">Messages</h2>
+            <CardHead icon="chat" tone="blue">
+              Messages
+            </CardHead>
             {messages.length === 0 ? (
               <p className="portal-empty">No messages yet — send us a note below.</p>
             ) : (
@@ -646,38 +798,43 @@ export function PortalHome({
           when at least one profile is filled in on the admin side. */}
       {socialLinks.length > 0 && (
         <footer className="portal-footer">
-          <span className="portal-footer-title">Follow {companyName}</span>
-          <div className="portal-footer-links">
-            {socialLinks.map((l) => (
+          <div className="portal-footer-card">
+            <span className="portal-footer-title">Follow {companyName}</span>
+            <div className="portal-footer-links">
+              {socialLinks.map((l) => (
+                <a
+                  key={l.label}
+                  href={l.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={socialLinkClass(l.label)}
+                >
+                  {l.label}
+                </a>
+              ))}
+            </div>
+            {/* Five stars as the sign-off. When a Google Reviews link is
+                on file they take the customer straight there -- the person
+                most likely to tap five stars is one who means it. */}
+            {reviewHref ? (
               <a
-                key={l.label}
-                href={l.href}
+                href={reviewHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="portal-social-link"
+                className="portal-footer-stars"
+                aria-label="Leave us a five-star review"
               >
-                {l.label}
+                ★★★★★
+                <span className="portal-footer-stars-note">
+                  Happy with us? Tap the stars to leave a review.
+                </span>
               </a>
-            ))}
+            ) : (
+              <div className="portal-footer-stars" aria-hidden="true">
+                ★★★★★
+              </div>
+            )}
           </div>
-          {/* Five stars as the sign-off. When a Google Reviews link is
-              on file they take the customer straight there -- the person
-              most likely to tap five stars is one who means it. */}
-          {reviewHref ? (
-            <a
-              href={reviewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="portal-footer-stars"
-              aria-label="Leave us a five-star review"
-            >
-              ★★★★★
-            </a>
-          ) : (
-            <div className="portal-footer-stars" aria-hidden="true">
-              ★★★★★
-            </div>
-          )}
         </footer>
       )}
       <footer className="site-footer">
