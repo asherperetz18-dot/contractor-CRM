@@ -158,6 +158,8 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
               .from("estimates")
               .select("id, doc_number, title, signed_at")
               .eq("company_id", companyId)
+              // An invoice is issued, not signed by anyone.
+              .neq("kind", "invoice")
               .gt("signed_at", since);
             if (ownDocsOnly) q = q.eq("assigned_to", me);
             return q.order("signed_at", { ascending: false }).limit(PER_KIND);

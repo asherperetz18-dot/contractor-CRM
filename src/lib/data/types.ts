@@ -2534,7 +2534,11 @@ export function phaseReceivableCents(
 export function computeProjectRollup(input: {
   contractTotalCents: number;
   signedChangeOrderCents: number;
-  /** Settled payments against the contract and its change orders. */
+  /** Issued invoices on the job (a permit fee billed back). Not a sale,
+   *  so not in sold -- but owed, so part of what "% collected" is of. */
+  invoicedCents?: number;
+  /** Settled payments against the contract, its change orders and its
+   *  invoices. */
   payments: Pick<PortalPayment, "status" | "amount_cents">[];
   /** Billed and unpaid, from phaseReceivableCents -- computed there, not
    *  here, because it needs the phase-by-phase payment filing that this
@@ -2568,7 +2572,10 @@ export function computeProjectRollup(input: {
     // is not money the owner can spend.
     netCashCents: collectedCents - costCents - (commissionCents ?? 0),
     unattributedCostCents: unattributed,
-    collectedPct: soldCents ? (collectedCents / soldCents) * 100 : null,
+    collectedPct:
+      soldCents + (input.invoicedCents ?? 0)
+        ? (collectedCents / (soldCents + (input.invoicedCents ?? 0))) * 100
+        : null,
   };
 }
 
@@ -3003,7 +3010,7 @@ export function leadDisplayName(l: {
  * quoted. Narrower than the full row on purpose: the calendar loads these
  * for every lead in the company, and it only ever shows a line per one.
  */
-export type EstimateKind = "contract" | "change_order" | "completion";
+export type EstimateKind = "contract" | "change_order" | "completion" | "invoice";
 
 /**
  * Whether a document's total is money the business has sold.

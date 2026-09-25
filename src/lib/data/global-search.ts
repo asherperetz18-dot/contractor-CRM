@@ -10,6 +10,7 @@ import {
   type PipelineStageRow,
   type VendorBill,
 } from "./types.ts";
+import { documentStatusLabel } from "./invoices.ts";
 
 /**
  * The pure half of the topbar's "Search for Anything": given rows the
@@ -91,6 +92,7 @@ const EVENT_STATUS_COLORS: Record<string, string> = {
 function docKindLabel(kind: string | null | undefined): string | null {
   if (kind === "change_order") return "Change order";
   if (kind === "completion") return "Completion";
+  if (kind === "invoice") return "Invoice";
   return null;
 }
 
@@ -247,7 +249,9 @@ export function buildSearchGroups(
           [client ? leadDisplayName(client) : null, e.job_address ?? client?.address ?? null]
             .filter(Boolean)
             .join(" · ") || null,
-        badge: kindLabel ? `${kindLabel} · ${e.status}` : e.status,
+        badge: kindLabel
+          ? `${kindLabel} · ${documentStatusLabel(e.kind, e.status)}`
+          : e.status,
         color: DOC_STATUS_COLORS[e.status] ?? NEUTRAL,
         href: `/estimates/${e.id}`,
       };

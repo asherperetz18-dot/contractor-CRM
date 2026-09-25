@@ -25,6 +25,7 @@ import {
   type SalesTeamSnapshot,
 } from "@/lib/data/sales-team-changes";
 import { type PayoutKind } from "@/lib/data/commission-payouts";
+import { addsToContractValue } from "@/lib/data/invoices";
 
 export type SalesTeam = {
   sales_rep_1: string | null;
@@ -593,11 +594,12 @@ export async function getRepCommissions(opts?: {
   for (const c of contracts) {
     // Change orders are extra work on the same job and belong in the same
     // calculation, so their value joins the contract's. The completion
-    // certificate is a child of the contract too but carries no money,
-    // so it is excluded by kind rather than relying on its zero total.
+    // certificate carries no money, and an invoice is a cost billed back
+    // (a permit fee) -- not work sold -- so neither adds (owner's call:
+    // an invoice never raises commission).
     const children = estimates.filter((e) => e.parent_estimate_id === c.id);
     const changeOrderCents = children
-      .filter((e) => e.status === "Signed" && (e.kind ?? "contract") !== "completion")
+      .filter((e) => addsToContractValue(e))
       .reduce((s, e) => s + e.total_cents, 0);
     const contractCents = c.total_cents + changeOrderCents;
 
@@ -608,7 +610,9 @@ export async function getRepCommissions(opts?: {
     // lead's costs here would count one receipt against every contract
     // that customer holds -- five, on one of these leads -- and on this
     // report that is somebody's pay.
-    const docIds = new Set([c.id, ...children.map((e) => e.id)]);
+    // Not invoices: a paid permit fee must not count toward the contract
+    // being paid off, or the hold below releases early.
+    const docIds = new Set([c.id, ...children.filter((e) => e.kind !== "invoice").map((e) => e.id)]);
     const contractPhaseIds = new Set(
       phases.filter((p) => docIds.has(p.estimate_id)).map((p) => p.id)
     );

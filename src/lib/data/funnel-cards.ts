@@ -46,12 +46,15 @@ export function effectiveEstimateStatus(
 /**
  * One card or another, never both. Each card counts only its own kind,
  * so a change order cannot be tallied as a contract; completion
- * certificates are attachments to a contract too.
+ * certificates are attachments to a contract too. Invoices (a permit
+ * fee billed back) sit on no card: they are money owed, not a sale or
+ * an amendment to one, and live on Payments and Money to Collect.
  */
 export function inFunnelBucket(
   e: Pick<Estimate, "kind" | "status" | "expires_at">,
   key: FunnelCardKey
 ): boolean {
+  if (e.kind === "invoice") return false;
   return key === "co_pending"
     ? isPendingChangeOrder(e)
     : (key === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&

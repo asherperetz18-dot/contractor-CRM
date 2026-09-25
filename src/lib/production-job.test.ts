@@ -39,6 +39,10 @@ test("change orders and completion certificates never create a job", () => {
   assert.equal(productionJobRow({ ...CONTRACT, kind: "completion" }, LEAD, false), null);
 });
 
+test("an invoice (a permit fee billed back) never creates a job", () => {
+  assert.equal(productionJobRow({ ...CONTRACT, kind: "invoice" }, LEAD, false), null);
+});
+
 test("a lead that already has a job gets no second one", () => {
   assert.equal(productionJobRow(CONTRACT, LEAD, true), null);
 });
@@ -95,6 +99,10 @@ test("backfill skips change orders, completions and leadless documents", () => {
     new Set()
   );
   assert.deepEqual(seeds, []);
+});
+
+test("backfill skips invoices: a customer billed a permit fee isn't a new job", () => {
+  assert.deepEqual(backfillSeeds([signedDoc({ id: "e1", kind: "invoice" })], new Set()), []);
 });
 
 test("two signed contracts on one lead seed one job, the latest signature naming it", () => {

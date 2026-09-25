@@ -56,10 +56,10 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
   const [{ data: estimates }, { data: payments }] = await Promise.all([
     supabase
       .from("estimates")
-      .select("id, lead_id, doc_number, title, status, total_cents")
+      .select("id, lead_id, doc_number, title, status, total_cents, kind")
       .eq("company_id", profile.company_id)
       .order("created_at", { ascending: false })
-      .returns<(LeadEstimateSummaryRow & { lead_id: string | null })[]>(),
+      .returns<(LeadEstimateSummaryRow & { lead_id: string | null; kind: string | null })[]>(),
     supabase
       .from("portal_payments")
       .select("estimate_id, amount_cents, status")
@@ -80,6 +80,11 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
   for (const e of rows) {
     if (!e.lead_id) continue;
     const entry = byLead[e.lead_id] ?? { estimates: [], paidCents: 0 };
+    entry.paidCents += paidTotalCents((paidByEstimate.get(e.id) ?? []) as never);
+    byLead[e.lead_id] = entry;
+    // An invoice's money counts as paid, but it isn't an estimate to
+    // open from the lead card -- that chip must still start one.
+    if (e.kind === "invoice") continue;
     entry.estimates.push({
       id: e.id,
       doc_number: e.doc_number,
@@ -87,8 +92,6 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
       status: e.status,
       total_cents: e.total_cents,
     });
-    entry.paidCents += paidTotalCents((paidByEstimate.get(e.id) ?? []) as never);
-    byLead[e.lead_id] = entry;
   }
 
   return { byLead, canView: true, canCreate: canCreateEstimates(profile) };

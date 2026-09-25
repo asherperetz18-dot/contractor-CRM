@@ -140,6 +140,11 @@ test("a change order says so on its badge instead of posing as a contract", () =
   assert.equal(group(groups, "Estimates & contracts")?.hits[0].badge, "Change order · Draft");
 });
 
+test("an invoice says so on its badge, issued rather than signed", () => {
+  const groups = run("1089", { estimates: [estimate({ kind: "invoice", status: "Signed" })] });
+  assert.equal(group(groups, "Estimates & contracts")?.hits[0].badge, "Invoice · Issued");
+});
+
 test("an appointment is found by its title and routes to the calendar deep link", () => {
   const hit = group(run("walkthrough"), "Appointments")?.hits[0];
   assert.ok(hit);
