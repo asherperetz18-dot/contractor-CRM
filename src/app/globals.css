@@ -10131,6 +10131,309 @@ textarea.est-item-desc:disabled {
   white-space: nowrap;
 }
 
+/* Projects: a job's Transactions list, opened under its row. Money in
+   is green, money out red, still owed amber -- the chip meanings. */
+.jl-disclose {
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: 1px;
+}
+.jl-disclose.open {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+/* A money figure that opens its lines: reads as a link, stays aligned. */
+.jl-figure {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--blueprint);
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.jl-figure:hover {
+  text-decoration-style: solid;
+}
+.proj-ledger-row > td {
+  background: #faf8f4;
+  border-top: 1px solid var(--line);
+  padding: 14px 16px 18px;
+}
+.jl {
+  display: grid;
+  gap: 12px;
+  max-width: 1040px;
+  /* The Projects table scrolls sideways under 900px and this row spans
+     all of it: pinned to the left edge and held to the screen's width,
+     the list stays in view while the table scrolls behind it. */
+  position: sticky;
+  left: 0;
+}
+@media (max-width: 900px) {
+  .jl {
+    width: calc(100vw - 60px);
+  }
+}
+@media (max-width: 1100px) {
+  .jl-table .jl-act {
+    width: 150px;
+    white-space: normal;
+  }
+  .jl-row-actions {
+    flex-wrap: wrap;
+  }
+}
+.jl-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.jl-filters,
+.jl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.jl-filt {
+  font: 500 12.5px/1 var(--font-body);
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.jl-filt b {
+  font-family: var(--font-data);
+  font-weight: 500;
+  margin-left: 4px;
+}
+.jl-filt.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.jl-add-in {
+  color: #2f855a;
+  border: 1px dashed #9fceb4;
+}
+.jl-add-out {
+  color: #c0392b;
+  border: 1px dashed #e2b4ae;
+}
+.jl-box {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.jl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.jl-table th {
+  text-align: left;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ink-soft);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.jl-table td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+}
+.jl-table th.jl-amt,
+.jl-table td.jl-amt {
+  text-align: right;
+  white-space: nowrap;
+}
+.jl-table .jl-date {
+  width: 76px;
+  white-space: nowrap;
+}
+.jl-table .jl-type {
+  width: 124px;
+}
+.jl-table .jl-rcpt {
+  width: 64px;
+}
+.jl-table .jl-act {
+  width: 1%;
+  white-space: nowrap;
+}
+.jl-month td {
+  background: #faf8f4;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 7px 12px;
+}
+.jl-kind {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.jl-k-in {
+  color: #2f855a;
+  background: #e8f5ee;
+}
+.jl-k-out {
+  color: #c0392b;
+  background: #fdeeec;
+}
+.jl-k-owed {
+  color: #8a6400;
+  background: #fdf3d8;
+}
+.jl-what b {
+  display: block;
+  font-weight: 600;
+}
+.jl-what span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.jl-amt-in {
+  color: #2f855a;
+}
+.jl-amt-out {
+  color: #c0392b;
+}
+.jl-amt-owed {
+  color: #8a6400;
+}
+.jl-none {
+  color: var(--ink-soft);
+}
+.jl-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.jl-billed {
+  font-size: 11.5px;
+  color: #2f855a;
+  white-space: nowrap;
+}
+.jl-record td {
+  background: #faf8f4;
+}
+.jl-totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 22px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.jl-totals b {
+  font-family: var(--font-data);
+  font-weight: 500;
+  margin-left: 4px;
+}
+.jl-net b {
+  font-weight: 700;
+  color: var(--ink);
+}
+/* Phone: each line is a card -- what and amount on top, its type,
+   date, receipt and actions underneath -- so the amount never scrolls
+   off the side. */
+@media (max-width: 700px) {
+  .proj-ledger-row > td {
+    padding: 12px 10px 14px;
+  }
+  .jl-table thead {
+    display: none;
+  }
+  .jl-table,
+  .jl-table tbody {
+    display: block;
+  }
+  .jl-table tr.jl-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--line);
+  }
+  .jl-table tr.jl-row td {
+    border: 0;
+    padding: 0;
+    width: auto;
+  }
+  /* What + amount fill the first line, so the rest wraps under them. */
+  .jl-table tr.jl-row .jl-what {
+    order: 1;
+    flex: 1 0 calc(100% - 128px);
+    min-width: 0;
+  }
+  .jl-table tr.jl-row .jl-amt {
+    order: 2;
+    flex: 0 0 120px;
+    align-self: flex-start;
+  }
+  .jl-table tr.jl-row .jl-date {
+    order: 3;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .jl-table tr.jl-row .jl-type {
+    order: 4;
+  }
+  .jl-table tr.jl-row .jl-rcpt {
+    order: 5;
+  }
+  .jl-table tr.jl-row .jl-rcpt:has(.jl-none) {
+    display: none;
+  }
+  .jl-table tr.jl-row .jl-act {
+    order: 6;
+    white-space: normal;
+  }
+  .jl-table tr.jl-month,
+  .jl-table tr.jl-record {
+    display: block;
+  }
+  .jl-table tr.jl-month td,
+  .jl-table tr.jl-record td {
+    display: block;
+    border-top: 1px solid var(--line);
+  }
+  .jl-row-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .jl-totals {
+    justify-content: flex-start;
+  }
+}
+
 /* Invoice page (office side): three figures, the lines, the payments. */
 .inv-stats {
   grid-template-columns: repeat(3, 1fr);

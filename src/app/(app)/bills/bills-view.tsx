@@ -855,7 +855,7 @@ export function PaymentModal({
  * supply-house counter. They never were a bill, so they have no Pay or
  * Void; Edit fixes or deletes the cost itself (QuickBooks rows stay
  * locked -- the next sync would overwrite them). Listed so the Paid tab
- * holds every dollar paid out, the same rows the project's Bills window
+ * holds every dollar paid out, the same rows a project's Transactions list
  * shows under Paid.
  */
 function PaidOnEntry({

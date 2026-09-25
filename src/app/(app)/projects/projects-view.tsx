@@ -17,7 +17,8 @@ import { jobChipClass } from "@/lib/job-chips";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
-import { JobReceipts } from "./job-receipts";
+import { JobLedger } from "./job-ledger";
+import { toggleLedger, type LedgerFilter } from "@/lib/data/job-ledger";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
@@ -139,6 +140,39 @@ function writeVisibleColumns(next: Set<OptionalColumnKey>) {
   columnListeners.forEach((cb) => cb());
 }
 
+// Which rows have their Transactions list open (and on which filter),
+// remembered in this browser -- the same store shape as the columns.
+const LEDGERS_STORAGE_KEY = "projects-open-transactions";
+const ledgerListeners = new Set<() => void>();
+let ledgersMemory = "{}";
+
+function getOpenLedgersSnapshot(): string {
+  try {
+    return window.localStorage.getItem(LEDGERS_STORAGE_KEY) ?? ledgersMemory;
+  } catch {
+    return ledgersMemory;
+  }
+}
+
+function getServerLedgersSnapshot(): string {
+  return "{}";
+}
+
+function subscribeLedgers(callback: () => void): () => void {
+  ledgerListeners.add(callback);
+  return () => ledgerListeners.delete(callback);
+}
+
+function writeOpenLedgers(next: Record<string, LedgerFilter>) {
+  ledgersMemory = JSON.stringify(next);
+  try {
+    window.localStorage.setItem(LEDGERS_STORAGE_KEY, ledgersMemory);
+  } catch {
+    // Kept in memory for this visit.
+  }
+  ledgerListeners.forEach((cb) => cb());
+}
+
 /**
  * Sold jobs, worst first.
  *
@@ -235,11 +269,23 @@ export function ProjectsView({
     "any" | { leadId: string; estimateId: string } | null
   >(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
-  const [receiptsFor, setReceiptsFor] = useState<{
-    leadId: string;
-    estimateId: string;
-    label: string;
-  } | null>(null);
+  const openLedgersRaw = useSyncExternalStore(
+    subscribeLedgers,
+    getOpenLedgersSnapshot,
+    getServerLedgersSnapshot
+  );
+  const openLedgers = useMemo(() => {
+    try {
+      return JSON.parse(openLedgersRaw) as Record<string, LedgerFilter>;
+    } catch {
+      return {} as Record<string, LedgerFilter>;
+    }
+  }, [openLedgersRaw]);
+  // Opens a row's Transactions list on a filter; the same click closes it.
+  const showLedger = (estimateId: string, filter: LedgerFilter) =>
+    writeOpenLedgers(toggleLedger(openLedgers, estimateId, filter));
+  // Bumped after a bill or invoice is saved, so open lists re-read.
+  const [ledgerReload, setLedgerReload] = useState(0);
   const [changeOrdersFor, setChangeOrdersFor] = useState<ProjectCard | null>(null);
   const [invoicesFor, setInvoicesFor] = useState<ProjectCard | null>(null);
   // The New invoice window: this job, and the cost it starts from when
@@ -478,7 +524,10 @@ export function ProjectsView({
           initialEstimateId={receiptFor === "any" ? undefined : receiptFor.estimateId}
           canBills={canBills}
           defaultPaid
-          onClose={() => setReceiptFor(null)}
+          onClose={() => {
+            setReceiptFor(null);
+            setLedgerReload((n) => n + 1);
+          }}
         />
       )}
       {photosFor && (
@@ -489,24 +538,6 @@ export function ProjectsView({
           canUpload={canUploadPhotos}
           canFile={canFileDocs}
           onClose={() => setPhotosFor(null)}
-        />
-      )}
-      {receiptsFor && (
-        <JobReceipts
-          leadId={receiptsFor.leadId}
-          estimateId={receiptsFor.estimateId}
-          jobLabel={receiptsFor.label}
-          canEdit={canEditCosts}
-          jobs={jobOptionsFromProjects(sorted)}
-          onBillToClient={
-            canInvoice
-              ? (costId) => {
-                  setInvoiceFor({ leadId: receiptsFor.leadId, estimateId: receiptsFor.estimateId, costId });
-                  setReceiptsFor(null);
-                }
-              : undefined
-          }
-          onClose={() => setReceiptsFor(null)}
         />
       )}
       {documentsFor && (
@@ -527,6 +558,7 @@ export function ProjectsView({
           onIssued={({ note }) => {
             setInvoiceFor(null);
             setInvoiceNote(note);
+            setLedgerReload((n) => n + 1);
             router.refresh();
           }}
         />
@@ -896,6 +928,19 @@ export function ProjectsView({
                 <React.Fragment key={p.estimateId}>
                 <tr>
                   <td>
+                    {canSeeDocChips && (
+                      /* Every dollar on the job, opened under this row. */
+                      <button
+                        type="button"
+                        className={"jl-disclose" + (openLedgers[p.estimateId] ? " open" : "")}
+                        aria-expanded={!!openLedgers[p.estimateId]}
+                        aria-label={openLedgers[p.estimateId] ? "Hide transactions" : "Show transactions"}
+                        title={openLedgers[p.estimateId] ? "Hide transactions" : "Show every transaction on this job"}
+                        onClick={() => showLedger(p.estimateId, openLedgers[p.estimateId] ?? "all")}
+                      >
+                        {openLedgers[p.estimateId] ? "▾" : "▸"}
+                      </button>
+                    )}
                     <Link href={`/estimates/${p.estimateId}`} className="ur-name">
                       {p.title || "Untitled job"}
                     </Link>
@@ -1023,9 +1068,8 @@ export function ProjectsView({
                           <button
                             type="button"
                             className={jobChipClass("bills")}
-                            onClick={() =>
-                              setReceiptsFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })
-                            }
+                            aria-expanded={openLedgers[p.estimateId] === "out"}
+                            onClick={() => showLedger(p.estimateId, "out")}
                           >
                             🧾 Bills
                           </button>
@@ -1160,7 +1204,15 @@ export function ProjectsView({
                   )}
                   <td className="right mono">{moneyCents(p.rollup.soldCents)}</td>
                   <td className="right mono">
-                    {moneyCents(p.rollup.collectedCents)}
+                    {/* Each money figure opens the Transactions list on
+                        the lines that make it up. */}
+                    <LedgerFigure
+                      enabled={canSeeDocChips && p.rollup.collectedCents > 0}
+                      label="Show the payments"
+                      onClick={() => showLedger(p.estimateId, "in")}
+                    >
+                      {moneyCents(p.rollup.collectedCents)}
+                    </LedgerFigure>
                     {p.rollup.collectedPct !== null && (
                       <div className="est-tax-note">
                         {p.rollup.collectedPct.toFixed(0)}% of sold
@@ -1168,16 +1220,46 @@ export function ProjectsView({
                     )}
                   </td>
                   <td className="right mono">
-                    {p.rollup.receivableCents ? moneyCents(p.rollup.receivableCents) : "—"}
+                    {p.rollup.receivableCents ? (
+                      <LedgerFigure
+                        enabled={canSeeDocChips}
+                        label="Show what's owed"
+                        onClick={() => showLedger(p.estimateId, "owed")}
+                      >
+                        {moneyCents(p.rollup.receivableCents)}
+                      </LedgerFigure>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="right mono">
                     {/* Filed against the job, money not yet out. Its own
                         column (it used to be a note under Spent) because
                         it is the difference between the two nets. */}
-                    {p.unpaidBillsCents ? moneyCents(p.unpaidBillsCents) : "—"}
+                    {p.unpaidBillsCents ? (
+                      <LedgerFigure
+                        enabled={canSeeDocChips}
+                        label="Show the unpaid bills"
+                        onClick={() => showLedger(p.estimateId, "owed")}
+                      >
+                        {moneyCents(p.unpaidBillsCents)}
+                      </LedgerFigure>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="right mono">
-                    {p.rollup.costCents ? moneyCents(p.rollup.costCents) : "—"}
+                    {p.rollup.costCents ? (
+                      <LedgerFigure
+                        enabled={canSeeDocChips}
+                        label="Show what was spent"
+                        onClick={() => showLedger(p.estimateId, "out")}
+                      >
+                        {moneyCents(p.rollup.costCents)}
+                      </LedgerFigure>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="right mono">
                     {/* Commission actually paid or advanced on this job
@@ -1220,6 +1302,35 @@ export function ProjectsView({
                     )}
                   </td>
                 </tr>
+                {canSeeDocChips && openLedgers[p.estimateId] && (
+                  <tr className="proj-ledger-row">
+                    <td colSpan={10 + visibleColumns.size}>
+                      <JobLedger
+                        estimateId={p.estimateId}
+                        filter={openLedgers[p.estimateId]}
+                        onFilter={(f) => writeOpenLedgers({ ...openLedgers, [p.estimateId]: f })}
+                        totals={{
+                          collectedCents: p.rollup.collectedCents,
+                          spentCents: p.rollup.costCents,
+                          netCashCents: p.rollup.netCashCents,
+                          owedCents: p.rollup.receivableCents,
+                          billsUnpaidCents: p.unpaidBillsCents,
+                        }}
+                        canInvoice={canInvoice && p.status !== "cancelled"}
+                        canEditCosts={canEditCosts}
+                        canAddCosts={canAddCosts && p.status !== "cancelled"}
+                        canRecord={canBills}
+                        jobs={jobOptionsFromProjects(sorted)}
+                        reloadKey={ledgerReload}
+                        onInvoice={() => setInvoiceFor({ leadId: p.leadId, estimateId: p.estimateId })}
+                        onAddBill={() => setReceiptFor({ leadId: p.leadId, estimateId: p.estimateId })}
+                        onBillToClient={(costId) =>
+                          setInvoiceFor({ leadId: p.leadId, estimateId: p.estimateId, costId })
+                        }
+                      />
+                    </td>
+                  </tr>
+                )}
                 {openChecklists.has(p.estimateId) && (
                   <tr className="proj-checklist-row">
                     <td colSpan={10 + visibleColumns.size}>
@@ -1242,5 +1353,25 @@ export function ProjectsView({
         </div>
       )}
     </>
+  );
+}
+
+/** A money figure on a project row that opens the lines behind it. */
+function LedgerFigure({
+  enabled,
+  label,
+  onClick,
+  children,
+}: {
+  enabled: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  if (!enabled) return <>{children}</>;
+  return (
+    <button type="button" className="jl-figure" title={label} onClick={onClick}>
+      {children}
+    </button>
   );
 }

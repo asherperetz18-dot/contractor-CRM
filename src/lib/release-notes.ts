@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.0",
+    date: "2026-09-25",
+    notes: [
+      "Projects: every dollar on a job now opens right under its row. Click the ▸ next to the job name to see payments in, bills and costs out, and what's still owed on one timeline, grouped by month, with the receipts.",
+      "Click Collected, Owed, Bills unpaid or Spent on a row to see just the lines behind that number. The 🧾 Bills chip now opens this list on the money going out, instead of a pop-up window.",
+      "From the list you can Record payment on anything owed, Bill to client or ✎ Edit a cost, and add a bill or an invoice. The totals at the bottom always match the row.",
+      "The printed project report (internal copy) now lists all transactions on one timeline too. The client copy is unchanged.",
+    ],
+  },
+  {
     version: "1.157.2",
     date: "2026-09-25",
     notes: [
