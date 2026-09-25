@@ -2250,9 +2250,27 @@ export type PortalPayment = {
   /** Cheque number or transfer reference on a hand-recorded payment.
       Optional because most call sites don't select it. */
   reference?: string | null;
+  /** Set on every portal checkout; null on a hand-recorded payment. */
+  stripe_session_id?: string | null;
+  /** Set once Stripe checkout completes. Optional: few call sites select it. */
+  stripe_payment_intent_id?: string | null;
   paid_at: string | null;
   created_at: string;
 };
+
+/**
+ * A Stripe checkout the customer opened but never finished. The portal
+ * records a pending row the moment Pay is clicked, before any money
+ * moves, and only Stripe's expiry (a day later) cancelled it -- so a
+ * customer who backed out read "Clearing" with no Pay button. A checkout
+ * that did complete (ACH in flight) carries its payment intent; a
+ * hand-recorded pending cheque has no session at all.
+ */
+export function isUnfinishedCheckout(
+  p: Pick<PortalPayment, "status" | "stripe_session_id" | "stripe_payment_intent_id">
+): boolean {
+  return p.status === "pending" && !!p.stripe_session_id && !p.stripe_payment_intent_id;
+}
 
 /** Only settled money counts. A pending ACH transfer has not arrived. */
 export function paidTotalCents(payments: Pick<PortalPayment, "status" | "amount_cents">[]): number {

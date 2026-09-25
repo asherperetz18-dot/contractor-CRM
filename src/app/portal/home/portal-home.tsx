@@ -63,6 +63,8 @@ export type PortalEstimate = {
   deposit_cents: number | null;
   depositPaid: boolean;
   amountDueCents: number;
+  /** Billed progress phases not yet paid (completion, rough-in...). */
+  phaseDueCents: number;
 };
 
 /** A bill for an extra on the job (a permit fee). */
@@ -505,6 +507,8 @@ export function PortalHome({
                             unsigned for a week. */}
                         {e.status !== "Signed" && e.status !== "Declined" ? (
                           <span className="portal-est-sign-btn">Review &amp; Sign →</span>
+                        ) : money?.tone === "amber" ? (
+                          <span className="portal-est-sign-btn">Pay →</span>
                         ) : (
                           <span className="portal-est-go">View →</span>
                         )}

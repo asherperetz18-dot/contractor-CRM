@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.157.1",
+    date: "2026-09-25",
+    notes: [
+      "Fix: a customer with the deposit paid and a later payment billed (like completion) now sees it on their portal home — an amber \"$6,570.00 due\" chip and a Pay → button, instead of a green \"Deposit paid\" that made it look like nothing was owed.",
+      "On the customer's contract page, a payment that's due now sits at the top, above the contract, instead of at the very bottom.",
+      "Fix: a customer who opened the card page and backed out can pay again right away. Before, their Pay button turned into \"Bank transfer in progress\" for a full day.",
+    ],
+  },
+  {
     version: "1.157.0",
     date: "2026-09-25",
     notes: [
