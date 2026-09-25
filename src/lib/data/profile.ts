@@ -16,6 +16,8 @@ export type Profile = {
   can_create_estimates: boolean;
   // Send Estimates switch -- see canSendEstimates in data/types.
   can_send_estimates: boolean;
+  // Send Without Approval -- see approvalOnSend in estimate-approval-gate.
+  can_send_without_approval: boolean;
   // The two Accounting switches -- see canViewFinancials and
   // canViewProfitLoss in data/accounting-access. Note these default OFF
   // where can_send_estimates above defaults ON: an ability nobody had
@@ -160,6 +162,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_view_estimates: boolean;
     can_create_estimates: boolean;
     can_send_estimates?: boolean;
+    can_send_without_approval?: boolean;
     can_view_financials?: boolean;
     can_view_profit_loss?: boolean;
     is_dispatch_supervisor: boolean;
@@ -177,6 +180,9 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     can_create_estimates: membership.can_create_estimates,
     // Default true, matching the column: only an explicit false restricts.
     can_send_estimates: membership.can_send_estimates !== false,
+    // Default FALSE, matching the column (0179): only an explicit true
+    // skips the approval wait, so before the migration runs nobody does.
+    can_send_without_approval: membership.can_send_without_approval === true,
     // Default FALSE, matching columns added in 0127: only an explicit
     // true grants. Before that migration runs both read as undefined,
     // and undefined is off -- which costs nobody anything, because the

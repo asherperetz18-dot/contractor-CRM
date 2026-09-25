@@ -36,6 +36,11 @@ export type Profile = {
   // customer, or only build drafts for the office to send. On by default
   // -- the owner switches it off per person in Users & Roles.
   can_send_estimates: boolean;
+  // Send Without Approval (0179): while the company requires estimate
+  // approval, this person's sends approve themselves, in their name.
+  // Off by default; only an Admin can switch it. Optional so a profile
+  // read before 0179 has run (or a test fixture) reads as off.
+  can_send_without_approval?: boolean;
   // A dispatcher who runs the desk: sees every lead, enters new ones,
   // adds sources, assigns dispatchers. Only meaningful alongside the
   // Dispatch role; set per member in Users & Roles like the flags above.

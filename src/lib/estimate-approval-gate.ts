@@ -14,13 +14,35 @@
  * way, and for the same reason. The trigger stays; this stops the click
  * reaching it.
  */
-export function approvalHoldsSend(input: {
+export type ApprovalOnSend =
+  /** Nothing to check: approval is off, or someone already approved it. */
+  | "clear"
+  /** Refused until an admin approves. */
+  | "hold"
+  /** The sender holds "Send without approval": the send records the
+   *  approval in their name, so the document still says who let it go. */
+  | "self-approve";
+
+export function approvalOnSend(input: {
   /** company_profile.require_estimate_approval */
   approvalRequired: boolean;
-  /** estimates.approved_at -- null until an admin approves. */
+  /** estimates.approved_at -- null until someone approves. */
   approvedAt: string | null;
-}): boolean {
-  return input.approvalRequired && !input.approvedAt;
+  /** company_members.can_send_without_approval, for whoever pressed Send. */
+  sendsWithoutApproval: boolean;
+}): ApprovalOnSend {
+  if (!input.approvalRequired || input.approvedAt) return "clear";
+  return input.sendsWithoutApproval ? "self-approve" : "hold";
+}
+
+/** The contact-timeline line for a send that approved itself -- "who
+ *  said this could go out" is asked months later, usually when
+ *  something went wrong, same as an admin's approval note. */
+export function selfApprovalNote(docNumber: string | null, senderName: string | null): string {
+  return (
+    `${docNumber ?? "Document"} sent without waiting for an admin's approval by ` +
+    `${senderName || "a teammate"}, who is allowed to send without approval.`
+  );
 }
 
 /** What the held person reads -- says what to do, not what rule fired.

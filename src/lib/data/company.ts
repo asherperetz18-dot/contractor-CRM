@@ -16,6 +16,8 @@ type CompanyMemberRow = {
   can_create_estimates: boolean;
   // Optional until migration 0126 has run -- see the select below.
   can_send_estimates?: boolean;
+  // Optional until migration 0179 has run, same reason.
+  can_send_without_approval?: boolean;
   // Optional until migration 0127 has run, same reason.
   can_view_financials?: boolean;
   can_view_profit_loss?: boolean;
@@ -69,6 +71,7 @@ export async function getCompanyMembers(companyId: string): Promise<CompanyMembe
       can_view_estimates: row.can_view_estimates,
       can_create_estimates: row.can_create_estimates,
       can_send_estimates: row.can_send_estimates !== false,
+      can_send_without_approval: row.can_send_without_approval === true,
       // Default FALSE, unlike send above: an ability nobody had before,
       // rather than one being taken away. Undefined (0127 not yet run)
       // reads as off, which costs nobody anything -- Office, Admin and

@@ -386,6 +386,33 @@ export async function updateCanSendEstimates(
 }
 
 /**
+ * The Send Without Approval switch. While the company requires estimate
+ * approval, this person's sends approve themselves -- recorded in their
+ * name -- instead of waiting for an Admin.
+ *
+ * Admin only, like approving itself: the gate exists to check Office's
+ * sends too, so an Office user able to flip this could wave their own
+ * estimates through. Migration 0179's trigger refuses the same change in
+ * the database; this says so in plain words first.
+ */
+export async function updateCanSendWithoutApproval(
+  userId: string,
+  skip: boolean
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isStrictAdmin(profile)) {
+    return { error: "Only an Admin can change who sends without approval." };
+  }
+  return migrationHint(
+    await updateMemberFlag(userId, { can_send_without_approval: skip }),
+    "can_send_without_approval",
+    "0179_send_without_approval.sql",
+    "Send Without Approval"
+  );
+}
+
+/**
  * View Financials: Bills to Pay, Money to Collect, Payments.
  *
  * Only ever a grant. Office, Admin and Bookkeeping hold these screens by
