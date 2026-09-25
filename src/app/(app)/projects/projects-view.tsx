@@ -190,6 +190,7 @@ export function ProjectsView({
   canUploadPhotos,
   canSeeDocChips,
   canFileDocs,
+  canDeletePhotos,
   canInvoice,
   checklistReady,
   checklistItems,
@@ -213,6 +214,7 @@ export function ProjectsView({
   canSeeDocChips: boolean;
   /** Moving files between jobs: Office/Admin/Production. */
   canFileDocs: boolean;
+  canDeletePhotos: boolean;
   /** May bill the customer an invoice (the phase-billing roles). */
   canInvoice: boolean;
   checklistReady: boolean;
@@ -537,6 +539,7 @@ export function ProjectsView({
           jobLabel={photosFor.label}
           canUpload={canUploadPhotos}
           canFile={canFileDocs}
+          canDelete={canDeletePhotos}
           onClose={() => setPhotosFor(null)}
         />
       )}

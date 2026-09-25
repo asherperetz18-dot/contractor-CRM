@@ -85,7 +85,7 @@ export function VisitMedia({
 
   async function remove(f: VisitFile) {
     setBusy("Removing…");
-    const res = await deleteLeadFile(f.id, f.file_path ?? "", f.storage_provider ?? undefined);
+    const res = await deleteLeadFile(f.id);
     setBusy(null);
     if (res?.error) return setError(res.error);
     await reload();

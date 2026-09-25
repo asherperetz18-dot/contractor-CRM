@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
+import {
+  deletionRecord,
+  type DeletedLeadFileRow,
+  type LeadFileDeletion,
+} from "@/lib/data/lead-file-deletions";
 import { clientName } from "@/lib/data/client-name";
 import {
   createDriveShortcut,
@@ -11,6 +17,7 @@ import {
   getOrCreateCategoryFolder,
   getOrCreateLeadDriveFolder,
   getValidAccessToken,
+  trashFileInDrive,
   uploadBlobToDrive,
   uploadFileToDrive,
 } from "./google-drive";
@@ -345,39 +352,91 @@ export async function recordLeadFile(
   return {};
 }
 
-export async function deleteLeadFile(
-  id: string,
-  filePath: string,
-  storageProvider?: string
-): Promise<{ error?: string }> {
+export async function deleteLeadFile(id: string): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
   // Ask for the row back: an RLS refusal matches zero rows with no
   // error, and the storage object must never be removed on the say-so
-  // of a delete the table just refused.
+  // of a delete the table just refused. The row, not the caller, also
+  // says where the file lives.
   const { data: deleted, error } = await supabase
     .from("lead_files")
     .delete()
     .eq("id", id)
-    .select("id");
+    .select(
+      "id, lead_id, estimate_id, file_name, content_type, storage_provider, uploaded_by, created_at, file_path"
+    )
+    .returns<(DeletedLeadFileRow & { file_path: string | null })[]>();
   if (error) return { error: error.message };
-  if (!deleted?.length) {
+  const row = deleted?.[0];
+  if (!row) {
     return { error: "Only Office or Admin can delete files." };
   }
 
-  if (storageProvider === "google_drive") {
+  if (row.file_path && row.storage_provider === "google_drive") {
+    // Trash, not delete: Drive keeps it 30 days in case this was a mistake.
     const drive = await getValidAccessToken(profile.company_id);
-    if (drive) await deleteFileFromDrive(filePath, drive.accessToken);
-  } else {
+    if (drive) await trashFileInDrive(row.file_path, drive.accessToken);
+  } else if (row.file_path) {
     const admin = createAdminClient();
-    await admin.storage.from(BUCKET).remove([filePath]);
+    await admin.storage.from(BUCKET).remove([row.file_path]);
   }
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
+  revalidatePath("/projects");
+
+  // The delete is the fact; the history records it. A failed record
+  // must not read as a failed delete -- the file is already gone.
+  const { error: logError } = await supabase
+    .from("lead_file_deletions")
+    .insert(deletionRecord(row, profile.company_id, profile.id));
+  if (logError) {
+    return {
+      error: `Deleted, but saving it to the deletion history failed (${logError.message}). Has migration 0182 been run?`,
+    };
+  }
   return {};
+}
+
+/**
+ * The customer's deleted files, newest first, with the deleter's name
+ * resolved. Office/Admin only, the same people who can delete.
+ */
+export async function getLeadFileDeletions(leadId: string): Promise<{
+  error?: string;
+  deletions?: LeadFileDeletion[];
+  names?: Record<string, string>;
+}> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { deletions: [], names: {} };
+
+  const supabase = await createClient();
+  const [logRes, peopleRes] = await Promise.all([
+    supabase
+      .from("lead_file_deletions")
+      .select("id, estimate_id, file_name, content_type, deleted_by, deleted_at")
+      .eq("company_id", profile.company_id)
+      .eq("lead_id", leadId)
+      .order("deleted_at", { ascending: false })
+      .returns<LeadFileDeletion[]>(),
+    // The whole roster: someone who has since left must still show by
+    // name on what they deleted (AGENTS.md).
+    supabase
+      .from("profiles")
+      .select("id, name, email")
+      .returns<{ id: string; name: string | null; email: string | null }[]>(),
+  ]);
+  if (logRes.error) return { error: logRes.error.message };
+  return {
+    deletions: logRes.data ?? [],
+    names: Object.fromEntries(
+      (peopleRes.data ?? []).map((p) => [p.id, p.name || p.email || "Unnamed"])
+    ),
+  };
 }
 
 /**

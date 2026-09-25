@@ -7,6 +7,13 @@ import { FilePreview } from "@/components/ui/file-preview";
 import { driveFileId } from "@/lib/files/preview";
 import { leadPhotoThumbUrl, type LeadPhoto } from "@/lib/data/types";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
+import { deleteLeadFile, getLeadFileDeletions } from "@/lib/actions/lead-files";
+import {
+  deletePhotoConfirm,
+  describeDeletion,
+  photoDeletionsForJob,
+  type LeadFileDeletion,
+} from "@/lib/data/lead-file-deletions";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 
 /**
@@ -14,7 +21,8 @@ import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
  * so this view shows what is filed under THIS contract, and offers the
  * customer's unfiled pictures below for one-click filing -- job A's
  * demo photos never appear under job B. New uploads from here file
- * themselves under the job automatically.
+ * themselves under the job automatically. Office/Admin can delete a
+ * photo outright, and see who deleted what below the grid.
  */
 export function JobPhotos({
   leadId,
@@ -22,6 +30,7 @@ export function JobPhotos({
   jobLabel,
   canUpload,
   canFile,
+  canDelete,
   onClose,
 }: {
   leadId: string;
@@ -30,6 +39,8 @@ export function JobPhotos({
   canUpload: boolean;
   /** Moving existing files between jobs: Office/Admin/Production. */
   canFile: boolean;
+  /** Deleting a photo for good: Office/Admin, as lead_files RLS allows. */
+  canDelete: boolean;
   onClose: () => void;
 }) {
   const cameraRef = useRef<HTMLInputElement | null>(null);
@@ -37,6 +48,8 @@ export function JobPhotos({
   const [unfiled, setUnfiled] = useState<LeadPhoto[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [deletions, setDeletions] = useState<LeadFileDeletion[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const reload = useCallback(async () => {
     const res = await getJobPhotos(leadId, estimateId);
@@ -45,19 +58,35 @@ export function JobPhotos({
     setUnfiled(res.unfiled ?? []);
   }, [leadId, estimateId]);
 
+  // The history is secondary: if it can't load (say, before migration
+  // 0182 runs) the photos still show, just without it.
+  const reloadDeletions = useCallback(async () => {
+    if (!canDelete) return;
+    const res = await getLeadFileDeletions(leadId);
+    setDeletions(photoDeletionsForJob(res.deletions ?? [], estimateId));
+    setNames(res.names ?? {});
+  }, [leadId, estimateId, canDelete]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await getJobPhotos(leadId, estimateId);
+      const [res, log] = await Promise.all([
+        getJobPhotos(leadId, estimateId),
+        canDelete ? getLeadFileDeletions(leadId) : Promise.resolve(null),
+      ]);
       if (cancelled) return;
       if (res.error) setError(res.error);
       setFiled(res.filed ?? []);
       setUnfiled(res.unfiled ?? []);
+      if (log) {
+        setDeletions(photoDeletionsForJob(log.deletions ?? [], estimateId));
+        setNames(log.names ?? {});
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [leadId, estimateId]);
+  }, [leadId, estimateId, canDelete]);
 
   // Filed under THIS job at birth -- that is what the chip means.
   const uploadOne = useCallback(
@@ -86,23 +115,70 @@ export function JobPhotos({
     await reload();
   }
 
+  // Back to the customer, not gone: the photo reappears under "not
+  // filed to a job" for whichever job it belongs to.
+  async function unfile(photoId: string) {
+    setError("");
+    setBusy("Removing from job…");
+    const res = await fileDocumentUnderJob(photoId, null);
+    setBusy("");
+    if (res.error) return setError(res.error);
+    await reload();
+  }
+
+  async function remove(p: LeadPhoto) {
+    if (!confirm(deletePhotoConfirm(p.file_name, p.storage_provider))) return;
+    setError("");
+    setBusy("Deleting…");
+    const res = await deleteLeadFile(p.id);
+    setBusy("");
+    if (res.error) setError(res.error);
+    await Promise.all([reload(), reloadDeletions()]);
+  }
+
+  const nameOf = (id: string) => names[id] ?? "Unnamed";
+
   const grid = (photos: LeadPhoto[], withFileButton: boolean) => (
     <div className="jp-grid">
       {photos.map((p) => (
         <div key={p.id} className="jp-cell">
-          <FilePreview
-            block
-            file={{
-              url: p.file_url,
-              name: p.file_name,
-              contentType: p.content_type,
-              driveId: driveFileId(p),
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element -- external
-                Drive/storage URLs, sizes unknown at build time */}
-            <img src={leadPhotoThumbUrl(p)} alt={p.file_name} loading="lazy" referrerPolicy="no-referrer" />
-          </FilePreview>
+          <div className="jp-thumb">
+            <FilePreview
+              block
+              file={{
+                url: p.file_url,
+                name: p.file_name,
+                contentType: p.content_type,
+                driveId: driveFileId(p),
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- external
+                  Drive/storage URLs, sizes unknown at build time */}
+              <img src={leadPhotoThumbUrl(p)} alt={p.file_name} loading="lazy" referrerPolicy="no-referrer" />
+            </FilePreview>
+            {canDelete && (
+              <button
+                type="button"
+                className="jp-delete"
+                disabled={!!busy}
+                onClick={() => void remove(p)}
+                aria-label={`Delete ${p.file_name}`}
+                title="Delete photo"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {!withFileButton && canFile && (
+            <button
+              type="button"
+              className="btn-ghost small"
+              disabled={!!busy}
+              onClick={() => void unfile(p.id)}
+            >
+              Remove from job
+            </button>
+          )}
           {withFileButton && (
             <button
               type="button"
@@ -179,6 +255,27 @@ export function JobPhotos({
                 Other photos on this customer, not filed to a job ({unfiled.length})
               </summary>
               {grid(unfiled, true)}
+            </details>
+          )}
+          {canDelete && deletions.length > 0 && (
+            <details className="jp-unfiled">
+              <summary>Deleted photos ({deletions.length})</summary>
+              <ul className="est-team-log-list">
+                {deletions.map((d) => (
+                  <li key={d.id}>
+                    <span className="est-team-log-when">
+                      {new Date(d.deleted_at).toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>{" "}
+                    {describeDeletion(d, nameOf, estimateId)}
+                  </li>
+                ))}
+              </ul>
             </details>
           )}
         </>
