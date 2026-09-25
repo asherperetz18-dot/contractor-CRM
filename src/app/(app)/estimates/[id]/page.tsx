@@ -237,6 +237,16 @@ export default async function EstimateDetailPage({
         .maybeSingle<{ name: string | null; email: string | null }>()
     : { data: null };
 
+  // Who voided it, read from the whole roster like the rep. Only a hand
+  // void sets voided_by; a superseded version leaves it empty.
+  const { data: voider } = estimate.voided_by
+    ? await supabase
+        .from("profiles")
+        .select("name, email")
+        .eq("id", estimate.voided_by)
+        .maybeSingle<{ name: string | null; email: string | null }>()
+    : { data: null };
+
   return (
     <EstimateBuilder
       estimate={estimate}
@@ -251,6 +261,7 @@ export default async function EstimateDetailPage({
         name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,
         followsLead: repLine.followsLead,
       }}
+      voidedByName={estimate.voided_by ? voider?.name || voider?.email || "Unnamed" : null}
       canEdit={canCreateEstimates(profile)}
       // Drafts only when off: the Users & Roles "Send Estimates" switch,
       // the approval gate while it waits on an admin, and the closer's

@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.5",
+    date: "2026-09-25",
+    notes: [
+      "A voided estimate or contract now says who voided it on its yellow banner — \"Voided on 9/18/2026 by Asher Peretz — reason\".",
+    ],
+  },
+  {
     version: "1.158.4",
     date: "2026-09-25",
     notes: [

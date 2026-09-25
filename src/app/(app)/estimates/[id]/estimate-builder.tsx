@@ -52,6 +52,7 @@ import { ScopeEditor } from "./scope-editor";
 import { SectionsBar } from "./sections-bar";
 import { getEstimateGroups } from "@/lib/actions/estimate-groups";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
+import { voidBannerLead } from "@/lib/void-banner";
 
 export type BuilderLead = {
   id: string;
@@ -134,6 +135,7 @@ export function EstimateBuilder({
   changeOrderBilling = NO_CHANGE_ORDER_BILLING,
   lead,
   rep,
+  voidedByName = null,
   canEdit,
   canSend = true,
   sendHoldNote = null,
@@ -156,6 +158,8 @@ export function EstimateBuilder({
   /** The salesperson for the header. Unsigned it follows the lead, so
    *  it is changed on the lead card; signed it is who sold the job. */
   rep?: { name: string | null; followsLead: boolean };
+  /** Who voided it -- null when nobody did by hand (superseded). */
+  voidedByName?: string | null;
   canEdit: boolean;
   /** The Send Estimates switch. Off = drafts only: Save stays, everything
    *  that would put the document in front of the customer goes. */
@@ -671,12 +675,14 @@ export function EstimateBuilder({
         <div className="est-locked-banner">
           {estimate.status === "Void" ? (
             <>
-              Voided
-              {estimate.voided_at
-                ? ` on ${new Date(estimate.voided_at).toLocaleDateString("en-US")}`
-                : ""}
-              {estimate.void_reason ? ` — ${estimate.void_reason}` : ""}. The record is kept
-              deliberately; it no longer counts towards any total.
+              {voidBannerLead({
+                day: estimate.voided_at
+                  ? new Date(estimate.voided_at).toLocaleDateString("en-US")
+                  : null,
+                voidedByName,
+                reason: estimate.void_reason ?? null,
+              })}
+              . The record is kept deliberately; it no longer counts towards any total.
             </>
           ) : !canEdit ? (
             "You can view estimates but not change them. Ask an Office or Admin user for Create Estimates access."
