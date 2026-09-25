@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.157.2",
+    date: "2026-09-25",
+    notes: [
+      "Fix: Settings → Portal Payments no longer says \"Connected\" when the saved Stripe key can't be read. It now says customers can't pay online and shows the boxes to paste your Stripe keys again. Before, Settings looked fine while customers got \"Online payment isn't switched on yet.\"",
+    ],
+  },
+  {
     version: "1.157.1",
     date: "2026-09-25",
     notes: [
