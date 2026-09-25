@@ -32,6 +32,15 @@ export async function getEmailForCompany(companyId: string): Promise<CompanyEmai
     .select("email_from, email_from_name, name, resend_api_key_enc")
     .eq("company_id", companyId)
     .maybeSingle<EmailColumns>();
+  const { data: company } = await admin
+    .from("companies")
+    .select("name")
+    .eq("id", companyId)
+    .maybeSingle<{ name: string }>();
+  const sender = {
+    ...(data ?? { email_from: null, email_from_name: null, name: null }),
+    company_name: company?.name ?? null,
+  };
 
   const platform = getEmailEnv();
 
@@ -45,6 +54,6 @@ export async function getEmailForCompany(companyId: string): Promise<CompanyEmai
   if (!platform) return null;
   // No address of its own: the platform's address, under this company's
   // name -- never the platform's own display name (La Home Contractor).
-  const from = data ? companyFromHeader(data, platform.from) : platform.from;
+  const from = companyFromHeader(sender, platform.from);
   return { apiKey: platform.apiKey, from, source: "platform" };
 }

@@ -3,8 +3,10 @@
 export type CompanySenderColumns = {
   email_from: string | null;
   email_from_name: string | null;
-  /** company_profile.name */
+  /** company_profile.name -- optional, so companies.name backs it up. */
   name: string | null;
+  /** companies.name, always set. */
+  company_name?: string | null;
 };
 
 /**
@@ -32,7 +34,8 @@ function displayName(raw: string | null): string | null {
  * With its own address set (Settings → Email) it is that address, as
  * before. Without one it sends from the platform's verified address, but
  * under the company's name -- the platform's own display name is La Home
- * Contractor, and another company's customer must never see it.
+ * Contractor, and another company's customer must never see it -- not
+ * even when the company has no usable name, which sends the bare address.
  */
 export function companyFromHeader(company: CompanySenderColumns, platformFrom: string): string {
   if (company.email_from) {
@@ -40,8 +43,11 @@ export function companyFromHeader(company: CompanySenderColumns, platformFrom: s
       ? `${company.email_from_name} <${company.email_from}>`
       : company.email_from;
   }
-  const name = displayName(company.email_from_name) ?? displayName(company.name);
-  if (!name) return platformFrom;
+  const name =
+    displayName(company.email_from_name) ??
+    displayName(company.name) ??
+    displayName(company.company_name ?? null);
   const address = platformFrom.match(/<([^>]+)>\s*$/)?.[1] ?? platformFrom.trim();
-  return `${name} <${address}>`;
+  // No name at all: the bare address, never the platform's display name.
+  return name ? `${name} <${address}>` : address;
 }
