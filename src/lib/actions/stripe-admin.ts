@@ -6,7 +6,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
 import { stripeClient } from "@/lib/stripe-env";
 import { getStripeForCompany } from "@/lib/stripe-company";
-import { encryptionAvailable, encryptSecret, secretTail } from "@/lib/crypto/secrets";
+import { decryptSecret, encryptionAvailable, encryptSecret, secretTail } from "@/lib/crypto/secrets";
+import { stripeConnectionState } from "@/lib/stripe/connection-state";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
 
@@ -391,6 +392,9 @@ export async function clearCompanyStripeKeys(): Promise<{ error?: string; ok?: b
 
 export type CompanyStripeStatus = {
   connected: boolean;
+  /** A key is saved but this server can't decrypt it (APP_ENCRYPTION_KEY
+   *  changed or is missing), so the portal has no Pay button that works. */
+  unreadable: boolean;
   last4: string | null;
   mode: "test" | "live" | null;
   connectedAt: string | null;
@@ -415,8 +419,15 @@ export async function getCompanyStripeStatus(): Promise<CompanyStripeStatus | nu
       stripe_connected_at: string | null;
     }>();
 
+  // Decrypted, not just present: the portal's Pay button needs the key
+  // readable, and Settings must never say Connected when it isn't.
+  const state = stripeConnectionState(
+    data?.stripe_secret_key_enc,
+    decryptSecret(data?.stripe_secret_key_enc) !== null
+  );
   return {
-    connected: !!data?.stripe_secret_key_enc,
+    connected: state === "connected",
+    unreadable: state === "unreadable",
     last4: data?.stripe_key_last4 ?? null,
     mode: data?.stripe_key_mode ?? null,
     connectedAt: data?.stripe_connected_at ?? null,
