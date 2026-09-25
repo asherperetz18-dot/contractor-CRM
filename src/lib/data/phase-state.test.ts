@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { phaseOwedCents, phaseReceivableCents, phaseState } from "./types.ts";
+import { isUnfinishedCheckout, phaseOwedCents, phaseReceivableCents, phaseState } from "./types.ts";
 
 /**
  * phaseState used to call a phase "paid" the moment ANY settled payment
@@ -121,4 +121,27 @@ test("the Payments cards and Projects' Owed to you add up from the same arithmet
   );
   assert.equal(rowByRow, phaseReceivableCents(phases, payments));
   assert.equal(rowByRow, 650_000 + 500_000 + 460_000);
+});
+
+test("a checkout opened but never finished is not money on its way", () => {
+  assert.equal(
+    isUnfinishedCheckout({ status: "pending", stripe_session_id: "cs_1", stripe_payment_intent_id: null }),
+    true
+  );
+});
+
+test("an ACH checkout that completed is clearing money, not an abandoned checkout", () => {
+  assert.equal(
+    isUnfinishedCheckout({ status: "pending", stripe_session_id: "cs_1", stripe_payment_intent_id: "pi_1" }),
+    false
+  );
+});
+
+test("a hand-recorded pending payment (a cheque) is not a checkout at all", () => {
+  assert.equal(isUnfinishedCheckout({ status: "pending", stripe_session_id: null }), false);
+});
+
+test("settled or cancelled rows are never unfinished checkouts", () => {
+  assert.equal(isUnfinishedCheckout({ status: "succeeded", stripe_session_id: "cs_1" }), false);
+  assert.equal(isUnfinishedCheckout({ status: "cancelled", stripe_session_id: "cs_1" }), false);
 });

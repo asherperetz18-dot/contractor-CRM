@@ -12,6 +12,7 @@ import {
   type SmsMessage,
 } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
+import { billedPhaseDueCents } from "@/lib/portal/portal-display";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
 
 type EstimateRow = {
@@ -93,9 +94,19 @@ export default async function PortalHomePage() {
       .returns<EstimateRow[]>(),
     admin
       .from("portal_payments")
-      .select("estimate_id, kind, status, amount_cents")
+      .select("estimate_id, estimate_payment_id, kind, status, amount_cents, stripe_session_id, stripe_payment_intent_id")
       .eq("lead_id", viewer.lead.id)
-      .returns<{ estimate_id: string; kind: string; status: PortalPayment["status"]; amount_cents: number }[]>(),
+      .returns<
+        {
+          estimate_id: string;
+          estimate_payment_id: string | null;
+          kind: string;
+          status: PortalPayment["status"];
+          amount_cents: number;
+          stripe_session_id: string | null;
+          stripe_payment_intent_id: string | null;
+        }[]
+      >(),
     // Licence and insurance. Read with the service role because a
     // customer has no Supabase session -- the portal token already
     // established who they are and which company they belong to.
@@ -146,12 +157,35 @@ export default async function PortalHomePage() {
       totalCents: e.total_cents,
       paidCents: paidTotalCents((paymentRows ?? []).filter((p) => p.estimate_id === e.id)),
     }));
+  // Billed progress phases are owed too. Without them a job with the
+  // deposit paid and completion billed read "✓ Deposit paid" here, and
+  // the customer had no sign anything was due.
+  const signedIds = (estimateRows ?? [])
+    .filter((e) => e.kind !== "invoice" && e.status === "Signed")
+    .map((e) => e.id);
+  const { data: phaseRows } = signedIds.length
+    ? await admin
+        .from("estimate_payments")
+        .select("id, estimate_id, amount_cents, requested_at, due_date")
+        .in("estimate_id", signedIds)
+        .not("requested_at", "is", null)
+        .returns<
+          { id: string; estimate_id: string; amount_cents: number; requested_at: string | null; due_date: string | null }[]
+        >()
+    : { data: [] };
   const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
     const depositPaid = (paymentRows ?? []).some(
       (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"
     );
     const owed = e.status === "Signed" && !depositPaid ? e.deposit_cents || 0 : 0;
-    return { ...e, depositPaid, amountDueCents: owed };
+    const phaseDueCents =
+      e.status === "Signed"
+        ? billedPhaseDueCents(
+            (phaseRows ?? []).filter((p) => p.estimate_id === e.id),
+            (paymentRows ?? []).filter((p) => p.estimate_id === e.id)
+          )
+        : 0;
+    return { ...e, depositPaid, amountDueCents: owed, phaseDueCents };
   });
 
   // Certificates lapse on the company's calendar, not the server's UTC

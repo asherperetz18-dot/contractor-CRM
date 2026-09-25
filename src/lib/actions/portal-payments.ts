@@ -4,8 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { stripeClient } from "@/lib/stripe-env";
 import { getStripeForCompany } from "@/lib/stripe-company";
+import { leftoverCheckoutAction } from "@/lib/stripe/checkout-reuse";
 import {
   depositCents,
+  isUnfinishedCheckout,
   phaseOwedCents,
   phaseState,
   type EstimatePayment,
@@ -172,17 +174,30 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
       .returns<EstimatePayment[]>(),
     admin
       .from("portal_payments")
-      .select("id, estimate_payment_id, status, amount_cents, paid_at")
+      .select("id, estimate_payment_id, status, amount_cents, paid_at, stripe_session_id, stripe_payment_intent_id")
       .eq("estimate_id", estimateId)
       .returns<
-        Pick<PortalPayment, "id" | "estimate_payment_id" | "status" | "amount_cents" | "paid_at">[]
+        Pick<
+          PortalPayment,
+          | "id"
+          | "estimate_payment_id"
+          | "status"
+          | "amount_cents"
+          | "paid_at"
+          | "stripe_session_id"
+          | "stripe_payment_intent_id"
+        >[]
       >(),
   ]);
 
   return (phases ?? [])
     .filter((p) => p.requested_at && p.amount_cents > 0)
     .map((p) => {
-      const on = (payments ?? []).filter((x) => x.estimate_payment_id === p.id);
+      // A checkout opened and abandoned is not money on its way: counting
+      // it read "Clearing" and hid the Pay button for a day.
+      const on = (payments ?? []).filter(
+        (x) => x.estimate_payment_id === p.id && !isUnfinishedCheckout(x)
+      );
       const settled = on.find((x) => x.status === "succeeded");
       return {
         id: p.id,
@@ -264,6 +279,37 @@ export async function startPhaseCheckout(
   const base = portalBaseUrl();
   try {
     const stripe = stripeClient(env);
+
+    // A checkout this customer opened earlier and left. Handing back the
+    // one still open, instead of starting another, is what stops two
+    // tabs from paying the same phase twice.
+    const { data: leftovers } = await admin
+      .from("portal_payments")
+      .select("id, status, stripe_session_id, stripe_payment_intent_id")
+      .eq("estimate_payment_id", phaseId)
+      .eq("status", "pending")
+      .returns<
+        Pick<PortalPayment, "id" | "status" | "stripe_session_id" | "stripe_payment_intent_id">[]
+      >();
+    for (const row of (leftovers ?? []).filter(isUnfinishedCheckout)) {
+      // A session Stripe can't find (the company changed accounts) is no
+      // reason to refuse the customer a fresh one.
+      const prior = await stripe.checkout.sessions
+        .retrieve(row.stripe_session_id!)
+        .catch(() => null);
+      if (!prior) continue;
+      const action = leftoverCheckoutAction(prior, phase.amount_cents);
+      if (action === "reuse" && prior.url) return { url: prior.url };
+      if (action === "in-flight") {
+        return { error: "This payment is already going through. Refresh the page in a minute." };
+      }
+      if (action === "expire") await stripe.checkout.sessions.expire(prior.id);
+      await admin
+        .from("portal_payments")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [
