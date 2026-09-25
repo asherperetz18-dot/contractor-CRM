@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { thinkingFor } from "@/lib/ai-models";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTranscriptText } from "@/lib/voice-intelligence";
 import { leadDisplayName } from "@/lib/data/types";
@@ -73,7 +74,7 @@ export async function writeAiCallNote(callLogId: string): Promise<void> {
       model: settings.ai_analysis_model || "claude-opus-5",
       max_tokens: 1000,
       system: SYSTEM,
-      thinking: { type: "adaptive" },
+      ...thinkingFor(settings.ai_analysis_model || "claude-opus-5"),
       messages: [{ role: "user", content: bundle }],
     });
     if (response.stop_reason === "refusal") return;
