@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { companyNow } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -241,11 +242,7 @@ function buildFunnel(
 
 function customerOf(lead: RepReportLead | undefined): string {
   if (!lead) return "Unknown";
-  return (
-    [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() ||
-    lead.company_name ||
-    "Unnamed"
-  );
+  return clientName(lead) || "Unnamed";
 }
 
 /** The rep's appointments in the period, newest first. */

@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -545,13 +546,14 @@ export async function getRepCommissions(opts?: {
     selectAll<{
       id: string;
       assigned_to: string | null;
+      contact_type: string | null;
       first_name: string | null;
       last_name: string | null;
       company_name: string | null;
     }>((from, to) =>
       supabase
         .from("leads")
-        .select("id, assigned_to, first_name, last_name, company_name")
+        .select("id, assigned_to, contact_type, first_name, last_name, company_name")
         .eq("company_id", profile.company_id)
         .in("id", leadIds)
         .range(from, to)
@@ -581,7 +583,7 @@ export async function getRepCommissions(opts?: {
   const customerByLead = new Map(
     leads.map((l) => [
       l.id,
-      [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || "Customer",
+      clientName(l) || "Customer",
     ])
   );
   const allPhaseIds = new Set(phases.map((p) => p.id));

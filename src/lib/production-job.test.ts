@@ -34,6 +34,15 @@ test("a signed contract with no existing job becomes a Not Started job", () => {
   });
 });
 
+test("a company client's job is named for the company, not its contact person", () => {
+  const row = productionJobRow(
+    CONTRACT,
+    { ...LEAD, contact_type: "Company", company_name: "Coast to Coast Water Damage & Restoration, Inc" },
+    false
+  );
+  assert.equal(row?.name, "Coast to Coast Water Damage & Restoration, Inc — Project");
+});
+
 test("change orders and completion certificates never create a job", () => {
   assert.equal(productionJobRow({ ...CONTRACT, kind: "change_order" }, LEAD, false), null);
   assert.equal(productionJobRow({ ...CONTRACT, kind: "completion" }, LEAD, false), null);

@@ -1,5 +1,6 @@
 "use client";
 
+import { clientName } from "@/lib/data/client-name";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { quickCreateDialog } from "@/lib/data/quick-create";
@@ -27,6 +28,8 @@ import { FilterSelect } from "@/components/filter-select";
 
 export type EstimateLead = {
   id: string;
+  contact_type: string | null;
+  company_name: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -252,7 +255,7 @@ export function EstimatesView({
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
     if (!lead) return "Unknown customer";
-    return [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unnamed lead";
+    return clientName(lead) || "Unnamed lead";
   }
 
   return (

@@ -10,6 +10,7 @@ import {
   type DeletedLeadFileRow,
   type LeadFileDeletion,
 } from "@/lib/data/lead-file-deletions";
+import { clientName } from "@/lib/data/client-name";
 import {
   createDriveShortcut,
   deleteFileFromDrive,
@@ -394,7 +395,7 @@ export async function deleteLeadFile(id: string): Promise<{ error?: string }> {
     .insert(deletionRecord(row, profile.company_id, profile.id));
   if (logError) {
     return {
-      error: `Deleted, but saving it to the deletion history failed (${logError.message}). Has migration 0181 been run?`,
+      error: `Deleted, but saving it to the deletion history failed (${logError.message}). Has migration 0182 been run?`,
     };
   }
   return {};
@@ -680,10 +681,10 @@ async function backupDocumentsBatch(
 
     const { data: lead } = await admin
       .from("leads")
-      .select("first_name, last_name, company_name, address, phone, email")
+      .select("contact_type, first_name, last_name, company_name, address, phone, email")
       .eq("id", estimate.lead_id)
       .maybeSingle<{
-        first_name: string | null; last_name: string | null; company_name: string | null;
+        contact_type: string | null; first_name: string | null; last_name: string | null; company_name: string | null;
         address: string | null; phone: string | null; email: string | null;
       }>();
     const parent = estimate.parent_estimate_id
@@ -717,8 +718,7 @@ async function backupDocumentsBatch(
     const folder = await getOrCreateCategoryFolder(category, accessToken, rootFolderId);
     if (!folder) continue;
 
-    const customerName =
-      lead?.company_name || [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") || "";
+    const customerName = clientName(lead);
     const pdfName = `${row.doc_number}${customerName ? " - " + customerName : ""}.pdf`.replace(
       /[\/:*?"<>|]/g,
       "-"

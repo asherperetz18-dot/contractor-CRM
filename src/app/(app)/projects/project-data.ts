@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
@@ -19,6 +20,7 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 export type ProjectLead = {
   id: string;
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -157,7 +159,7 @@ export async function buildProjectCards(
     ? await selectAll<ProjectLead>((from, to) =>
         supabase
           .from("leads")
-          .select("id, first_name, last_name, company_name, address, assigned_to")
+          .select("id, contact_type, first_name, last_name, company_name, address, assigned_to")
           .eq("company_id", companyId)
           .in("id", leadIds)
           .range(from, to)
@@ -240,9 +242,7 @@ export async function buildProjectCards(
       title: contract.title,
       leadId: contract.lead_id,
       customer:
-        lead?.company_name ||
-        [lead?.first_name, lead?.last_name].filter(Boolean).join(" ") ||
-        "Unnamed customer",
+        clientName(lead) || "Unnamed customer",
       // Every non-void child document, for the client-view shortcuts --
       // the customer can be shown a draft change order too, that is
       // what the preview is for.

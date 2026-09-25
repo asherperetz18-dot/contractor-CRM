@@ -21,12 +21,21 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.159.0",
+    version: "1.160.0",
     date: "2026-09-25",
     notes: [
       "Office and Admin can delete a photo from a job's Photos window — tap the ✕ on its corner. A photo kept in Google Drive goes to Drive's trash for 30 days, so a mistake can be undone.",
       "Photo filed under the wrong job? \"Remove from job\" under it moves it back to the customer's unfiled photos without deleting anything.",
       "\"Deleted photos\" at the bottom of the Photos window shows who deleted which photo and when.",
+    ],
+  },
+  {
+    version: "1.159.0",
+    date: "2026-09-25",
+    notes: [
+      "A company client is now named for the company everywhere — estimates, contracts, invoices, the customer's copy and PDF, Projects, Payments, P&L, commission, alerts and new Production jobs. Before, most of these showed the contact person instead.",
+      "The contact person shows under the company: \"Contact: Josh Martinez\" on the estimate page and \"Attn: Josh Martinez\" on the customer's copy. On the signature line the person signs \"on behalf of\" the company.",
+      "Emails and texts still greet the person by name.",
     ],
   },
   {

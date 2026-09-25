@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentCompanyId } from "@/lib/data/profile";
 import type { PipelineStage } from "@/lib/data/types";
@@ -74,9 +75,7 @@ export async function searchEstimateLeads(query: string): Promise<EstimateLeadMa
     email: l.email,
     address: l.address,
     label:
-      l.contact_type === "Company"
-        ? l.company_name || "Unnamed Company"
-        : `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim() || "Unnamed lead",
+      clientName(l) || (l.contact_type === "Company" ? "Unnamed Company" : "Unnamed lead"),
   }));
 }
 
@@ -135,8 +134,6 @@ export async function searchBookableLeads(query: string): Promise<LeadMatch[]> {
     assigned_to: l.assigned_to,
     // Same label the wizard showed when it filtered in the browser.
     label:
-      l.contact_type === "Company"
-        ? l.company_name || "Unnamed Company"
-        : `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim(),
+      clientName(l) || (l.contact_type === "Company" ? "Unnamed Company" : ""),
   }));
 }

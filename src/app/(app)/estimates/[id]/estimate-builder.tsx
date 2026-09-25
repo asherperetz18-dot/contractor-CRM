@@ -53,9 +53,12 @@ import { SectionsBar } from "./sections-bar";
 import { getEstimateGroups } from "@/lib/actions/estimate-groups";
 import { GenerateLinesModal, type AcceptedLine } from "./generate-lines-modal";
 import { voidBannerLead } from "@/lib/void-banner";
+import { clientName, clientContactName } from "@/lib/data/client-name";
 
 export type BuilderLead = {
   id: string;
+  contact_type: string | null;
+  company_name: string | null;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -475,9 +478,8 @@ export function EstimateBuilder({
     return res;
   }
 
-  const customer = lead
-    ? [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unnamed lead"
-    : "Unknown customer";
+  const customer = lead ? clientName(lead) || "Unnamed lead" : "Unknown customer";
+  const contactPerson = clientContactName(lead);
 
   return (
     <div>
@@ -489,6 +491,7 @@ export function EstimateBuilder({
           </h1>
           <p className="module-sub">
             {customer}
+            {contactPerson ? ` · Contact: ${contactPerson}` : ""}
             {lead?.address ? ` · ${lead.address}` : ""}
             {rep && (
               <>
@@ -1323,9 +1326,7 @@ export function EstimateBuilder({
         <JobCosts
           leadId={estimate.lead_id}
           jobLabel={
-            (lead
-              ? [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim()
-              : "") || estimate.title || estimate.doc_number
+            clientName(lead) || estimate.title || estimate.doc_number
           }
           payments={payments}
           totalCents={estimate.total_cents}

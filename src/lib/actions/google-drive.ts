@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
@@ -141,9 +142,7 @@ export async function getOrCreateLeadDriveFolder(
   if (!drive) return null;
 
   const displayName =
-    lead.contact_type === "Company"
-      ? lead.company_name || "Unnamed Company"
-      : `${lead.first_name ?? ""} ${lead.last_name ?? ""}`.trim() || "Unnamed Lead";
+    clientName(lead) || (lead.contact_type === "Company" ? "Unnamed Company" : "Unnamed Lead");
   const folderName = `${displayName} (${leadId.slice(0, 8)})`;
 
   const folderRes = await fetch(`${DRIVE_API}/files?fields=id`, {

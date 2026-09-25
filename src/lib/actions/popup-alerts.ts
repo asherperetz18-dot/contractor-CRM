@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
@@ -46,11 +47,12 @@ const EMPTY_TEXTS: TextsPart = { awaitingCount: 0, latestIso: null, fresh: [] };
 const PER_KIND = 10;
 
 function personName(l: {
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
 }): string {
-  return [l.first_name, l.last_name].filter(Boolean).join(" ") || l.company_name || "";
+  return clientName(l);
 }
 
 const money = (cents: number) =>
@@ -190,7 +192,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
       worksLeads
         ? supabase
             .from("leads")
-            .select("id, first_name, last_name, company_name, project_type, source, created_at, created_by")
+            .select("id, contact_type, first_name, last_name, company_name, project_type, source, created_at, created_by")
             .eq("company_id", companyId)
             .gt("created_at", since)
             .order("created_at", { ascending: false })
@@ -232,6 +234,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   type View = { id: string; estimate_id: string; viewed_at: string };
   type Lead = {
     id: string;
+    contact_type: string | null;
     first_name: string | null;
     last_name: string | null;
     company_name: string | null;
@@ -294,7 +297,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
       ? supabase.from("estimates").select("id, doc_number, title").in("id", estimateIds)
       : Promise.resolve({ data: [] }),
     leadIds.length
-      ? supabase.from("leads").select("id, first_name, last_name, company_name").in("id", leadIds)
+      ? supabase.from("leads").select("id, contact_type, first_name, last_name, company_name").in("id", leadIds)
       : Promise.resolve({ data: [] }),
   ]);
   const docById = new Map<string, string>();
@@ -304,6 +307,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const leadNameById = new Map<string, string>();
   for (const l of (leadNamesRes.data ?? []) as {
     id: string;
+    contact_type: string | null;
     first_name: string | null;
     last_name: string | null;
     company_name: string | null;

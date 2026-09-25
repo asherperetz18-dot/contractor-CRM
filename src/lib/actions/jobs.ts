@@ -87,10 +87,17 @@ export async function backfillJobsFromSignedContracts(): Promise<{
   // Only the leads the seeds actually name -- never the contact book.
   const { data: leads, error: leadsErr } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, address")
+    .select("id, contact_type, company_name, first_name, last_name, address")
     .in("id", seeds.map((s) => s.lead_id as string))
     .returns<
-      { id: string; first_name: string | null; last_name: string | null; address: string | null }[]
+      {
+        id: string;
+        contact_type: string | null;
+        company_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        address: string | null;
+      }[]
     >();
   if (leadsErr) return { error: leadsErr.message };
   const leadById = new Map((leads ?? []).map((l) => [l.id, l]));

@@ -1,5 +1,6 @@
 "use server";
 
+import { clientName } from "@/lib/data/client-name";
 import { revalidatePath } from "next/cache";
 import { addDays } from "@/lib/company-clock";
 import { companyToday } from "@/lib/data/company-today";
@@ -98,10 +99,17 @@ export async function getInvoiceSetup(leadId: string): Promise<{ error?: string;
   const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, first_name, last_name, phone")
+    .select("id, contact_type, company_name, first_name, last_name, phone")
     .eq("id", leadId)
     .eq("company_id", guard.companyId)
-    .maybeSingle<{ id: string; first_name: string | null; last_name: string | null; phone: string | null }>();
+    .maybeSingle<{
+      id: string;
+      contact_type: string | null;
+      company_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      phone: string | null;
+    }>();
   if (!lead) return { error: "Customer not found." };
 
   const [{ data: contracts }, costs, { data: vendors }] = await Promise.all([
@@ -146,7 +154,7 @@ export async function getInvoiceSetup(leadId: string): Promise<{ error?: string;
   return {
     setup: {
       customer: {
-        name: [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Customer",
+        name: clientName(lead) || "Customer",
         phone: lead.phone,
       },
       contracts: (contracts ?? []).map((c) => ({

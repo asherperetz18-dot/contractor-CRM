@@ -1,3 +1,4 @@
+import { clientName } from "@/lib/data/client-name";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewProfitLoss } from "@/lib/data/accounting-access";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 type ContractRow = PLContract & { kind: string };
 type LeadRow = {
   id: string;
+  contact_type: string | null;
   first_name: string | null;
   last_name: string | null;
   company_name: string | null;
@@ -135,7 +137,7 @@ export default async function ProfitLossPage() {
     ? await selectAll<LeadRow>((f, t) =>
         admin
           .from("leads")
-          .select("id, first_name, last_name, company_name, address")
+          .select("id, contact_type, first_name, last_name, company_name, address")
           .eq("company_id", companyId)
           .in("id", leadIds)
           .range(f, t)
@@ -144,10 +146,7 @@ export default async function ProfitLossPage() {
 
   const jobs: PLJobInfo[] = leads.map((l) => ({
     leadId: l.id,
-    name:
-      [l.first_name, l.last_name].filter(Boolean).join(" ").trim() ||
-      l.company_name ||
-      "Unnamed job",
+    name: clientName(l) || "Unnamed job",
     address: l.address,
   }));
 

@@ -1,3 +1,5 @@
+import { clientName } from "./client-name.ts";
+
 export type ContactType = "Individual" | "Company";
 
 export type AppRole =
@@ -2999,16 +3001,14 @@ export function mapsUrl(address: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+/** The client's name for lists and cards -- see client-name.ts. */
 export function leadDisplayName(l: {
   contact_type: ContactType;
   company_name: string | null;
   first_name: string | null;
   last_name: string | null;
 }) {
-  if (l.contact_type === "Company") {
-    return l.company_name || "Unnamed Company";
-  }
-  return `${l.first_name ?? ""} ${l.last_name ?? ""}`.trim() || "Unnamed";
+  return clientName(l) || (l.contact_type === "Company" ? "Unnamed Company" : "Unnamed");
 }
 
 /**
