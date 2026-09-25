@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.3",
+    date: "2026-09-25",
+    notes: [
+      "Fix: estimate, portal-link and bulk emails from a company that hasn't set up its own sender (Settings → Email) now show that company's name in the customer's inbox, not \"La Home Contractor\".",
+    ],
+  },
+  {
     version: "1.158.2",
     date: "2026-09-25",
     notes: [
