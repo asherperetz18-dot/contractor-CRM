@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withRouteObservability } from "@/lib/observability/observe";
 import { captureError } from "@/lib/observability/sentry";
+import { aiFailureFromError } from "@/lib/ai-failure";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
@@ -32,7 +33,6 @@ import {
   type AssistantTask,
 } from "@/lib/data/assistant-context";
 import {
-  aiFailureMessage,
   encodeAssistantEvent,
   sanitizeHistory,
   type AssistantStreamEvent,
@@ -632,10 +632,7 @@ async function handlePost(request: NextRequest) {
         // One generic line hid a production failure completely.
         console.error("[ai-assistant] stream failed", error);
         captureError(error, { route: "api.ai-assistant", service: "anthropic" });
-        const connection = error instanceof Anthropic.APIConnectionError;
-        const status = error instanceof Anthropic.APIError ? error.status : undefined;
-        const detail = error instanceof Anthropic.APIError ? error.message : undefined;
-        send({ type: "error", message: aiFailureMessage(status, connection, detail) });
+        send({ type: "error", message: aiFailureFromError(error) });
       } finally {
         controller.close();
       }

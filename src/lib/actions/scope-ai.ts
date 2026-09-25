@@ -4,6 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates } from "@/lib/data/types";
+import { aiFailureFromError } from "@/lib/ai-failure";
+import { captureError } from "@/lib/observability/sentry";
 
 // Roomy on purpose: a commercial remodel's scope ran past the old
 // 6,000 and the feature refused exactly the documents that needed
@@ -174,10 +176,16 @@ export async function formatScopeWithAI(
 
     if (!formatted) return { error: "Got an empty result. Try again." };
     return { formatted };
-  } catch {
+  } catch (error) {
     // The rep's typing is still in the textarea either way -- a failure
     // here must never cost them what they wrote.
-    return { error: "Couldn't reach the AI right now. Your text is unchanged." };
+    console.error("[scope-ai] formatScopeWithAI failed", error);
+    captureError(error, {
+      route: "action.formatScopeWithAI",
+      service: "anthropic",
+      companyId: profile.company_id,
+    });
+    return { error: `${aiFailureFromError(error)} Your text is unchanged.` };
   }
 }
 
@@ -264,8 +272,14 @@ export async function generateScopeWithAI(
       .trim();
     if (!scope) return { error: "Got an empty result. Try again." };
     return { scope, examplesUsed: examples.length };
-  } catch {
-    return { error: "Couldn't reach the AI right now." };
+  } catch (error) {
+    console.error("[scope-ai] generateScopeWithAI failed", error);
+    captureError(error, {
+      route: "action.generateScopeWithAI",
+      service: "anthropic",
+      companyId: profile.company_id,
+    });
+    return { error: aiFailureFromError(error) };
   }
 }
 
@@ -379,7 +393,13 @@ export async function generatePricedLines(
     }
     if (lines.length === 0) return { error: "The AI didn't produce any usable lines." };
     return { lines, priced: canPrice };
-  } catch {
-    return { error: "Couldn't reach the AI right now." };
+  } catch (error) {
+    console.error("[scope-ai] generatePricedLines failed", error);
+    captureError(error, {
+      route: "action.generatePricedLines",
+      service: "anthropic",
+      companyId: profile.company_id,
+    });
+    return { error: aiFailureFromError(error) };
   }
 }

@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-09-25",
     notes: [
       "Settings: the \"OpenAI API Key — Soon\" tile is gone. The CRM's AI features already work with no key to enter — just switch them on under Integrations & AI (AI Estimator, AI Analysis, AI Receptionist).",
+      "Estimates: when Generate with AI, Format with AI or the AI line items can't finish, the message now says why (the AI key was rejected, the AI service is busy, or the reason the AI service gave, like an empty credit balance) instead of just \"Couldn't reach the AI right now.\"",
     ],
   },
   {
