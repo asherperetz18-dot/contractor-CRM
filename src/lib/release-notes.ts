@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.158.1",
+    date: "2026-09-25",
+    notes: [
+      "Settings: the \"OpenAI API Key — Soon\" tile is gone. The CRM's AI features already work with no key to enter — just switch them on under Integrations & AI (AI Estimator, AI Analysis, AI Receptionist).",
+    ],
+  },
+  {
     version: "1.158.0",
     date: "2026-09-25",
     notes: [
