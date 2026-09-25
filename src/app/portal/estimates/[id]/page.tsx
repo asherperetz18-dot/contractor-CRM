@@ -141,6 +141,17 @@ export default async function PortalEstimatePage({
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);
   const isExpired = estimateExpired(estimate);
+  const phases = await getPortalPhases(id);
+  // A payment waiting on the customer goes above the contract, not under
+  // it: the "Pay here" text lands on this page, and a Pay button at the
+  // foot of a long document is one the customer never scrolls to.
+  const owing = phases.some((p) => p.state !== "paid" && p.state !== "clearing");
+  const phaseCard = (
+    <PhasePayments
+      phases={phases}
+      invoicedSeparately={viewer.lead.portal_payments_disabled === true}
+    />
+  );
 
   return (
     <main className="portal-shell">
@@ -150,6 +161,7 @@ export default async function PortalEstimatePage({
       <div className="estdoc-print-bar">
         <PrintButton label="Print / Save as PDF" title={documentTitle(estimate.doc_number)} />
       </div>
+      {owing && phaseCard}
       <EstimateDocument
         estimate={estimate}
         items={(items ?? []) as EstimateItem[]}
@@ -177,12 +189,9 @@ export default async function PortalEstimatePage({
         state={await getDepositState(id)}
         justPaid={paid === "1"}
       />
-      {/* Progress payments sit below the deposit: the deposit comes first
-          in time, so it comes first on the page. */}
-      <PhasePayments
-        phases={await getPortalPhases(id)}
-        invoicedSeparately={viewer.lead.portal_payments_disabled === true}
-      />
+      {/* Receipts for progress payments sit below the deposit: the
+          deposit comes first in time, so it comes first on the page. */}
+      {!owing && phaseCard}
       <PortalEstimateActions
         estimateId={id}
         status={estimate.status}

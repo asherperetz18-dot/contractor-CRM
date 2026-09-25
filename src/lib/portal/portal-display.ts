@@ -6,6 +6,14 @@
  * is something still waiting on the customer, slate is closed.
  */
 
+import {
+  isUnfinishedCheckout,
+  phaseOwedCents,
+  phaseState,
+  type EstimatePayment,
+  type PortalPayment,
+} from "../data/types.ts";
+
 export type PortalTone = "blue" | "green" | "amber" | "slate";
 
 export type PortalChip = { label: string; tone: PortalTone };
@@ -16,20 +24,50 @@ export function estimateStatusChip(status: string): PortalChip {
   return { label: "Awaiting your signature", tone: "amber" };
 }
 
-/** Money still owed wins: it is the one thing the customer has to act on. */
+/** Money still owed wins: it is the one thing the customer has to act on.
+ *  Owed means the deposit and every billed-but-unpaid progress phase --
+ *  a paid deposit must not read as "all paid" while completion is due. */
 export function estimateMoneyChip(e: {
   depositPaid: boolean;
   amountDueCents: number;
+  phaseDueCents?: number;
 }): PortalChip | null {
-  if (e.amountDueCents > 0) {
-    const due = (e.amountDueCents / 100).toLocaleString("en-US", {
+  const phaseDue = e.phaseDueCents ?? 0;
+  const owed = e.amountDueCents + phaseDue;
+  if (owed > 0) {
+    const due = (owed / 100).toLocaleString("en-US", {
       style: "currency",
       currency: "USD",
     });
-    return { label: `${due} deposit due`, tone: "amber" };
+    return { label: phaseDue > 0 ? `${due} due` : `${due} deposit due`, tone: "amber" };
   }
   if (e.depositPaid) return { label: "Deposit paid", tone: "green" };
   return null;
+}
+
+/**
+ * What the customer still owes on an estimate's billed progress phases --
+ * the same per-phase rule the estimate page's Pay buttons follow: only
+ * billed phases, less what has settled, and nothing for a phase whose
+ * money is already paid or clearing. A checkout opened and abandoned is
+ * not clearing money (isUnfinishedCheckout).
+ */
+export function billedPhaseDueCents(
+  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at" | "due_date">[],
+  payments: Pick<
+    PortalPayment,
+    "estimate_payment_id" | "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id"
+  >[],
+  today = new Date()
+): number {
+  return phases.reduce((sum, phase) => {
+    const on = payments.filter(
+      (p) => p.estimate_payment_id === phase.id && !isUnfinishedCheckout(p)
+    );
+    const state = phaseState(phase, on, today);
+    if (state === "paid" || state === "clearing") return sum;
+    return sum + phaseOwedCents(phase, on);
+  }, 0);
 }
 
 /** An invoice (a permit fee billed back): what's still due, or paid. */
