@@ -11117,8 +11117,14 @@ textarea.est-item-desc:disabled {
   gap: 4px;
   justify-items: start;
 }
+/* Stretched across the cell: .jp-cell's justify-items: start keeps the
+   buttons their own width, but on the thumb it shrank the box to the
+   photo's natural width at 110px tall, so every portrait photo came
+   out a narrow strip (83px of a 114px cell) while landscapes filled.
+   The ✕ rides this box's corner, so it lands on the photo's. */
 .jp-thumb {
   position: relative;
+  justify-self: stretch;
 }
 /* Always shown, never hover-only: phones and iPads have no hover. */
 .jp-delete {
