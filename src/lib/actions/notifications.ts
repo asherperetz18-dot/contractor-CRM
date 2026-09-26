@@ -14,6 +14,7 @@ import {
 } from "@/lib/data/types";
 import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
 import type { PopupKind } from "@/lib/popup-shape";
+import { clientNoteAlert, seesClientNoteAlert, type SharedNoteKind } from "@/lib/data/shared-notes";
 
 export type BellItem = {
   /** Stable across recomputes, so the client can key and dedupe. */
@@ -74,7 +75,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   // note on seesOnlyOwnDocuments for why, and which roles stay wide.
   const ownDocsOnly = seesOnlyOwnDocuments(profile);
 
-  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts, rainAlerts] =
+  const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts, rainAlerts, clientNotesRecent] =
     await Promise.all([
       // Tolerant on purpose: before migration 0115 has run, this errors
       // and the bell simply treats everything as unseen.
@@ -185,6 +186,16 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
         .not("rain_alert_sent_at", "is", null)
         .gte("rain_alert_sent_at", since7d)
         .order("rain_alert_sent_at", { ascending: false })
+        .limit(20),
+      // Notes a client added in the portal; same scope as the popup.
+      // Before migration 0183 this errors and yields nothing.
+      supabase
+        .from("lead_shared_notes")
+        .select("id, lead_id, body, kind, created_at, leads!inner(assigned_to, contact_type, first_name, last_name, company_name)")
+        .eq("company_id", companyId)
+        .eq("author_kind", "client")
+        .gte("created_at", since7d)
+        .order("created_at", { ascending: false })
         .limit(20),
     ]);
 
@@ -415,6 +426,30 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     });
   }
 
+  type ClientNote = {
+    id: string;
+    lead_id: string;
+    body: string;
+    kind: SharedNoteKind | null;
+    created_at: string;
+    leads: Pick<Lead, "contact_type" | "first_name" | "last_name" | "company_name"> & { assigned_to: string | null };
+  };
+  const clientNotes = ((clientNotesRecent.data ?? []) as unknown as ClientNote[]).filter((n) =>
+    seesClientNoteAlert(profile, n.leads.assigned_to)
+  );
+  for (const n of clientNotes) {
+    const { title, body } = clientNoteAlert(n, personName(n.leads));
+    items.push({
+      id: `client-note:${n.id}`,
+      kind: "message",
+      icon: "📝",
+      title,
+      body,
+      at: n.created_at,
+      href: `/contacts?openLead=${encodeURIComponent(n.lead_id)}`,
+    });
+  }
+
   items.sort((a, b) => (a.at < b.at ? 1 : -1));
 
   const parts: string[] = [];
@@ -426,6 +461,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   if (views.length) parts.push(`${views.length} proposal views`);
   if (paid.length) parts.push(`${paid.length} payments in`);
   if (rain.length) parts.push(`${rain.length} rain alerts`);
+  if (clientNotes.length) parts.push(`${clientNotes.length} client notes`);
 
   return {
     data: {

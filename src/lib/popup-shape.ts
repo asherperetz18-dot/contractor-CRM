@@ -14,7 +14,7 @@ export type PopupKind = "message" | "money" | "job" | "lead" | "appointment" | "
  * the settings while the bell had nowhere to show a lead.
  */
 export const POPUP_KINDS: { key: PopupKind; label: string; hint: string }[] = [
-  { key: "message", label: "Texts", hint: "New customer texts, and texts that didn't deliver" },
+  { key: "message", label: "Texts", hint: "New customer texts and portal notes, and texts that didn't deliver" },
   { key: "money", label: "Money", hint: "Payments received in the portal" },
   { key: "job", label: "Jobs", hint: "Signatures, proposal views, job steps assigned to you" },
   { key: "lead", label: "Leads", hint: "New leads coming in" },
