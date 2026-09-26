@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.161.1",
+    date: "2026-09-26",
+    notes: [
+      "Privacy fix: the client portal no longer sends the client's browser a list of staff from every company. It now sends only the names of the people shown on that client's page, with no emails or phone numbers.",
+    ],
+  },
+  {
     version: "1.161.0",
     date: "2026-09-26",
     notes: [
