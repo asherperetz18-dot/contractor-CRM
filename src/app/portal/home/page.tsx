@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
 import { billedPhaseDueCents } from "@/lib/portal/portal-display";
+import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
 
 type EstimateRow = {
@@ -55,6 +56,7 @@ export default async function PortalHomePage() {
     { data: estimateRows },
     { data: paymentRows },
     { data: docRows },
+    { data: sharedNoteRows, error: sharedNotesError },
   ] = await Promise.all([
     admin
       .from("events")
@@ -117,6 +119,17 @@ export default async function PortalHomePage() {
       .eq("show_on_portal", true)
       .order("kind", { ascending: true })
       .returns<PortalDoc[]>(),
+    // The notes shared between the customer and the team. Its own table
+    // holds nothing internal, so reading all of this lead's rows is safe.
+    admin
+      .from("lead_shared_notes")
+      .select(
+        "id, lead_id, author_kind, author_id, body, kind, pinned, answer, answered_by, answered_at, edited_at, staff_seen_at, created_at"
+      )
+      .eq("lead_id", viewer.lead.id)
+      .eq("company_id", viewer.companyId)
+      .order("created_at", { ascending: false })
+      .returns<SharedNote[]>(),
   ]);
 
   const companyRow = company as {
@@ -209,6 +222,9 @@ export default async function PortalHomePage() {
       // to a customer is worse than none, and "hide it once it expires"
       // has to hold without anyone remembering to untick a box.
       documents={(docRows ?? []).filter((d) => !isExpired(d.expires_on, companyClock))}
+      // null until migration 0183 has run: the Notes tab stays hidden
+      // rather than offering a box that can't save.
+      sharedNotes={sharedNotesError ? null : (sharedNoteRows ?? [])}
     />
   );
 }

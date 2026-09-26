@@ -19,6 +19,8 @@ import {
   type SmsMessage,
 } from "@/lib/data/types";
 import { docKindLabel } from "@/lib/data/company-docs";
+import type { SharedNote } from "@/lib/data/shared-notes";
+import { PortalNotes } from "./portal-notes";
 import {
   portalRequestReschedule,
   portalSendMessage,
@@ -76,7 +78,7 @@ export type PortalInvoice = {
   paidCents: number;
 };
 
-type Tab = "Overview" | "Photos" | "Messages";
+type Tab = "Overview" | "Photos" | "Messages" | "Notes";
 
 // Internal pipeline stages are sales shorthand ("No Answer", "DNC",
 // "Close to Sale") and must never be shown to the customer. Everything is
@@ -232,6 +234,7 @@ export function PortalHome({
   companyLogo,
   socialLinks,
   documents,
+  sharedNotes,
 }: {
   lead: Lead;
   events: Event[];
@@ -246,6 +249,8 @@ export function PortalHome({
   /** Ready-made hrefs, already filtered to the profiles that exist. */
   socialLinks: { label: string; href: string }[];
   documents: PortalDoc[];
+  /** null until migration 0183 has run -- the Notes tab stays hidden. */
+  sharedNotes: SharedNote[] | null;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
@@ -410,7 +415,7 @@ export function PortalHome({
 
       <main className="portal-main">
         <nav className="portal-tabs">
-          {(["Overview", "Photos", "Messages"] as Tab[]).map((t) => (
+          {(["Overview", "Photos", "Messages", ...(sharedNotes ? ["Notes"] : [])] as Tab[]).map((t) => (
             <button
               key={t}
               type="button"
@@ -420,6 +425,9 @@ export function PortalHome({
               {t}
               {t === "Photos" && files.length > 0 && (
                 <span className="portal-tab-count">{files.length}</span>
+              )}
+              {t === "Notes" && sharedNotes && sharedNotes.length > 0 && (
+                <span className="portal-tab-count">{sharedNotes.length}</span>
               )}
             </button>
           ))}
@@ -842,6 +850,14 @@ export function PortalHome({
               </button>
             </div>
           </section>
+        )}
+        {tab === "Notes" && sharedNotes && (
+          <PortalNotes
+            notes={sharedNotes}
+            clientName={leadDisplayName(lead)}
+            companyName={companyName}
+            repName={repName}
+          />
         )}
       </main>
 
