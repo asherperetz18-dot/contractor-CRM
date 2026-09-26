@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.161.2",
+    date: "2026-09-26",
+    notes: [
+      "Photos in a job's Photos window now fill their tiles. Before, portrait photos showed as narrow strips with a gap beside them.",
+    ],
+  },
+  {
     version: "1.161.1",
     date: "2026-09-26",
     notes: [
