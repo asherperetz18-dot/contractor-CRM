@@ -22,6 +22,7 @@ import {
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canEditDispatch, canManageBills, isAdminRole } from "@/lib/data/types";
 import { leadDisplayName, type Lead } from "@/lib/data/types";
+import { normalizeSharedNote } from "@/lib/data/shared-notes";
 
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
 const BUCKET = "lead-files";
@@ -397,6 +398,37 @@ export async function portalSendMessage(body: string): Promise<{ error?: string 
     channel: "portal",
   });
   if (error) return { error: error.message };
+
+  revalidatePath("/portal/home");
+  return {};
+}
+
+/**
+ * Customer adding a note to the shared Notes tab. Written with the
+ * service role, scoped here to the signed-in customer's own lead --
+ * the customer has no Supabase session for RLS to judge. There is no
+ * matching edit: once posted, a client note stays as written.
+ */
+export async function portalAddSharedNote(
+  body: string,
+  kind: string | null
+): Promise<{ error?: string }> {
+  const note = normalizeSharedNote(body, kind, "client");
+  if ("error" in note) return { error: note.error };
+
+  const viewer = await getPortalViewer();
+  if (!viewer) return { error: "Please sign in again." };
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("lead_shared_notes").insert({
+    company_id: viewer.companyId,
+    lead_id: viewer.lead.id,
+    author_kind: "client",
+    author_id: null,
+    body: note.body,
+    kind: note.kind,
+  });
+  if (error) return { error: "Couldn't save that note. Please try again." };
 
   revalidatePath("/portal/home");
   return {};

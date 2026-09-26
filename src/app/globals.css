@@ -5144,9 +5144,17 @@ a.portal-header-stars:hover {
   .portal-tabs {
     width: 100%;
   }
+  /* Four tabs (Notes joined in 1.161) share a phone's width: tighter
+     type and padding, so none is pushed off the edge. */
   .portal-tab {
-    flex: 1;
-    padding: 9px 8px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 9px 4px;
+    gap: 4px;
+    font-size: 13px;
+  }
+  .portal-tab-count {
+    padding: 1px 5px;
   }
   .portal-call-btn {
     margin-left: 0;
@@ -5568,6 +5576,307 @@ a.portal-header-stars:hover {
 }
 .portal-composer textarea {
   width: 100%;
+}
+
+/* ── Shared notes ──────────────────────────────────────────────────────
+   Notes the client and the team both see: the portal's Notes tab and
+   the lead card's "Shared with client" side. Tag colours are one idea
+   each and stay off green/red, which mean money here. */
+.shared-notes-sub {
+  color: #667085;
+  font-size: 13px;
+  margin: -8px 0 14px 42px;
+}
+.shared-notes-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.shared-notes-filter {
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: #475467;
+  cursor: pointer;
+}
+.shared-notes-filter.on {
+  background: #16202f;
+  color: #fff;
+}
+.shared-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.shared-notes-list.staff {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.shared-note {
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shared-note.pinned {
+  background: #fffaf3;
+  border-color: #f3dcc0;
+}
+.shared-notes-list.staff .shared-note {
+  border-left: 3px solid #1f6feb;
+  border-radius: 8px;
+}
+.shared-notes-list.staff .shared-note.from-client {
+  border-left-color: #f0913f;
+}
+.shared-note-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #667085;
+}
+.shared-note-who {
+  font-weight: 600;
+  color: #16202f;
+}
+.shared-note-spacer {
+  flex: 1;
+}
+.shared-note-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+.shared-note-avatar.staff {
+  background: #253449;
+}
+.shared-note-avatar.client {
+  background: #1f6feb;
+}
+.shared-note-kind {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.k-decision {
+  background: #e3e9f2;
+  color: #1e3a5f;
+}
+.k-selection {
+  background: #eef0ff;
+  color: #4338ca;
+}
+.k-question {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.k-todo {
+  background: #fdf0e3;
+  color: #9a4f10;
+}
+.shared-note-pin {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c7691b;
+}
+.shared-note-new {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c2410c;
+}
+.shared-note-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #16202f;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.shared-note-answer {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: #0f5f58;
+  background: #e0f5f2;
+  border-radius: 8px;
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.shared-note-check {
+  font-weight: 700;
+}
+.shared-note-links {
+  display: flex;
+  gap: 14px;
+}
+.shared-note-links button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f6feb;
+  cursor: pointer;
+}
+.shared-note-inline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shared-note-inline textarea {
+  width: 100%;
+}
+.shared-note-actions {
+  display: flex;
+  gap: 8px;
+}
+.shared-notes-composer {
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fcfbf9;
+}
+.shared-notes-composer textarea {
+  width: 100%;
+}
+.shared-notes-composer-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #667085;
+}
+.shared-notes-composer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.shared-notes-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.shared-notes-kind {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #e4e7ec;
+  background: #fff;
+  color: #475467;
+  cursor: pointer;
+}
+.shared-notes-kind.on {
+  border-color: #16202f;
+  background: #16202f;
+  color: #fff;
+}
+.shared-notes-kind.on.k-decision,
+.shared-notes-kind.on.k-selection,
+.shared-notes-kind.on.k-question,
+.shared-notes-kind.on.k-todo {
+  border-color: currentColor;
+}
+.shared-notes-kind.on.k-decision {
+  background: #e3e9f2;
+  color: #1e3a5f;
+}
+.shared-notes-kind.on.k-selection {
+  background: #eef0ff;
+  color: #4338ca;
+}
+.shared-notes-kind.on.k-question {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.shared-notes-kind.on.k-todo {
+  background: #fdf0e3;
+  color: #9a4f10;
+}
+.shared-notes-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #667085;
+}
+.shared-notes-banner {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: #e8f0fe;
+  color: #1a3f84;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+/* The lead card's Internal / Shared switch. */
+.notes-side-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #eceae3;
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.notes-side-switch button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.notes-side-switch button.on {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(20, 32, 46, 0.12);
+}
+.notes-side-new {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #c2410c;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+@media (max-width: 560px) {
+  .shared-notes-sub {
+    margin-left: 0;
+  }
 }
 
 /* ── AI action proposals ───────────────────────────────────────────────

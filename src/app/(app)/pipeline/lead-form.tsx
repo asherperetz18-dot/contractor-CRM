@@ -62,7 +62,7 @@ import {
 const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
 import { TasksPanel } from "./tasks-panel";
 import { repDropdownOptions } from "@/lib/data/rep-options";
-import { NotesTimeline } from "./notes-timeline";
+import { LeadNotesPane } from "./lead-notes-pane";
 import { MessagesPanel } from "./messages-panel";
 import {
   DispatcherPicker,
@@ -1306,12 +1306,13 @@ export function LeadForm({
         )}
 
         {lead && tab === "Notes" && (
-          <NotesTimeline
+          <LeadNotesPane
             leadId={lead.id}
             notes={notes ?? []}
-            reps={reps}
+            reps={allMembers ?? reps}
             readOnly={readOnly}
             onChanged={refresh}
+            clientName={clientName(form)}
           />
         )}
 

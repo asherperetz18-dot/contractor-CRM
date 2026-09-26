@@ -12,6 +12,7 @@ import {
 import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
 import { getTextAlerts, type FreshText } from "@/lib/actions/text-alerts";
 import type { PopupToast } from "@/lib/popup-shape";
+import { clientNoteAlert, seesClientNoteAlert, type SharedNoteKind } from "@/lib/data/shared-notes";
 
 /** One popup's worth of something that just happened. */
 export type PopupItem = PopupToast & {
@@ -130,7 +131,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const seesAllWeather =
     isAdminRole(profile) || profile.roles.includes("Office") || profile.roles.includes("Dispatch");
 
-  const [texts, failedTexts, paid, signed, viewed, newLeads, newAppts, newSteps, newRain] =
+  const [texts, failedTexts, paid, signed, viewed, newLeads, newAppts, newSteps, newRain, newClientNotes] =
     await Promise.all([
       textsPromise,
       staffsPhones
@@ -226,6 +227,18 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
         .gt("rain_alert_sent_at", since)
         .order("rain_alert_sent_at", { ascending: false })
         .limit(PER_KIND),
+      // A client added a note in the portal. The lead join is the scope
+      // (RLS narrows it to leads this person may see) and carries the
+      // assigned rep for seesClientNoteAlert below. Before migration
+      // 0183 this errors and simply yields nothing.
+      supabase
+        .from("lead_shared_notes")
+        .select("id, lead_id, body, kind, created_at, leads!inner(assigned_to, contact_type, first_name, last_name, company_name)")
+        .eq("company_id", companyId)
+        .eq("author_kind", "client")
+        .gt("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(PER_KIND),
     ]);
 
   type Sms = { id: string; to_number: string; delivery_error: string | null; created_at: string; lead_id: string | null };
@@ -268,6 +281,21 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
     rain_alert_sent_at: string | null;
   };
 
+  type ClientNote = {
+    id: string;
+    lead_id: string;
+    body: string;
+    kind: SharedNoteKind | null;
+    created_at: string;
+    leads: {
+      assigned_to: string | null;
+      contact_type: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      company_name: string | null;
+    };
+  };
+
   const failed = (failedTexts.data ?? []) as Sms[];
   const payments = (paid.data ?? []) as Paid[];
   const signatures = (signed.data ?? []) as Signed[];
@@ -278,6 +306,9 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const steps = (newSteps.data ?? []) as Step[];
   const rainAlerts = ((newRain.data ?? []) as Rain[]).filter(
     (r) => seesAllWeather || r.assigned_to === me || r.second_assigned_to === me
+  );
+  const clientNotes = ((newClientNotes.data ?? []) as unknown as ClientNote[]).filter((n) =>
+    seesClientNoteAlert(profile, n.leads.assigned_to)
   );
 
   // Names for the documents and people the popups mention, fetched once.
@@ -425,6 +456,20 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
       // Stays up until dismissed, same as a signature or a payment --
       // this is the rare, worth-acting-on kind of alert, not routine noise.
       sticky: true,
+    });
+  }
+
+  for (const n of clientNotes) {
+    const { title, body } = clientNoteAlert(n, personName(n.leads));
+    events.push({
+      id: `client-note:${n.id}`,
+      kind: "message",
+      icon: "📝",
+      title,
+      body,
+      at: n.created_at,
+      href: `/contacts?openLead=${encodeURIComponent(n.lead_id)}`,
+      sticky: false,
     });
   }
 
