@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.161.0",
+    date: "2026-09-26",
+    notes: [
+      "The client portal has a new Notes tab: the project's written record, shared between the client and the team. Clients add notes and tag them Decision, Selection or Question. A note can't be changed once it's posted.",
+      "On a contact's Notes tab, a switch now separates 🔒 Internal notes (never shown to the client) from 👁 Shared with client. On the shared side you can add a note, give the client a To-do, pin important notes, and answer the client's questions.",
+      "When a client adds a note, the assigned rep and the office get a popup and a bell alert.",
+    ],
+  },
+  {
     version: "1.160.0",
     date: "2026-09-25",
     notes: [
