@@ -8,11 +8,11 @@ import {
   socialHref,
   type Event,
   type PortalPayment,
-  type Profile,
   type SmsMessage,
 } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
 import { billedPhaseDueCents } from "@/lib/portal/portal-display";
+import { portalStaffIds, toPortalStaff } from "@/lib/portal/portal-staff";
 import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
 
@@ -52,7 +52,6 @@ export default async function PortalHomePage() {
     { data: files },
     { data: messages },
     { data: company },
-    { data: reps },
     { data: estimateRows },
     { data: paymentRows },
     { data: docRows },
@@ -83,7 +82,6 @@ export default async function PortalHomePage() {
       )
       .eq("company_id", viewer.companyId)
       .maybeSingle(),
-    admin.from("profiles").select("id, name, email, phone"),
     // Draft is excluded deliberately: the estimate page itself redirects a
     // Draft back here, so listing one would be a link to nowhere -- and a
     // half-built estimate is not something to show a customer.
@@ -131,6 +129,20 @@ export default async function PortalHomePage() {
       .order("created_at", { ascending: false })
       .returns<SharedNote[]>(),
   ]);
+
+  // Staff by the ids this customer's own rows name, name only -- never
+  // the platform's roster, never an email or phone (see portal-staff.ts).
+  const staffIds = portalStaffIds(
+    (events as Event[]) ?? [],
+    sharedNotesError ? null : (sharedNoteRows ?? [])
+  );
+  const { data: staffRows } = staffIds.length
+    ? await admin
+        .from("profiles")
+        .select("id, name")
+        .in("id", staffIds)
+        .returns<{ id: string; name: string | null }[]>()
+    : { data: [] };
 
   const companyRow = company as {
     name: string | null;
@@ -211,7 +223,7 @@ export default async function PortalHomePage() {
       events={(events as Event[]) ?? []}
       files={(files as PortalFile[]) ?? []}
       messages={(messages as SmsMessage[]) ?? []}
-      reps={(reps as Profile[]) ?? []}
+      reps={toPortalStaff(staffRows ?? [])}
       estimates={estimates}
       invoices={invoices}
       companyName={companyRow?.name || "Your Contractor"}

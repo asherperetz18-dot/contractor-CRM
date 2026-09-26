@@ -15,12 +15,12 @@ import {
   mapsUrl,
   type Event,
   type Lead,
-  type Profile,
   type SmsMessage,
 } from "@/lib/data/types";
 import { docKindLabel } from "@/lib/data/company-docs";
 import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalNotes } from "./portal-notes";
+import type { PortalStaff } from "@/lib/portal/portal-staff";
 import {
   portalRequestReschedule,
   portalSendMessage,
@@ -240,7 +240,8 @@ export function PortalHome({
   events: Event[];
   files: PortalFile[];
   messages: SmsMessage[];
-  reps: Profile[];
+  /** Only the staff this page names, id and name only (portal-staff.ts). */
+  reps: PortalStaff[];
   estimates: PortalEstimate[];
   invoices?: PortalInvoice[];
   companyName: string;
