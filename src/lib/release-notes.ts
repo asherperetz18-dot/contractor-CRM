@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.161.3",
+    date: "2026-09-27",
+    notes: [
+      "Behind the scenes: the Android phone app can now be built for the Google Play Store. On newer Android phones, the app no longer draws the CRM under the clock and battery bar at the top.",
+    ],
+  },
+  {
     version: "1.161.2",
     date: "2026-09-26",
     notes: [
