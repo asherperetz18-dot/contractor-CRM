@@ -90,6 +90,11 @@ export function MobileNav({
           </form>
           <div className="sidebar-foot-legal">
             © 2026 AI Build Pros LLC. All rights reserved.
+            <span className="legal-links">
+              <a href="/privacy">Privacy</a>
+              {" · "}
+              <a href="/delete-account">Delete account</a>
+            </span>
           </div>
         </div>
       </aside>

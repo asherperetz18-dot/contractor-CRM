@@ -12163,3 +12163,74 @@ textarea.est-item-desc:disabled {
 .fbl-advanced-body {
   margin-top: 14px;
 }
+
+/* Privacy policy and account deletion (/privacy, /delete-account): public
+   pages linked from the app stores. A reading column, not a form card. */
+.legal-shell {
+  min-height: 100vh;
+  background: var(--paper);
+  padding: 32px 16px 0;
+}
+.legal-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 28px 30px;
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+.legal-card h2 {
+  font-family: var(--font-headers);
+  font-size: 16px;
+  margin: 24px 0 6px;
+}
+.legal-card p,
+.legal-card ul,
+.legal-card ol {
+  margin: 0 0 10px;
+}
+.legal-card ul {
+  padding-left: 22px;
+  list-style: disc;
+}
+.legal-card ol {
+  padding-left: 22px;
+  list-style: decimal;
+}
+.legal-card li {
+  margin-bottom: 6px;
+}
+.legal-card a {
+  color: var(--blueprint);
+}
+.legal-updated {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.legal-contact {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+/* Privacy + Delete account under the copyright line (sign-in page,
+   sidebar): Play wants both reachable inside the app. */
+.legal-links {
+  display: block;
+  margin-top: 4px;
+}
+.legal-links a {
+  color: inherit;
+}
+@media (max-width: 600px) {
+  .legal-shell {
+    padding-top: 16px;
+  }
+  .legal-card {
+    padding: 20px 18px;
+  }
+}
