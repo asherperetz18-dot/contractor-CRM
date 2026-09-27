@@ -6,6 +6,7 @@ import { openBillingPortal, recheckBilling, renewSubscription } from "@/lib/acti
 import { switchCompany } from "@/lib/actions/company";
 import { logout } from "@/lib/actions/auth";
 import type { CompanyMembership } from "@/lib/data/profile";
+import { WebOnly } from "@/components/web-only";
 
 export function BillingLockActions({
   canManage,
@@ -66,7 +67,9 @@ export function BillingLockActions({
   return (
     <div className="auth-form">
       {canManage ? (
-        <>
+        // Paying happens outside the Play Store app, and the app may not
+        // point there either (DECISIONS #087).
+        <WebOnly fallback={<p className="hint-note">The subscription can&apos;t be renewed in the app.</p>}>
           <button
             type="button"
             className="btn-primary auth-submit"
@@ -83,7 +86,7 @@ export function BillingLockActions({
           >
             Card declined? Update it and see invoices
           </button>
-        </>
+        </WebOnly>
       ) : (
         <p className="hint-note">Ask your company&apos;s Office or Admin user to renew it.</p>
       )}

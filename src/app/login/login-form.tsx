@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { login, type AuthFormState } from "@/lib/actions/auth";
+import { WebOnly } from "@/components/web-only";
 
 /**
  * Sign-in only.
@@ -53,12 +54,21 @@ export function LoginForm() {
           </p>
         </form>
 
-        <p className="auth-switch">
-          New business? <a href="/get-started">Start an account</a>
-        </p>
+        {/* Signup is a paid subscription, which the Play Store app may not
+            sell outside Play Billing (DECISIONS #087). */}
+        <WebOnly>
+          <p className="auth-switch">
+            New business? <a href="/get-started">Start an account</a>
+          </p>
+        </WebOnly>
       </div>
       <footer className="site-footer">
         © 2026 AI Build Pros LLC. All rights reserved.
+        <span className="legal-links">
+          <a href="/privacy">Privacy</a>
+          {" · "}
+          <a href="/delete-account">Delete account</a>
+        </span>
       </footer>
     </div>
   );

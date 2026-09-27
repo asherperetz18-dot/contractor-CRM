@@ -37,10 +37,6 @@ export default async function BillingSettingsPage() {
             <h2 className="est-pay-title">
               Status: {STATUS_LABELS[billing.status ?? ""] ?? billing.status ?? "Checking with Stripe"}
             </h2>
-            <p className="est-pay-sub">
-              Update the card you pay with, download invoices, or cancel. It opens on
-              Stripe&apos;s own secure page and brings you back here when you&apos;re done.
-            </p>
             <ManageBillingButton />
           </>
         ) : (
