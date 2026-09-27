@@ -1,0 +1,70 @@
+name: Android App (Play release)
+
+# Builds the signed app bundle (.aab) for Google Play from main. Run it
+# from the Actions tab, then upload the bundle from the run's
+# "Artifacts" section in Play Console. Steps: docs/MOBILE_RELEASE.md.
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # A store build comes from reviewed code only.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Unlock the upload key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          PASS: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$PASS" ]; then
+            echo "::error::The upload key isn't set up yet. Run the \"Android upload key (create once)\" workflow first (docs/MOBILE_RELEASE.md, section 3)."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/upload.p12.gpg"
+          printf '%s' "$PASS" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --decrypt -o "$RUNNER_TEMP/upload.p12" \
+            "$RUNNER_TEMP/upload.p12.gpg"
+          rm "$RUNNER_TEMP/upload.p12.gpg"
+          echo "ANDROID_UPLOAD_KEYSTORE_FILE=$RUNNER_TEMP/upload.p12" >> "$GITHUB_ENV"
+      - name: Install and sync
+        run: |
+          npm ci
+          npx cap sync android
+      - name: Build signed bundle
+        working-directory: mobile/android
+        env:
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon
+          # jarsigner exits 0 on an unsigned bundle too; only its words tell.
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab > "$RUNNER_TEMP/verify.txt"
+          cat "$RUNNER_TEMP/verify.txt"
+          grep -q "jar verified" "$RUNNER_TEMP/verify.txt"
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.p12"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-build-pros-crm-play-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90
