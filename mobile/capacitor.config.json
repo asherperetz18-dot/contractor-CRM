@@ -8,7 +8,8 @@
     "errorPath": "offline.html"
   },
   "android": {
-    "useLegacyBridge": true
+    "useLegacyBridge": true,
+    "adjustMarginsForEdgeToEdge": "auto"
   },
   "plugins": {
     "CapacitorCookies": {
