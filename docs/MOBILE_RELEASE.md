@@ -23,7 +23,7 @@ A personal account skips this step, but then the store shows your own name as th
 
 ## 3. Google Play Console ($25 once)
 
-The account is open (2026-09-27). Everything below happens in Play Console, in the repo's GitHub settings, or on GitHub's Actions tab. You don't need Android Studio, Java, or a command line.
+The account is open (2026-09-27), as an **Organization: AI Build Pros LLC**. Everything below happens in Play Console, in the repo's GitHub settings, or on GitHub's Actions tab. You don't need Android Studio, Java, or a command line.
 
 ### 3a. Create the app in Play Console
 
@@ -51,17 +51,14 @@ You only need a new build when something *native* changes: a plugin, a permissio
 
 **Test and release → Testing → Internal testing → Create new release.** On the first upload, Play offers **Play App Signing**: accept it. Google then keeps the key that signs what phones install, and our key only proves an upload came from us. Upload the `.aab`, add yourself as a tester, and install it from the opt-in link.
 
-- **Personal account:** Play requires a *closed* test with at least 12 testers, opted in for 14 days in a row, before you can apply for production. Field staff with Android phones are the natural testers.
-- **Organization account:** you can go to production once the test build looks right.
+The account is an Organization, so Play's 12-tester, 14-day closed test (a rule for new *personal* accounts) doesn't apply. You can go to production once the test build looks right on a phone.
 
 ### 3e. Before sending it for review
 
-These must be done first, or review is likely to fail:
-
-1. **Hide signup and payment inside the app.** The login page's "Start an account" leads to a Stripe checkout for the CRM subscription. Google Play requires apps to sell their own subscriptions through Google Play Billing, so inside the phone app these links must not appear. The website keeps them. *(Not built yet. Ask Claude.)*
-2. **Privacy policy page** (section 4). *(Not built yet. It needs a contact email to publish.)*
-3. **Account deletion link.** Play asks every app with accounts for a web page where someone can ask to have their account and data deleted. It can be a section of the privacy page.
-4. **A reviewer login.** The whole app is behind sign-in, so under *App content → App access* give Play a working login. Make it a Field-role user in a demo company with sample data, never a real account.
+1. ✅ **Signup and payment are hidden inside the app** (decision #087). Google Play requires apps to sell their own subscriptions through Google Play Billing. So inside the phone app, the sign-in page has no "Start an account", the lock screen has no "Renew subscription", and *Settings › Subscription* has no "Manage billing". The website keeps all three.
+2. ✅ **Privacy policy:** <https://crm.aibuildpros.com/privacy>. Paste it into *App content → Privacy policy*.
+3. ✅ **Account deletion:** <https://crm.aibuildpros.com/delete-account>. Paste it into *App content → Data deletion*. Deletion requests arrive at info@aibuildpros.com, and **the page promises they're done within 30 days**: deleting the person's sign-in, profile, and location trail. Work records stay with their company.
+4. **A reviewer login.** *(Still to do.)* The whole app is behind sign-in, so under *App content → App access* give Play a working login. Make it a Field-role user in a demo company with sample data, never a real account.
 
 ### 3f. Answers for Play's *App content* forms
 
@@ -72,13 +69,18 @@ These must be done first, or review is likely to fail:
   - *Location, precise:* collected while clocked in, for app functionality. Not shared, not sold. Required for tracked roles.
   - *Personal info (name, email, phone):* collected for account management and app functionality.
   - *Photos and files:* collected when a user uploads job photos or documents, for app functionality.
+  - *Audio:* call recordings of calls made through the CRM, for app functionality.
+  - *Messages:* texts and emails sent through the CRM, for app functionality.
+  - *App activity (app interactions):* pages opened and active time, shown to the company's admins, for analytics.
+  - *Device or other IDs:* a random device ID the CRM makes to tell a person's devices apart, for analytics.
+  - *App info and performance (crash logs):* error reports, for app functionality.
   - Data is encrypted in transit: yes. Users can ask for deletion: yes (the page in 3e).
 - **Location permissions:** the app asks for location only while in use and keeps it running through a foreground service (the "On the clock" notification). It never asks for "Allow all the time", so no *background location* declaration is needed.
 - **Foreground service:** type *location*. Purpose: sharing the crew member's location with their employer while they are clocked in. Play asks for a short video: clock in, show the notification, clock out.
 
 ## 4. Both stores need a privacy policy page
 
-The app reads location, so both listings require a public privacy-policy URL. It should cover what's collected (location while on the clock, hours), who sees it (the employer's office), how long it's kept (the company's trail retention, 90 days by default), and how to ask for deletion. Claude can add it as a public page on the CRM site.
+✅ Built: <https://crm.aibuildpros.com/privacy>, with account deletion at <https://crm.aibuildpros.com/delete-account>. Both open without signing in, and they are linked from the sign-in page and the sidebar. The contact email and the 30-day promise live in `src/lib/app-store/legal.ts`. The location-retention default is read from the time-clock settings code, so the page can't drift from it. **When what the CRM collects changes, update the page and the Data safety answers in 3f together.**
 
 ## Already done
 

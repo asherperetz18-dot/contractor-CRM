@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.162.0",
+    date: "2026-09-27",
+    notes: [
+      "New Privacy and Delete account pages, linked at the bottom of the sign-in page and the side menu. Anyone can open them without signing in.",
+      "In the phone app, the sign-up link and the subscription billing buttons no longer appear, as Google Play requires. On the website nothing changes.",
+    ],
+  },
+  {
     version: "1.161.3",
     date: "2026-09-27",
     notes: [
