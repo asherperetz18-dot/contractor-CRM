@@ -25,6 +25,18 @@ import { useFunnelOrder } from "./funnel-order-prefs";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { FilterSelect } from "@/components/filter-select";
+import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import {
+  DEFAULT_ESTIMATE_SORT,
+  FOLLOW_UP_CHIPS,
+  FOLLOW_UP_CHIP_LABELS,
+  matchesEstimateSearch,
+  matchesFollowUpChip,
+  sortEstimates,
+  type EstimateSort,
+  type EstimateSortKey,
+  type FollowUpChip,
+} from "@/lib/data/estimate-list-filters";
 
 export type EstimateLead = {
   id: string;
@@ -74,6 +86,17 @@ const BUCKETS: { key: Bucket; label: string; hint: string }[] = [
 ];
 
 const DEFAULT_ORDER = BUCKETS.map((b) => b.key);
+
+// Keys are presetWindow's, so "Last 30 days" here is the reports' 30 days.
+const DATE_PRESETS: { key: string; label: string }[] = [
+  { key: "all", label: "Any time" },
+  { key: "7", label: "Last 7 days" },
+  { key: "30", label: "Last 30 days" },
+  { key: "month", label: "This month" },
+  { key: "90", label: "Last 90 days" },
+  { key: "12m", label: "Last 12 months" },
+  { key: "custom", label: "Custom range…" },
+];
 
 function initials(name: string) {
   return (
@@ -154,6 +177,12 @@ export function EstimatesView({
   }, [searchParams, router]);
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
   const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [datePreset, setDatePreset] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [chips, setChips] = useState<Set<FollowUpChip>>(new Set());
+  const [sort, setSort] = useState<EstimateSort>(DEFAULT_ESTIMATE_SORT);
 
   // Two saved orders, account first: the profile's (server-rendered, so
   // it follows the login to any device) and this browser's localStorage
@@ -187,9 +216,43 @@ export function EstimatesView({
   // an empty table needs. The status filter still clears -- its options
   // are the card's own statuses, so a carried one can flatly contradict
   // the new card (Signed inside Drafts) with nothing on screen saying so.
+  // The follow-up chips clear for the same reason: each card has its own.
+  // Search, dates and sort carry over -- they mean the same on every card.
   function pickBucket(next: Bucket) {
     setBucket(next);
     setStatusFilter(new Set());
+    setChips(new Set());
+  }
+
+  function toggleChip(chip: FollowUpChip) {
+    const next = new Set(chips);
+    if (next.has(chip)) next.delete(chip);
+    else next.add(chip);
+    setChips(next);
+  }
+
+  function pickDatePreset(preset: string) {
+    setDatePreset(preset);
+    // Typed dates win over the preset in resolveWindow, so leaving
+    // Custom has to drop them or the old range would stay applied.
+    if (preset !== "custom") {
+      setDateFrom("");
+      setDateTo("");
+    }
+  }
+
+  function sortBy(key: EstimateSortKey) {
+    setSort((cur) =>
+      cur.key === key ? { key, dir: cur.dir === "desc" ? "asc" : "desc" } : { key, dir: "desc" }
+    );
+  }
+
+  function clearFilters() {
+    setRepFilter(new Set());
+    setStatusFilter(new Set());
+    setSearch("");
+    pickDatePreset("all");
+    setChips(new Set());
   }
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
@@ -212,17 +275,40 @@ export function EstimatesView({
       leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
     });
 
+  // Search and dates narrow every card, not just the table: "signed this
+  // month" is the number a person reads off Contracts with a date picked.
+  const now = new Date();
+  const dateWindow = resolveWindow({ preset: datePreset, from: dateFrom, to: dateTo }, now);
+  const scoped = estimates.filter((e) => {
+    const lead = leadById.get(e.lead_id);
+    return (
+      withinWindow(e.created_at, dateWindow) &&
+      matchesEstimateSearch(
+        {
+          docNumber: e.doc_number,
+          customer: customerName(e),
+          email: lead?.email ?? null,
+          title: e.title,
+          address: lead?.address ?? null,
+          jobAddress: e.job_address,
+        },
+        search
+      )
+    );
+  });
+
   // The cards answer for the same slice as the table under them: with a
   // rep ticked they hold that rep's counts and money, not the whole
   // company's -- a company-wide "$770,599 signed" above a filtered table
   // reads as the rep's number, and somebody quotes it as theirs.
   const counts = BUCKETS.map((b) => ({
     ...b,
-    ...funnelCardStats(estimates, b.key, repFilter, repIdFor),
+    ...funnelCardStats(scoped, b.key, repFilter, repIdFor),
   }));
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const inThisBucket = estimates.filter((e) => inFunnelBucket(e, active.key));
+  const wholeBucket = estimates.filter((e) => inFunnelBucket(e, active.key));
+  const inThisBucket = scoped.filter((e) => inFunnelBucket(e, active.key));
 
   // Options come from what is actually in the bucket, never from the
   // full list of reps or statuses.
@@ -235,22 +321,47 @@ export function EstimatesView({
   // offers the real spread. Same for the salesperson: people who have a
   // document here, plus anyone already ticked (the selection follows the
   // reader across cards, and a tick must stay visible to be undone).
-  const repOptions = repOptionIds(inThisBucket.map(repIdFor), repFilter)
+  const repOptions = repOptionIds(wholeBucket.map(repIdFor), repFilter)
     .map((id) => {
       const rep = repById.get(id);
       return { id, label: rep?.name || rep?.email || "Unnamed" };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const statusOptions = [...new Set(inThisBucket.map((e) => effectiveEstimateStatus(e)))]
+  const statusOptions = [...new Set(wholeBucket.map((e) => effectiveEstimateStatus(e)))]
     .sort()
     .map((s) => ({ id: s, label: s }));
 
-  const rows = inThisBucket.filter(
+  const beforeChips = inThisBucket.filter(
     (e) =>
       matchesRepFilter(repIdFor(e), repFilter) &&
       (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
   );
+  const followUp = (e: Estimate) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
+  // Each chip's count is what ticking it would leave, given everything
+  // else already on -- so a chip reading 0 is not worth the click.
+  const chipOptions = FOLLOW_UP_CHIPS[bucket].map((chip) => ({
+    chip,
+    label: FOLLOW_UP_CHIP_LABELS[chip],
+    count: beforeChips.filter((e) => matchesFollowUpChip(followUp(e), chip, now)).length,
+  }));
+  const rows = sortEstimates(
+    beforeChips.filter((e) => [...chips].every((c) => matchesFollowUpChip(followUp(e), c, now))),
+    sort,
+    (e) => viewsByEstimate[e.id]?.count ?? 0
+  );
+  const filtering =
+    repFilter.size > 0 ||
+    statusFilter.size > 0 ||
+    search.trim() !== "" ||
+    dateWindow.from !== null ||
+    dateWindow.to !== null ||
+    chips.size > 0;
+
+  const ariaSort = (key: EstimateSortKey) =>
+    sort.key === key ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+  const sortArrow = (key: EstimateSortKey) =>
+    sort.key === key ? (sort.dir === "asc" ? " ↑" : " ↓") : " ↕";
 
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
@@ -327,163 +438,249 @@ export function EstimatesView({
           ))}
       </div>
 
-      {/* Only offered when there is something to choose between. A
-          dropdown holding one option filters nothing, and on the Drafts
-          card -- where every row is a draft by definition -- a Status
-          filter is exactly that. The one exception: while a rep is
-          ticked, the salesperson dropdown always renders, because it is
-          the only place the carried filter can be seen and undone. */}
-      {(repFilter.size > 0 || repOptions.length > 1 || statusOptions.length > 1) && (
-        <div className="list-filters">
-          {(repFilter.size > 0 || repOptions.length > 1) && (
-            <FilterSelect
-              title="SALESPERSON"
-              options={repOptions}
-              selected={repFilter}
-              onChange={setRepFilter}
+      {/* Search and dates are always offered -- they find a document on
+          any card. The dropdowns only appear when there is something to
+          choose between: a dropdown holding one option filters nothing,
+          and on the Drafts card -- where every row is a draft by
+          definition -- a Status filter is exactly that. The one
+          exception: while a rep is ticked, the salesperson dropdown
+          always renders, because it is the only place the carried filter
+          can be seen and undone. */}
+      <div className="list-filters est-list-filters">
+        {(repFilter.size > 0 || repOptions.length > 1) && (
+          <FilterSelect
+            title="SALESPERSON"
+            options={repOptions}
+            selected={repFilter}
+            onChange={setRepFilter}
+          />
+        )}
+        {statusOptions.length > 1 && (
+          <FilterSelect
+            title="STATUS"
+            options={statusOptions}
+            selected={statusFilter}
+            onChange={setStatusFilter}
+          />
+        )}
+        <input
+          type="search"
+          className="ur-search est-list-search"
+          value={search}
+          onChange={(ev) => setSearch(ev.target.value)}
+          placeholder="Search customer, EST #, title or address…"
+          aria-label="Search estimates"
+        />
+        <select
+          className="ur-company-filter"
+          value={datePreset}
+          onChange={(ev) => pickDatePreset(ev.target.value)}
+          aria-label="Date created"
+        >
+          {DATE_PRESETS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        {datePreset === "custom" && (
+          <span className="est-list-dates">
+            <input
+              type="date"
+              className="ur-company-filter"
+              value={dateFrom}
+              onChange={(ev) => setDateFrom(ev.target.value)}
+              aria-label="Created from"
             />
-          )}
-          {statusOptions.length > 1 && (
-            <FilterSelect
-              title="STATUS"
-              options={statusOptions}
-              selected={statusFilter}
-              onChange={setStatusFilter}
+            <span className="est-tax-note">to</span>
+            <input
+              type="date"
+              className="ur-company-filter"
+              value={dateTo}
+              onChange={(ev) => setDateTo(ev.target.value)}
+              aria-label="Created to"
             />
-          )}
-          {rows.length !== inThisBucket.length && (
+          </span>
+        )}
+        {chipOptions.length > 0 && (
+          <span className="est-list-chips" role="group" aria-label="Follow-up">
+            {chipOptions.map((c) => (
+              <button
+                key={c.chip}
+                type="button"
+                className={"chip" + (chips.has(c.chip) ? " chip-active" : "")}
+                aria-pressed={chips.has(c.chip)}
+                onClick={() => toggleChip(c.chip)}
+              >
+                {c.label} <span className="count-pill">{c.count}</span>
+              </button>
+            ))}
+          </span>
+        )}
+        {filtering && (
+          <span className="est-list-meta">
             <span className="list-filters-count">
-              Showing {rows.length} of {inThisBucket.length}
+              Showing {rows.length} of {wholeBucket.length}
             </span>
-          )}
-        </div>
-      )}
+            <button type="button" className="btn-ghost small" onClick={clearFilters}>
+              Clear all
+            </button>
+          </span>
+        )}
+      </div>
 
       {rows.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-label">Nothing in {active.label.toLowerCase()}</p>
-          <p className="empty-hint">
-            {bucket === "drafts" && canCreate
-              ? "Start one with + New Estimate and link it to a lead."
-              : "Documents move here as they progress."}
-          </p>
-        </div>
+        filtering && wholeBucket.length > 0 ? (
+          <div className="empty-state">
+            <p className="empty-label">No {active.label.toLowerCase()} match these filters</p>
+            <p className="empty-hint">
+              <button type="button" className="btn-ghost small" onClick={clearFilters}>
+                Clear all filters
+              </button>
+            </p>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p className="empty-label">Nothing in {active.label.toLowerCase()}</p>
+            <p className="empty-hint">
+              {bucket === "drafts" && canCreate
+                ? "Start one with + New Estimate and link it to a lead."
+                : "Documents move here as they progress."}
+            </p>
+          </div>
+        )
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Doc #</th>
-              <th>Customer</th>
-              <th>Title</th>
-              <th></th>
-              <th>Salesperson</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Views</th>
-              <th className="right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((e) => {
-              const lead = leadById.get(e.lead_id);
-              const repId = repIdFor(e);
-              const rep = repId ? repById.get(repId) : null;
-              const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
-              const status = effectiveEstimateStatus(e);
-              // Nobody owes a signature on a document that is over.
-              // Expired belongs here too: the price lapsed, so a partial
-              // signature on it is history rather than an outstanding ask.
-              const settled =
-                status === "Void" || status === "Declined" || status === "Expired";
-              return (
-                <tr
-                  key={e.id}
-                  className="est-row"
-                  onClick={() => router.push(`/estimates/${e.id}`)}
-                  role="link"
-                  tabIndex={0}
-                  onKeyDown={(ev) => {
-                    if (ev.key === "Enter") router.push(`/estimates/${e.id}`);
-                  }}
-                >
-                  <td className="mono">{e.doc_number}</td>
-                  <td>
-                    <div className="ur-name-cell">
-                      <span className="ur-avatar">{initials(customerName(e))}</span>
-                      <div>
-                        <div className="ur-name">{customerName(e)}</div>
-                        <div className="ur-add-phone">{lead?.email || "—"}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="ur-name">{e.title || "Untitled"}</div>
-                    <div className="ur-add-phone">{lead?.address || "—"}</div>
-                  </td>
-                  {/* Straight to the document the customer sees -- the
-                      same component the portal renders -- without going
-                      through the builder. A staff preview, so it never
-                      counts as a customer view. stopPropagation because
-                      the whole row is already a link to the builder. */}
-                  <td>
-                    <button
-                      className="btn-ghost small est-client-view"
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        router.push(`/estimates/${e.id}/preview`);
-                      }}
-                      title="Open this document exactly as the customer sees it"
-                    >
-                      👁 Client view
-                    </button>
-                  </td>
-                  <td>{rep?.name || rep?.email || "—"}</td>
-                  <td>
-                    <div>{shortDate(e.created_at)}</div>
-                    {e.expires_at && status !== "Signed" && (
-                      <div className="ur-add-phone">Exp: {shortDate(e.expires_at)}</div>
-                    )}
-                  </td>
-                  {/* Signature progress is shown INSTEAD of the status,
-                      so a document that is finished with has to say so
-                      first. A voided change order carrying one of two
-                      signatures was reading "1/2 Signed — Pending: <the
-                      customer>": it hid that the document was cancelled,
-                      and named a real person as still owing a signature
-                      on it. Somebody chases that. */}
-                  <td>
-                    <span className={"est-badge est-badge-" + status.toLowerCase()}>
-                      {!settled && sig.total > 0 && sig.signed > 0 && !sig.complete
-                        ? `${sig.signed}/${sig.total} Signed`
-                        : status}
-                    </span>
-                    {!settled && sig.pending.length > 0 && sig.signed > 0 && (
-                      <div className="ur-add-phone">Pending: {sig.pending.join(", ")}</div>
-                    )}
-                  </td>
-                  {/* Customer attention, at a glance. Five opens in two
-                      days is a customer deciding; none since Sent is a
-                      phone call waiting to happen. */}
-                  <td>
-                    {viewsByEstimate[e.id] ? (
-                      <>
-                        <div>{viewsByEstimate[e.id].count}×</div>
-                        <div className="ur-add-phone">
-                          {shortDateTime(viewsByEstimate[e.id].last)}
+        // Its own scroller: nine columns run past a tablet's width, and
+        // bare tables only start scrolling themselves on phones.
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Doc #</th>
+                <th>Customer</th>
+                <th>Title</th>
+                <th></th>
+                <th>Salesperson</th>
+                <th aria-sort={ariaSort("date")}>
+                  <button type="button" className="th-sort" onClick={() => sortBy("date")}>
+                    Date{sortArrow("date")}
+                  </button>
+                </th>
+                <th>Status</th>
+                <th aria-sort={ariaSort("views")}>
+                  <button type="button" className="th-sort" onClick={() => sortBy("views")}>
+                    Views{sortArrow("views")}
+                  </button>
+                </th>
+                <th className="right" aria-sort={ariaSort("total")}>
+                  <button type="button" className="th-sort" onClick={() => sortBy("total")}>
+                    Total{sortArrow("total")}
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((e) => {
+                const lead = leadById.get(e.lead_id);
+                const repId = repIdFor(e);
+                const rep = repId ? repById.get(repId) : null;
+                const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
+                const status = effectiveEstimateStatus(e);
+                // Nobody owes a signature on a document that is over.
+                // Expired belongs here too: the price lapsed, so a partial
+                // signature on it is history rather than an outstanding ask.
+                const settled =
+                  status === "Void" || status === "Declined" || status === "Expired";
+                return (
+                  <tr
+                    key={e.id}
+                    className="est-row"
+                    onClick={() => router.push(`/estimates/${e.id}`)}
+                    role="link"
+                    tabIndex={0}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter") router.push(`/estimates/${e.id}`);
+                    }}
+                  >
+                    <td className="mono">{e.doc_number}</td>
+                    <td>
+                      <div className="ur-name-cell">
+                        <span className="ur-avatar">{initials(customerName(e))}</span>
+                        <div>
+                          <div className="ur-name">{customerName(e)}</div>
+                          <div className="ur-add-phone">{lead?.email || "—"}</div>
                         </div>
-                      </>
-                    ) : (
-                      <span className="estdoc-muted">—</span>
-                    )}
-                  </td>
-                  <td className="right mono">
-                    {e.total_cents ? moneyCents(e.total_cents) : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="ur-name">{e.title || "Untitled"}</div>
+                      <div className="ur-add-phone">{lead?.address || "—"}</div>
+                    </td>
+                    {/* Straight to the document the customer sees -- the
+                        same component the portal renders -- without going
+                        through the builder. A staff preview, so it never
+                        counts as a customer view. stopPropagation because
+                        the whole row is already a link to the builder. */}
+                    <td>
+                      <button
+                        className="btn-ghost small est-client-view"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          router.push(`/estimates/${e.id}/preview`);
+                        }}
+                        title="Open this document exactly as the customer sees it"
+                      >
+                        👁 Client view
+                      </button>
+                    </td>
+                    <td>{rep?.name || rep?.email || "—"}</td>
+                    <td>
+                      <div>{shortDate(e.created_at)}</div>
+                      {e.expires_at && status !== "Signed" && (
+                        <div className="ur-add-phone">Exp: {shortDate(e.expires_at)}</div>
+                      )}
+                    </td>
+                    {/* Signature progress is shown INSTEAD of the status,
+                        so a document that is finished with has to say so
+                        first. A voided change order carrying one of two
+                        signatures was reading "1/2 Signed — Pending: <the
+                        customer>": it hid that the document was cancelled,
+                        and named a real person as still owing a signature
+                        on it. Somebody chases that. */}
+                    <td>
+                      <span className={"est-badge est-badge-" + status.toLowerCase()}>
+                        {!settled && sig.total > 0 && sig.signed > 0 && !sig.complete
+                          ? `${sig.signed}/${sig.total} Signed`
+                          : status}
+                      </span>
+                      {!settled && sig.pending.length > 0 && sig.signed > 0 && (
+                        <div className="ur-add-phone">Pending: {sig.pending.join(", ")}</div>
+                      )}
+                    </td>
+                    {/* Customer attention, at a glance. Five opens in two
+                        days is a customer deciding; none since Sent is a
+                        phone call waiting to happen. */}
+                    <td>
+                      {viewsByEstimate[e.id] ? (
+                        <>
+                          <div>{viewsByEstimate[e.id].count}×</div>
+                          <div className="ur-add-phone">
+                            {shortDateTime(viewsByEstimate[e.id].last)}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="estdoc-muted">—</span>
+                      )}
+                    </td>
+                    <td className="right mono">
+                      {e.total_cents ? moneyCents(e.total_cents) : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {invoicing && (
