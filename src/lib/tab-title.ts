@@ -47,3 +47,18 @@ export function documentTitle(docNumber: string | null | undefined, fallback = "
   const n = (docNumber ?? "").replace(UNSAFE, "-").trim();
   return n || fallback;
 }
+
+/**
+ * The file name of a printed project report. A report on one job is
+ * named after its estimate number ("EST-1066 report") whether it was
+ * printed from that job's own report or from the Projects report
+ * filtered down to it -- the same paper saves under the same name. A
+ * report covering several jobs has no one number to carry.
+ */
+export function reportTitle(
+  docNumbers: (string | null | undefined)[],
+  { client = false }: { client?: boolean } = {}
+): string {
+  const n = docNumbers.length === 1 ? documentTitle(docNumbers[0], "") : "";
+  return n ? `${n} ${client ? "client report" : "report"}` : "Projects report";
+}

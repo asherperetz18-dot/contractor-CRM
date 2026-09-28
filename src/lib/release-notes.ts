@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.162.1",
+    date: "2026-09-28",
+    notes: [
+      "A printed Projects report showing just one job now saves under that job's estimate number (\"EST-1066 report\"), the same name as printing it from the job's own report — no more \"Projects report\" files you can't tell apart.",
+    ],
+  },
+  {
     version: "1.162.0",
     date: "2026-09-27",
     notes: [

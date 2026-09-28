@@ -32,6 +32,7 @@ import {
   reportPhaseStatus,
 } from "@/lib/data/report-schedule";
 import { PrintButton } from "@/components/print-button";
+import { reportTitle } from "@/lib/tab-title";
 
 export const dynamic = "force-dynamic";
 
@@ -361,7 +362,7 @@ export default async function ProjectReportPage({
           </Link>
           <PrintButton
             label="Print / Save as PDF"
-            title={`${contract.doc_number} ${clientView ? "client report" : "report"}`}
+            title={reportTitle([contract.doc_number], { client: clientView })}
           />
         </div>
       </div>
