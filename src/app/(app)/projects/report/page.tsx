@@ -9,6 +9,7 @@ import {
   projectTriageOrder,
 } from "@/lib/data/types";
 import { PrintButton } from "@/components/print-button";
+import { reportTitle } from "@/lib/tab-title";
 import { buildProjectCards } from "../project-data";
 import {
   chipMatches,
@@ -204,7 +205,10 @@ export default async function ProjectsReportPage({
           <Link href="/projects" className="btn-ghost">
             Back to projects
           </Link>
-          <PrintButton label="Print / Save as PDF" title="Projects report" />
+          <PrintButton
+            label="Print / Save as PDF"
+            title={reportTitle(listed.map((p) => p.docNumber))}
+          />
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { documentTitle, pageTitle, tabTitle } from "./tab-title.ts";
+import { documentTitle, pageTitle, reportTitle, tabTitle } from "./tab-title.ts";
 
 /**
  * The tab title is the PDF file name, so it has to be the document number
@@ -42,4 +42,18 @@ test("hidden with something waiting: badged once, never stacked", () => {
   assert.equal(tabTitle(once, true, 3), "(3) New alerts — EST-1048");
   // Nothing waiting: hidden or not, the badge is gone.
   assert.equal(tabTitle(once, true, 0), "EST-1048");
+});
+
+test("a report on one job is named after its estimate number, whichever page printed it", () => {
+  // The per-job report and the Projects report filtered down to that job
+  // are the same paper, so they save under the same name.
+  assert.equal(reportTitle(["EST-1066"]), "EST-1066 report");
+  assert.equal(reportTitle(["EST-1066"], { client: true }), "EST-1066 client report");
+  assert.equal(reportTitle([" EST/1066 "]), "EST-1066 report");
+});
+
+test("a report on several jobs, or on a job with no number, falls back to the list's name", () => {
+  assert.equal(reportTitle(["EST-1066", "EST-1070"]), "Projects report");
+  assert.equal(reportTitle([]), "Projects report");
+  assert.equal(reportTitle([null]), "Projects report");
 });
