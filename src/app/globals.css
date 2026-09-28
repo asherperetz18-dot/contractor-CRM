@@ -8228,6 +8228,58 @@ a.portal-header-stars:hover {
   color: var(--ink-soft);
 }
 
+/* Estimates' filter bar: search, date range, follow-up chips, and the
+   count + Clear all pushed to the far end. */
+.est-list-search {
+  flex: 1 1 240px;
+  max-width: 340px;
+}
+.est-list-dates,
+.est-list-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.est-list-chips .count-pill {
+  margin-left: 4px;
+}
+.est-list-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* A sortable column head reads like its neighbours, plus an arrow. */
+.th-sort {
+  all: unset;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.th-sort:hover {
+  color: var(--ink);
+}
+.th-sort:focus-visible {
+  outline: 2px solid var(--accent, #c7691b);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .est-list-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .est-list-chips .chip {
+    padding: 10px 13px;
+  }
+  .est-list-meta {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 /* A non-image attachment: a PDF has no thumbnail, so the tile carries a
    readable name instead of a picture that will not load. */
 .estdoc-attachment a {

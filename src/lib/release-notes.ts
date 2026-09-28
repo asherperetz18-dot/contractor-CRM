@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.163.0",
+    date: "2026-09-28",
+    notes: [
+      "Estimates & Contracts has a filter bar: search by customer, EST number, title or address, and pick a date range (last 7, 30 or 90 days, this month, last 12 months, or your own dates). The cards on top follow both, so Contracts can read \"signed this month\".",
+      "Follow-up buttons on Drafts (No price yet, Older than 7 days) and Proposals (Not opened, Opened 3+ times, Expires within 7 days). Each shows how many documents it would leave.",
+      "Click the Date, Views or Total column heading to sort the list; click again to flip it. Clear all resets every filter at once.",
+    ],
+  },
+  {
     version: "1.162.1",
     date: "2026-09-28",
     notes: [
