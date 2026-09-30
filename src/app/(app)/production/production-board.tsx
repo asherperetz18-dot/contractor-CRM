@@ -23,6 +23,7 @@ import {
 } from "@/lib/production-board";
 import { backfillJobsFromSignedContracts, updateJobStatus } from "@/lib/actions/jobs";
 import { JobForm } from "./job-form";
+import { useQuickCreate } from "../use-quick-create";
 
 /** A job as the board shows it: its status is the column the rules put
  *  it in, and `placement` says why. */
@@ -87,7 +88,9 @@ export function ProductionBoard({
   // the office to say whether to raise one.
   const [confirmComplete, setConfirmComplete] = useState<PlacedJob | null>(null);
   const [showAllComplete, setShowAllComplete] = useState(false);
-  const [showNew, setShowNew] = useState(false);
+  // Quick Create's New Job lands here as /production?new=1 and the form
+  // opens by itself.
+  const [showNew, setShowNew] = useQuickCreate("/production", canWrite);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<JobStatus | null>(null);
   // A dropped card jumps columns immediately; the server then confirms.

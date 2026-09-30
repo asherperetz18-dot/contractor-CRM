@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.169.1",
+    date: "2026-09-30",
+    notes: [
+      "Quick Create's New Appointment, New Job and New Contract now open their form straight away, instead of just opening the page. The same goes for the Appointment button on the phone's Today screen.",
+    ],
+  },
+  {
     version: "1.169.0",
     date: "2026-09-30",
     notes: [
