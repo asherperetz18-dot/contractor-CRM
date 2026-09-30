@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.168.0",
+    date: "2026-09-30",
+    notes: [
+      "On a phone (and in the Android app), the Leads tab is now a list of cards instead of the wide board. Pick a stage from the chips at the top; each lead shows its address, rep, job, value and age.",
+      "Every lead card on a phone has Call, Text and Directions buttons. Call goes through the CRM's dialer so the call is logged, and Text opens the lead's text thread. A New lead button sits above the tabs.",
+      "Quick Create's New Lead now opens the new contact form straight away, instead of just opening the Pipeline.",
+    ],
+  },
+  {
     version: "1.167.0",
     date: "2026-09-30",
     notes: [

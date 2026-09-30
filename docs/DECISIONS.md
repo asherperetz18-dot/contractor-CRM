@@ -967,3 +967,20 @@ The contacts behind those events are fetched by id in the same page load, scoped
 For the crew, the time clock page moves to the first tab and is labelled Today. It is not a new page, because that one already is their day.
 
 **Consequence:** The phone Home adds one small query (the contacts behind at most five events) and no new tables, routes or SQL. A new dashboard alert belongs in `attentionItems`, and then appears on both screens. If the phone should ever open straight on the full dashboard again, remove the wrapper in `page.tsx`; the dashboard itself was not changed apart from reading the shared helpers.
+
+
+## 091 — On a phone, the Leads board becomes stage chips over a list of cards
+
+**Date:** 2026-09-30
+
+**Context:** The Leads tab (#089) opens the Pipeline. The Pipeline is a Kanban board: 220px columns side by side, cards moved by dragging, and a sideways scrollbar. On a phone that means one column and a sliver of the next, drags that a finger can't make, and a list you can't read without swiping sideways. The approved mockup's next step showed Leads as a list of cards, each with Call, Text and Directions.
+
+**Decision:** At ≤700px the board renders `PhoneLeadList` beside the columns, and CSS shows one or the other. The list is built from the same `displayGroups` the columns use: the same server windows, counts, filters and hidden stages. So it fetches nothing new and cannot disagree with the board.
+
+- **Stages.** Each column becomes a chip with its count. The list opens on the first stage that has leads (`pickPhoneStage`, tested), and a picked chip stays picked while it is still a column. There is no "All" chip, because the board's data is windowed per stage (#020). Merging windows would show an arbitrary mix, and "Show more" could not say what was left.
+- **Cards.** Call raises the same `crm:call` event as the lead window's Call button, so the call goes through the CRM's dialer and is logged and recorded. It is not a `tel:` link that would bypass that. Text opens the lead on its Texts tab (LeadForm's new `initialTab`), because the thread lives there. The card line is `leadCardMeta` (tested); stale matches the board's own >14-day rule.
+- **What steps aside.** Moving a lead between stages is done from the lead's own stage field. The stat tiles, sort, Select and Columns controls are desk tools and are hidden at this width. The status, rep, no-appointment and age filters stay, in one row that scrolls. The floating New lead button replaces the toolbar's buttons while it is shown.
+
+In the same change, `/pipeline?new=1` now opens the new-contact form. That is the link Quick Create's New Lead and the phone Today screen's New lead button use, and it used to land on the board with nothing open. It follows the estimates page's idiom: open during render behind a consumed guard, then strip the param.
+
+**Consequence:** Anything added to a board card that a phone user needs must also go on `phone-lead-list.tsx`. Nothing forces that, but the list is short enough to check. Quick Create's New Appointment, New Job and New Contract (`?new=1` on /schedule, /production and /contracts) still open nothing; they are the same fix, page by page.
