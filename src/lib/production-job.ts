@@ -90,3 +90,14 @@ export function productionJobRow(
     status: "Not Started",
   };
 }
+
+/**
+ * What a newly signed document does to its lead's existing job. The
+ * customer signing the completion certificate is the moment the work is
+ * accepted, so the job is Complete -- written through to the row so the
+ * Dashboard and Schedule, which read the stored status, agree with the
+ * board (which also works it out from the documents on its own).
+ */
+export function jobStatusOnSigning(kind: string | null): "Complete" | null {
+  return kind === "completion" ? "Complete" : null;
+}

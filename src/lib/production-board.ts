@@ -19,6 +19,9 @@ export type BoardJob = {
   start_date: string | null;
   end_date: string | null;
   assigned_to: string | null;
+  /** When the row was last written -- the Complete column's last-resort
+   *  finish date for a job with no certificate and no end date. */
+  updated_at?: string | null;
 };
 
 /** One summary card each; null = no quick filter engaged. */
@@ -123,4 +126,163 @@ export function filterJobs<T extends BoardJob>(
     if (f.quick === "unassigned") return isUnassigned(j);
     return true;
   });
+}
+
+// ── Auto-status: the board follows the project ─────────────────────────
+//
+// The Projects page reads Complete, On Hold and Cancelled from the
+// documents (a signed completion certificate, the contract's hold flag,
+// a voided contract). The board used to keep a status of its own that
+// only a drag changed, so a job the customer had signed off sat in Not
+// Started. These rules put the card where the documents say, the same
+// way Projects does, every time the board loads -- so the two pages
+// can't disagree, and jobs finished before this shipped move by
+// themselves with nothing to backfill.
+
+/** The slice of an estimates row the project rules read. */
+export type ProjectDoc = {
+  id: string;
+  lead_id: string | null;
+  kind: string | null;
+  status: string;
+  parent_estimate_id: string | null;
+  signed_at: string | null;
+  completed_on: string | null;
+  project_on_hold?: boolean | null;
+};
+
+/** What the documents say about one lead's project. */
+export type ProjectFacts = {
+  /** The live contract: the latest signed one. Null when every contract
+   *  was voided. */
+  contractId: string | null;
+  cancelled: boolean;
+  onHold: boolean;
+  /** YYYY-MM-DD the work finished, once the customer has signed the
+   *  completion certificate. */
+  completedOn: string | null;
+};
+
+/**
+ * One entry per lead that has ever had a signed contract. Only the
+ * certificate on the LIVE contract completes the project -- one signed
+ * on a version since superseded speaks for work that was re-contracted.
+ */
+export function projectFactsByLead(docs: readonly ProjectDoc[]): Map<string, ProjectFacts> {
+  const contracts = new Map<string, { live: ProjectDoc | null }>();
+  for (const d of docs) {
+    // Only a contract is a project (an allow-list, so a new kind stays out).
+    if ((d.kind ?? "contract") !== "contract" || !d.lead_id) continue;
+    if (d.status !== "Signed" && d.status !== "Void") continue;
+    const held = contracts.get(d.lead_id) ?? { live: null };
+    if (d.status === "Signed" && (!held.live || (d.signed_at ?? "") > (held.live.signed_at ?? ""))) {
+      held.live = d;
+    }
+    contracts.set(d.lead_id, held);
+  }
+
+  const out = new Map<string, ProjectFacts>();
+  for (const [leadId, { live }] of contracts) {
+    const cert = live
+      ? docs.find(
+          (d) => d.kind === "completion" && d.status === "Signed" && d.parent_estimate_id === live.id
+        )
+      : undefined;
+    const completedOn = cert
+      ? cert.completed_on ?? cert.signed_at?.slice(0, 10) ?? null
+      : live?.completed_on ?? null;
+    out.set(leadId, {
+      contractId: live?.id ?? null,
+      cancelled: !live,
+      onHold: !!live?.project_on_hold,
+      completedOn,
+    });
+  }
+  return out;
+}
+
+/** Where a card sits, and why when the documents moved it rather than a drag. */
+export type BoardPlacement = {
+  status: JobStatus;
+  auto: "certificate" | "hold" | "started" | null;
+  completedOn: string | null;
+};
+
+/**
+ * The column a card belongs in. Null means off the board: a cancelled
+ * job is no work for the crew. `facts` is undefined for a job with no
+ * contract behind it (added by hand), which keeps its dragged status.
+ */
+export function boardPlacement(
+  job: BoardJob,
+  facts: ProjectFacts | undefined,
+  today: string
+): BoardPlacement | null {
+  if (facts?.cancelled) return null;
+  if (facts?.completedOn) {
+    return { status: "Complete", auto: "certificate", completedOn: facts.completedOn };
+  }
+  if (facts?.onHold) return { status: "On Hold", auto: "hold", completedOn: null };
+  // Only with a crew on it: a start date nobody is assigned to is a
+  // plan, not a job under way.
+  if (job.status === "Not Started" && job.assigned_to && job.start_date && job.start_date <= today) {
+    return { status: "In Progress", auto: "started", completedOn: null };
+  }
+  return { status: job.status, auto: null, completedOn: null };
+}
+
+/**
+ * The Complete column shows what finished in the last 30 days; the rest
+ * sits behind "Show all". Finish date: the certificate's, else the
+ * job's end date, else when it was last written. A job with none of
+ * those shows -- hiding it would lose it.
+ */
+export function recentlyComplete(job: BoardJob, placement: BoardPlacement, today: string): boolean {
+  const finished = placement.completedOn ?? job.end_date ?? job.updated_at?.slice(0, 10) ?? null;
+  return !finished || daysBetween(finished, today) <= 30;
+}
+
+/**
+ * Why a drag can't stick, in the words the board shows -- or null when
+ * it can. A drop the rules would put straight back is refused up front
+ * rather than letting the card jump back with no explanation.
+ */
+export function dropBlock(
+  job: BoardJob,
+  placement: BoardPlacement,
+  target: JobStatus,
+  facts: ProjectFacts | undefined,
+  today: string,
+  canSetProjectHold: boolean
+): string | null {
+  if (placement.auto === "certificate" && target !== "Complete") {
+    return `${job.name}: the customer signed the completion certificate, so the job stays in Complete. Void the certificate to reopen it.`;
+  }
+  if (target === "Not Started" && job.assigned_to && job.start_date && job.start_date <= today) {
+    return `${job.name}: it started ${fmtDay(job.start_date, today)}. Change its start date to move it back to Not Started.`;
+  }
+  if (facts?.onHold && target !== "On Hold" && !canSetProjectHold) {
+    return `${job.name}: on hold on the Projects page. Only Office or Admin can take it off hold.`;
+  }
+  return null;
+}
+
+/**
+ * One on-hold switch, from the board's side: the project hold a card
+ * moved to `status` implies, or null when the project already agrees.
+ */
+export function projectHoldForJobStatus(status: JobStatus, projectOnHold: boolean): boolean | null {
+  if (status === "On Hold" && !projectOnHold) return true;
+  if (status !== "On Hold" && projectOnHold) return false;
+  return null;
+}
+
+/**
+ * The same switch from the Projects side: where the card goes when the
+ * project is held or released, or null to leave it. Releasing a hold
+ * only moves a card that is sitting in On Hold.
+ */
+export function jobStatusForProjectHold(onHold: boolean, current: JobStatus): JobStatus | null {
+  if (onHold) return current === "On Hold" ? null : "On Hold";
+  return current === "On Hold" ? "In Progress" : null;
 }

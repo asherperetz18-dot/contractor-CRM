@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { backfillSeeds, productionJobRow, type SignedContractSeed } from "@/lib/production-job";
-import type { JobInput, JobStatus } from "@/lib/data/types";
+import { projectHoldForJobStatus } from "@/lib/production-board";
+import { isAdminRole, type JobInput, type JobStatus } from "@/lib/data/types";
 
 function toRow(input: JobInput) {
   return {
@@ -42,14 +43,70 @@ export async function updateJob(id: string, input: JobInput) {
 }
 
 /** The board's drag-between-columns move: status alone, so a drop can
- *  never clobber edits somebody else is making in the job's form. */
+ *  never clobber edits somebody else is making in the job's form.
+ *
+ *  On Hold is one switch shared with the Projects page: a card dragged
+ *  into or out of On Hold puts its project on or off hold too. Only
+ *  Office/Admin may change a project's hold (setProjectHold's rule), so
+ *  anyone else can still park a card in On Hold but can't release a
+ *  project the office put there. */
 export async function updateJobStatus(id: string, status: JobStatus) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("jobs").update({ status }).eq("id", id);
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
 
+  const supabase = await createClient();
+  const { data: job } = await supabase
+    .from("jobs")
+    .select("id, lead_id")
+    .eq("id", id)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; lead_id: string | null }>();
+  if (!job) return { error: "Job not found." };
+
+  const contract = job.lead_id ? await liveContract(supabase, profile.company_id, job.lead_id) : null;
+  const hold = contract ? projectHoldForJobStatus(status, contract.project_on_hold) : null;
+  if (hold === false && !isAdminRole(profile)) {
+    return {
+      error: "This project is on hold on the Projects page. Only Office or Admin can take it off hold.",
+    };
+  }
+
+  const { error } = await supabase.from("jobs").update({ status }).eq("id", id);
   if (error) return { error: error.message };
+
+  if (contract && hold !== null && isAdminRole(profile)) {
+    const { error: holdError } = await supabase
+      .from("estimates")
+      .update({ project_on_hold: hold })
+      .eq("id", contract.id)
+      .eq("company_id", profile.company_id);
+    if (holdError) return { error: `Moved, but the project's hold didn't change: ${holdError.message}` };
+    revalidatePath("/projects");
+  }
   revalidatePath("/production");
   return {};
+}
+
+/** The lead's live contract -- the latest signed one -- and its hold
+ *  flag. Null when there is none, or before migration 0093 added the
+ *  hold column (the query errors; the board then has no hold to sync). */
+async function liveContract(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string,
+  leadId: string
+): Promise<{ id: string; project_on_hold: boolean } | null> {
+  const { data, error } = await supabase
+    .from("estimates")
+    .select("id, project_on_hold")
+    .eq("company_id", companyId)
+    .eq("lead_id", leadId)
+    .eq("status", "Signed")
+    .or("kind.eq.contract,kind.is.null")
+    .order("signed_at", { ascending: false })
+    .limit(1)
+    .returns<{ id: string; project_on_hold: boolean | null }[]>();
+  if (error || !data?.[0]) return null;
+  return { id: data[0].id, project_on_hold: !!data[0].project_on_hold };
 }
 
 /**

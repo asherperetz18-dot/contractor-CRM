@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.165.0",
+    date: "2026-09-30",
+    notes: [
+      "Production Board: a job moves to Complete by itself when the customer signs the completion certificate, with a \"✓ Certificate signed\" chip and the date. Jobs finished before today move over the first time you open the board.",
+      "Putting a project on hold on the Projects page moves its card to On Hold, and dragging a card into or out of On Hold puts the project on or off hold. A voided contract's job leaves the board.",
+      "A job with a crew moves to In Progress on its start date, with a \"Started\" chip.",
+      "Dragging a card to Complete before the customer has signed now asks whether to raise the completion certificate first.",
+      "The Complete column shows the last 30 days; \"Show older\" brings back the rest. The crew picker on a job, and the crew filter, list Field and Production people only.",
+    ],
+  },
+  {
     version: "1.164.0",
     date: "2026-09-30",
     notes: [

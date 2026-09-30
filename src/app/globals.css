@@ -2549,6 +2549,38 @@ a.stat-card {
   font-size: 12px;
   color: var(--ink-soft);
 }
+/* "Show 54 older" under Complete: the column shows the last 30 days. */
+.prod-col-more {
+  background: none;
+  border: 1.5px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blueprint);
+  cursor: pointer;
+}
+.prod-phone .prod-col-more {
+  width: 100%;
+  margin-top: 10px;
+}
+/* Why a card moved by itself: certificate signed, start date arrived. */
+.job-status-chips {
+  margin-top: 8px;
+}
+.job-status-chips span.proj-check-chip {
+  cursor: default;
+}
+.prod-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.prod-confirm-actions .btn-primary {
+  text-decoration: none;
+}
 .prod-phone {
   display: none;
 }

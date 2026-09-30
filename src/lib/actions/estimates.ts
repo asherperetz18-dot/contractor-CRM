@@ -42,7 +42,9 @@ import {
   parseQuantity,
   paidTotalCents,
   type EstimateStatus,
+  type JobStatus,
 } from "@/lib/data/types";
+import { jobStatusForProjectHold } from "@/lib/production-board";
 
 type LeadRow = {
   id: string;
@@ -1938,7 +1940,8 @@ export async function setProjectHold(
     .eq("id", estimateId)
     .eq("company_id", profile.company_id)
     .eq("status", "Signed")
-    .select("id");
+    .select("id, lead_id")
+    .returns<{ id: string; lead_id: string | null }[]>();
   if (error) return { error: error.message };
   if (!data?.length) {
     // RLS refusals match zero rows without an error -- and a project
@@ -1946,6 +1949,22 @@ export async function setProjectHold(
     return { error: "Could not update that project." };
   }
   revalidatePath("/projects");
+
+  // One on-hold switch: the job's card on the Production Board follows.
+  const leadId = data[0].lead_id;
+  if (leadId) {
+    const { data: jobs } = await supabase
+      .from("jobs")
+      .select("id, status")
+      .eq("lead_id", leadId)
+      .eq("company_id", profile.company_id)
+      .returns<{ id: string; status: JobStatus }[]>();
+    for (const job of jobs ?? []) {
+      const next = jobStatusForProjectHold(onHold, job.status);
+      if (next) await supabase.from("jobs").update({ status: next }).eq("id", job.id);
+    }
+    revalidatePath("/production");
+  }
   return {};
 }
 

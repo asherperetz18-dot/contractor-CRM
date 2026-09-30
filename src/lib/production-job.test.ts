@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { backfillSeeds, productionJobRow } from "./production-job.ts";
+import { backfillSeeds, jobStatusOnSigning, productionJobRow } from "./production-job.ts";
 
 /**
  * A signed contract puts the job on the Production Board by itself —
@@ -124,4 +124,11 @@ test("two signed contracts on one lead seed one job, the latest signature naming
   );
   assert.equal(seeds.length, 1);
   assert.equal(seeds[0].id, "new");
+});
+
+test("a signed completion certificate finishes the lead's job; nothing else moves it", () => {
+  assert.equal(jobStatusOnSigning("completion"), "Complete");
+  for (const kind of [null, "contract", "change_order", "invoice"]) {
+    assert.equal(jobStatusOnSigning(kind), null, `${kind} must leave the job where it is`);
+  }
 });

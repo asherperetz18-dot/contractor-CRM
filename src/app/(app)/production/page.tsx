@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import { canEditSchedule, type Job } from "@/lib/data/types";
+import { canEditSchedule, isAdminRole, type Job } from "@/lib/data/types";
+import { projectFactsByLead, type ProjectDoc, type ProjectFacts } from "@/lib/production-board";
 import { ProductionBoard } from "./production-board";
 
 export default async function ProductionPage() {
@@ -31,35 +32,37 @@ export default async function ProductionPage() {
   ]);
 
   // Only the estimates the jobs on the board actually point at (never a
-  // whole-table scan): a signed top-level contract per lead is what
-  // "Open project" jumps to on the Projects board.
+  // whole-table scan): each lead's contracts and completion certificates
+  // are what the card's column and its "Open project" link are read from
+  // -- the same documents the Projects page reads its status from.
   const leadIds = [...new Set(jobs.map((j) => j.lead_id).filter((x): x is string => !!x))];
-  const projectByLead: Record<string, string> = {};
-  if (leadIds.length > 0) {
-    const { data: signed } = await supabase
-      .from("estimates")
-      .select("id, lead_id, kind, signed_at")
-      .eq("company_id", companyId)
-      .eq("status", "Signed")
-      .in("lead_id", leadIds)
-      .returns<{ id: string; lead_id: string | null; kind: string | null; signed_at: string | null }[]>();
-    (signed ?? [])
-      // The contract is the project: not its change orders, certificate
-      // or invoices.
-      .filter((e) => (e.kind ?? "contract") === "contract")
-      // Latest signature wins when a lead has several signed documents.
-      .sort((a, b) => (a.signed_at ?? "").localeCompare(b.signed_at ?? ""))
-      .forEach((e) => {
-        if (e.lead_id) projectByLead[e.lead_id] = e.id;
-      });
+  const docs: ProjectDoc[] = [];
+  for (let i = 0; i < leadIds.length; i += 200) {
+    const slice = leadIds.slice(i, i + 200);
+    const query = (cols: string) =>
+      supabase
+        .from("estimates")
+        .select(cols)
+        .eq("company_id", companyId)
+        .in("status", ["Signed", "Void"])
+        .in("lead_id", slice)
+        .returns<ProjectDoc[]>();
+    const base = "id, lead_id, kind, status, parent_estimate_id, signed_at, completed_on";
+    let res = await query(`${base}, project_on_hold`);
+    // project_on_hold arrives with migration 0093; until it has run, the
+    // board still reads Complete and Cancelled, just no hold.
+    if (res.error) res = await query(base);
+    docs.push(...(res.data ?? []));
   }
+  const projectFacts: Record<string, ProjectFacts> = Object.fromEntries(projectFactsByLead(docs));
 
   return (
     <ProductionBoard
       jobs={jobs}
       roster={roster}
-      projectByLead={projectByLead}
+      projectFacts={projectFacts}
       canWrite={canWrite}
+      canSetProjectHold={isAdminRole(profile)}
       initialToday={await companyToday()}
     />
   );
