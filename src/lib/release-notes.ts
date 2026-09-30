@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.167.0",
+    date: "2026-09-30",
+    notes: [
+      "On a phone (and in the Android app), Home now opens on a short Today screen: big buttons for a new lead, an appointment, an estimate and the time clock, what needs your attention, your next appointments with a Navigate button to the address, and this month's leads and appointments against last month.",
+      "The full dashboard is still there on a phone: tap \"Show the full dashboard\" at the bottom of Today. Computers and tablets are unchanged.",
+      "The field crew's first tab on a phone is now Today, their time clock page, followed by Jobs, Schedule and Calendar.",
+    ],
+  },
+  {
     version: "1.166.0",
     date: "2026-09-30",
     notes: [

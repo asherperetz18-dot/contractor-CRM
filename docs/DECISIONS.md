@@ -946,3 +946,24 @@ Color: each tab, section and tool wears a tone (`data-mtone`). These are the sid
 Things pinned to the bottom (the location-sharing pill, the screen-share windows) now sit above the tabs. Tablets (>700px) and desktops are untouched.
 
 **Consequence:** A new top-bar tool needs a `.tool-slot` with a `data-tool` key, and a row in `more-sheet.tsx`'s `TOOLS`. Without both, it is simply invisible on phones. A new page gets a tile automatically. It also needs an icon in `lib/mobile-tabs.ts`, or `mobile-tabs.test.ts` fails. The dashboard's old phone "Modules" tile grid now duplicates More; the Home screen PR (the next step of the approved mockup) replaces it. Anything else fixed to the bottom of the screen at phone width must clear `--phone-tabbar-h`.
+
+
+## 090 — On a phone, Home is a short Today screen with the full dashboard one tap below; the crew's Today is the time clock
+
+**Date:** 2026-09-30
+
+**Context:** On a phone, the Dashboard is a long reflowed stack: filters, a dozen KPI boxes, charts and tables. It is useful at a desk, but not in a driveway between two appointments. The approved mockup's second step asked for a phone Home built around the next few hours: quick buttons, what needs attention, the next appointments with a way to drive there, and how the month is going. The field crew's day is already one page, the time clock (the clock itself, hours so far, today's schedule).
+
+**Decision:** At ≤700px, `/` renders `PhoneToday` (`src/app/(app)/phone-today.tsx`) above the dashboard it wraps, and the dashboard is hidden behind a "Show the full dashboard" toggle. Nothing is removed, and it opens in place. Tablets and desktops never see Today, and their dashboard is unchanged. Once the full dashboard is open on a phone, its Modules tile grid stays hidden, because the More sheet (#089) already offers every page.
+
+The pieces are pure and tested in `src/lib/phone-today.ts`:
+- The Needs attention rows are `attentionItems`. The desktop dashboard's alert strip now reads the same function, so the two can never disagree about what is overdue or where it links. Money rows stay hidden from anyone without financials.
+- The month deltas are `deltaView`, which the dashboard's KPI tiles also use now.
+- Quick buttons (`quickActions`) offer only pages the person can open.
+- Next up (`upcomingCards`) shows the first three of the dashboard's own upcoming events. It names the client and offers Navigate when the contact has an address.
+
+The contacts behind those events are fetched by id in the same page load, scoped to the company.
+
+For the crew, the time clock page moves to the first tab and is labelled Today. It is not a new page, because that one already is their day.
+
+**Consequence:** The phone Home adds one small query (the contacts behind at most five events) and no new tables, routes or SQL. A new dashboard alert belongs in `attentionItems`, and then appears on both screens. If the phone should ever open straight on the full dashboard again, remove the wrapper in `page.tsx`; the dashboard itself was not changed apart from reading the shared helpers.
