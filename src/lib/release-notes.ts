@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.169.0",
+    date: "2026-09-30",
+    notes: [
+      "On a phone (and in the Android app), a lead now opens full screen. At the top: the address, where the lead came from and whose it is, big Call, Text, Email and Directions buttons, how far along the lead is, and the next appointment.",
+      "The tabs (Overview, Appointments, Tasks, Notes, Texts, Calls, Files) come right after that, so a lead's texts or notes are one tap away instead of at the bottom of a long form. The contact details are on the Overview tab.",
+      "Computers and tablets are unchanged.",
+    ],
+  },
+  {
     version: "1.168.0",
     date: "2026-09-30",
     notes: [

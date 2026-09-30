@@ -984,3 +984,20 @@ For the crew, the time clock page moves to the first tab and is labelled Today. 
 In the same change, `/pipeline?new=1` now opens the new-contact form. That is the link Quick Create's New Lead and the phone Today screen's New lead button use, and it used to land on the board with nothing open. It follows the estimates page's idiom: open during render behind a consumed guard, then strip the param.
 
 **Consequence:** Anything added to a board card that a phone user needs must also go on `phone-lead-list.tsx`. Nothing forces that, but the list is short enough to check. Quick Create's New Appointment, New Job and New Contract (`?new=1` on /schedule, /production and /contracts) still open nothing; they are the same fix, page by page.
+
+
+## 092 — On a phone, a lead opens full screen with a header of actions; the contact fields move under the tabs
+
+**Date:** 2026-09-30
+
+**Context:** A lead opens in `LeadForm`, a floating modal. On a phone that card opened on the edit form: contact type, first name, last name, three phone fields and email came before anything useful. Call and Text were small emoji links under the form, and the tabs (Texts, Notes, Files) sat a long scroll further down. The approved mockup's last step showed a lead as a screen with the customer and the actions on top, the stage, the next visit, and the activity underneath.
+
+**Decision:** Restyle `LeadForm` at ≤700px, not a second lead screen. It is opened from the Pipeline, Contacts, Tasks and more, and it holds every panel, the autosave and the permission rules. A parallel phone page would drift from it.
+
+- **Full screen.** The modal takes a `className` (`lead-sheet`), and at phone width that card fills the screen with a sticky title bar.
+- **`LeadPhoneHero` on top.** It shows the address, "Source · Rep" (`leadSubline`), and Call / Text / Email / Directions as big buttons. Call raises `crm:call` (the dialer, logged), and Text is the form's own `textPhone`. Below that come the stage bar and the next visit (`nextAppointment`: soonest from today, cancelled ones skipped).
+  - It is mounted only at phone width (`usePhoneWidth`, matchMedia), because it fetches the lead's appointments, and a desktop that never shows it shouldn't pay for that.
+  - It sits outside the form's `<fieldset disabled>`, so a read-only viewer (a Field user) can still call and navigate.
+- **Moved with CSS, not by restructuring the JSX.** The form's fieldset becomes a flex column. The tab row gets `order: -1` and scrolls sideways; the open chip is kept in view on phones only, so a desktop card never jumps. The contact block (now wrapped in `.lf-contact`) shows on Overview only, and the old stage bar gives way to the header's. The fieldset also needs `min-inline-size: 0`: by default it is as wide as its content, and the one-line tab row pushed the form 240px past the edge.
+
+**Consequence:** Desktop and tablet DOM order and look are unchanged; only a wrapper div and a class were added. On a phone the visual order (header, tabs, contact, tab) differs from the DOM order (contact, tabs, tab), so keyboard Tab order on a phone runs through the contact fields first. That is acceptable for touch, but a reason to restructure the JSX if this form is ever rebuilt. The mockup's sticky "Add note / Create estimate" bar was not built: Notes is a tab, and the estimate button already sits in the tab row. Anything added above the tabs in `LeadForm` should go inside `.lf-contact` if it belongs to Overview, or it will show on every tab on a phone.

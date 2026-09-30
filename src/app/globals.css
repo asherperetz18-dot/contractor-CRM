@@ -4196,6 +4196,210 @@ a.stat-card {
   margin-bottom: 14px;
   flex-wrap: wrap;
 }
+/* The lead window on a phone (DECISIONS #092): full screen instead of a
+   floating card, the phone header (LeadPhoneHero) on top, then the tabs
+   in one row that scrolls, then the tab. The contact fields follow the
+   tabs and show on Overview only; the old stage bar gives way to the
+   header's. Wider screens keep the card exactly as it was. */
+@media (max-width: 700px) {
+  .modal-backdrop:has(.lead-sheet) {
+    padding: 0;
+  }
+  .modal.lead-sheet {
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    max-height: none;
+    border-radius: 0;
+  }
+  @supports (height: 100dvh) {
+    .modal.lead-sheet {
+      height: 100dvh;
+    }
+  }
+  .lead-sheet .modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #fff;
+    padding: 12px 12px 10px 16px;
+  }
+  .lead-sheet .modal-head h3 {
+    font-size: 24px;
+    line-height: 1.15;
+  }
+  .lead-sheet .modal-head .icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .lead-sheet .modal-body {
+    padding: 14px 16px 24px;
+  }
+  .lead-sheet .lf-body {
+    display: flex;
+    flex-direction: column;
+    /* A fieldset is as wide as its content by default, and the tab row
+       no longer wraps: without this it pushed the form past the edge. */
+    min-inline-size: 0;
+  }
+  .lead-sheet .lf-body > .ta-tabs {
+    order: -1;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-bottom: 12px;
+    padding-bottom: 4px;
+  }
+  .lead-sheet .lf-body > .ta-tabs > * {
+    flex: none;
+  }
+  .lead-sheet .lf-body:not(.lf-tab-Overview) > .lf-contact,
+  .lead-sheet .lph ~ .lf-body > .stage-progress {
+    display: none;
+  }
+}
+.lph {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.lph-addr {
+  margin: -6px 0 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+.lph-sub {
+  margin: -8px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.lph-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 2px;
+}
+.lph-act {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  cursor: pointer;
+}
+.lph-act:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lph-circ {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--mtone) 14%, #fff);
+  color: var(--mtone);
+}
+.lph-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.lph-stage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.lph-sec {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.lph-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.lph-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+.lph-bar {
+  display: flex;
+  gap: 3px;
+}
+.lph-bar span {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e3ded2;
+}
+.lph-bar span.on {
+  background: var(--mtone);
+}
+.lph-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.lph-appt {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--mtone) 7%, #fff);
+  border-color: color-mix(in srgb, var(--mtone) 25%, #fff);
+}
+.lph-appt-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.lph-appt-icon {
+  display: flex;
+  color: var(--mtone);
+}
+.lph-appt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.lph-appt-when {
+  font-size: 15px;
+  font-weight: 600;
+}
+.lph-appt-what {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
 .stage-progress {
   margin: 4px 0 14px;
 }
