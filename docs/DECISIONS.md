@@ -983,7 +983,7 @@ For the crew, the time clock page moves to the first tab and is labelled Today. 
 
 In the same change, `/pipeline?new=1` now opens the new-contact form. That is the link Quick Create's New Lead and the phone Today screen's New lead button use, and it used to land on the board with nothing open. It follows the estimates page's idiom: open during render behind a consumed guard, then strip the param.
 
-**Consequence:** Anything added to a board card that a phone user needs must also go on `phone-lead-list.tsx`. Nothing forces that, but the list is short enough to check. Quick Create's New Appointment, New Job and New Contract (`?new=1` on /schedule, /production and /contracts) still open nothing; they are the same fix, page by page.
+**Consequence:** Anything added to a board card that a phone user needs must also go on `phone-lead-list.tsx`. Nothing forces that, but the list is short enough to check. Quick Create's New Appointment, New Job and New Contract (`?new=1` on /schedule, /production and /contracts) still open nothing; they are the same fix, page by page. (Done in 1.169.1: the four pages share `useQuickCreate`, and the gate is `shouldOpenQuickCreate`.)
 
 
 ## 092 — On a phone, a lead opens full screen with a header of actions; the contact fields move under the tabs
