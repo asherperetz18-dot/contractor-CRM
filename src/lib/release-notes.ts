@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.165.2",
+    date: "2026-09-30",
+    notes: [
+      "Dashboard on phones: the alert cards at the top (Overdue tasks, Overdue payments, Awaiting signature…) no longer run off the right side of the screen. On a small phone, or with a larger text size, they stack one per row so the full amount shows.",
+    ],
+  },
+  {
     version: "1.165.1",
     date: "2026-09-30",
     notes: [
