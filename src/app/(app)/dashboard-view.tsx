@@ -27,6 +27,7 @@ import {
 import { useDashboardOrder } from "./dashboard-order-prefs";
 import { useInboxCount } from "./use-inbox-count";
 import { UpcomingAppointments } from "./upcoming-appointments";
+import { attentionItems, deltaView } from "@/lib/phone-today";
 
 const PRESETS = [
   { key: "month", label: "This month" },
@@ -52,16 +53,8 @@ function talkTime(seconds: number): string {
  * compare to, and says so instead of showing an infinite percent.
  */
 function Delta({ cur, prev }: { cur: number; prev: number }) {
-  if (prev <= 0) {
-    return <span className="dash-delta muted">{cur > 0 ? "new" : "—"}</span>;
-  }
-  const pct = Math.round(((cur - prev) / prev) * 100);
-  if (pct === 0) return <span className="dash-delta muted">±0%</span>;
-  return (
-    <span className={"dash-delta " + (pct > 0 ? "up" : "down")}>
-      {pct > 0 ? "▲" : "▼"} {Math.abs(pct)}%
-    </span>
-  );
+  const d = deltaView(cur, prev);
+  return <span className={"dash-delta " + (d.dir === "flat" ? "muted" : d.dir)}>{d.text}</span>;
 }
 
 export function DashboardView({
@@ -507,52 +500,7 @@ export function DashboardView({
     );
   }
 
-  const attention = [
-    {
-      key: "tasks",
-      show: true,
-      href: "/tasks",
-      alarm: R.attention.overdueTasks > 0,
-      value: String(R.attention.overdueTasks),
-      label: "Overdue tasks",
-    },
-    {
-      key: "overdue",
-      show: canMoney,
-      href: "/payments",
-      alarm: R.attention.overdueOwedCents > 0,
-      value: cents(R.attention.overdueOwedCents),
-      label: `Overdue payments · ${R.attention.overdueOwedCount} ${
-        R.attention.overdueOwedCount === 1 ? "phase" : "phases"
-      }`,
-    },
-    {
-      key: "awaiting",
-      show: true,
-      href: "/estimates",
-      alarm: false,
-      value: cents(R.attention.awaitingCents),
-      label: `Awaiting signature · ${R.attention.awaitingCount} ${
-        R.attention.awaitingCount === 1 ? "contract" : "contracts"
-      }`,
-    },
-    {
-      key: "replies",
-      show: inboxCount > 0,
-      href: "/reply-inbox",
-      alarm: false,
-      value: String(inboxCount),
-      label: "Replies waiting",
-    },
-    {
-      key: "today",
-      show: true,
-      href: "/schedule",
-      alarm: false,
-      value: String(R.attention.apptsToday),
-      label: "Appointments today",
-    },
-  ].filter((c) => c.show);
+  const attention = attentionItems(R.attention, { canMoney, inboxCount });
 
   return (
     <div className="dash-desktop">
