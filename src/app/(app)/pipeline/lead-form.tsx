@@ -122,6 +122,7 @@ export function LeadForm({
   canManageMoney,
   estimateIndex,
   dispatcherPicker,
+  initialTab,
   onCancel,
   onSaved,
   onDeleted,
@@ -150,6 +151,9 @@ export function LeadForm({
   estimateIndex?: LeadEstimateIndex;
   /** Dispatcher picker data, from the page -- same reason. */
   dispatcherPicker?: DispatcherPickerBootstrap;
+  /** Open on this tab instead of Overview: a phone lead card's Text
+   *  button lands on the Texts thread. */
+  initialTab?: "Texts";
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -163,8 +167,13 @@ export function LeadForm({
     !!(lead?.second_contact_first_name || lead?.second_contact_phone || lead?.second_contact_email)
   );
   const [showBooking, setShowBooking] = useState(false);
-  const [tab, setTab] = useState<Tab>("Overview");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "Overview");
   const tabsRowRef = useRef<HTMLDivElement>(null);
+  // Opened straight onto a tab (a phone card's Text button): bring the
+  // tab row up, or on a small screen the thread opens below the fold.
+  useEffect(() => {
+    if (initialTab) tabsRowRef.current?.scrollIntoView({ block: "start" });
+  }, [initialTab]);
   const [lastSaved, setLastSaved] = useState(form);
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
