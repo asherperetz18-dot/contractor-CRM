@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.166.0",
+    date: "2026-09-30",
+    notes: [
+      "New phone layout: on a phone (and in the Android app) there is now a colored tab bar at the bottom with your most-used pages. Office and sales get Home, Leads, Schedule and Jobs; the field crew gets Jobs, Schedule, Time and Calendar.",
+      "The More tab opens every other page as colored tiles, plus the AI assistant, daily brief, dialer, screen share, your account and sign out. The top bar on a phone is now just search, Quick Create and the bell.",
+      "The Quick Create button on a computer reads \"+ Quick Create\" again instead of \"+ Quick Create+\".",
+    ],
+  },
+  {
     version: "1.165.2",
     date: "2026-09-30",
     notes: [

@@ -157,3 +157,363 @@
     padding: 8px 6px;
   }
 }
+
+/* 6. Phone layout: bottom tabs and More (DECISIONS #089) -----------------
+   At phone width the desktop shell (sidebar behind a ☰, nine tool icons
+   in a sideways-scrolling top bar) gives way to a phone app's shape: a
+   bottom tab bar with the four pages this person uses most and More for
+   everything else. The top bar keeps search, Quick Create and the bell;
+   the other tools are hidden here and opened from More, which clicks the
+   hidden button, so each tool still lives in one place. Tablets and
+   desktops are unchanged. Each tab, More section and tool wears a color
+   (data-mtone): the sidebar's department tones, deepened to read on
+   white, plus violet for scheduling. */
+.tool-slot {
+  display: contents;
+}
+.phone-tabbar {
+  display: none;
+}
+[data-mtone="home"] {
+  --mtone: #2d5f8a;
+}
+[data-mtone="dispatch"] {
+  --mtone: #2f7fcf;
+}
+[data-mtone="calls"] {
+  --mtone: #1b8f88;
+}
+[data-mtone="staff"] {
+  --mtone: #c2457a;
+}
+[data-mtone="production"] {
+  --mtone: #c8691c;
+}
+[data-mtone="accounting"] {
+  --mtone: #a88412;
+}
+[data-mtone="schedule"] {
+  --mtone: #6d5bd0;
+}
+[data-mtone="more"],
+[data-mtone="tools"] {
+  --mtone: #3a4a5e;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --phone-tabbar-h: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+  .phone-tabbar {
+    display: flex;
+    flex: none;
+    position: relative;
+    z-index: 40;
+    background: #fff;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -2px 10px rgba(20, 32, 46, 0.06);
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+  .phone-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 54px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: var(--ink-soft);
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .phone-tab-pill {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 30px;
+    border-radius: 15px;
+    color: var(--mtone);
+    transition: background-color 0.15s ease;
+  }
+  .phone-tab-label {
+    max-width: 100%;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .phone-tab.active {
+    color: var(--ink);
+  }
+  .phone-tab.active .phone-tab-pill {
+    background: color-mix(in srgb, var(--mtone) 18%, #fff);
+  }
+  .phone-tab.active .phone-tab-label {
+    font-weight: 700;
+  }
+
+  /* More replaces the ☰ drawer and holds the tools. */
+  .mobile-nav-toggle {
+    display: none;
+  }
+  .tool-slot .topbar-icon-btn {
+    display: none;
+  }
+  /* With the tools gone there is room for search again (hidden at
+     phone width since the bar was full). */
+  .global-topbar-left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .global-search {
+    display: block;
+  }
+  .gsearch-wrap {
+    min-width: 0;
+  }
+
+  /* What floats at the bottom of the screen sits above the tabs. */
+  .tc-sharing-pill {
+    bottom: calc(var(--phone-tabbar-h) + 10px);
+  }
+  .ss-screen-panel,
+  .ss-cam-bubble {
+    bottom: calc(var(--phone-tabbar-h) + 12px);
+  }
+}
+
+/* The More sheet only renders once the tab bar's More is tapped. */
+.more-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 74;
+  background: rgba(10, 16, 24, 0.45);
+}
+.more-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  background: var(--paper);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 30px rgba(10, 16, 24, 0.25);
+}
+@supports (height: 100dvh) {
+  .more-sheet {
+    max-height: 88dvh;
+  }
+}
+.more-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 10px 6px 18px;
+}
+.more-title {
+  margin: 0;
+  font-family: var(--font-headers);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.more-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.more-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.more-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.more-section-title::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--mtone);
+}
+.more-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.more-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 86px;
+  padding: 10px 6px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.more-tile[aria-current="page"] {
+  border-color: var(--mtone);
+  box-shadow: 0 0 0 1px var(--mtone);
+}
+.more-tile-icon,
+.more-row-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mtone) 15%, #fff);
+  color: var(--mtone);
+}
+.more-section[data-mtone] .more-tile-icon {
+  color: var(--mtone);
+}
+.more-list {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 6px 14px;
+  border: 0;
+  border-bottom: 1px solid #eee9de;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.more-row:last-child {
+  border-bottom: 0;
+}
+.more-row-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+.more-account {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.more-account-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.more-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+.more-account-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.more-account-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.more-account-company {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.more-switcher button {
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+}
+.more-signout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+}
+.more-legal {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}

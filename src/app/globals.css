@@ -1064,6 +1064,10 @@ button.stat-card {
 .quick-create-wrap {
   position: relative;
 }
+/* The bare "+" is the phone label; the phone rule below shows it. */
+.qc-label-short {
+  display: none;
+}
 .quick-create-btn {
   padding: 9px 16px;
 }

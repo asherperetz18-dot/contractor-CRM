@@ -922,3 +922,27 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** The board and Projects can't disagree about Complete, On Hold or Cancelled. A job completed by a certificate signed before this shipped still has its old `jobs.status`, so the Dashboard's production counts and the Schedule read it until someone touches the job (see `docs/TECH_DEBT.md`). A job whose certificate is later voided keeps a stored Complete and becomes draggable again. Anyone adding a new way to finish, hold or cancel a project should read `boardPlacement` first.
 
+
+## 089 — Phones get a bottom tab bar and a More sheet; the top bar's tools are opened from More, not moved
+
+**Date:** 2026-09-30
+
+**Context:** The Android app (and every phone browser) showed the desktop CRM squeezed down: a ☰ drawer for the menu, and nine tool icons in a top bar that scrolled sideways. The search box was hidden at phone width because the bar was full. The owner approved a mockup of a phone-shaped layout (bottom tabs, a More sheet) and asked for more color. Several tools open their own panels from inside themselves: the daily brief opens once a day on its own, and the AI assistant keeps a chat panel. So physically moving those components into a sheet that is usually closed would have hidden their panels, or mounted them twice.
+
+**Decision:** At ≤700px the shell gains a tab bar as the last row of the app column. It is not floating, so it never covers the end of a list. The tabs are the first four pages the person can open, from a best-first list (`mobileTabs`, tested). Office and Sales get Home · Leads · Schedule · Jobs. The crew gets Jobs · Schedule · Time · Calendar. A page the person can't open never becomes a tab; the next candidate takes its seat.
+
+More opens a sheet with:
+- every page they can open, as tiles grouped by department (`moreSections`, following their menu order);
+- the tools;
+- the account block (company switcher, sign out);
+- Privacy and Delete account (#087).
+
+The ☰ is hidden at that width, and the search box is shown again.
+
+The tools stay exactly where they were in the layout, each wrapped in a `display: contents` `.tool-slot[data-tool]`, so the desktop DOM and look are unchanged. At phone width their `.topbar-icon-btn` is hidden. The sheet's rows are read from whichever slots the top bar actually rendered for this person (so they can't drift from its role rules), and a tap clicks the hidden button. Each tool therefore has one instance, with its panels, polling and once-a-day brief untouched. Bell and Quick Create stay in the bar.
+
+Color: each tab, section and tool wears a tone (`data-mtone`). These are the sidebar's department tones, deepened to at least 3:1 on white for icons, plus violet for scheduling. Red and green stay reserved for money.
+
+Things pinned to the bottom (the location-sharing pill, the screen-share windows) now sit above the tabs. Tablets (>700px) and desktops are untouched.
+
+**Consequence:** A new top-bar tool needs a `.tool-slot` with a `data-tool` key, and a row in `more-sheet.tsx`'s `TOOLS`. Without both, it is simply invisible on phones. A new page gets a tile automatically. It also needs an icon in `lib/mobile-tabs.ts`, or `mobile-tabs.test.ts` fails. The dashboard's old phone "Modules" tile grid now duplicates More; the Home screen PR (the next step of the approved mockup) replaces it. Anything else fixed to the bottom of the screen at phone width must clear `--phone-tabbar-h`.
