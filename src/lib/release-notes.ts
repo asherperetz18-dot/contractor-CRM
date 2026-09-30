@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.165.1",
+    date: "2026-09-30",
+    notes: [
+      "Behind the scenes: the Android phone app now needs Android 7 or newer, which Google Play requires. Phones from the last nine years are unaffected.",
+    ],
+  },
+  {
     version: "1.165.0",
     date: "2026-09-30",
     notes: [
