@@ -6,6 +6,13 @@ import { selectAll } from "@/lib/data/select-all";
 import { digitsSearchPattern } from "@/lib/dial-filters";
 import { buildDuplicateGroups, type DupContact, type DuplicateGroup } from "@/lib/contact-duplicates";
 import { leadDisplayName } from "@/lib/data/types";
+import {
+  CONTACT_CLOSED_STAGES,
+  contactFilterClauses,
+  hasContactFilters,
+  parseContactFilters,
+  type ContactFilters,
+} from "@/lib/contact-filters";
 import type { Lead } from "@/lib/data/types";
 
 /**
@@ -63,8 +70,20 @@ function searchClause(search: string): string | null {
   return parts.join(",");
 }
 
+/**
+ * The search box and the Source / Rep / Stage filters, on any leads
+ * query. `filters` comes from the browser, so it is re-parsed here.
+ */
+function narrow<Q extends { or(filters: string): Q }>(q: Q, search: string, filters: unknown): Q {
+  const or = searchClause(search);
+  if (or) q = q.or(or);
+  for (const clause of contactFilterClauses(parseContactFilters(filters))) q = q.or(clause);
+  return q;
+}
+
 export async function listContacts(input: {
   search: string;
+  filters?: ContactFilters;
   offset: number;
   limit: number;
 }): Promise<{ rows: ContactListRow[]; total: number }> {
@@ -72,12 +91,11 @@ export async function listContacts(input: {
   if (!profile) return { rows: [], total: 0 };
   const supabase = await createClient();
 
-  let q = supabase
-    .from("leads")
-    .select(ROW_COLUMNS, { count: "exact" })
-    .eq("company_id", profile.company_id);
-  const or = searchClause(input.search);
-  if (or) q = q.or(or);
+  const q = narrow(
+    supabase.from("leads").select(ROW_COLUMNS, { count: "exact" }).eq("company_id", profile.company_id),
+    input.search,
+    input.filters
+  );
   const { data, count, error } = await q
     .order("created_at", { ascending: false })
     .range(input.offset, input.offset + Math.min(input.limit, 200) - 1);
@@ -85,27 +103,60 @@ export async function listContacts(input: {
   return { rows: (data ?? []) as ContactListRow[], total: count ?? 0 };
 }
 
-/** The three stat tiles, as head counts -- no rows travel. */
-export async function getContactStats(): Promise<{
+/**
+ * The three stat tiles, as head counts -- no rows travel. They follow
+ * the search and filters, so the numbers above the table describe the
+ * table. `bookTotal` is the unfiltered count, for "N of 6,743".
+ */
+export async function getContactStats(input?: { search?: string; filters?: ContactFilters }): Promise<{
   totalContacts: number;
   withOpenLeads: number;
   noSetterAssigned: number;
+  bookTotal: number;
 }> {
   const profile = await getCurrentProfile();
-  if (!profile) return { totalContacts: 0, withOpenLeads: 0, noSetterAssigned: 0 };
+  if (!profile) return { totalContacts: 0, withOpenLeads: 0, noSetterAssigned: 0, bookTotal: 0 };
   const supabase = await createClient();
-  const base = () =>
+  const search = input?.search ?? "";
+  const filters = parseContactFilters(input?.filters);
+  const narrowed = search.trim() !== "" || hasContactFilters(filters);
+  const book = () =>
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id);
-  const [total, open, unassigned] = await Promise.all([
+  const base = () => narrow(book(), search, filters);
+  const [total, open, unassigned, whole] = await Promise.all([
     base(),
-    base().not("stage", "in", "(Won,Lost,DNC)"),
+    base().not("stage", "in", `(${CONTACT_CLOSED_STAGES.join(",")})`),
     base().is("assigned_to", null),
+    narrowed ? book() : null,
   ]);
   return {
     totalContacts: total.count ?? 0,
     withOpenLeads: open.count ?? 0,
     noSetterAssigned: unassigned.count ?? 0,
+    bookTotal: (whole ?? total).count ?? 0,
   };
+}
+
+/**
+ * The values contacts actually carry, for the filter dropdowns (0184).
+ * Until that migration has run the function is missing and every list
+ * comes back empty -- the page then offers the Settings lists and the
+ * Sales reps alone.
+ */
+export async function getContactFilterFacets(): Promise<{
+  sources: string[];
+  reps: string[];
+  stages: string[];
+}> {
+  const empty = { sources: [], reps: [], stages: [] };
+  const profile = await getCurrentProfile();
+  if (!profile) return empty;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("contact_filter_facets", { p_company: profile.company_id });
+  if (error || !data) return empty;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const d = data as Record<string, unknown>;
+  return { sources: list(d.sources), reps: list(d.reps), stages: list(d.stages) };
 }
 
 /**
@@ -136,11 +187,14 @@ export async function getContactDuplicateGroups(): Promise<{
 }
 
 /**
- * Everything the current search matches, as bulk-email recipients --
+ * Everything the current search and filters match, as bulk-email recipients --
  * "select all" must mean the whole match, not the rows scrolled into
  * view. Capped, and says when it capped.
  */
-export async function listMatchingRecipients(search: string): Promise<{
+export async function listMatchingRecipients(
+  search: string,
+  filters?: ContactFilters
+): Promise<{
   recipients: { id: string; name: string; email: string | null }[];
   total: number;
   capped: boolean;
@@ -149,12 +203,14 @@ export async function listMatchingRecipients(search: string): Promise<{
   if (!profile) return { recipients: [], total: 0, capped: false };
   const supabase = await createClient();
 
-  let q = supabase
-    .from("leads")
-    .select("id, contact_type, company_name, first_name, last_name, email", { count: "exact" })
-    .eq("company_id", profile.company_id);
-  const or = searchClause(search);
-  if (or) q = q.or(or);
+  const q = narrow(
+    supabase
+      .from("leads")
+      .select("id, contact_type, company_name, first_name, last_name, email", { count: "exact" })
+      .eq("company_id", profile.company_id),
+    search,
+    filters
+  );
   const { data, count } = await q
     .order("created_at", { ascending: false })
     .range(0, SELECT_ALL_CAP - 1);
