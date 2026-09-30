@@ -12,7 +12,9 @@ export type ChromeIconName =
   | "online"
   | "sun"
   | "spark"
-  | "tools";
+  | "tools"
+  | "chevron"
+  | "navigate";
 
 // Line icons on a 24px grid, drawn in currentColor so the tab or tile
 // they sit on decides their color.
@@ -67,6 +69,8 @@ const PATHS: Record<MobileIconName | ChromeIconName, string[]> = {
   sun: ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"],
   spark: ["M12 3.5 13.8 10 20.5 12l-6.7 2L12 20.5 10.2 14 3.5 12l6.7-2z"],
   tools: ["M14.5 5.5a4 4 0 0 0-5.3 5.3L4 16v4h4l5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-2.5z"],
+  chevron: ["m9 6 6 6-6 6"],
+  navigate: ["m3 11 18-8-8 18-2-8z"],
 };
 
 export function MobileIcon({
