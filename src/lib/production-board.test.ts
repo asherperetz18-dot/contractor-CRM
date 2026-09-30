@@ -122,3 +122,16 @@ test("quick filters mirror the summary card rules exactly", () => {
   assert.deepEqual(filterJobs(jobs, { search: "", crewId: "", quick: "pastEnd" }, TODAY).map((j) => j.id), ["b"]);
   assert.deepEqual(filterJobs(jobs, { search: "", crewId: "", quick: "unassigned" }, TODAY).map((j) => j.id), ["a"]);
 });
+
+// Drag-and-drop: a column is only a drop target where it is drawn. With
+// columns sized to their own cards, a card dragged from deep in a long
+// column had nowhere to land — the short columns ended near the top and
+// the space beside the card was bare page. Every column runs the board's
+// full height instead.
+test("every production column stretches to the board's full height", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const rule = css.match(/\n\.prod-board\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.ok(rule, "the .prod-board rule exists");
+  assert.match(rule, /align-items:\s*stretch/);
+});
