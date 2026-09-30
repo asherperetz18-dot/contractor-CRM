@@ -15,7 +15,8 @@ export type ChromeIconName =
   | "tools"
   | "chevron"
   | "navigate"
-  | "plus";
+  | "plus"
+  | "mail";
 
 // Line icons on a 24px grid, drawn in currentColor so the tab or tile
 // they sit on decides their color.
@@ -73,6 +74,7 @@ const PATHS: Record<MobileIconName | ChromeIconName, string[]> = {
   chevron: ["m9 6 6 6-6 6"],
   navigate: ["m3 11 18-8-8 18-2-8z"],
   plus: ["M12 5v14M5 12h14"],
+  mail: ["M3 5h18v14H3z", "m3.5 6 8.5 7 8.5-7"],
 };
 
 export function MobileIcon({

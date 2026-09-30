@@ -15,6 +15,9 @@ import { LeadAppointmentsPanel } from "./lead-appointments-panel";
 import { LeadAnalysisPanel } from "./lead-analysis-panel";
 import { PropertyPeek } from "@/components/ui/property-peek";
 import { LeadViewTrail } from "./lead-view-trail";
+import { LeadPhoneHero } from "./lead-phone-hero";
+import { usePhoneWidth } from "../use-phone-width";
+import { dialNumberOf } from "@/lib/data/phone-match";
 import {
   addHour as addHourTo,
   endsNextDay,
@@ -169,11 +172,20 @@ export function LeadForm({
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>(initialTab ?? "Overview");
   const tabsRowRef = useRef<HTMLDivElement>(null);
+  const isPhone = usePhoneWidth();
   // Opened straight onto a tab (a phone card's Text button): bring the
   // tab row up, or on a small screen the thread opens below the fold.
   useEffect(() => {
     if (initialTab) tabsRowRef.current?.scrollIntoView({ block: "start" });
   }, [initialTab]);
+  // On a phone the tab row scrolls sideways; keep the open tab in view
+  // (a card's Text button opens Texts, past the right edge).
+  useEffect(() => {
+    if (!isPhone) return;
+    tabsRowRef.current
+      ?.querySelector(".chip-active")
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [tab, isPhone]);
   const [lastSaved, setLastSaved] = useState(form);
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
@@ -536,8 +548,38 @@ export function LeadForm({
   }
 
   return (
-    <Modal title={lead ? leadDisplayName(lead) : "New Contact"} onClose={handleClose} xwide>
-      <fieldset disabled={readOnly || pending} style={{ border: 0, padding: 0, margin: 0 }}>
+    <Modal
+      title={lead ? leadDisplayName(lead) : "New Contact"}
+      onClose={handleClose}
+      xwide
+      className="lead-sheet"
+    >
+      {lead && isPhone && (
+        <LeadPhoneHero
+          leadId={lead.id}
+          address={form.address}
+          email={form.email}
+          phone={dialNumberOf(form)}
+          source={form.source}
+          repName={
+            (allMembers ?? reps).find((m) => m.id === form.assigned_to)?.name || null
+          }
+          stage={form.stage}
+          stages={stages}
+          onCall={callPhone}
+          onText={textPhone}
+          onOpenAppointments={() => setTab("Appointments")}
+        />
+      )}
+      <fieldset
+        className={"lf-body lf-tab-" + tab}
+        disabled={readOnly || pending}
+        style={{ border: 0, padding: 0, margin: 0 }}
+      >
+        {/* Who the contact is and how to reach them. On a phone this
+            block follows the tabs and shows on Overview only; the header
+            above has taken its call / text / map buttons (#092). */}
+        <div className="lf-contact">
         <div className="form-grid">
           <Field label="Contact Type">
             <div className="segmented">
@@ -875,6 +917,8 @@ export function LeadForm({
             </button>
           )
         )}
+
+        </div>
 
         {lead && stageTotal > 0 && (
           <div className="stage-progress">

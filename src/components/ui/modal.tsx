@@ -26,6 +26,7 @@ export function Modal({
   xwide,
   drawer,
   noBackdropClose,
+  className,
 }: {
   title: string;
   onClose: () => void;
@@ -40,6 +41,9 @@ export function Modal({
    *  this so only the ✕ or an explicit button dismisses it — a stray
    *  click on the page behind shouldn't eat the question. */
   noBackdropClose?: boolean;
+  /** Extra class on the card, for a caller's own layout (the lead
+   *  window goes full-screen on a phone). */
+  className?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -74,7 +78,8 @@ export function Modal({
         className={
           "modal" +
           (xwide ? " modal-xwide" : wide ? " modal-wide" : "") +
-          (drawer ? " modal-drawer" : "")
+          (drawer ? " modal-drawer" : "") +
+          (className ? ` ${className}` : "")
         }
         onClick={(e) => e.stopPropagation()}
       >
