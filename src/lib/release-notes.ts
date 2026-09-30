@@ -31,6 +31,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.163.1",
+    date: "2026-09-30",
+    notes: [
+      "Production Board: dragging a card to another column now works anywhere down the page. Before, a card far down a long column had nowhere to land — the other columns ended near the top — so the drop did nothing. Every column now runs the full height of the board.",
+    ],
+  },
+  {
     version: "1.163.0",
     date: "2026-09-28",
     notes: [
