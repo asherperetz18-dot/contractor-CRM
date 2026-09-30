@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   daysSince,
   isSettledStage,
@@ -32,6 +32,8 @@ import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { AttentionDigest } from "./attention-digest";
 import { CsvImportPanel } from "./csv-import-panel";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
+import { shouldOpenNewLead } from "@/lib/data/quick-create";
+import { PhoneLeadList } from "./phone-lead-list";
 
 type StatusFilter = "Open" | "Won" | "Lost";
 type SortBy = "Name" | "Days" | "Amount";
@@ -293,6 +295,8 @@ export function PipelineBoard({
     tasks: LeadTask[];
     notes: LeadNote[];
     files: LeadFile[];
+    /** Set when a phone card's Text button opened it. */
+    tab?: "Texts";
   } | null>(null);
   const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [scrollMetrics, setScrollMetrics] = useState({ scrollLeft: 0, scrollWidth: 0, clientWidth: 0 });
@@ -302,6 +306,22 @@ export function PipelineBoard({
   const scrollElRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const searchParams = useSearchParams();
+  // Quick Create's New Lead (and the phone's Today button) land here as
+  // /pipeline?new=1 and the form opens by itself -- the estimates page's
+  // idiom: opened during render behind a consumed guard, the param then
+  // stripped so a refresh doesn't reopen it.
+  const [consumedNew, setConsumedNew] = useState(false);
+  const newParam = searchParams.get("new");
+  if (newParam && !consumedNew) {
+    setConsumedNew(true);
+    if (shouldOpenNewLead(newParam, canCreateLeads)) setShowNew(true);
+  } else if (!newParam && consumedNew) {
+    setConsumedNew(false);
+  }
+  useEffect(() => {
+    if (searchParams.get("new")) router.replace("/pipeline", { scroll: false });
+  }, [searchParams, router]);
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
   /** The expanded stage's biggest deals, fetched when its row is
@@ -507,12 +527,12 @@ export function PipelineBoard({
    *  one is already loading is ignored rather than queued -- two lead
    *  windows racing each other would open whichever landed last. */
   const openLead = useCallback(
-    async (card: { id: string }) => {
+    async (card: { id: string }, tab?: "Texts") => {
       if (openingLeadId) return;
       setOpeningLeadId(card.id);
       try {
         const bundle = await getLeadCard(card.id);
-        if (bundle) setEditing(bundle);
+        if (bundle) setEditing({ ...bundle, tab });
       } finally {
         setOpeningLeadId(null);
       }
@@ -650,7 +670,7 @@ export function PipelineBoard({
   const showScrollbar = totalScrollWidth > clientWidth + 4;
 
   return (
-    <div>
+    <div className="pipeline-page">
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Pipeline</h1>
@@ -660,7 +680,7 @@ export function PipelineBoard({
           </p>
         </div>
         {canCreateLeads && (
-          <div>
+          <div className="pipeline-toolbar-actions">
             <button className="btn-ghost" onClick={() => setShowImport(true)}>
               Import CSV
             </button>
@@ -1039,6 +1059,14 @@ export function PipelineBoard({
               </button>
             </div>
           )}
+        <PhoneLeadList
+          groups={displayGroups}
+          stages={stages}
+          repById={repById}
+          onOpenLead={openLead}
+          onLoadMore={onLoadMore}
+          onNewLead={canCreateLeads ? () => setShowNew(true) : null}
+        />
         <div className="pipeline-board" ref={setScrollContainer}>
           {displayGroups.map(({ stage, items, count }) => (
             <PipelineColumn
@@ -1116,6 +1144,7 @@ export function PipelineBoard({
           canManageMoney={canManageMoney}
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
+          initialTab={editing.tab}
           onCancel={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

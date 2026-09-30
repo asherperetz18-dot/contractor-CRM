@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { quickCreateDialog, shouldAutoOpenNewEstimate } from "./quick-create.ts";
+import { quickCreateDialog, shouldAutoOpenNewEstimate, shouldOpenNewLead } from "./quick-create.ts";
 
 /**
  * Quick Create -> New Estimate lands on /estimates?new=1 and the page
@@ -28,4 +28,10 @@ test("?new=invoice opens the New invoice window instead of a new estimate", () =
   assert.equal(quickCreateDialog("1", true), "estimate");
   assert.equal(quickCreateDialog(null, true), null);
   assert.equal(quickCreateDialog("invoice", false), null);
+});
+
+test("Quick Create's New Lead (/pipeline?new=1) opens the new-lead form, only for someone who may add leads", () => {
+  assert.equal(shouldOpenNewLead("1", true), true);
+  assert.equal(shouldOpenNewLead(null, true), false);
+  assert.equal(shouldOpenNewLead("1", false), false);
 });

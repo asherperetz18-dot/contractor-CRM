@@ -20,3 +20,9 @@ export function quickCreateDialog(
   if (!shouldAutoOpenNewEstimate(newParam, canCreate)) return null;
   return newParam === "invoice" ? "invoice" : "estimate";
 }
+
+/** Quick Create's New Lead lands on /pipeline?new=1; the new-lead form
+ *  opens by itself for anyone the page's own + New Lead button is for. */
+export function shouldOpenNewLead(newParam: string | null, canCreateLeads: boolean): boolean {
+  return canCreateLeads && !!newParam;
+}

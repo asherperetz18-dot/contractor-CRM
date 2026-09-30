@@ -2274,6 +2274,195 @@ a.stat-card {
   cursor: pointer;
 }
 
+/* The Leads page on a phone (DECISIONS #091): stage chips over a list of
+   cards with Call / Text / Directions, and a New lead button floating
+   above the tabs. The board, its scrollbar, the stat tiles and the sort
+   and column controls are desk tools and step aside at this width;
+   the status / rep / age filters stay, in one row that scrolls. */
+.phone-leads {
+  display: none;
+}
+@media (max-width: 700px) {
+  .phone-leads {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 76px;
+  }
+  .pipeline-page .pipeline-board,
+  .pipeline-page .pipeline-scrollbar,
+  .pipeline-page .stat-grid,
+  .pipeline-page .filter-bar-right,
+  .pipeline-page:has(.pl-fab) .pipeline-toolbar-actions {
+    display: none;
+  }
+  .pipeline-page .filter-bar .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    padding-bottom: 2px;
+  }
+  .pipeline-page .filter-bar .chip-row > * {
+    flex: none;
+  }
+}
+.pl-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.pl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: 1px solid #d6d0c2;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pl-chip.is-on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+.pl-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.pl-chip-count {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.pl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.pl-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.pl-open {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pl-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+.pl-addr {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.pl-rep {
+  flex: none;
+  max-width: 40%;
+  padding: 4px 10px;
+  border-radius: 13px;
+  background: #f5f3ee;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pl-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.pl-meta.is-stale {
+  color: #a85512;
+  font-weight: 600;
+}
+.pl-round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--mtone);
+  cursor: pointer;
+}
+.pl-empty {
+  margin: 0;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.pl-more {
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--blueprint);
+  cursor: pointer;
+}
+.pl-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--phone-tabbar-h, 0px) + 16px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding: 0 20px 0 16px;
+  border: 0;
+  border-radius: 26px;
+  /* The tab tone deepened for white text at 15px (4.5:1). */
+  background: color-mix(in srgb, var(--mtone) 80%, #000);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(20, 32, 46, 0.22);
+  cursor: pointer;
+}
+
 
 /* Dispatch Dashboard (/dispatch-dashboard). Built on the main dashboard's
    cards and panels; only the pieces it adds live here: today's board
