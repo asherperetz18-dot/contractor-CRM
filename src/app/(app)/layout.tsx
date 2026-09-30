@@ -36,6 +36,9 @@ import { RequestScreenButton, ScreenShareButton, ScreenShareEngine } from "./scr
 import { AiAssistantButton } from "./ai-assistant-button";
 import { DailyBriefButton } from "./daily-brief";
 import { NotificationBell } from "./notification-bell";
+import { PhoneTabBar } from "./phone-tab-bar";
+import { MoreSheet } from "./more-sheet";
+import { mobileTabs, moreSections, navHrefs } from "@/lib/mobile-tabs";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { getCompanyBilling } from "@/lib/billing/company-billing";
@@ -123,6 +126,18 @@ export default async function AppLayout({
   // Projects view.
   const crew = isFieldRole(profile) && !canViewEstimates(profile);
 
+  // The phone layout (DECISIONS #089): four tabs from the pages this
+  // person can open, and the rest of their menu behind More.
+  const phoneTabs = mobileTabs(navHrefs(filteredNav), crew);
+  const userName = profile.name || profile.email || "";
+  const companySwitcher = (
+    <CompanySwitcher
+      companies={companies}
+      currentCompanyId={profile.company_id}
+      canCreate={isAdminRole(profile)}
+    />
+  );
+
   return (
     <TimeFormatProvider value={timeFormat}>
     <div className="app-shell">
@@ -144,25 +159,44 @@ export default async function AppLayout({
             {!crew && (
               <>
                 {/* Help lives outside the visibility matrix on purpose --
-                    the person who can't find a page needs this the most. */}
-                <Link
-                  href="/tutorials"
-                  className="icon-btn topbar-icon-btn"
-                  title="Video tutorials — narrated walkthroughs"
-                  aria-label="Video tutorials"
-                >
-                  ❓
-                </Link>
-                <ScreenShareButton />
-                {isStrictAdmin(profile) && <RequestScreenButton />}
-                <DialerButton />
+                    the person who can't find a page needs this the most.
+                    Each tool sits in a .tool-slot (display: contents, so
+                    nothing moves here): on a phone its icon is hidden and
+                    the More sheet's row of the same data-tool clicks it. */}
+                <span className="tool-slot" data-tool="help">
+                  <Link
+                    href="/tutorials"
+                    className="icon-btn topbar-icon-btn"
+                    title="Video tutorials — narrated walkthroughs"
+                    aria-label="Video tutorials"
+                  >
+                    ❓
+                  </Link>
+                </span>
+                <span className="tool-slot" data-tool="screen-share">
+                  <ScreenShareButton />
+                </span>
+                {isStrictAdmin(profile) && (
+                  <span className="tool-slot" data-tool="request-screen">
+                    <RequestScreenButton />
+                  </span>
+                )}
+                <span className="tool-slot" data-tool="dialer">
+                  <DialerButton />
+                </span>
                 {canEditDispatch(profile) && <DuplicateContactsButton />}
                 {isStrictAdmin(profile) && (
-                  <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
+                  <span className="tool-slot" data-tool="live-users">
+                    <LiveUsersButton initialUsers={liveUsers?.users ?? []} />
+                  </span>
                 )}
-                <DailyBriefButton isAdmin={isAdminRole(profile)} />
+                <span className="tool-slot" data-tool="daily-brief">
+                  <DailyBriefButton isAdmin={isAdminRole(profile)} />
+                </span>
                 <NotificationBell />
-                <AiAssistantButton />
+                <span className="tool-slot" data-tool="ai">
+                  <AiAssistantButton />
+                </span>
                 <QuickCreateMenu />
                 {/* isPlatformAdmin is independent of which company is
                     selected, unlike everything else this menu holds -- so
@@ -170,10 +204,12 @@ export default async function AppLayout({
                     even in a company where this person holds no role at
                     all. What's inside is still filtered per person. */}
                 {(isAdminRole(profile) || isPlatformAdmin(profile)) && (
-                  <AdminToolsMenu
-                    isAdmin={isStrictAdmin(profile)}
-                    isPlatformAdmin={isPlatformAdmin(profile)}
-                  />
+                  <span className="tool-slot" data-tool="admin-tools">
+                    <AdminToolsMenu
+                      isAdmin={isStrictAdmin(profile)}
+                      isPlatformAdmin={isPlatformAdmin(profile)}
+                    />
+                  </span>
                 )}
               </>
             )}
@@ -209,16 +245,10 @@ export default async function AppLayout({
             companyName={companyName}
             version={version}
             filteredNav={filteredNav}
-            userName={profile.name || profile.email || ""}
+            userName={userName}
             // Rendered here (a server component) and passed down, so the
             // sidebar doesn't need the company list re-plumbed through it.
-            companySwitcher={
-              <CompanySwitcher
-                companies={companies}
-                currentCompanyId={profile.company_id}
-                canCreate={isAdminRole(profile)}
-              />
-            }
+            companySwitcher={companySwitcher}
           />
 
           <main className="main">
@@ -237,6 +267,14 @@ export default async function AppLayout({
             </PageGate>
           </main>
         </div>
+        <PhoneTabBar tabs={phoneTabs} />
+        <MoreSheet
+          sections={moreSections(filteredNav)}
+          userName={userName}
+          companyName={companyName || ""}
+          version={version}
+          companySwitcher={companySwitcher}
+        />
       </div>
     </div>
     </TimeFormatProvider>
