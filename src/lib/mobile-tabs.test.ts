@@ -58,14 +58,14 @@ test("a page the person cannot open is never a tab; the next useful page takes i
   );
 });
 
-test("the field crew gets their jobs, the schedule and the time clock", () => {
+test("the field crew opens on Today (the clock and today's schedule), then their jobs", () => {
   const crew = ["/projects", "/schedule", "/time-clock", "/calendar"];
   assert.deepEqual(
     mobileTabs(crew, true).map((t) => [t.label, t.href]),
     [
+      ["Today", "/time-clock"],
       ["Jobs", "/projects"],
       ["Schedule", "/schedule"],
-      ["Time", "/time-clock"],
       ["Calendar", "/calendar"],
     ]
   );
@@ -75,6 +75,7 @@ test("never more than four tabs (More is the fifth), fewer when fewer pages are 
   assert.equal(mobileTabs(EVERYTHING, false).length, 4);
   assert.equal(mobileTabs(EVERYTHING, true).length, 4);
   assert.deepEqual(mobileTabs(["/projects"], true).map((t) => t.href), ["/projects"]);
+  assert.deepEqual(mobileTabs(["/projects", "/time-clock"], true).map((t) => t.label), ["Today", "Jobs"]);
   assert.deepEqual(mobileTabs([], false), []);
 });
 

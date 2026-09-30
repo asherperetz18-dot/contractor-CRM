@@ -108,9 +108,11 @@ const OFFICE_TABS: MobileTab[] = [
   { href: "/time-clock", label: "Time", icon: "clock", tone: "staff" },
 ];
 const CREW_TABS: MobileTab[] = [
+  // The time clock page is the crew's day: the clock, hours so far and
+  // today's schedule (DECISIONS #090), so it is their Today.
+  { href: "/time-clock", label: "Today", icon: "clock", tone: "staff" },
   { href: "/projects", label: "Jobs", icon: "jobs", tone: "production" },
   { href: "/schedule", label: "Schedule", icon: "schedule", tone: "schedule" },
-  { href: "/time-clock", label: "Time", icon: "clock", tone: "staff" },
   { href: "/calendar", label: "Calendar", icon: "calendar", tone: "calls" },
   { href: "/", label: "Home", icon: "home", tone: "home" },
   { href: "/production", label: "Board", icon: "board", tone: "production" },

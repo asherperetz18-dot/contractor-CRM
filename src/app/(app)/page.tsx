@@ -9,6 +9,9 @@ import type { Event, Lead, PipelineStageRow, RolePageVisibilityRow } from "@/lib
 import { NAV, filterNavForProfile } from "@/lib/nav";
 import { MobileDashboard, type MobileModule } from "./mobile-dashboard";
 import { DashboardView } from "./dashboard-view";
+import { PhoneToday } from "./phone-today";
+import { navHrefs } from "@/lib/mobile-tabs";
+import { quickActions, upcomingCards, type UpcomingLead } from "@/lib/phone-today";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -55,6 +58,18 @@ export default async function DashboardPage() {
         .eq("company_id", companyId),
     ]);
 
+  // The phone's Today names each upcoming appointment's client and where
+  // to drive: only the (at most five) contacts those events point at.
+  const events = (nextEvents.data as Event[] | null) ?? [];
+  const eventLeadIds = [...new Set(events.map((e) => e.lead_id).filter((id): id is string => !!id))];
+  const { data: eventLeads } = eventLeadIds.length
+    ? await supabase
+        .from("leads")
+        .select("id, contact_type, company_name, first_name, last_name, address")
+        .eq("company_id", companyId)
+        .in("id", eventLeadIds)
+    : { data: [] };
+
   const overrides = (visibilityRows.data as RolePageVisibilityRow[]) ?? [];
   const filteredNav = profile ? filterNavForProfile(NAV, profile, overrides) : [];
   const modules: MobileModule[] = [];
@@ -74,8 +89,22 @@ export default async function DashboardPage() {
     members.map((m) => [m.id, m.name || m.email || "Unnamed"])
   ) as Record<string, string>;
 
+  const canMoney = canViewFinancials(profile);
+
   return (
-    <>
+    <PhoneToday
+      todayISO={todayISO}
+      attention={rollup.attention}
+      canMoney={canMoney}
+      month={{
+        leads: rollup.window.leads,
+        prevLeads: rollup.prev.leads,
+        appts: rollup.window.appts,
+        prevAppts: rollup.prev.appts,
+      }}
+      cards={upcomingCards(events, (eventLeads as UpcomingLead[] | null) ?? [], todayISO)}
+      actions={quickActions(navHrefs(filteredNav))}
+    >
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Dashboard</h1>
@@ -86,14 +115,14 @@ export default async function DashboardPage() {
       <DashboardView
         initialRollup={rollup}
         savedPanelOrder={profile?.dashboard_panel_order ?? null}
-        canMoney={canViewFinancials(profile)}
+        canMoney={canMoney}
         stages={(stagesRes.data as PipelineStageRow[]) ?? []}
         repNames={repNames}
         recentLeads={(recentLeads.data as Lead[] | null) ?? []}
-        nextEvents={(nextEvents.data as Event[] | null) ?? []}
+        nextEvents={events}
       />
 
       <MobileDashboard modules={modules} />
-    </>
+    </PhoneToday>
   );
 }
