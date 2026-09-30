@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { JOB_STATUSES, type Job, type JobInput } from "@/lib/data/types";
-import type { RepPickable } from "@/lib/data/rep-options";
+import { crewDropdownOptions, type RepPickable } from "@/lib/data/rep-options";
 import { createJob, deleteJob, updateJob } from "@/lib/actions/jobs";
 
 function toInput(job?: Job): JobInput {
@@ -24,6 +24,7 @@ export function JobForm({
   job,
   roster,
   readOnly,
+  statusNote,
   onCancel,
   onSaved,
   onDeleted,
@@ -32,6 +33,11 @@ export function JobForm({
   /** The whole roster; the select narrows it itself. */
   roster: RepPickable[];
   readOnly?: boolean;
+  /** Set when the project's documents decide the status (a signed
+   *  completion certificate, a hold from the Projects page): the select
+   *  locks and this says why, instead of saving a status the board
+   *  would put straight back. */
+  statusNote?: string;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -41,12 +47,10 @@ export function JobForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
-  // Active members, plus the job's stored assignee whatever their
-  // status — a deactivated crew member vanishing from their own select
-  // renders it blank and saves as data lost.
-  const assignees = roster
-    .filter((m) => (m.status ?? "Active") === "Active" || m.id === (job?.assigned_to ?? ""))
-    .sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || ""));
+  // Active crew (Field / Production), plus the job's stored assignee
+  // whatever their role or status — someone vanishing from their own
+  // select renders it blank and saves as data lost.
+  const assignees = crewDropdownOptions(roster, [job?.assigned_to]);
 
   const set = <K extends keyof JobInput>(k: K, v: JobInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -100,13 +104,18 @@ export function JobForm({
             />
           </Field>
           <Field label="Status">
-            <select value={form.status} onChange={(e) => set("status", e.target.value as JobInput["status"])}>
+            <select
+              value={form.status}
+              disabled={!!statusNote}
+              onChange={(e) => set("status", e.target.value as JobInput["status"])}
+            >
               {JOB_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
             </select>
+            {statusNote && <p className="est-tax-note">{statusNote}</p>}
           </Field>
           <Field label="Assigned To">
             <select

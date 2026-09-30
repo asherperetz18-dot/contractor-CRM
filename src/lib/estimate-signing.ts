@@ -6,7 +6,7 @@ import { portalBaseUrl } from "@/lib/portal/session";
 import { notifyRepOfSignature } from "@/lib/portal/rep-signed-notification";
 import { advanceStageOnEstimateSigned } from "@/lib/pipeline/advance-stage";
 import { applyAutoChecklist } from "@/lib/checklist-auto";
-import { productionJobRow } from "@/lib/production-job";
+import { jobStatusOnSigning, productionJobRow } from "@/lib/production-job";
 import { sendEmail } from "@/lib/email-env";
 import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateStatus } from "@/lib/data/types";
@@ -118,6 +118,33 @@ async function ensureProductionJob(
 }
 
 /**
+ * Moves the lead's job to the column a signed document puts it in (a
+ * completion certificate: Complete). Never throws, for the same reason
+ * as ensureProductionJob: the signature is already committed.
+ */
+async function syncJobOnSigning(
+  admin: ReturnType<typeof createAdminClient>,
+  estimate: SignableEstimate
+): Promise<void> {
+  const status = jobStatusOnSigning(estimate.kind);
+  if (!status || !estimate.lead_id) return;
+  try {
+    const { error } = await admin
+      .from("jobs")
+      .update({ status })
+      .eq("lead_id", estimate.lead_id)
+      .eq("company_id", estimate.company_id);
+    if (error) {
+      console.error(`[estimate ${estimate.id}] production job not moved: ${error.message}`);
+      return;
+    }
+    revalidatePath("/production");
+  } catch (e) {
+    console.error(`[estimate ${estimate.id}] production job move threw`, e);
+  }
+}
+
+/**
  * Everything that happens the moment a document becomes fully signed --
  * shared verbatim between the portal's e-signature and the staff
  * "signed on paper" action, so a paper contract can never behave
@@ -160,6 +187,9 @@ export async function finalizeSignedEstimate(
 
     revalidatePath(`/estimates/${estimate.parent_estimate_id}`);
     revalidatePath("/payments");
+
+    // The work is accepted: the job's card goes to Complete.
+    await syncJobOnSigning(admin, estimate);
   } else if (estimate.kind === "change_order" && estimate.parent_estimate_id) {
     // A signed change order becomes a payment phase on the contract it
     // belongs to, rather than editing the contract's own total. The

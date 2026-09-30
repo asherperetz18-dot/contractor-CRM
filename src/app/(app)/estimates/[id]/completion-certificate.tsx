@@ -44,6 +44,17 @@ export const CompletionCertificate = memo(function CompletionCertificate({
     };
   }, [contractId]);
 
+  // The Production Board links here (#completion-certificate) to raise
+  // or read the certificate. This section only renders once its row has
+  // loaded, after the browser's own jump to the anchor found nothing --
+  // so jump once it exists.
+  const loaded = cert !== undefined;
+  useEffect(() => {
+    if (loaded && window.location.hash === "#completion-certificate") {
+      document.getElementById("completion-certificate")?.scrollIntoView({ block: "start" });
+    }
+  }, [loaded]);
+
   function create() {
     setError("");
     startTransition(async () => {
@@ -56,7 +67,7 @@ export const CompletionCertificate = memo(function CompletionCertificate({
   if (cert === undefined) return null;
 
   return (
-    <section className="est-pay" style={{ marginTop: 18 }}>
+    <section id="completion-certificate" className="est-pay" style={{ marginTop: 18 }}>
       <div className="module-toolbar" style={{ marginBottom: 10 }}>
         <div>
           <strong>Completion</strong>

@@ -4,8 +4,10 @@
  *
  *   green  = money coming IN   (the contract, its change orders, invoices)
  *   red    = money going OUT   (+ Add bill, the job's bills)
- *   blue   = progress          (the checklist)
- *   indigo = the paperwork pile (permits & files)
+ *   blue   = progress          (the checklist, "Started Sep 18" on a
+ *                                Production Board card)
+ *   indigo = the paperwork pile (permits & files, a signed completion
+ *            certificate on a Production Board card)
  *   purple = photos · rose = the client · slate = the printed report
  *
  * Both views read this map instead of hardcoding classes, so the office
@@ -25,7 +27,9 @@ export type JobChipKind =
   | "permits"
   | "photos"
   | "client"
-  | "report";
+  | "report"
+  | "certificate"
+  | "started";
 
 /** Cluster order on the row: what's left to do, then the money story
  *  (in before out), then the job's records and links. */
@@ -50,6 +54,8 @@ const CHIP_GROUP: Record<JobChipKind, JobChipGroup> = {
   photos: "records",
   client: "records",
   report: "records",
+  certificate: "records",
+  started: "progress",
 };
 
 // The checklist keeps the bare base class: blue at rest, with the
@@ -71,6 +77,8 @@ const CHIP_COLOR: Record<JobChipKind, string> = {
   photos: "proj-photo-chip",
   client: "proj-client-chip",
   report: "proj-chip-report",
+  certificate: "proj-chip-paper",
+  started: "",
 };
 
 export function jobChipGroup(kind: JobChipKind): JobChipGroup {

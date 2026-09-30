@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { repBylineName, repDisplayName, repDropdownOptions } from "./rep-options.ts";
+import {
+  crewDropdownOptions,
+  repBylineName,
+  repDisplayName,
+  repDropdownOptions,
+} from "./rep-options.ts";
 import type { AppRole, UserStatus } from "./types.ts";
 
 /**
@@ -143,4 +148,31 @@ test("repBylineName stays silent for system-created rows and ids off the roster"
 test("repBylineName names a deactivated member when given the whole roster", () => {
   const roster = [member("a", "Asher"), member("g", "Gone Rep", ["Sales"], "Archived")];
   assert.equal(repBylineName("g", roster), "Gone Rep");
+});
+
+// A production job's "Assigned to" means the crew doing the work, not a
+// salesperson -- the role-specific picker keeps its own role.
+test("crew pickers offer active Field and Production members only", () => {
+  const options = crewDropdownOptions([
+    member("a", "Zed Field", ["Field"]),
+    member("b", "Asher", ["Sales"]),
+    member("c", "CRM PHONE", ["Office"]),
+    member("d", "Gal Mor", ["Production"]),
+    member("e", "Old Crew", ["Field"], "Archived"),
+  ]);
+  assert.deepEqual(
+    options.map((o) => o.id),
+    ["d", "a"]
+  );
+});
+
+test("a crew picker keeps whoever the job already points at", () => {
+  const options = crewDropdownOptions(
+    [member("a", "Asher", ["Sales"]), member("b", "Old Crew", ["Field"], "Archived")],
+    ["a", "b", null]
+  );
+  assert.deepEqual(
+    options.map((o) => o.id),
+    ["a", "b"]
+  );
 });

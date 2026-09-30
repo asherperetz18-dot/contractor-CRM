@@ -5,17 +5,32 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { JOB_COLOR, JOB_STATUSES, type Job, type JobStatus } from "@/lib/data/types";
-import { repDisplayName, type RepPickable } from "@/lib/data/rep-options";
+import { Modal } from "@/components/ui/modal";
+import { crewDropdownOptions, repDisplayName, type RepPickable } from "@/lib/data/rep-options";
+import { jobChipClass } from "@/lib/job-chips";
 import {
+  boardPlacement,
+  dropBlock,
   filterJobs,
   fmtDay,
   jobDateInfo,
   jobSummary,
+  recentlyComplete,
   weekBounds,
+  type BoardPlacement,
+  type ProjectFacts,
   type QuickFilter,
 } from "@/lib/production-board";
 import { backfillJobsFromSignedContracts, updateJobStatus } from "@/lib/actions/jobs";
 import { JobForm } from "./job-form";
+
+/** A job as the board shows it: its status is the column the rules put
+ *  it in, and `placement` says why. */
+type PlacedJob = Job & { placement: BoardPlacement };
+
+/** Where the completion certificate is raised and read: its section on
+ *  the contract's own page. */
+const certificateHref = (contractId: string) => `/estimates/${contractId}#completion-certificate`;
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/);
@@ -35,17 +50,21 @@ const localIsoDate = () => {
 export function ProductionBoard({
   jobs,
   roster,
-  projectByLead,
+  projectFacts,
   canWrite,
+  canSetProjectHold,
   initialToday,
 }: {
   jobs: Job[];
   /** The whole roster, every status — name lookups must keep resolving
    *  people who have since been deactivated. */
   roster: RepPickable[];
-  /** lead_id → signed estimate id, for the "Open project" jump. */
-  projectByLead: Record<string, string>;
+  /** lead_id → what the documents say about the project: its live
+   *  contract (the "Open project" jump), certificate, hold, cancellation. */
+  projectFacts: Record<string, ProjectFacts>;
   canWrite: boolean;
+  /** Office/Admin: may put a project on or off hold by dragging. */
+  canSetProjectHold: boolean;
   initialToday: string;
 }) {
   const router = useRouter();
@@ -63,7 +82,11 @@ export function ProductionBoard({
   const [crewId, setCrewId] = useState("");
   const [quick, setQuick] = useState<QuickFilter>(null);
   const [statusChip, setStatusChip] = useState<string>("All");
-  const [editing, setEditing] = useState<Job | null>(null);
+  const [editing, setEditing] = useState<PlacedJob | null>(null);
+  // A card dropped on Complete with no signed certificate waits here for
+  // the office to say whether to raise one.
+  const [confirmComplete, setConfirmComplete] = useState<PlacedJob | null>(null);
+  const [showAllComplete, setShowAllComplete] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<JobStatus | null>(null);
@@ -73,9 +96,24 @@ export function ProductionBoard({
   const [syncPending, setSyncPending] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
 
-  const board = useMemo(
-    () => jobs.map((j) => (override[j.id] ? { ...j, status: override[j.id] } : j)),
-    [jobs, override]
+  const factsFor = (j: Job): ProjectFacts | undefined =>
+    j.lead_id ? projectFacts[j.lead_id] : undefined;
+
+  // Every card goes where the rules put it -- the certificate, the
+  // project's hold and a voided contract outrank the stored status, the
+  // same as on Projects. A just-dropped card counts as its new status
+  // (and, for a hold, the project's new hold) until the server confirms.
+  const board = useMemo<PlacedJob[]>(
+    () =>
+      jobs.flatMap((j) => {
+        const moved = override[j.id];
+        const stored = moved ? { ...j, status: moved } : j;
+        const f = j.lead_id ? projectFacts[j.lead_id] : undefined;
+        const facts = f && moved ? { ...f, onHold: moved === "On Hold" ? f.onHold : false } : f;
+        const placement = boardPlacement(stored, facts, today);
+        return placement ? [{ ...stored, status: placement.status, placement }] : [];
+      }),
+    [jobs, override, projectFacts, today]
   );
 
   // The summary cards follow search and crew but not the quick card
@@ -90,49 +128,69 @@ export function ProductionBoard({
     () => filterJobs(board, { search, crewId, quick }, today),
     [board, search, crewId, quick, today]
   );
+  // Complete shows the last 30 days unless asked for everything -- once
+  // every finished job lands there, it is the column that never stops
+  // growing.
+  const olderComplete = filtered.filter(
+    (j) => j.status === "Complete" && !recentlyComplete(j, j.placement, today)
+  ).length;
+  const shown = showAllComplete
+    ? filtered
+    : filtered.filter((j) => j.status !== "Complete" || recentlyComplete(j, j.placement, today));
 
-  // Active members plus whoever the rows or the current tick point at —
+  // Active crew plus whoever the rows or the current tick point at —
   // a crew member with jobs on the board stays reachable after
   // deactivation, and a tick stays visible so it can be undone.
-  const crewOptions = useMemo(() => {
-    const keep = new Set(board.map((j) => j.assigned_to).filter((x): x is string => !!x));
-    if (crewId) keep.add(crewId);
-    return roster
-      .filter((m) => keep.has(m.id) || (m.status ?? "Active") === "Active")
-      .sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || ""));
-  }, [roster, board, crewId]);
+  const crewOptions = useMemo(
+    () => crewDropdownOptions(roster, [...board.map((j) => j.assigned_to), crewId]),
+    [roster, board, crewId]
+  );
 
   const wk = weekBounds(today);
 
-  const dropOn = (status: JobStatus) => {
-    if (draggedId && canWrite) {
-      const id = draggedId;
-      const prev = board.find((j) => j.id === id)?.status;
-      if (prev !== status) {
-        setOverride((o) => ({ ...o, [id]: status }));
-        startTransition(async () => {
-          const res = await updateJobStatus(id, status);
-          const drop = (o: Record<string, JobStatus>) => {
-            const next = { ...o };
-            delete next[id];
-            return next;
-          };
-          if (res?.error) {
-            setOverride(drop);
-            setMoveError(res.error);
-          } else {
-            setMoveError("");
-            // The transition stays pending until the refresh lands, so
-            // dropping the override here swaps it for the fresh server
-            // row rather than flashing the old column back.
-            router.refresh();
-            setOverride(drop);
-          }
-        });
+  const move = (id: string, status: JobStatus) => {
+    setOverride((o) => ({ ...o, [id]: status }));
+    startTransition(async () => {
+      const res = await updateJobStatus(id, status);
+      const drop = (o: Record<string, JobStatus>) => {
+        const next = { ...o };
+        delete next[id];
+        return next;
+      };
+      if (res?.error) {
+        setOverride(drop);
+        setMoveError(res.error);
+      } else {
+        setMoveError("");
+        // The transition stays pending until the refresh lands, so
+        // dropping the override here swaps it for the fresh server
+        // row rather than flashing the old column back.
+        router.refresh();
+        setOverride(drop);
       }
-    }
+    });
+  };
+
+  const dropOn = (status: JobStatus) => {
+    const j = draggedId && canWrite ? board.find((x) => x.id === draggedId) : undefined;
     setDraggedId(null);
     setDragOverStatus(null);
+    if (!j || j.status === status) return;
+    const f = factsFor(j);
+    // A move the rules would put straight back is refused with the
+    // reason, rather than the card jumping home unexplained.
+    const blocked = dropBlock(j, j.placement, status, f, today, canSetProjectHold);
+    if (blocked) {
+      setMoveError(blocked);
+      return;
+    }
+    // Finished is the customer's word, on the certificate: ask before a
+    // drag says it for them.
+    if (status === "Complete" && f?.contractId && !f.completedOn) {
+      setConfirmComplete(j);
+      return;
+    }
+    move(j.id, status);
   };
 
   const toggleQuick = (q: Exclude<QuickFilter, null>) => setQuick((cur) => (cur === q ? null : q));
@@ -152,15 +210,19 @@ export function ProductionBoard({
     }
   }
 
-  const card = (j: Job, withBadge: boolean) => {
+  const card = (j: PlacedJob, withBadge: boolean) => {
     const dates = jobDateInfo(j, today);
-    const projectId = j.lead_id ? projectByLead[j.lead_id] : undefined;
+    const projectId = factsFor(j)?.contractId ?? undefined;
     const crewName = j.assigned_to ? repDisplayName(j.assigned_to, roster) : null;
+    const { auto, completedOn } = j.placement;
+    // The customer's signature decides this card's column, not a drag.
+    const locked = auto === "certificate";
     return (
       <div
         className={"job-card" + (draggedId === j.id ? " job-card-dragging" : "")}
         key={j.id}
-        draggable={canWrite && !withBadge}
+        draggable={canWrite && !withBadge && !locked}
+        title={locked ? "The customer signed the completion certificate" : undefined}
         onDragStart={(e) => {
           setDraggedId(j.id);
           e.dataTransfer.effectAllowed = "move";
@@ -202,6 +264,26 @@ export function ProductionBoard({
             </span>
           )}
         </div>
+        {((auto === "certificate" && completedOn) || (auto === "started" && j.start_date)) && (
+          <div className="proj-chip-row job-status-chips">
+            {auto === "certificate" && completedOn && projectId ? (
+              <Link
+                href={certificateHref(projectId)}
+                className={jobChipClass("certificate")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                ✓ Certificate signed {fmtDay(completedOn, today)}
+              </Link>
+            ) : auto === "certificate" && completedOn ? (
+              <span className={jobChipClass("certificate")}>
+                ✓ Certificate signed {fmtDay(completedOn, today)}
+              </span>
+            ) : null}
+            {auto === "started" && j.start_date && (
+              <span className={jobChipClass("started")}>Started {fmtDay(j.start_date, today)}</span>
+            )}
+          </div>
+        )}
         {projectId && (
           <Link
             href={`/projects?focus=${projectId}`}
@@ -227,8 +309,13 @@ export function ProductionBoard({
     );
   };
 
-  const phoneList =
-    statusChip === "All" ? filtered : filtered.filter((j) => j.status === statusChip);
+  const phoneList = statusChip === "All" ? shown : shown.filter((j) => j.status === statusChip);
+
+  const completeToggle = olderComplete > 0 && (
+    <button type="button" className="prod-col-more" onClick={() => setShowAllComplete((v) => !v)}>
+      {showAllComplete ? "Show the last 30 days only" : `Show ${olderComplete} older`}
+    </button>
+  );
 
   return (
     <div>
@@ -236,7 +323,7 @@ export function ProductionBoard({
         <div>
           <h1 className="module-title">Production</h1>
           <p className="module-sub">
-            {jobs.length} jobs · {jobs.filter((j) => j.status !== "Complete").length} active
+            {board.length} jobs · {board.filter((j) => j.status !== "Complete").length} active
           </p>
         </div>
         {canWrite && (
@@ -349,7 +436,7 @@ export function ProductionBoard({
         <>
           <div className="prod-board">
             {JOB_STATUSES.map((s) => {
-              const col = filtered.filter((j) => j.status === s);
+              const col = shown.filter((j) => j.status === s);
               return (
                 <div
                   key={s}
@@ -379,6 +466,7 @@ export function ProductionBoard({
                   ) : (
                     col.map((j) => card(j, false))
                   )}
+                  {s === "Complete" && completeToggle}
                 </div>
               );
             })}
@@ -393,8 +481,8 @@ export function ProductionBoard({
                   onClick={() => setStatusChip(s)}
                 >
                   {s === "All"
-                    ? `All ${filtered.length}`
-                    : `${s} ${filtered.filter((j) => j.status === s).length}`}
+                    ? `All ${shown.length}`
+                    : `${s} ${shown.filter((j) => j.status === s).length}`}
                 </button>
               ))}
             </div>
@@ -405,6 +493,7 @@ export function ProductionBoard({
             ) : (
               <div className="job-grid">{phoneList.map((j) => card(j, true))}</div>
             )}
+            {(statusChip === "All" || statusChip === "Complete") && completeToggle}
           </div>
         </>
       )}
@@ -416,11 +505,50 @@ export function ProductionBoard({
           onSaved={() => setShowNew(false)}
         />
       )}
+      {confirmComplete && (
+        <Modal title={`Mark ${confirmComplete.name} complete?`} onClose={() => setConfirmComplete(null)}>
+          <p className="hint-note">
+            The customer hasn&apos;t signed a completion certificate yet. That signature is what
+            starts the warranty and releases commission.
+          </p>
+          <div className="modal-actions">
+            <div className="modal-actions-left" />
+            <div className="prod-confirm-actions">
+              <button type="button" className="btn-ghost" onClick={() => setConfirmComplete(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  move(confirmComplete.id, "Complete");
+                  setConfirmComplete(null);
+                }}
+              >
+                Just move the card
+              </button>
+              <Link
+                className="btn-primary"
+                href={certificateHref(factsFor(confirmComplete)?.contractId ?? "")}
+              >
+                Raise completion certificate
+              </Link>
+            </div>
+          </div>
+        </Modal>
+      )}
       {editing && (
         <JobForm
           job={editing}
           roster={roster}
           readOnly={!canWrite}
+          statusNote={
+            editing.placement.auto === "certificate"
+              ? "Complete: the customer signed the completion certificate."
+              : editing.placement.auto === "hold"
+                ? "On hold on the Projects page. Take it off hold there, or drag the card out of On Hold."
+                : undefined
+          }
           onCancel={() => setEditing(null)}
           onSaved={() => {
             // A save makes the server authoritative for every field --

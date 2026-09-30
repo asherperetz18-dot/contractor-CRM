@@ -27,6 +27,8 @@ const ALL_KINDS: JobChipKind[] = [
   "photos",
   "client",
   "report",
+  "certificate",
+  "started",
 ];
 
 test("money in is green, money out is red — and the two never share a class", () => {
@@ -82,4 +84,14 @@ test("each non-money idea keeps its own color", () => {
 
 test("the scan order is progress, then money in, then money out, then records", () => {
   assert.deepEqual(JOB_CHIP_GROUP_ORDER, ["progress", "moneyIn", "moneyOut", "records"]);
+});
+
+test("the Production Board's status chips reuse the idea they belong to", () => {
+  // A signed completion certificate is paperwork, like permits & files;
+  // "Started Sep 18" is progress, like the checklist. Never green: the
+  // certificate carries no money.
+  assert.equal(jobChipClass("certificate"), jobChipClass("permits"));
+  assert.equal(jobChipGroup("certificate"), "records");
+  assert.equal(jobChipClass("started"), jobChipClass("checklist"));
+  assert.equal(jobChipGroup("started"), "progress");
 });
