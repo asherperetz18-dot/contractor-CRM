@@ -88,4 +88,5 @@ The account is an Organization, so Play's 12-tester, 14-day closed test (a rule 
 - The app icon and splash screen from the AI Build Pros logo (`mobile/assets/`, generated with `npx capacitor-assets generate`).
 - An installable Android test build on every PR that touches `mobile/`: the **Android App (test build)** check. It also compiles the release bundle, so a PR can't break the Play build unnoticed.
 - The signed Play build (**Android App (Play release)**) and the one-time key workflow (**Android upload key (create once)**), decision #086.
+- The app needs Android 7 (API 24) or newer, which Play's automatic protection requires; it refused the first upload at API 23.
 - The app targets Android 16 (API 36), which Play has required for new apps since 31 Aug 2026. On Android 15 and later, the CRM starts below the status bar instead of under it.
