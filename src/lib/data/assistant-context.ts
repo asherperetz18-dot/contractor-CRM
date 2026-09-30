@@ -296,7 +296,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
   // ── Estimates & contracts: the Estimates page's own funnel rules ──
   if (input.access.canViewEstimates) {
     const none = new Set<string>();
-    const noRep = () => null;
+    const noRep = () => [];
     const card = (key: Parameters<typeof funnelCardStats>[1]) =>
       funnelCardStats(input.estimates, key, none, noRep);
     const stat = (label: string, s: { count: number; totalCents: number }) =>

@@ -1981,6 +1981,9 @@ export type Estimate = {
   sales_rep_1_bp?: number | null;
   sales_rep_2?: string | null;
   sales_rep_2_bp?: number | null;
+  /** The contract's closer seat (0153), stamped from the lead at
+   *  signature. Optional for the same reason as the seats above. */
+  closer_id?: string | null;
   issued_at: string | null;
   expires_at: string | null;
   voided_at?: string | null;

@@ -5,7 +5,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   daysSince,
-  effectiveEstimateRepId,
   moneyCents,
   signatureProgress,
   type Estimate,
@@ -16,6 +15,7 @@ import {
   matchesRepFilter,
   repOptionIds,
 } from "@/lib/data/funnel-cards";
+import { estimateSeats } from "@/lib/data/estimate-seats";
 import { resolveWindow, withinWindow } from "@/lib/data/date-range";
 import {
   BOARD_COLUMNS,
@@ -44,6 +44,10 @@ export type ContractLead = {
   /** Who holds the customer now -- the salesperson an unsigned document
    *  should name, rather than whoever happened to raise the draft. */
   assigned_to: string | null;
+  /** The rest of the lead's sales team, which an unsigned contract
+   *  follows too -- the salesperson filter finds a closer's jobs. */
+  partner_rep_id: string | null;
+  closer_id: string | null;
 };
 
 export type ContractRep = { id: string; name: string | null; email: string | null };
@@ -111,14 +115,15 @@ export function ContractsView({
     signersByEstimate.set(s.estimate_id, list);
   }
 
-  // Who this contract's salesperson actually is -- frozen at signature,
-  // following the lead's holder until then. Same rule as Estimates.
-  const repIdFor = (e: Estimate) =>
-    effectiveEstimateRepId({
-      status: e.status,
-      estimateAssignedTo: e.assigned_to,
-      leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
-    });
+  // Everyone on this contract, its salesperson first -- frozen at
+  // signature, following the lead's team until then. Same rule as
+  // Estimates, so a closer's filter finds the jobs they closed.
+  const seatsFor = (e: Estimate) => estimateSeats(e, leadById.get(e.lead_id));
+  const peopleFor = (e: Estimate) => seatsFor(e).map((s) => s.id);
+  const repName = (id: string) => {
+    const rep = repById.get(id);
+    return rep?.name || rep?.email || "Unnamed";
+  };
 
   function customerName(e: Estimate) {
     const lead = leadById.get(e.lead_id);
@@ -132,18 +137,17 @@ export function ContractsView({
 
   const win = resolveWindow(range, now);
   const filtered = boardDocs.filter((e) => {
-    if (!matchesRepFilter(repIdFor(e), repFilter)) return false;
+    if (!matchesRepFilter(peopleFor(e), repFilter)) return false;
     if (clientFilter && customerName(e) !== clientFilter) return false;
     if (!withinWindow(e.created_at, win)) return false;
-    const repId = repIdFor(e);
-    const rep = repId ? repById.get(repId) : null;
+    const salesperson = seatsFor(e)[0];
     return matchesBoardSearch(
       {
         docNumber: e.doc_number,
         customer: customerName(e),
         title: e.title || "",
         address: e.job_address ?? leadById.get(e.lead_id)?.address ?? null,
-        repName: rep?.name || rep?.email || null,
+        repName: salesperson ? repName(salesperson.id) : null,
         totalCents: e.total_cents || 0,
       },
       search
@@ -167,14 +171,11 @@ export function ContractsView({
     if (col) grouped[col].push(e);
   }
 
-  // Everyone with a contract on the board, plus whoever is already
+  // Everyone on a contract on the board, plus whoever is already
   // ticked -- a tick must stay visible to be undone. Name lookups read
   // the whole roster, so historical assignees keep their names.
-  const repOptions = repOptionIds(boardDocs.map(repIdFor), repFilter)
-    .map((id) => {
-      const rep = repById.get(id);
-      return { id, label: rep?.name || rep?.email || "Unnamed" };
-    })
+  const repOptions = repOptionIds(boardDocs.flatMap(peopleFor), repFilter)
+    .map((id) => ({ id, label: repName(id) }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const clientOptions = [...new Set(boardDocs.map(customerName))].sort((a, b) =>
@@ -333,8 +334,7 @@ export function ContractsView({
                 {docs.length === 0 && <div className="cb-col-empty">Nothing here</div>}
                 {visible.map((e) => {
                   const status = effectiveEstimateStatus(e);
-                  const repId = repIdFor(e);
-                  const rep = repId ? repById.get(repId) : null;
+                  const [salesperson, ...team] = seatsFor(e);
                   const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
                   const views = viewsByEstimate[e.id];
                   const expiresIn = daysUntilExpiry(e, now);
@@ -375,8 +375,17 @@ export function ContractsView({
                         <span className="mono">
                           {e.total_cents ? moneyCents(e.total_cents) : "—"}
                         </span>
-                        <span className="cb-card-rep">{rep?.name || rep?.email || "—"}</span>
+                        <span className="cb-card-rep">
+                          {salesperson ? repName(salesperson.id) : "—"}
+                        </span>
                       </div>
+                      {/* The rest of the team, so a card a closer's
+                          filter found says why it is here. */}
+                      {team.map((s) => (
+                        <div key={s.id} className="cb-card-rep">
+                          {s.role}: {repName(s.id)}
+                        </div>
+                      ))}
                       {awaiting &&
                         (sig.signed > 0 && !sig.complete ? (
                           <div className="cb-chip-row">

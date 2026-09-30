@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { quickCreateDialog } from "@/lib/data/quick-create";
 import {
-  effectiveEstimateRepId,
   moneyCents,
   isSellableKind,
   signatureProgress,
@@ -19,6 +18,7 @@ import {
   matchesRepFilter,
   repOptionIds,
 } from "@/lib/data/funnel-cards";
+import { estimateSeats } from "@/lib/data/estimate-seats";
 import { mergeSavedOrder, moveBefore, type FunnelCardKey } from "@/lib/data/funnel-order";
 import { saveFunnelOrder } from "@/lib/actions/funnel-order";
 import { useFunnelOrder } from "./funnel-order-prefs";
@@ -50,6 +50,10 @@ export type EstimateLead = {
   /** Who holds the customer now -- the salesperson an unsigned document
    *  should name, rather than whoever happened to raise the draft. */
   assigned_to: string | null;
+  /** The rest of the lead's sales team, which an unsigned document
+   *  follows too -- the salesperson filter finds a closer's jobs. */
+  partner_rep_id: string | null;
+  closer_id: string | null;
 };
 
 export type EstimateRep = { id: string; name: string | null; email: string | null };
@@ -264,16 +268,19 @@ export function EstimatesView({
     signersByEstimate.set(s.estimate_id, list);
   }
 
-  // Who this document's salesperson actually is. Not e.assigned_to: that
-  // is stamped at creation and never moves, so a draft raised by the
-  // dispatcher who took the call kept naming them long after the lead
-  // was handed to a rep. Same rule the customer's copy uses.
-  const repIdFor = (e: Estimate) =>
-    effectiveEstimateRepId({
-      status: e.status,
-      estimateAssignedTo: e.assigned_to,
-      leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
-    });
+  // Everyone on this document, its salesperson first. Not e.assigned_to:
+  // that is stamped at creation and never moves, so a draft raised by
+  // the dispatcher who took the call kept naming them long after the
+  // lead was handed to a rep (effectiveEstimateRepId, the rule the
+  // customer's copy uses). The rest are the Sales team panel's seats --
+  // a closer picking their own name finds the jobs they closed for
+  // somebody else.
+  const seatsFor = (e: Estimate) => estimateSeats(e, leadById.get(e.lead_id));
+  const peopleFor = (e: Estimate) => seatsFor(e).map((s) => s.id);
+  const repName = (id: string) => {
+    const rep = repById.get(id);
+    return rep?.name || rep?.email || "Unnamed";
+  };
 
   // Search and dates narrow every card, not just the table: "signed this
   // month" is the number a person reads off Contracts with a date picked.
@@ -303,7 +310,7 @@ export function EstimatesView({
   // reads as the rep's number, and somebody quotes it as theirs.
   const counts = BUCKETS.map((b) => ({
     ...b,
-    ...funnelCardStats(scoped, b.key, repFilter, repIdFor),
+    ...funnelCardStats(scoped, b.key, repFilter, peopleFor),
   }));
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
@@ -318,14 +325,11 @@ export function EstimatesView({
   // empty table -- the user then has to work out that the two controls
   // disagree. Derived this way the two cannot contradict each other:
   // Drafts offers only Draft, while Attached, which spans every status,
-  // offers the real spread. Same for the salesperson: people who have a
+  // offers the real spread. Same for the salesperson: people on a
   // document here, plus anyone already ticked (the selection follows the
   // reader across cards, and a tick must stay visible to be undone).
-  const repOptions = repOptionIds(wholeBucket.map(repIdFor), repFilter)
-    .map((id) => {
-      const rep = repById.get(id);
-      return { id, label: rep?.name || rep?.email || "Unnamed" };
-    })
+  const repOptions = repOptionIds(wholeBucket.flatMap(peopleFor), repFilter)
+    .map((id) => ({ id, label: repName(id) }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const statusOptions = [...new Set(wholeBucket.map((e) => effectiveEstimateStatus(e)))]
@@ -334,7 +338,7 @@ export function EstimatesView({
 
   const beforeChips = inThisBucket.filter(
     (e) =>
-      matchesRepFilter(repIdFor(e), repFilter) &&
+      matchesRepFilter(peopleFor(e), repFilter) &&
       (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
   );
   const followUp = (e: Estimate) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
@@ -582,8 +586,7 @@ export function EstimatesView({
             <tbody>
               {rows.map((e) => {
                 const lead = leadById.get(e.lead_id);
-                const repId = repIdFor(e);
-                const rep = repId ? repById.get(repId) : null;
+                const [salesperson, ...team] = seatsFor(e);
                 const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
                 const status = effectiveEstimateStatus(e);
                 // Nobody owes a signature on a document that is over.
@@ -633,7 +636,16 @@ export function EstimatesView({
                         👁 Client view
                       </button>
                     </td>
-                    <td>{rep?.name || rep?.email || "—"}</td>
+                    {/* The rest of the team under the salesperson, so a
+                        row a closer's filter found says why it is here. */}
+                    <td>
+                      <div>{salesperson ? repName(salesperson.id) : "—"}</div>
+                      {team.map((s) => (
+                        <div key={s.id} className="ur-add-phone">
+                          {s.role}: {repName(s.id)}
+                        </div>
+                      ))}
+                    </td>
                     <td>
                       <div>{shortDate(e.created_at)}</div>
                       {e.expires_at && status !== "Signed" && (

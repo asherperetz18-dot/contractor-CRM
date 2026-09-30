@@ -17,8 +17,10 @@ const base = () => ({
   expires_at: null as string | null,
   total_cents: 10_000,
   rep: "asher" as string | null,
+  closer: null as string | null,
 });
-const repOf = (d: ReturnType<typeof base>) => d.rep;
+// Everyone on the document, salesperson first (estimate-seats.ts).
+const repOf = (d: ReturnType<typeof base>) => [d.rep, d.closer].filter((id): id is string => !!id);
 const nobody = new Set<string>();
 
 test("with no salesperson selected a card totals the whole company", () => {
@@ -68,10 +70,31 @@ test("the dropdown offers the bucket's reps plus whoever is already ticked", () 
 });
 
 test("matchesRepFilter: empty filter admits everyone, a set filter needs a match", () => {
-  assert.equal(matchesRepFilter(null, nobody), true);
-  assert.equal(matchesRepFilter("asher", new Set(["asher"])), true);
-  assert.equal(matchesRepFilter("brendan", new Set(["asher"])), false);
-  assert.equal(matchesRepFilter(null, new Set(["asher"])), false);
+  assert.equal(matchesRepFilter([], nobody), true);
+  assert.equal(matchesRepFilter(["asher"], new Set(["asher"])), true);
+  assert.equal(matchesRepFilter(["brendan"], new Set(["asher"])), false);
+  assert.equal(matchesRepFilter([], new Set(["asher"])), false);
+});
+
+test("a document belongs to everyone on it, not just its salesperson", () => {
+  // EST-1068: Rafi's contract, Simon closing. Picking Simon has to find
+  // it -- and the Contracts card has to count it, or the card and the
+  // table under it disagree.
+  assert.equal(matchesRepFilter(["rafi", "simon"], new Set(["simon"])), true);
+  const docs = [
+    doc({ rep: "simon", status: "Signed", total_cents: 800_000 }),
+    doc({ rep: "rafi", closer: "simon", status: "Signed", total_cents: 2_000_000 }),
+    doc({ rep: "rafi", status: "Signed", total_cents: 500_000 }),
+  ];
+  assert.deepEqual(funnelCardStats(docs, "signed", new Set(["simon"]), repOf), {
+    count: 2,
+    totalCents: 2_800_000,
+  });
+  // Ticking both people on one contract still counts it once.
+  assert.deepEqual(funnelCardStats(docs, "signed", new Set(["simon", "rafi"]), repOf), {
+    count: 3,
+    totalCents: 3_300_000,
+  });
 });
 
 // The rules that moved here from the view, kept behaving.
