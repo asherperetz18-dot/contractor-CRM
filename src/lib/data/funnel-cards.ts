@@ -63,19 +63,26 @@ export function inFunnelBucket(
 
 /**
  * Whether a document passes the salesperson filter. An empty filter is
- * no filter; with reps ticked, a document with no salesperson at all is
- * nobody's number and drops out.
+ * no filter; with reps ticked, a document passes when anyone on it is
+ * ticked -- its salesperson, second salesperson or closer
+ * (estimate-seats.ts), so a closer finds the jobs they closed for
+ * somebody else. A document with nobody on it is nobody's number and
+ * drops out.
  */
-export function matchesRepFilter(repId: string | null, repFilter: ReadonlySet<string>): boolean {
-  return repFilter.size === 0 || (!!repId && repFilter.has(repId));
+export function matchesRepFilter(
+  peopleIds: readonly string[],
+  repFilter: ReadonlySet<string>
+): boolean {
+  return repFilter.size === 0 || peopleIds.some((id) => repFilter.has(id));
 }
 
 /**
- * The ids the salesperson dropdown offers: everyone with a document on
- * the current card, plus whoever is already ticked. The selection
- * follows the reader across cards, so a ticked rep with nothing on this
- * card must stay listed -- dropped from the list, the filter would still
- * be applied with no visible tick to undo it.
+ * The ids the salesperson dropdown offers: everyone on a document on
+ * the current card (closers and second salespeople included), plus
+ * whoever is already ticked. The selection follows the reader across
+ * cards, so a ticked rep with nothing on this card must stay listed --
+ * dropped from the list, the filter would still be applied with no
+ * visible tick to undo it.
  */
 export function repOptionIds(
   cardRepIds: (string | null)[],
@@ -96,9 +103,9 @@ export function funnelCardStats<T extends FunnelCardDoc>(
   docs: T[],
   key: FunnelCardKey,
   repFilter: ReadonlySet<string>,
-  repIdOf: (doc: T) => string | null
+  peopleOf: (doc: T) => readonly string[]
 ): { count: number; totalCents: number } {
-  const rows = docs.filter((e) => matchesRepFilter(repIdOf(e), repFilter) && inFunnelBucket(e, key));
+  const rows = docs.filter((e) => matchesRepFilter(peopleOf(e), repFilter) && inFunnelBucket(e, key));
   return {
     count: rows.length,
     totalCents: rows

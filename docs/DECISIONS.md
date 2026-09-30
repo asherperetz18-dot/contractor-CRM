@@ -1001,3 +1001,17 @@ In the same change, `/pipeline?new=1` now opens the new-contact form. That is th
 - **Moved with CSS, not by restructuring the JSX.** The form's fieldset becomes a flex column. The tab row gets `order: -1` and scrolls sideways; the open chip is kept in view on phones only, so a desktop card never jumps. The contact block (now wrapped in `.lf-contact`) shows on Overview only, and the old stage bar gives way to the header's. The fieldset also needs `min-inline-size: 0`: by default it is as wide as its content, and the one-line tab row pushed the form 240px past the edge.
 
 **Consequence:** Desktop and tablet DOM order and look are unchanged; only a wrapper div and a class were added. On a phone the visual order (header, tabs, contact, tab) differs from the DOM order (contact, tabs, tab), so keyboard Tab order on a phone runs through the contact fields first. That is acceptable for touch, but a reason to restructure the JSX if this form is ever rebuilt. The mockup's sticky "Add note / Create estimate" bar was not built: Notes is a tab, and the estimate button already sits in the tab row. Anything added above the tabs in `LeadForm` should go inside `.lf-contact` if it belongs to Overview, or it will show on every tab on a phone.
+
+## 093 — The Estimates salesperson filter finds everyone on a document, not just its salesperson
+
+**Date:** 2026-09-30
+
+**Context:** The Salesperson filter on Estimates & Contracts (and the Contract Board) matched a document on one person: the salesperson column (`effectiveEstimateRepId`). Simon closed EST-1068 for Rafi (Rafi in the salesperson seat, Simon in the closer seat), yet picking Simon showed only his own EST-1090. A closer or second salesperson looking for their jobs could not find them.
+
+**Decision:** The filter answers "which documents is this person on", so a document matches when anyone on its sales team is ticked: the salesperson, the second salesperson (at any share, including a pre-0153 contract's closer parked in that seat) and the closer. The team comes from `estimateSeats`, which uses the same rule as the Sales team panel (`getSalesTeam`):
+- A signed or void document reads the seats stamped on it at signature, and reads the lead's people only when nothing was ever stamped.
+- A live document follows the lead (`assigned_to`, `partner_rep_id`, `closer_id`), just as its salesperson column already does.
+
+The funnel cards follow the filtered rows (cards-follow-filters rule), and each document is counted once however many of its people are ticked. The row lists the rest of the team under the salesperson, so a row the filter found says why it is there.
+
+**Consequence:** With a closer ticked, the Contracts card's money includes the full value of the jobs they closed. That is the value of the documents they are on, not their sales credit. Crediting a sale is a separate question, answered by `sale-credit.ts` (the Salespeople grid, the rep report): there the closer follows a sale with a cut and never holds it, and that is unchanged. The salesperson column itself still names only the salesperson, frozen at signature.
