@@ -13,11 +13,19 @@ import {
 } from "@/lib/data/types";
 import { getLeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { dispatcherPickerBootstrap } from "@/lib/data/dispatcher-bootstrap";
-import { getContactStats, listContacts } from "@/lib/actions/contact-list";
+import { getContactFilterFacets, getContactStats, listContacts } from "@/lib/actions/contact-list";
+import { parseContactFilters } from "@/lib/contact-filters";
 import { CONTACT_ROW_BATCH } from "./row-batch";
 import { ContactsTable } from "./contacts-table";
 
-export default async function ContactsPage() {
+export default async function ContactsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Source / Rep / Stage ticks live in the URL, so a refresh or a shared
+  // link lands on the same filtered list.
+  const filters = parseContactFilters(await searchParams);
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canEditDispatch(profile);
@@ -40,15 +48,17 @@ export default async function ContactsPage() {
     { data: calendars },
     { data: projectTypes },
     { data: sources },
+    facets,
   ] = await Promise.all([
     getLeadEstimateIndex(),
-    listContacts({ search: "", offset: 0, limit: CONTACT_ROW_BATCH }),
-    getContactStats(),
+    listContacts({ search: "", filters, offset: 0, limit: CONTACT_ROW_BATCH }),
+    getContactStats({ filters }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("project_types").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("lead_sources").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
+    getContactFilterFacets(),
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
@@ -56,7 +66,9 @@ export default async function ContactsPage() {
     <ContactsTable
       initialRows={initialContacts.rows}
       initialTotal={initialContacts.total}
-      stats={stats}
+      initialStats={stats}
+      initialFilters={filters}
+      facets={facets}
       reps={reps}
       allMembers={allReps}
       stages={(stages as PipelineStageRow[]) ?? []}

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -20,6 +20,7 @@ import {
 } from "@/lib/data/types";
 import {
   getContactDuplicateGroups,
+  getContactStats,
   listContacts,
   listMatchingRecipients,
   type ContactListRow,
@@ -31,6 +32,17 @@ import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import type { DispatcherPickerBootstrap } from "../calendar/dispatcher-picker";
 import { safeInternalPath } from "@/lib/safe-path";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
+import { FilterSelect, type FilterOption } from "@/components/filter-select";
+import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
+import {
+  CONTACT_CLOSED_STAGES,
+  NO_VALUE,
+  contactFiltersQuery,
+  hasContactFilters,
+  mergeFilterOptions,
+  openStageSelection,
+  type ContactFilters,
+} from "@/lib/contact-filters";
 import { CONTACT_ROW_BATCH } from "./row-batch";
 
 /**
@@ -101,10 +113,21 @@ const ContactRow = memo(function ContactRow({
  *  stay selected after it scrolls out of the fetched window. */
 type Recipient = { id: string; name: string; email: string | null };
 
+type ContactStats = {
+  totalContacts: number;
+  withOpenLeads: number;
+  noSetterAssigned: number;
+  bookTotal: number;
+};
+
+const NO_FILTERS: ContactFilters = { sources: [], reps: [], stages: [] };
+
 export function ContactsTable({
   initialRows,
   initialTotal,
-  stats,
+  initialStats,
+  initialFilters,
+  facets,
   reps,
   allMembers,
   stages,
@@ -120,7 +143,11 @@ export function ContactsTable({
 }: {
   initialRows: ContactListRow[];
   initialTotal: number;
-  stats: { totalContacts: number; withOpenLeads: number; noSetterAssigned: number };
+  initialStats: ContactStats;
+  /** Source / Rep / Stage ticks the URL arrived with. */
+  initialFilters: ContactFilters;
+  /** The values contacts actually carry (0184) -- empty until it runs. */
+  facets: { sources: string[]; reps: string[]; stages: string[] };
   reps: Profile[];
   /** Whole roster, deactivated included -- name lookups only. */
   allMembers?: Profile[];
@@ -138,6 +165,9 @@ export function ContactsTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
+  const [filters, setFilters] = useState<ContactFilters>(initialFilters);
+  const filtersKey = contactFiltersQuery(filters);
+  const [stats, setStats] = useState<ContactStats>(initialStats);
   /** The opened contact window: the full row plus its tasks/notes/files,
    *  fetched when the row is clicked -- the page no longer carries them
    *  for every contact at once. */
@@ -155,7 +185,8 @@ export function ContactsTable({
 
   /**
    * The window of rows on screen, asked of the server: typing searches
-   * the whole book server-side, scrolling appends the next batch. The
+   * and ticking filters narrow the whole book server-side, and the stat
+   * tiles are recounted to match; scrolling appends the next batch. The
    * book used to arrive whole as a prop -- at 79k contacts that was the
    * slowest page in the app by far.
    */
@@ -167,33 +198,44 @@ export function ContactsTable({
   const firstQueryRef = useRef(true);
 
   useEffect(() => {
-    // The server rendered the first batch of the empty search.
+    // The server rendered the first batch for the URL's filters.
     if (firstQueryRef.current) {
       firstQueryRef.current = false;
       return;
     }
+    // Filters ride in the URL so a refresh or a shared link keeps them.
+    // The native history API: Next syncs useSearchParams without a
+    // server round trip.
+    window.history.replaceState(null, "", filtersKey ? `/contacts?${filtersKey}` : "/contacts");
     queryIdRef.current += 1;
     const id = queryIdRef.current;
     setLoadingRows(true);
     const t = setTimeout(() => {
-      listContacts({ search, offset: 0, limit: CONTACT_ROW_BATCH })
-        .then((page) => {
+      Promise.all([
+        listContacts({ search, filters, offset: 0, limit: CONTACT_ROW_BATCH }),
+        getContactStats({ search, filters }),
+      ])
+        .then(([page, counts]) => {
           if (queryIdRef.current !== id) return;
           setRows(page.rows);
           setTotal(page.total);
+          setStats(counts);
         })
         .finally(() => {
           if (queryIdRef.current === id) setLoadingRows(false);
         });
     }, 250);
     return () => clearTimeout(t);
-  }, [search]);
+    // filtersKey stands for `filters`: a new object with the same ticks
+    // is not a new query.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filtersKey]);
 
   const loadMore = useCallback(() => {
     if (loadingMoreRef.current) return;
     loadingMoreRef.current = true;
     const id = queryIdRef.current;
-    listContacts({ search, offset: rows.length, limit: CONTACT_ROW_BATCH })
+    listContacts({ search, filters, offset: rows.length, limit: CONTACT_ROW_BATCH })
       .then((page) => {
         if (queryIdRef.current !== id) return;
         setRows((prev) => {
@@ -205,20 +247,22 @@ export function ContactsTable({
       .finally(() => {
         loadingMoreRef.current = false;
       });
-  }, [search, rows.length]);
+  }, [search, filters, rows.length]);
 
   /** Refresh the loaded window in place after a save/delete. */
   const refreshRows = useCallback(() => {
     queryIdRef.current += 1;
     const id = queryIdRef.current;
-    listContacts({ search, offset: 0, limit: Math.max(rows.length, CONTACT_ROW_BATCH) }).then(
-      (page) => {
-        if (queryIdRef.current !== id) return;
-        setRows(page.rows);
-        setTotal(page.total);
-      }
-    );
-  }, [search, rows.length]);
+    Promise.all([
+      listContacts({ search, filters, offset: 0, limit: Math.max(rows.length, CONTACT_ROW_BATCH) }),
+      getContactStats({ search, filters }),
+    ]).then(([page, counts]) => {
+      if (queryIdRef.current !== id) return;
+      setRows(page.rows);
+      setTotal(page.total);
+      setStats(counts);
+    });
+  }, [search, filters, rows.length]);
 
   /**
    * The duplicate banner, fetched after first paint: its grouping scans
@@ -291,8 +335,12 @@ export function ContactsTable({
 
   useEffect(() => {
     if (searchParams.get("openLead")) {
-      router.replace("/contacts", { scroll: false });
+      // Keeps any filters the link carried.
+      const q = contactFiltersQuery(filters);
+      router.replace(q ? `/contacts?${q}` : "/contacts", { scroll: false });
     }
+    // Only the deep link's arrival matters here, not later filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, router]);
 
   /**
@@ -313,14 +361,52 @@ export function ContactsTable({
     }
   }
 
-  const repById = useMemo(
-    () => new Map(reps.map((r) => [r.id, r.name || "Unassigned"])),
-    [reps]
+  // The whole roster: a deactivated rep still owns their contacts, and
+  // naming them "Unassigned" would contradict the Unassigned filter.
+  const roster = allMembers ?? reps;
+
+  /**
+   * The dropdowns. Each lists the configured values plus whatever
+   * contacts actually carry (facets) plus the current ticks, so no
+   * contact is unreachable and no tick is invisible. Reps follow the
+   * people-dropdown rule: active Sales reps, plus anyone with contacts.
+   */
+  const sourceOptions: FilterOption[] = [
+    { id: NO_VALUE, label: "No source" },
+    ...mergeFilterOptions(
+      sources.map((s) => s.name),
+      [...facets.sources, ...filters.sources.filter((v) => v !== NO_VALUE)]
+    ).map((v) => ({ id: v, label: v })),
+  ];
+  const repOptions: FilterOption[] = [
+    { id: NO_VALUE, label: "Unassigned" },
+    ...repDropdownOptions(roster, [...facets.reps, ...filters.reps]).map((m) => ({
+      id: m.id,
+      label: m.name || m.email || "Unnamed",
+    })),
+  ];
+  const stageNames = mergeFilterOptions(
+    stages.map((s) => s.name),
+    [...facets.stages, ...filters.stages]
   );
-  function repName(id: string | null) {
-    if (!id) return "Unassigned";
-    return repById.get(id) || "Unassigned";
+  const stageOptions: FilterOption[] = stageNames.map((v) => ({ id: v, label: v }));
+
+  /** Ticking every option filters nothing, so it is stored as no filter
+   *  -- a contact whose value isn't listed yet stays in view. */
+  function setGroup(group: keyof ContactFilters, next: Set<string>, optionCount: number) {
+    setFilters((f) => ({ ...f, [group]: next.size >= optionCount ? [] : [...next] }));
   }
+  function clearFilters() {
+    setFilters(NO_FILTERS);
+    setSearch("");
+  }
+  const narrowed = hasContactFilters(filters) || search.trim() !== "";
+  const openTicks = openStageSelection(stageNames, []);
+  const showingOpen =
+    filters.stages.length > 0 &&
+    filters.stages.length === openTicks.length &&
+    filters.stages.every((s) => !CONTACT_CLOSED_STAGES.includes(s));
+  const showingUnassigned = filters.reps.length === 1 && filters.reps[0] === NO_VALUE;
 
   const remaining = Math.max(0, total - rows.length);
 
@@ -334,11 +420,11 @@ export function ContactsTable({
       setSelectAllNote("");
       return;
     }
-    const match = await listMatchingRecipients(search);
+    const match = await listMatchingRecipients(search, filters);
     setSelected(new Map(match.recipients.map((r) => [r.id, r])));
     setSelectAllNote(
       match.capped
-        ? `Selected the ${match.recipients.length.toLocaleString()} newest of ${match.total.toLocaleString()} matches — narrow the search to reach the rest.`
+        ? `Selected the ${match.recipients.length.toLocaleString()} newest of ${match.total.toLocaleString()} matches — narrow the search or filters to reach the rest.`
         : ""
     );
   }
@@ -368,19 +454,36 @@ export function ContactsTable({
         </div>
       </div>
 
+      {/* The tiles count what the search and filters show, and each one
+          narrows the list to the contacts behind its number. */}
       <div className="stat-grid">
-        <div className="stat-card stat-static">
+        <button
+          type="button"
+          className="stat-card"
+          onClick={clearFilters}
+          title={narrowed ? "Clear the search and filters" : "Every contact is showing"}
+        >
           <div className="stat-value mono">{stats.totalContacts.toLocaleString()}</div>
-          <div className="stat-label">Total Contacts</div>
-        </div>
-        <div className="stat-card stat-static">
+          <div className="stat-label">{narrowed ? "Matching Contacts" : "Total Contacts"}</div>
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (showingOpen ? " stat-card-active" : "")}
+          onClick={() => setFilters((f) => ({ ...f, stages: openStageSelection(stageNames, f.stages) }))}
+          title="Show only contacts with an open lead"
+        >
           <div className="stat-value mono">{stats.withOpenLeads.toLocaleString()}</div>
           <div className="stat-label">With Open Leads</div>
-        </div>
-        <div className="stat-card stat-static">
+        </button>
+        <button
+          type="button"
+          className={"stat-card" + (showingUnassigned ? " stat-card-active" : "")}
+          onClick={() => setFilters((f) => ({ ...f, reps: [NO_VALUE] }))}
+          title="Show only contacts with no rep"
+        >
           <div className="stat-value mono">{stats.noSetterAssigned.toLocaleString()}</div>
           <div className="stat-label">No Rep Assigned</div>
-        </div>
+        </button>
       </div>
 
       {dups && dups.totalGroups > 0 && (
@@ -438,13 +541,44 @@ export function ContactsTable({
         </div>
       )}
 
-      <input
-        className="ur-search"
-        style={{ marginBottom: 16, maxWidth: 420 }}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search name, email, phone, or address..."
-      />
+      <div className="list-filters">
+        <input
+          className="ur-search"
+          style={{ flex: "1 1 240px", maxWidth: 360 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, email, phone, or address..."
+          aria-label="Search contacts"
+        />
+        <FilterSelect
+          title="SOURCE"
+          options={sourceOptions}
+          selected={new Set(filters.sources)}
+          onChange={(next) => setGroup("sources", next, sourceOptions.length)}
+        />
+        <FilterSelect
+          title="ASSIGNED REP"
+          options={repOptions}
+          selected={new Set(filters.reps)}
+          onChange={(next) => setGroup("reps", next, repOptions.length)}
+        />
+        <FilterSelect
+          title="STAGE"
+          options={stageOptions}
+          selected={new Set(filters.stages)}
+          onChange={(next) => setGroup("stages", next, stageOptions.length)}
+        />
+        {narrowed && (
+          <>
+            <span className="list-filters-count">
+              Showing {total.toLocaleString()} of {stats.bookTotal.toLocaleString()} contacts
+            </span>
+            <button type="button" className="btn-ghost small" onClick={clearFilters}>
+              Clear all
+            </button>
+          </>
+        )}
+      </div>
 
       {canWrite && selected.size > 0 && (
         <div className="bulk-action-bar">
@@ -470,7 +604,11 @@ export function ContactsTable({
         <div className="empty-state">
           <p className="empty-label">{loadingRows ? "Searching…" : "No contacts match"}</p>
           <p className="empty-hint">
-            {loadingRows ? "Checking every contact." : "Try a different search term."}
+            {loadingRows
+              ? "Checking every contact."
+              : hasContactFilters(filters)
+                ? "Untick a filter or use Clear all."
+                : "Try a different search term."}
           </p>
         </div>
       ) : (
@@ -502,7 +640,7 @@ export function ContactsTable({
               <ContactRow
                 key={l.id}
                 lead={l}
-                repLabel={repName(l.assigned_to)}
+                repLabel={repDisplayName(l.assigned_to, roster)}
                 color={stageColor(stages, l.stage)}
                 onOpen={(lead) => void openLead(lead.id)}
                 selectable={canWrite}
