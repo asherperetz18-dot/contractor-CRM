@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   daysSince,
   isSettledStage,
@@ -32,7 +32,7 @@ import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
 import { AttentionDigest } from "./attention-digest";
 import { CsvImportPanel } from "./csv-import-panel";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
-import { shouldOpenNewLead } from "@/lib/data/quick-create";
+import { useQuickCreate } from "../use-quick-create";
 import { PhoneLeadList } from "./phone-lead-list";
 
 type StatusFilter = "Open" | "Won" | "Lost";
@@ -305,23 +305,9 @@ export function PipelineBoard({
   );
   const scrollElRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const searchParams = useSearchParams();
   // Quick Create's New Lead (and the phone's Today button) land here as
-  // /pipeline?new=1 and the form opens by itself -- the estimates page's
-  // idiom: opened during render behind a consumed guard, the param then
-  // stripped so a refresh doesn't reopen it.
-  const [consumedNew, setConsumedNew] = useState(false);
-  const newParam = searchParams.get("new");
-  if (newParam && !consumedNew) {
-    setConsumedNew(true);
-    if (shouldOpenNewLead(newParam, canCreateLeads)) setShowNew(true);
-  } else if (!newParam && consumedNew) {
-    setConsumedNew(false);
-  }
-  useEffect(() => {
-    if (searchParams.get("new")) router.replace("/pipeline", { scroll: false });
-  }, [searchParams, router]);
+  // /pipeline?new=1 and the form opens by itself.
+  const [showNew, setShowNew] = useQuickCreate("/pipeline", canCreateLeads);
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
   /** The expanded stage's biggest deals, fetched when its row is

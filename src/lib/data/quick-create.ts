@@ -1,13 +1,11 @@
 /**
- * Whether landing on /estimates with Quick Create's ?new=1 should open
- * the create dialog immediately. Gated on the same permission as the
- * page's own New Estimate button, so a deep link can't hand someone a
- * form their save would reject.
+ * Whether landing on a page with Quick Create's ?new= should open that
+ * page's "new" form immediately. Gated on the same permission as the
+ * page's own New button, so a deep link can't hand someone a form their
+ * save would reject. Used by every Quick Create target (see
+ * src/app/(app)/use-quick-create.ts and the estimates page).
  */
-export function shouldAutoOpenNewEstimate(
-  newParam: string | null,
-  canCreate: boolean
-): boolean {
+export function shouldOpenQuickCreate(newParam: string | null, canCreate: boolean): boolean {
   return canCreate && !!newParam;
 }
 
@@ -17,12 +15,6 @@ export function quickCreateDialog(
   newParam: string | null,
   canCreate: boolean
 ): "estimate" | "invoice" | null {
-  if (!shouldAutoOpenNewEstimate(newParam, canCreate)) return null;
+  if (!shouldOpenQuickCreate(newParam, canCreate)) return null;
   return newParam === "invoice" ? "invoice" : "estimate";
-}
-
-/** Quick Create's New Lead lands on /pipeline?new=1; the new-lead form
- *  opens by itself for anyone the page's own + New Lead button is for. */
-export function shouldOpenNewLead(newParam: string | null, canCreateLeads: boolean): boolean {
-  return canCreateLeads && !!newParam;
 }

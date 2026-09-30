@@ -22,6 +22,7 @@ import {
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
+import { useQuickCreate } from "../use-quick-create";
 
 function formatEventDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -72,7 +73,9 @@ export function ScheduleList({
   appointmentHolders: Record<string, string | null>;
 }) {
   const [editing, setEditing] = useState<Event | null>(null);
-  const [showNew, setShowNew] = useState(false);
+  // Quick Create's New Appointment (and the phone's Today button) land
+  // here as /schedule?new=1 and the wizard opens by itself.
+  const [showNew, setShowNew] = useQuickCreate("/schedule", canWrite);
   const timeFormat = useTimeFormat();
   // Captured once rather than read during render, so the same list does
   // not render differently on a re-render.

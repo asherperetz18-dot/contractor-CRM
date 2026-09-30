@@ -32,6 +32,7 @@ import {
 import { FilterSelect } from "@/components/filter-select";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { NewEstimateDialog } from "../estimates/new-estimate-dialog";
+import { useQuickCreate } from "../use-quick-create";
 
 export type ContractLead = {
   id: string;
@@ -96,7 +97,9 @@ export function ContractsView({
     signed: COLUMN_CARD_CAP,
     closed: COLUMN_CARD_CAP,
   });
-  const [creating, setCreating] = useState(false);
+  // Quick Create's New Contract lands here as /contracts?new=1 and the
+  // dialog opens by itself.
+  const [creating, setCreating] = useQuickCreate("/contracts", canCreate);
 
   const now = new Date();
   const leadById = new Map(leads.map((l) => [l.id, l]));
