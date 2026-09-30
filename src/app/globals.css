@@ -1650,6 +1650,9 @@ a.stat-card {
 }
 .dash-attn-card {
   padding: 12px 14px;
+  /* Allowed below its content's width, so a long figure ellipsizes
+     inside the card instead of widening the grid and the page. */
+  min-width: 0;
 }
 .dash-attn-top {
   display: flex;
@@ -1670,6 +1673,7 @@ a.stat-card {
   font-size: 19px;
   font-weight: 600;
   line-height: 1.2;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1978,11 +1982,18 @@ a.stat-card {
 
 /* Phone-width reflow for the dashboard proper: two-up cards, the stage
    dropdown on its own line, and smaller headline type so money figures
-   don't collide at ~180px per tile. */
+   don't collide at ~180px per tile.
+   The alert cards are two-up only while two fit: 11em is the widest
+   figure ("$1,914,828" + dot + arrow) at normal text size, and in em it
+   grows with the phone's text-size setting, so a small phone or large
+   text drops to one card per row rather than running off the screen. */
 @media (max-width: 700px) {
   .dash-attn-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11em), 1fr));
     gap: 10px;
+  }
+  .dash-attn-value {
+    font-size: 17px;
   }
   .dash-kpi-grid .stat-value {
     font-size: 21px;
