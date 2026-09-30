@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.170.0",
+    date: "2026-09-30",
+    notes: [
+      "Picking a salesperson on Estimates & Contracts now also shows the jobs where they are the closer or the second salesperson, not only the ones where they are the salesperson. The cards at the top count those jobs too. The Contract Board works the same way.",
+      "The Salesperson column now lists the closer and second salesperson under the salesperson's name, for example \"Closer: Simon Benhamo\", so you can see why a job shows up under someone's name.",
+    ],
+  },
+  {
     version: "1.169.1",
     date: "2026-09-30",
     notes: [
