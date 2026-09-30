@@ -61,13 +61,34 @@ export function repDropdownOptions<T extends RepPickable>(
   members: readonly T[],
   keep?: Iterable<string | null | undefined>
 ): T[] {
+  return activeWithRole(members, ["Sales"], keep);
+}
+
+/**
+ * The same rule for the crew side: a production job's "Assigned to" and
+ * the board's crew filter offer active Field and Production members,
+ * plus whoever `keep` names -- a role-specific picker keeps its own
+ * role, it doesn't become a Sales list.
+ */
+export function crewDropdownOptions<T extends RepPickable>(
+  members: readonly T[],
+  keep?: Iterable<string | null | undefined>
+): T[] {
+  return activeWithRole(members, ["Field", "Production"], keep);
+}
+
+function activeWithRole<T extends RepPickable>(
+  members: readonly T[],
+  roles: readonly AppRole[],
+  keep?: Iterable<string | null | undefined>
+): T[] {
   const kept = new Set<string>();
   for (const id of keep ?? []) if (id) kept.add(id);
   return members
     .filter(
       (m) =>
         kept.has(m.id) ||
-        ((m.status ?? "Active") === "Active" && (m.roles ?? []).includes("Sales"))
+        ((m.status ?? "Active") === "Active" && (m.roles ?? []).some((r) => roles.includes(r)))
     )
     .sort((a, b) => (a.name || a.email || "").localeCompare(b.name || b.email || ""));
 }
