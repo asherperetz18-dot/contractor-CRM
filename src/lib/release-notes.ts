@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.164.0",
+    date: "2026-09-30",
+    notes: [
+      "Contacts has Source, Assigned Rep and Stage filters next to the search box. Tick as many as you like in each one, for example Google Ads and Google Organic together. \"Showing 312 of 6,743 contacts\" says how many match, and Clear all resets everything.",
+      "The three numbers at the top of Contacts follow your search and filters, and clicking one narrows the list to it. Click No Rep Assigned to see only unassigned contacts, or With Open Leads to hide Won, Lost and DNC.",
+      "Your filters stay in the page address, so refreshing or sending someone the link keeps them. Select all and Email Selected cover only the filtered contacts.",
+      "Contacts owned by a rep who has since been deactivated now show that rep's name instead of \"Unassigned\".",
+    ],
+  },
+  {
     version: "1.163.0",
     date: "2026-09-28",
     notes: [
