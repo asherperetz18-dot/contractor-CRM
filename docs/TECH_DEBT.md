@@ -96,6 +96,9 @@ What: changes made in Google reach the CRM on the next 15-minute cron run (or Sy
 **Live location stops when the CRM leaves the screen (browser only).**
 What: in a phone browser the location sharer stops reporting when the phone locks or the tab is in the background. Why: only a native app may track in the background. Impact: anyone clocked in from a browser instead of the phone app shows "Location off" on the Team Map with the phone in a pocket. The cure is the phone app (decision #074); once it's in the stores, the Time Clock could nudge browser users to install it. Where: `src/app/(app)/location-sharer.tsx`.
 
+**A geocoder failure is cached as "address not found".**
+What: `geocodeCached` stores `null` for an address when the Census geocoder errors or times out, the same as for a real miss, so a single outage makes that address permanently unplaceable. Why: the cache was built for rain alerts, where a miss only skips one forecast. Impact: since 1.171.0 a job whose address got cached during an outage is never a zone, so its crew's arrivals aren't logged and their clock-ins there are stamped as off-site or "nothing on the map". The cure: cache only answers the geocoder actually gave (a 200 with or without a match), or give `null` rows an expiry. Where: `src/lib/data/time-clock.ts`, `src/lib/weather-provider.ts` (`geocodeViaCensus`).
+
 **Office edits to hours are audited in the action, not by a trigger.**
 What: `correctPunch` writes `time_punch_changes`; an Office/Admin user editing `time_punches` directly through the Supabase API would bypass the history (RLS allows it — the audit does not). Why: the action is the only writer the app has; a trigger would also fire on the cron's auto clock-out and the worker's own clock-out. Impact: none through the app. The cure if needed: a `before update` trigger that records only updates by Office/Admin. Where: `src/lib/actions/time-clock.ts`, `supabase/migrations/0174_time_clock.sql`.
 
