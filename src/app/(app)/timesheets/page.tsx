@@ -10,6 +10,8 @@ import { parseNaiveDateTime } from "@/lib/timezone";
 import { punchMinutes, timesheetCsv, wallInputValue, weekDays, weekSummary, type PunchRow } from "@/lib/time-clock/hours";
 import { appointmentAttendance } from "@/lib/time-clock/attendance";
 import { describePunchChange, type PunchSnapshot } from "@/lib/time-clock/punch-changes";
+import { clockFlags, describeStamp } from "@/lib/time-clock/clock-in-check";
+import type { ClockCheck } from "@/lib/time-clock/geo";
 import { TimesheetView, type TimesheetPerson } from "./timesheet-view";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +47,11 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
       .gte("clock_in", from)
       .lte("clock_in", to)
       .order("clock_in", { ascending: true }),
+    // "*" so job_id (0185) comes along once it exists, without failing
+    // the whole read before then.
     supabase
       .from("site_visits")
-      .select("profile_id, event_id, arrived_at, left_at")
+      .select("*")
       .eq("company_id", companyId)
       .gte("arrived_at", from)
       .lte("arrived_at", to),
@@ -82,7 +86,9 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
 
   const punches = (punchData as PunchRow[] | null) ?? [];
   const visits =
-    (visitData as { profile_id: string; event_id: string | null; arrived_at: string; left_at: string | null }[] | null) ?? [];
+    (visitData as
+      | { profile_id: string; event_id: string | null; job_id?: string | null; arrived_at: string; left_at: string | null }[]
+      | null) ?? [];
   const summary = weekSummary(punches, days, zone, now, settings.overtime_weekly_hours);
   const workerIds = [...summary.keys()];
   const nameOf = (id: string) => {
@@ -129,11 +135,35 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
   type Change = { punch_id: string; changed_by: string | null; changed_at: string; reason: string; old_punch: PunchSnapshot; new_punch: PunchSnapshot };
   const changes = (changeData as Change[] | null) ?? [];
 
+  // Where each clock-in and clock-out was checked (0185). Its own query:
+  // before that migration runs it fails, and the page shows no flags.
+  type Stamp = {
+    id: string;
+    in_check: ClockCheck | null;
+    in_place: string | null;
+    in_distance_m: number | null;
+    in_reason: string | null;
+    out_check: ClockCheck | null;
+    out_place: string | null;
+    out_distance_m: number | null;
+  };
+  const { data: stampData } = punchIds.length
+    ? await supabase
+        .from("time_punches")
+        .select("id, in_check, in_place, in_distance_m, in_reason, out_check, out_place, out_distance_m")
+        .eq("company_id", companyId)
+        .in("id", punchIds)
+    : { data: [] };
+  const stampOf = new Map(((stampData as Stamp[] | null) ?? []).map((st) => [st.id, st]));
+  const flagsOf = (id: string) =>
+    clockFlags(punches.filter((p) => p.profile_id === id && stampOf.has(p.id)).map((p) => stampOf.get(p.id)!));
+
   const people: TimesheetPerson[] = workerIds
     .map((id) => {
       const row = summary.get(id)!;
+      const flags = flagsOf(id);
       const onSite = visits
-        .filter((v) => v.profile_id === id && v.event_id)
+        .filter((v) => v.profile_id === id && (v.event_id || v.job_id))
         .reduce((s, v) => s + punchMinutes({ id: "", profile_id: id, clock_in: v.arrived_at, clock_out: v.left_at, end_reason: null }, now), 0);
       return {
         id,
@@ -147,23 +177,38 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
         edited: changes.some((c) => punches.find((p) => p.id === c.punch_id)?.profile_id === id),
         late: lateBy.get(id)?.late ?? 0,
         missed: lateBy.get(id)?.missed ?? 0,
+        offSite: flags.offSite,
+        noLocation: flags.noLocation,
+        // A punch that skipped the check only matters while the company checks.
+        unchecked: settings.clock_in_check === "off" ? 0 : flags.unchecked,
         punches: punches
           .filter((p) => p.profile_id === id)
-          .map((p) => ({
-            id: p.id,
-            clockIn: wallInputValue(p.clock_in, zone),
-            clockOut: p.clock_out ? wallInputValue(p.clock_out, zone) : "",
-            endReason: p.end_reason,
-            minutes: punchMinutes(p, now),
-            history: changes
-              .filter((c) => c.punch_id === p.id)
-              .map((c) => ({
-                when: new Date(c.changed_at).toLocaleString("en-US", { timeZone: zone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
-                who: c.changed_by ? nameOf(c.changed_by) : "System",
-                reason: c.reason,
-                lines: describePunchChange(c.old_punch, c.new_punch, zone),
-              })),
-          })),
+          .map((p) => {
+            const st = stampOf.get(p.id);
+            return {
+              id: p.id,
+              clockIn: wallInputValue(p.clock_in, zone),
+              clockOut: p.clock_out ? wallInputValue(p.clock_out, zone) : "",
+              endReason: p.end_reason,
+              minutes: punchMinutes(p, now),
+              inStamp: st
+                ? { check: st.in_check, text: describeStamp({ check: st.in_check, place: st.in_place, distanceM: st.in_distance_m }) }
+                : null,
+              outStamp:
+                st && p.clock_out && p.end_reason !== "auto"
+                  ? { check: st.out_check, text: describeStamp({ check: st.out_check, place: st.out_place, distanceM: st.out_distance_m }) }
+                  : null,
+              reason: st?.in_reason ?? null,
+              history: changes
+                .filter((c) => c.punch_id === p.id)
+                .map((c) => ({
+                  when: new Date(c.changed_at).toLocaleString("en-US", { timeZone: zone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+                  who: c.changed_by ? nameOf(c.changed_by) : "System",
+                  reason: c.reason,
+                  lines: describePunchChange(c.old_punch, c.new_punch, zone),
+                })),
+            };
+          }),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -174,7 +219,7 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
       <TimesheetView
         days={days}
         people={people}
-        csv={timesheetCsv(summary, days, nameOf)}
+        csv={timesheetCsv(summary, days, nameOf, (id) => flagsOf(id).offSite)}
         overtimeHours={settings.overtime_weekly_hours}
       />
     </>

@@ -28,6 +28,8 @@ test("a valid form parses to numbers and a trimmed address", () => {
     auto_clock_out_hours: "12",
     trail_retention_days: "90",
     office_address: "  1 Main St, Town CA  ",
+    clock_in_check: "ask",
+    check_roles: ["Field"],
   });
   assert.ok("settings" in r);
   assert.equal(r.settings.zone_radius_m, 200);
@@ -43,6 +45,8 @@ test("out-of-range or non-numeric values are refused in words", () => {
     auto_clock_out_hours: "12",
     trail_retention_days: "90",
     office_address: "",
+    clock_in_check: "ask",
+    check_roles: ["Field"],
   });
   assert.deepEqual(r, { error: "Zone radius must be between 30 and 1000 metres." });
 });
@@ -56,8 +60,32 @@ test("an empty address is stored as none; an unknown role is dropped", () => {
     auto_clock_out_hours: "12",
     trail_retention_days: "90",
     office_address: "   ",
+    clock_in_check: "record",
+    check_roles: ["Production", "Wizard"],
   });
   assert.ok("settings" in r);
   assert.equal(r.settings.office_address, null);
   assert.deepEqual(r.settings.tracked_roles, ["Field"]);
+  assert.deepEqual(r.settings.check_roles, ["Production"]);
+  assert.equal(r.settings.clock_in_check, "record");
+});
+
+test("the clock-in check asks for a reason, for Field and Production, by default", () => {
+  assert.equal(DEFAULT_TIME_CLOCK_SETTINGS.clock_in_check, "ask");
+  assert.deepEqual(DEFAULT_TIME_CLOCK_SETTINGS.check_roles, ["Field", "Production"]);
+});
+
+test("an unknown check mode is refused in words", () => {
+  const r = parseSettingsInput({
+    tracked_roles: ["Field"],
+    zone_radius_m: "150",
+    overtime_weekly_hours: "40",
+    late_after_min: "10",
+    auto_clock_out_hours: "12",
+    trail_retention_days: "90",
+    office_address: "",
+    clock_in_check: "block",
+    check_roles: ["Field"],
+  });
+  assert.deepEqual(r, { error: "Choose how the clock-in location check works." });
 });

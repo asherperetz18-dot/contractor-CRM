@@ -2,6 +2,12 @@
 // until an office saves the settings page, and parsing its form.
 import type { AppRole } from "../data/types.ts";
 
+// Where a clock-in happened, checked against the person's places today
+// (0185): off; stamped and flagged on Timesheets; or that plus asking
+// the worker why when they clock in away from every place. Never a block.
+export type ClockInCheckMode = "off" | "record" | "ask";
+export const CLOCK_IN_CHECK_MODES: ClockInCheckMode[] = ["off", "record", "ask"];
+
 export type TimeClockSettings = {
   tracked_roles: AppRole[];
   zone_radius_m: number;
@@ -10,6 +16,8 @@ export type TimeClockSettings = {
   auto_clock_out_hours: number;
   trail_retention_days: number;
   office_address: string | null;
+  clock_in_check: ClockInCheckMode;
+  check_roles: AppRole[];
 };
 
 export const DEFAULT_TIME_CLOCK_SETTINGS: TimeClockSettings = {
@@ -20,6 +28,10 @@ export const DEFAULT_TIME_CLOCK_SETTINGS: TimeClockSettings = {
   auto_clock_out_hours: 12,
   trail_retention_days: 90,
   office_address: null,
+  clock_in_check: "ask",
+  // Sales reps often start the day on calls from home; checking them
+  // would flag them every morning.
+  check_roles: ["Field", "Production"],
 };
 
 export const CLOCK_ROLES: AppRole[] = [
@@ -44,6 +56,8 @@ export type SettingsInput = {
   auto_clock_out_hours: string;
   trail_retention_days: string;
   office_address: string;
+  clock_in_check: string;
+  check_roles: string[];
 };
 
 const RANGES: [keyof SettingsInput, string, number, number][] = [
@@ -61,6 +75,8 @@ export function parseSettingsInput(input: SettingsInput): { settings: TimeClockS
     if (!Number.isFinite(n) || n < min || n > max) return { error: message };
     nums[key] = key === "overtime_weekly_hours" ? n : Math.round(n);
   }
+  const mode = CLOCK_IN_CHECK_MODES.find((m) => m === input.clock_in_check);
+  if (!mode) return { error: "Choose how the clock-in location check works." };
   const address = input.office_address.trim();
   return {
     settings: {
@@ -71,6 +87,8 @@ export function parseSettingsInput(input: SettingsInput): { settings: TimeClockS
       auto_clock_out_hours: nums.auto_clock_out_hours,
       trail_retention_days: nums.trail_retention_days,
       office_address: address || null,
+      clock_in_check: mode,
+      check_roles: CLOCK_ROLES.filter((r) => input.check_roles.includes(r)),
     },
   };
 }

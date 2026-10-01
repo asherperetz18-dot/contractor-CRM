@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.171.0",
+    date: "2026-10-01",
+    notes: [
+      "The Time Clock now checks where you clock in. Clocking in at one of your jobs for the day, or at the office, works the same as before, and the screen confirms it: \"Clocked in at Smith · Roof replacement\".",
+      "Clocking in away from every job asks one quick question (\"Picking up materials\", \"Driving to the job\" and so on) and then clocks you in. Nobody is ever stopped from clocking in, and clocking out is never questioned. If your phone can't find your location, you can still clock in.",
+      "Timesheets shows off-site clock-ins, clock-ins with no location, and the reason given, with where each clock-in and clock-out happened. The payroll export has an \"Off-site clock-ins\" column.",
+      "Crews working a production job are now seen as at the job even on days with no appointment there, on Team Map and in their hours on site.",
+      "Settings › Time Clock & Tracking has a new Location check at clock-in setting: off, record only, or ask for a reason (the default), for Field and Production to start.",
+    ],
+  },
+  {
     version: "1.170.1",
     date: "2026-10-01",
     notes: [

@@ -113,10 +113,15 @@ test("CSV has one row per person, hours to two decimals, and quotes names", () =
     new Date("2026-09-24T00:00:00Z"),
     40
   );
-  const csv = timesheetCsv(s, days, (id) => (id === P ? 'Dana "DJ" Levi' : "Unnamed"));
+  const csv = timesheetCsv(
+    s,
+    days,
+    (id) => (id === P ? 'Dana "DJ" Levi' : "Unnamed"),
+    (id) => (id === P ? 2 : 0)
+  );
   assert.equal(
     csv,
-    'Person,2026-09-21,Total hours,Overtime hours,Auto clock-outs\n"Dana ""DJ"" Levi",8.33,8.33,0.00,0\n'
+    'Person,2026-09-21,Total hours,Overtime hours,Auto clock-outs,Off-site clock-ins\n"Dana ""DJ"" Levi",8.33,8.33,0.00,0,2\n'
   );
 });
 
