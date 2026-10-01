@@ -1015,3 +1015,13 @@ In the same change, `/pipeline?new=1` now opens the new-contact form. That is th
 The funnel cards follow the filtered rows (cards-follow-filters rule), and each document is counted once however many of its people are ticked. The row lists the rest of the team under the salesperson, so a row the filter found says why it is there.
 
 **Consequence:** With a closer ticked, the Contracts card's money includes the full value of the jobs they closed. That is the value of the documents they are on, not their sales credit. Crediting a sale is a separate question, answered by `sale-credit.ts` (the Salespeople grid, the rep report): there the closer follows a sale with a cut and never holds it, and that is unchanged. The salesperson column itself still names only the salesperson, frozen at signature.
+
+## 094 — A screen share ends by beacon on pagehide, and "Not now" is remembered per browser
+
+**Date:** 2026-10-01
+
+**Context:** The owner got Vanessa's "Screen share invite" on every refresh. An invite is a `screen_shares` row with no `ended_at` (under 4 hours old), and two things kept it coming back. The sharer's goodbye was a Server Action fired from `beforeunload`: an action fired while the page goes away waits behind any other action in Next's queue and dies with the page, and iPhones never fire `beforeunload` at all — so the row stayed "live". And "Not now" lived only in React state, so a reload asked again.
+
+**Decision:** Ending a session goes to a thin route handler, `POST /api/screen-shares/end`, sent with `sendBeacon` (keepalive `fetch` as the fallback) — for Stop and for leaving alike, from `pagehide`, which fires on reload and close in every browser. The route calls the same `endScreenShare`, so the sharer-only scoping and RLS are unchanged. "Not now" (and the banner's ✕) stores the session id in `localStorage` (`crm.screen-share.dismissed`, newest 20); a new session from the same person has a new id, so it still knocks. The pure parts — which session to offer, the stored list, the beacon's body — are in `src/lib/screen-share-session.ts` with tests.
+
+**Consequence:** A reload, close or Stop no longer leaves a ghost invite. A sharer whose tab dies without any event (crash, laptop lid, lost connection) still leaves one until the 4-hour cutoff; its invitee sees it once. Closing that last gap needs a heartbeat column, logged in TECH_DEBT rather than built now.

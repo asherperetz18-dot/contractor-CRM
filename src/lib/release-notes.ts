@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.170.1",
+    date: "2026-10-01",
+    notes: [
+      "A screen share invite no longer pops up again every time you refresh. \"Not now\" on an invite is remembered, so it stays closed after a refresh (a new share from the same person still pops up).",
+      "When someone who is sharing their screen refreshes or closes their CRM tab, their share now ends right away, so nobody keeps getting an invite to a share that is already gone.",
+    ],
+  },
+  {
     version: "1.170.0",
     date: "2026-09-30",
     notes: [
