@@ -3,8 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { zoneForCompany } from "@/lib/data/company-today";
-import { closeOpenVisit, readTimeClockSettings, visitKey, zonesForToday } from "@/lib/data/time-clock";
-import { nearestZone, nextVisitStep } from "@/lib/time-clock/geo";
+import { closeOpenVisit, readTimeClockSettings, zonesForToday } from "@/lib/data/time-clock";
+import { nearestZone, nextVisitStep, visitKey } from "@/lib/time-clock/geo";
 
 /**
  * The phone's location while its owner is on the clock.
@@ -76,13 +76,15 @@ export async function POST(request: Request) {
   const zones = await zonesForToday(admin, profile.company_id, profile.id, zone, settings);
   const hit = nearestZone({ lat, lng, accuracy }, zones, settings.zone_radius_m);
 
+  // "*" rather than naming job_id: before 0185 that column doesn't
+  // exist, and a failed read here would reopen a visit on every fix.
   const { data: open } = await admin
     .from("site_visits")
-    .select("id, event_id")
+    .select("*")
     .eq("company_id", profile.company_id)
     .eq("profile_id", profile.id)
     .is("left_at", null)
-    .maybeSingle<{ id: string; event_id: string | null }>();
+    .maybeSingle<{ id: string; event_id: string | null; job_id?: string | null }>();
   const step = nextVisitStep(open ? visitKey(open) : null, hit?.zone ?? null);
   if (step.close) await closeOpenVisit(admin, profile.company_id, profile.id, recordedAt);
   if (step.open) {
@@ -90,6 +92,9 @@ export async function POST(request: Request) {
       company_id: profile.company_id,
       profile_id: profile.id,
       event_id: step.open.eventId,
+      // Only on a job visit, so event and office visits still save before
+      // 0185; until it runs, a job arrival just isn't logged.
+      ...(step.open.jobId ? { job_id: step.open.jobId } : {}),
       label: step.open.label,
       arrived_at: recordedAt,
       distance_m: hit ? Math.round(hit.distance) : null,

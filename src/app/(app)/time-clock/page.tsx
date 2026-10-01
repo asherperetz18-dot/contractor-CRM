@@ -5,7 +5,7 @@ import { appointmentsForToday, readTimeClockSettings } from "@/lib/data/time-clo
 import { dayStartInZone, isoDateInZone } from "@/lib/company-clock";
 import { shiftState, type PunchRow } from "@/lib/time-clock/hours";
 import { usesTimeClock } from "@/lib/time-clock/settings";
-import { TimeClockView, type VisitRow } from "./time-clock-view";
+import { TimeClockView, type PunchStampRow, type VisitRow } from "./time-clock-view";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +42,15 @@ export default async function TimeClockPage() {
   ]);
 
   const rows = (punches as PunchRow[] | null) ?? [];
+  // Where each punch was checked (0185). A query of its own, so before
+  // that migration runs it just comes back empty and the page carries on.
+  const { data: stamps } = rows.length
+    ? await supabase
+        .from("time_punches")
+        .select("id, in_check, in_place, in_distance_m, out_check, out_place, out_distance_m")
+        .eq("company_id", profile.company_id)
+        .in("id", rows.map((r) => r.id))
+    : { data: [] };
   return (
     <>
       <div className="module-toolbar">
@@ -61,6 +70,7 @@ export default async function TimeClockPage() {
           noticeAccepted={!!notice}
           state={shiftState(rows, new Date())}
           punches={rows}
+          stamps={(stamps as PunchStampRow[] | null) ?? []}
           visits={(visits as VisitRow[] | null) ?? []}
           appointments={appts
             .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0))

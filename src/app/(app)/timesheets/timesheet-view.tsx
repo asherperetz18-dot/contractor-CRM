@@ -3,6 +3,11 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { correctPunch } from "@/lib/actions/time-clock";
+import { stampChipClass } from "@/lib/time-clock/clock-in-check";
+import type { ClockCheck } from "@/lib/time-clock/geo";
+
+// Where a clock-in or clock-out happened, as the office reads it (0185).
+type PunchStamp = { check: ClockCheck | null; text: string | null } | null;
 
 export type TimesheetPerson = {
   id: string;
@@ -16,17 +21,33 @@ export type TimesheetPerson = {
   edited: boolean;
   late: number;
   missed: number;
+  offSite: number;
+  noLocation: number;
+  unchecked: number;
   punches: {
     id: string;
     clockIn: string;
     clockOut: string;
     endReason: string | null;
     minutes: number;
+    inStamp: PunchStamp;
+    outStamp: PunchStamp;
+    reason: string | null;
     history: { when: string; who: string; reason: string; lines: string[] }[];
   }[];
 };
 
 const hrs = (mins: number) => (mins ? (mins / 60).toFixed(1) : "—");
+
+function StampChip({ label, stamp }: { label: string; stamp: PunchStamp }) {
+  const cls = stamp ? stampChipClass(stamp.check) : null;
+  if (!stamp?.text || !cls) return null;
+  return (
+    <span className={`tc-chip ${cls}`}>
+      {label} {stamp.text}
+    </span>
+  );
+}
 const dayName = (iso: string) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
 
@@ -150,6 +171,9 @@ export function TimesheetView({
                       {p.overtimeMinutes > 0 && <span className="tc-chip tc-chip-stopped">Overtime {hrs(p.overtimeMinutes)} h</span>}
                       {p.autoClosed > 0 && <span className="tc-chip tc-chip-no-signal">Missed clock-out ×{p.autoClosed}</span>}
                       {p.missed > 0 && <span className="tc-chip tc-chip-no-signal">No-show ×{p.missed}</span>}
+                      {p.offSite > 0 && <span className="tc-chip tc-chip-stopped">Off-site clock-in ×{p.offSite}</span>}
+                      {p.noLocation > 0 && <span className="tc-chip tc-chip-no-signal">No location ×{p.noLocation}</span>}
+                      {p.unchecked > 0 && <span className="tc-chip tc-chip-no-signal">Not checked ×{p.unchecked}</span>}
                       {p.edited && <span className="tc-chip tc-chip-office">Edited by office</span>}
                     </span>
                   </td>
@@ -172,6 +196,13 @@ export function TimesheetView({
                               </button>
                             </span>
                           </div>
+                          {(pu.inStamp?.text || pu.outStamp?.text) && (
+                            <span className="chip-row">
+                              <StampChip label="In:" stamp={pu.inStamp} />
+                              <StampChip label="Out:" stamp={pu.outStamp} />
+                            </span>
+                          )}
+                          {pu.reason && <div className="tc-stamp">Why: &ldquo;{pu.reason}&rdquo;</div>}
                           {editing === pu.id && (
                             <PunchEditor
                               punch={pu}

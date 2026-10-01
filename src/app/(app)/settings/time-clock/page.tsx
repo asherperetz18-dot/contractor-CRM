@@ -1,14 +1,20 @@
 import { AdminGate } from "@/components/admin-gate";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { readTimeClockSettings } from "@/lib/data/time-clock";
+import { readClockInCheck, readTimeClockSettings } from "@/lib/data/time-clock";
 import { TimeClockSettingsForm } from "./settings-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function TimeClockSettingsPage() {
   const profile = await getCurrentProfile();
-  const settings = profile ? await readTimeClockSettings(await createClient(), profile.company_id) : null;
+  const supabase = await createClient();
+  const [settings, check] = profile
+    ? await Promise.all([
+        readTimeClockSettings(supabase, profile.company_id),
+        readClockInCheck(supabase, profile.company_id),
+      ])
+    : [null, null];
   return (
     <AdminGate>
       <div className="module-toolbar">
@@ -17,7 +23,7 @@ export default async function TimeClockSettingsPage() {
           <p className="module-sub">Office only. Changes apply to everyone in the company.</p>
         </div>
       </div>
-      {settings && <TimeClockSettingsForm initial={settings} />}
+      {settings && <TimeClockSettingsForm initial={settings} checkReady={check !== null} />}
     </AdminGate>
   );
 }

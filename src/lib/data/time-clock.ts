@@ -5,21 +5,40 @@ import { geocodeViaCensus, normalizeAddress } from "@/lib/weather-provider";
 import { instantOfWallClock, isoDateInZone } from "@/lib/company-clock";
 import { parseNaiveDateTime } from "@/lib/timezone";
 import { DEFAULT_TIME_CLOCK_SETTINGS, type TimeClockSettings } from "@/lib/time-clock/settings";
-import type { Zone } from "@/lib/time-clock/geo";
+import { jobIsLiveToday, type Zone } from "@/lib/time-clock/geo";
 
 type Client = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>;
 type Admin = ReturnType<typeof createAdminClient>;
 
+type ClockInCheckSettings = Pick<TimeClockSettings, "clock_in_check" | "check_roles">;
+
+// The clock-in location check's settings (0185), read on their own so a
+// database that hasn't run 0185 still gets the rest of the company's
+// rules. Null until 0185 has run.
+export async function readClockInCheck(client: Client, companyId: string): Promise<ClockInCheckSettings | null> {
+  const { data, error } = await client
+    .from("time_clock_settings")
+    .select("clock_in_check, check_roles")
+    .eq("company_id", companyId)
+    .maybeSingle<ClockInCheckSettings>();
+  if (error) return null;
+  return data ?? { clock_in_check: DEFAULT_TIME_CLOCK_SETTINGS.clock_in_check, check_roles: DEFAULT_TIME_CLOCK_SETTINGS.check_roles };
+}
+
 // The company's rules, or the defaults until an office saves the page
 // (and while migration 0174 hasn't been run -- the read just fails).
 export async function readTimeClockSettings(client: Client, companyId: string): Promise<TimeClockSettings> {
-  const { data } = await client
-    .from("time_clock_settings")
-    .select("tracked_roles, zone_radius_m, overtime_weekly_hours, late_after_min, auto_clock_out_hours, trail_retention_days, office_address")
-    .eq("company_id", companyId)
-    .maybeSingle<TimeClockSettings>();
-  if (!data) return DEFAULT_TIME_CLOCK_SETTINGS;
-  return { ...data, overtime_weekly_hours: Number(data.overtime_weekly_hours) };
+  const [{ data }, check] = await Promise.all([
+    client
+      .from("time_clock_settings")
+      .select("tracked_roles, zone_radius_m, overtime_weekly_hours, late_after_min, auto_clock_out_hours, trail_retention_days, office_address")
+      .eq("company_id", companyId)
+      .maybeSingle<Omit<TimeClockSettings, keyof ClockInCheckSettings>>(),
+    readClockInCheck(client, companyId),
+  ]);
+  const base = data ? { ...data, overtime_weekly_hours: Number(data.overtime_weekly_hours) } : DEFAULT_TIME_CLOCK_SETTINGS;
+  // Before 0185 there's nowhere to keep a verdict, so the check is off.
+  return { ...base, ...(check ?? { clock_in_check: "off", check_roles: [] }) };
 }
 
 // address -> lat/lng through the shared address_geocode cache (0135,
@@ -104,8 +123,11 @@ export async function appointmentsForToday(
   }));
 }
 
-// Every place this person can "arrive" today: their appointments, and
-// the office if the company set its address.
+// Every place this person can "arrive" today: their appointments, the
+// production jobs they're on (a crew on day 3 of a job has no
+// appointment that day), and the office if the company set its address.
+// Appointments come first, so where one sits at a job's address it wins
+// the tie and attendance still counts against it.
 export async function zonesForToday(
   admin: Admin,
   companyId: string,
@@ -120,15 +142,24 @@ export async function zonesForToday(
     const geo = await geocodeCached(admin, a.address);
     if (geo) zones.push({ key: `event:${a.id}`, label: a.title, eventId: a.id, ...geo });
   }
+  const today = isoDateInZone(new Date(), ianaZone);
+  const { data: jobs } = await admin
+    .from("jobs")
+    .select("id, name, address, status, start_date, end_date")
+    .eq("company_id", companyId)
+    .eq("assigned_to", profileId)
+    .in("status", ["In Progress", "Not Started"]);
+  type JobRow = { id: string; name: string; address: string | null; status: string; start_date: string | null; end_date: string | null };
+  for (const j of (jobs as JobRow[] | null) ?? []) {
+    if (!j.address || !jobIsLiveToday(j, today)) continue;
+    const geo = await geocodeCached(admin, j.address);
+    if (geo) zones.push({ key: `job:${j.id}`, label: j.name, eventId: null, jobId: j.id, ...geo });
+  }
   if (settings.office_address) {
     const geo = await geocodeCached(admin, settings.office_address);
     if (geo) zones.push({ key: "office", label: "Office", eventId: null, ...geo });
   }
   return zones;
-}
-
-export function visitKey(visit: { event_id: string | null }): string {
-  return visit.event_id ? `event:${visit.event_id}` : "office";
 }
 
 // Close whatever visit is open for this person (clock-out, break, or

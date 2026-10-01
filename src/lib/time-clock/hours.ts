@@ -86,9 +86,10 @@ const hours = (mins: number) => (mins / 60).toFixed(2);
 export function timesheetCsv(
   summary: Map<string, WeekRow>,
   days: string[],
-  nameOf: (profileId: string) => string
+  nameOf: (profileId: string) => string,
+  offSiteOf: (profileId: string) => number
 ): string {
-  const lines = [["Person", ...days, "Total hours", "Overtime hours", "Auto clock-outs"].join(",")];
+  const lines = [["Person", ...days, "Total hours", "Overtime hours", "Auto clock-outs", "Off-site clock-ins"].join(",")];
   const people = [...summary.entries()].sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b)));
   for (const [id, row] of people) {
     lines.push(
@@ -98,6 +99,7 @@ export function timesheetCsv(
         hours(row.totalMinutes),
         hours(row.overtimeMinutes),
         String(row.autoClosed),
+        String(offSiteOf(id)),
       ].join(",")
     );
   }
