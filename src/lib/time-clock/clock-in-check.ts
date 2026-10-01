@@ -103,9 +103,10 @@ export function clockFlags(punches: { in_check: ClockCheck | null }[]): {
   };
 }
 
-// The check looks up today's addresses, and an uncached one asks the
-// Census geocoder, which has no timeout of its own. A clock-in never
-// waits on that past a few seconds, and never fails because of it.
+// The check looks up today's addresses, and each uncached one can wait
+// on the Census geocoder for up to its own 5-second timeout. A clock-in
+// never waits on those past a few seconds in all, and never fails
+// because of them.
 export async function withDeadline<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<T>((resolve) => {

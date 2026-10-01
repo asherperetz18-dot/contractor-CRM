@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.171.2",
+    date: "2026-10-01",
+    notes: [
+      "Fix: if the address lookup service was briefly down, a job's address could be marked \"not on the map\" for good, so its crew showed as off-site and their arrivals weren't logged. A failed lookup now just tries again, and an address marked not found is rechecked the next day, which also fixes any addresses already stuck.",
+    ],
+  },
+  {
     version: "1.171.1",
     date: "2026-10-01",
     notes: [

@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readCensusAnswer, type GeocodeAnswer } from "@/lib/geocode-cache";
 
 /**
  * US National Weather Service for now -- free, no key, and every current
@@ -40,20 +41,26 @@ export function normalizeAddress(address: string): string {
   return address.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-export async function geocodeViaCensus(
-  address: string
-): Promise<{ lat: number; lng: number } | null> {
+// A hung Census call must not hold up a location update or a cron pass.
+const CENSUS_TIMEOUT_MS = 5000;
+
+// Found, not found, or no answer (down, timed out, unreadable) -- kept
+// apart so a cache never stores an outage as "not found".
+export async function censusGeocode(address: string): Promise<GeocodeAnswer> {
   const url =
     "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress" +
     `?address=${encodeURIComponent(address)}&benchmark=Public_AR_Current&format=json`;
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const json = (await res.json().catch(() => null)) as {
-    result?: { addressMatches?: { coordinates?: { x: number; y: number } }[] };
-  } | null;
-  const match = json?.result?.addressMatches?.[0];
-  if (!match?.coordinates) return null;
-  return { lat: match.coordinates.y, lng: match.coordinates.x };
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(CENSUS_TIMEOUT_MS) });
+    return readCensusAnswer(res.ok, res.ok ? await res.json().catch(() => null) : null);
+  } catch {
+    return { status: "error" };
+  }
+}
+
+async function geocodeViaCensus(address: string): Promise<{ lat: number; lng: number } | null> {
+  const answer = await censusGeocode(address);
+  return answer.status === "found" ? { lat: answer.lat, lng: answer.lng } : null;
 }
 
 async function resolveNwsGridpoint(
