@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/modal";
 import {
-  endScreenShare,
   getIceServers,
   getShareTargets,
   requestScreenShare,
@@ -18,6 +17,12 @@ import { startCobrowseRecorder, type CobrowseRecorder } from "@/lib/cobrowse/rec
 import { CobrowseViewer } from "@/lib/cobrowse/viewer";
 import { SharerInkOverlay } from "@/lib/cobrowse/ink-overlay";
 import type { InkSignal } from "@/lib/cobrowse/ink";
+import {
+  addDismissedShare,
+  DISMISSED_SHARES_KEY,
+  offerFor,
+  parseDismissedShares,
+} from "@/lib/screen-share-session";
 
 /**
  * Live screen help between teammates: one shares, one watches, both
@@ -63,6 +68,37 @@ const NO_SHARE_MSG =
 const emptySubscribe = () => () => {};
 function useCanShareScreen(): boolean {
   return useSyncExternalStore(emptySubscribe, canShareScreen, () => true);
+}
+
+/** Ends this side's session row. A beacon, not a Server Action: it is
+ * also the goodbye a reloading or closing tab sends, and sendBeacon
+ * still goes out while the page is going away. A lost goodbye left the
+ * row "live", knocking on the invitee's screen at every refresh. */
+function sendShareEnd(id: string) {
+  const body = JSON.stringify({ id });
+  try {
+    if (navigator.sendBeacon?.("/api/screen-shares/end", new Blob([body], { type: "application/json" }))) {
+      return;
+    }
+  } catch {
+    // falls through to fetch below
+  }
+  void fetch("/api/screen-shares/end", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+/** The sessions this browser said "Not now" to, so a reload doesn't ask
+ * again. Empty on the server and wherever storage is blocked. */
+function loadDismissedShares(): string[] {
+  try {
+    return parseDismissedShares(window.localStorage.getItem(DISMISSED_SHARES_KEY));
+  } catch {
+    return [];
+  }
 }
 
 type Signal =
@@ -220,7 +256,10 @@ export function ScreenShareEngine({
   const [incomingRequest, setIncomingRequest] = useState<{ fromId: string; fromName: string } | null>(null);
   // viewer state
   const [offer, setOffer] = useState<ActiveShare | null>(null);
-  const [dismissed, setDismissed] = useState<string | null>(null);
+  // sessions turned down with "Not now", remembered across reloads; the
+  // first render doesn't depend on it, so reading storage here can't
+  // cause a hydration mismatch
+  const [dismissed, setDismissed] = useState<string[]>(loadDismissedShares);
   const [watching, setWatching] = useState<ActiveShare | null>(null);
   const [micOn, setMicOn] = useState(true);
   // whether THIS device can capture its own screen (see canShareScreen)
@@ -260,7 +299,7 @@ export function ScreenShareEngine({
   // Live mirrors for callbacks that outlive a render (the alert
   // channel below is subscribed once, not per state change).
   const activeRef = useRef(false);
-  const dismissedRef = useRef<string | null>(null);
+  const dismissedRef = useRef<string[]>(dismissed);
   const dingedRef = useRef<string | null>(null);
   const alertChannel = useRef<Channel | null>(null);
   // the teammate an admin is waiting on; when that person's share
@@ -329,7 +368,7 @@ export function ScreenShareEngine({
       if (channel.current) supabase.current.removeChannel(channel.current);
       channel.current = null;
       if (shareId.current) {
-        void endScreenShare(shareId.current);
+        sendShareEnd(shareId.current);
         shareId.current = null;
       }
       busyRef.current = false;
@@ -808,13 +847,26 @@ export function ScreenShareEngine({
     return () => window.removeEventListener("crm:screenshare-request", onRequest);
   }, [isAdmin, sharing, watching, requesting]);
 
-  // Mirrors for the once-subscribed alert channel below.
+  // Mirror for the once-subscribed alert channel below.
   useEffect(() => {
     activeRef.current = sharing || !!watching;
   }, [sharing, watching]);
-  useEffect(() => {
-    dismissedRef.current = dismissed;
-  }, [dismissed]);
+
+  // "Not now" (or ✕) on an offer: hidden here and, through storage, on
+  // the next page load too -- a reload used to bring the same knock back.
+  // The ref is what the poll reads; the state re-runs the poll, so a
+  // turned-down invite gives way to any open share right away.
+  const dismissOffer = useCallback((id: string) => {
+    const next = addDismissedShare(dismissedRef.current, id);
+    dismissedRef.current = next;
+    try {
+      window.localStorage.setItem(DISMISSED_SHARES_KEY, JSON.stringify(next));
+    } catch {
+      // storage blocked: still hidden for the life of this page
+    }
+    setDismissed(next);
+    setOffer(null);
+  }, []);
 
   const refreshOffers = useCallback(async () => {
     if (activeRef.current) return;
@@ -826,9 +878,10 @@ export function ScreenShareEngine({
       .catch(() => null);
     if (!res?.shares || activeRef.current) return;
     // A share aimed at me outranks an open one; RLS already hides
-    // shares aimed at somebody else.
-    const mine = res.shares.find((s) => s.sharerId !== selfId && s.invitedTo === selfId);
-    const open = res.shares.find((s) => s.sharerId !== selfId && !s.invitedTo);
+    // shares aimed at somebody else, and one I said "Not now" to stays
+    // turned down.
+    const pick = offerFor(res.shares, selfId, dismissedRef.current);
+    const mine = pick?.invitedTo === selfId ? pick : null;
     // If I asked this exact person to show me their screen, joining is
     // what I already decided -- skip the "Join?" prompt entirely.
     if (mine && awaitingFromRef.current && mine.sharerId === awaitingFromRef.current) {
@@ -839,10 +892,9 @@ export function ScreenShareEngine({
       void startWatching(mine);
       return;
     }
-    const pick = mine ?? open ?? null;
-    setOffer(pick && pick.id !== dismissedRef.current ? pick : null);
+    setOffer(pick);
     // The chime rings once per targeted session, not once per poll.
-    if (mine && mine.id !== dismissedRef.current && dingedRef.current !== mine.id) {
+    if (mine && dingedRef.current !== mine.id) {
       dingedRef.current = mine.id;
       ding();
     }
@@ -925,12 +977,14 @@ export function ScreenShareEngine({
     };
   }, [companyId, selfId, selfName, refreshOffers, clearRequestTimers]);
 
-  // closing the tab must not leave a ghost "live" session behind
+  // Reloading or closing the tab must not leave a ghost "live" session
+  // behind. pagehide, not beforeunload: it fires on reload and close in
+  // every browser, iPhone included, where beforeunload never fires.
   useEffect(() => {
     const bye = () => teardown(true);
-    window.addEventListener("beforeunload", bye);
+    window.addEventListener("pagehide", bye);
     return () => {
-      window.removeEventListener("beforeunload", bye);
+      window.removeEventListener("pagehide", bye);
       teardown(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1293,23 +1347,14 @@ export function ScreenShareEngine({
         <Modal
           title="Screen share invite"
           noBackdropClose
-          onClose={() => {
-            setDismissed(offer.id);
-            setOffer(null);
-          }}
+          onClose={() => dismissOffer(offer.id)}
         >
           <p style={{ marginTop: 0 }}>
             🖥 <strong>{offer.sharerName}</strong> wants to share{" "}
             {offer.kind === "cobrowse" ? "their CRM view" : "their screen"} with you.
           </p>
           <div className="modal-actions">
-            <button
-              className="btn-ghost"
-              onClick={() => {
-                setDismissed(offer.id);
-                setOffer(null);
-              }}
-            >
+            <button className="btn-ghost" onClick={() => dismissOffer(offer.id)}>
               Not now
             </button>
             <button className="btn-primary" onClick={() => void startWatching(offer)}>
@@ -1327,10 +1372,7 @@ export function ScreenShareEngine({
           <button
             className="icon-btn"
             aria-label="Dismiss"
-            onClick={() => {
-              setDismissed(offer.id);
-              setOffer(null);
-            }}
+            onClick={() => dismissOffer(offer.id)}
           >
             ✕
           </button>
