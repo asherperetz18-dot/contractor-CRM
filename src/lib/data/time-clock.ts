@@ -1,7 +1,8 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { geocodeViaCensus, normalizeAddress } from "@/lib/weather-provider";
+import { censusGeocode, normalizeAddress } from "@/lib/weather-provider";
+import { cacheRowFor, fromCache, type CachedGeocode } from "@/lib/geocode-cache";
 import { instantOfWallClock, isoDateInZone } from "@/lib/company-clock";
 import { parseNaiveDateTime } from "@/lib/timezone";
 import { DEFAULT_TIME_CLOCK_SETTINGS, type TimeClockSettings } from "@/lib/time-clock/settings";
@@ -42,23 +43,24 @@ export async function readTimeClockSettings(client: Client, companyId: string): 
 }
 
 // address -> lat/lng through the shared address_geocode cache (0135,
-// service-role only). A miss asks the free Census geocoder once and
-// caches the answer, including "not found", so a bad address costs one
-// lookup, not one per ping.
+// service-role only). A miss asks the free Census geocoder and stores
+// what it says, "not found" included, so a bad address costs one lookup
+// a day rather than one per ping. An outage or timeout stores nothing
+// and is asked again next time.
 export async function geocodeCached(admin: Admin, address: string): Promise<{ lat: number; lng: number } | null> {
   const normalized = normalizeAddress(address);
   if (!normalized) return null;
   const { data } = await admin
     .from("address_geocode")
-    .select("lat, lng")
+    .select("lat, lng, resolved_at")
     .eq("normalized_address", normalized)
-    .maybeSingle<{ lat: number | null; lng: number | null }>();
-  if (data) return data.lat === null || data.lng === null ? null : { lat: Number(data.lat), lng: Number(data.lng) };
-  const geo = await geocodeViaCensus(address).catch(() => null);
-  await admin
-    .from("address_geocode")
-    .upsert({ normalized_address: normalized, lat: geo?.lat ?? null, lng: geo?.lng ?? null });
-  return geo;
+    .maybeSingle<CachedGeocode>();
+  const cached = fromCache(data, new Date());
+  if (cached !== "ask") return cached;
+  const answer = await censusGeocode(address);
+  const row = cacheRowFor(answer, new Date());
+  if (row) await admin.from("address_geocode").upsert({ normalized_address: normalized, ...row });
+  return answer.status === "found" ? { lat: answer.lat, lng: answer.lng } : null;
 }
 
 export type TodaysAppointment = {
