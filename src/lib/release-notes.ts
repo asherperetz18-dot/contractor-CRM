@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.171.1",
+    date: "2026-10-01",
+    notes: [
+      "Security fix: when a company's subscription lapses, its client-portal notes and its file deletion history are now locked along with everything else. Nothing changes on screen for anyone with an active subscription.",
+    ],
+  },
+  {
     version: "1.171.0",
     date: "2026-10-01",
     notes: [
