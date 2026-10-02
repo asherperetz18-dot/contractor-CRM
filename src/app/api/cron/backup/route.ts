@@ -21,7 +21,8 @@ async function handlePost(req: NextRequest) {
   }
 
   try {
-    const backup = await buildBackup();
+    // Every company: this is the copy a restore is made from.
+    const backup = await buildBackup("all");
     // A backup that quietly omitted a table would look successful until
     // the day it was needed, so a partial export is reported as a failure.
     const failed = Object.keys(backup.skipped);
