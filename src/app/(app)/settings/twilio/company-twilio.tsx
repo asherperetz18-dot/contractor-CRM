@@ -171,6 +171,9 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Account SID</span>
             <input
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               placeholder="AC…"
               value={accountSid}
@@ -181,9 +184,11 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Auth token</span>
             <input
+              autoComplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               type="password"
-              autoComplete="off"
               value={authToken}
               onChange={(e) => setAuthToken(e.target.value)}
               disabled={pending || !status.encryptionReady}
@@ -192,6 +197,9 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Twilio phone number</span>
             <input
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               placeholder="(818) 555-0100"
               value={phoneNumber}
@@ -208,6 +216,9 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">API Key SID</span>
                 <input
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   placeholder="SK…"
                   value={apiKeySid}
@@ -218,9 +229,11 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">API Key Secret</span>
                 <input
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   type="password"
-                  autoComplete="off"
                   value={apiKeySecret}
                   onChange={(e) => setApiKeySecret(e.target.value)}
                   disabled={pending}
@@ -229,6 +242,9 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">TwiML App SID</span>
                 <input
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   placeholder="AP…"
                   value={twimlAppSid}

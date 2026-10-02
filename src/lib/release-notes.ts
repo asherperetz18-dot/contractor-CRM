@@ -26,6 +26,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     notes: [
       "Texts and calls now always go out from each company's own Twilio number. A company that hasn't connected its own can't text or call until an admin connects it in Settings → Twilio.",
       "A text or call to a number no company has connected is no longer delivered into some company's inbox.",
+      "Settings → Twilio: the browser no longer fills your own login email and password into the Twilio boxes.",
     ],
   },
   {
