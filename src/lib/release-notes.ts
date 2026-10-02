@@ -21,11 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.173.0",
+    version: "1.174.0",
     date: "2026-10-02",
     notes: [
       "Settings → Backup now downloads this company's records only, and its row counts are this company's. Saved passwords and connection keys stay in the CRM and are left out of the file.",
     ],
+  },
+  {
+    version: "1.173.3",
+    date: "2026-10-02",
+    notes: ["Security improvement: notes, estimates, appointments, texts and files can only be saved under a contact from the same company."],
   },
   {
     version: "1.172.3",

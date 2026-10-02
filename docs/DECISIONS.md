@@ -1066,6 +1066,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** Until the owner adds the `BACKUP_PASSPHRASE` secret (Settings → Secrets and variables → Actions), the nightly job fails instead of storing an open copy. Opening a backup: `gpg --decrypt crm-backup-YYYY-MM-DD.json.gpg > crm-backup.json`, then type the password. On Windows, Gpg4win provides `gpg`. A lost password means the stored backups can't be opened, so it belongs in the owner's password manager. Moving the backup off GitHub entirely (or making the repository private) would remove the need for this. The company-scoped Backup download is a separate change.
 
+## 102 — A row that names a contact belongs to that contact's company, checked by a trigger for every caller
+
+**Date:** 2026-10-02
+
+**Context:** RLS on every tenant table checks the row's own `company_id` against the caller's memberships. Nothing checked that the contact a row points at (`lead_id`) is in that same company. An Office user of company A could insert an estimate, note, appointment or text into A naming B's contact; replayed against the migrations, this succeeded. Admin-client code trusts those ids: `previewEstimateEmail` read B's contact's address, the lead-touch helpers showed B's name and phone, and the no-show cron moved B's contact's stage and texted B's customer.
+
+**Decision:** Migration 0189 adds `lead_in_same_company()`, a SECURITY DEFINER `BEFORE INSERT OR UPDATE OF <lead columns>, company_id` trigger. It looks up each named contact and refuses the row (`check_violation`) when the contact's company differs from the row's. Null references are skipped, and a missing contact is left to the foreign key. SECURITY DEFINER so a rep whose RLS hides a colleague's customer can still photograph them. It runs for the service role too, because the admin client is where an unchecked id did the harm. `apply_lead_company_checks()` stamps the trigger on every public table with a `company_id` and a single-column foreign key to `leads(id)`: 21 tables at the time, including `documents.contact_id` and both columns of `lead_duplicate_dismissals`. `lead_trash` has no foreign key and is left out. It also prints a WARNING per table for rows that already cross companies, without changing them. A composite foreign key (`(lead_id, company_id) → leads(id, company_id)`) was the alternative. It needs a new unique index on `leads` and fails to create while any bad row exists, so it would block the fix on a data cleanup. The trigger doesn't.
+
+**Consequence:** A new table referencing `leads` needs `select public.apply_lead_company_checks();` at the end of its migration; `lead-company-check-migrations.test.ts` fails otherwise, as for the billing lock. Every write to these tables costs one primary-key lookup per named contact. Moving a contact to another company (no feature does today) would need its rows moved in the same statement batch, or the trigger refuses the stragglers.
+
 ## 099 — Settings → Backup exports the current company only; the full export is the nightly job's
 
 **Date:** 2026-10-02
