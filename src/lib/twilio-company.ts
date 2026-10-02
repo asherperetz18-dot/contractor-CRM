@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { getTwilioEnv, getTwilioVoiceEnv } from "@/lib/twilio-env";
+import type { CompanyTwilioRow, SharedTwilio } from "@/lib/twilio-source";
 
 export type CompanyTwilio = {
   accountSid: string;
@@ -164,4 +165,44 @@ export async function companyForAccountSid(accountSid: string): Promise<string |
     .eq("twilio_account_sid", sid)
     .maybeSingle<{ company_id: string }>();
   return data?.company_id ?? null;
+}
+
+/**
+ * The server's shared Twilio account, by its identifiers only -- never
+ * the token. Null when the deployment has none configured.
+ */
+export function sharedTwilio(): SharedTwilio | null {
+  const env = getTwilioEnv();
+  return env ? { accountSid: env.accountSid, phoneNumber: env.phoneNumber } : null;
+}
+
+/**
+ * Every company's Twilio identifiers, for deciding who sends from what
+ * (lib/twilio-source.ts). Secrets are reduced to "is one stored" before
+ * they leave this function.
+ */
+export async function loadAllCompanyTwilio(): Promise<CompanyTwilioRow[]> {
+  const admin = createAdminClient();
+  const [{ data: companies }, { data: profiles }] = await Promise.all([
+    admin.from("companies").select("id, name"),
+    admin
+      .from("company_profile")
+      .select(
+        "company_id, twilio_account_sid, twilio_auth_token_enc, twilio_phone_number, twilio_api_key_sid, twilio_api_key_secret_enc, twilio_twiml_app_sid"
+      ),
+  ]);
+  const byCompany = new Map(
+    ((profiles ?? []) as (TwilioColumns & { company_id: string })[]).map((p) => [p.company_id, p])
+  );
+  return ((companies ?? []) as { id: string; name: string | null }[]).map((c) => {
+    const p = byCompany.get(c.id);
+    return {
+      company_id: c.id,
+      company_name: c.name,
+      twilio_account_sid: p?.twilio_account_sid ?? null,
+      twilio_phone_number: p?.twilio_phone_number ?? null,
+      has_token: !!p?.twilio_auth_token_enc,
+      has_voice: !!(p?.twilio_api_key_sid && p.twilio_api_key_secret_enc && p.twilio_twiml_app_sid),
+    };
+  });
 }

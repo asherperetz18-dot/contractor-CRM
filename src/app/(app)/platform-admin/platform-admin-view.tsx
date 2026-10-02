@@ -7,6 +7,7 @@ import { resendSignupInvite, sendManualSignupInvite } from "@/lib/actions/admin-
 import { switchCompany } from "@/lib/actions/company";
 import { grantPlatformAdmin, revokePlatformAdmin } from "@/lib/actions/platform-admin";
 import type { PlatformAdminRow } from "@/lib/data/platform-admin";
+import type { CompanyTwilioView } from "@/lib/twilio-source";
 import {
   canResendInvite,
   filterInviteHistory,
@@ -388,14 +389,113 @@ function PlatformAdminsCard({ admins, selfId }: { admins: PlatformAdminRow[]; se
   );
 }
 
+const TWILIO_SOURCE_LABEL: Record<CompanyTwilioView["source"], string> = {
+  own: "Own account",
+  borrowing: "Borrowing the shared number",
+  none: "Can't text or call",
+};
+
+const TWILIO_SOURCE_CHIP: Record<CompanyTwilioView["source"], string> = {
+  own: "chip-c-done",
+  borrowing: "chip-c-hold",
+  none: "chip-c-dead",
+};
+
+/**
+ * Which Twilio account every company texts and calls from. The shared
+ * account (the server's TWILIO_* settings) is lent to any company without
+ * its own until the switch to own-numbers-only (DECISIONS #103): the
+ * borrowing rows are the companies whose texting stops at that switch
+ * unless they connect their own first.
+ */
+function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+
+  async function openSettings(companyId: string) {
+    setBusyId(companyId);
+    setRowError(null);
+    const result = await switchCompany(companyId);
+    setBusyId(null);
+    if (result?.error) {
+      setRowError({ id: companyId, message: result.error });
+      return;
+    }
+    router.push("/settings/twilio");
+    router.refresh();
+  }
+
+  return (
+    <div className="cp-card">
+      <div className="cp-card-head">📞 Twilio by company</div>
+      <p className="cp-card-sub">
+        The number each company&apos;s customers see texts and calls from. A company
+        borrowing the shared number sends as another business; connect its own, or for
+        the company the shared account belongs to, open its settings and move the shared
+        account in.
+      </p>
+      {rows.length === 0 ? (
+        <p className="hint-note">No companies yet.</p>
+      ) : (
+        <div className="ur-table-scroll">
+          <table className="data-table ur-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Texts and calls from</th>
+                <th>In-app calling</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.companyId}>
+                  <td>{r.companyName}</td>
+                  <td>
+                    <span className={`chip invite-status ${TWILIO_SOURCE_CHIP[r.source]}`}>
+                      {TWILIO_SOURCE_LABEL[r.source]}
+                    </span>{" "}
+                    <span className="mono">{r.sendsFrom ?? ""}</span>
+                    {r.sharesAccountWith.length > 0 && (
+                      <p className="error-note">
+                        Same Twilio account as {r.sharesAccountWith.join(", ")}: replies and calls
+                        can&apos;t be told apart. Each company needs its own account.
+                      </p>
+                    )}
+                  </td>
+                  <td>{r.voice ? "Yes" : "No"}</td>
+                  <td className="right">
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      onClick={() => openSettings(r.companyId)}
+                      disabled={busyId === r.companyId}
+                    >
+                      {busyId === r.companyId ? "Opening…" : "Open Twilio settings"}
+                    </button>
+                    {rowError?.id === r.companyId && <p className="error-note">{rowError.message}</p>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PlatformAdminView({
   admins,
   invites,
+  twilio,
   now,
   selfId,
 }: {
   admins: PlatformAdminRow[];
   invites: InviteHistoryRow[];
+  twilio: CompanyTwilioView[];
   now: number;
   selfId: string;
 }) {
@@ -410,6 +510,7 @@ export function PlatformAdminView({
 
       <InviteBusinessCard />
       <InviteHistoryCard invites={invites} now={now} />
+      <TwilioByCompanyCard rows={twilio} />
       <PlatformAdminsCard admins={admins} selfId={selfId} />
     </div>
   );

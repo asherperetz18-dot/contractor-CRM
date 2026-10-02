@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.177.0",
+    date: "2026-10-02",
+    notes: [
+      "Settings → Twilio now says plainly when a company has no Twilio account of its own and is sending from a shared number that belongs to another business.",
+      "Platform Admin: a new \"Twilio by company\" list shows which number every company texts and calls from, and flags companies that are borrowing the shared number or share one Twilio account.",
+    ],
+  },
+  {
     version: "1.176.0",
     date: "2026-10-02",
     notes: [

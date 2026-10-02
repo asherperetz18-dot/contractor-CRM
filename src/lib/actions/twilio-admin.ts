@@ -3,9 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, toE164 } from "@/lib/data/types";
+import { isAdminRole, isPlatformAdmin, toE164 } from "@/lib/data/types";
 import { encryptionAvailable, encryptSecret } from "@/lib/crypto/secrets";
 import { portalBaseUrl } from "@/lib/portal/session";
+import { getTwilioEnv, getTwilioVoiceEnv } from "@/lib/twilio-env";
+import { loadAllCompanyTwilio, sharedTwilio } from "@/lib/twilio-company";
+import { adoptSharedBlock, twilioSource, type TwilioSource } from "@/lib/twilio-source";
 
 export type CompanyTwilioStatus = {
   connected: boolean;
@@ -16,6 +19,12 @@ export type CompanyTwilioStatus = {
   encryptionReady: boolean;
   smsWebhookUrl: string;
   voiceWebhookUrl: string;
+  /** Own account, the borrowed shared one, or none (lib/twilio-source.ts). */
+  source: TwilioSource;
+  /** The shared number customers see while this company borrows it. */
+  sharedNumber: string | null;
+  /** Shown to a platform admin: the shared account can move in here. */
+  canAdoptShared: boolean;
 };
 
 async function requireAdmin() {
@@ -45,8 +54,28 @@ export async function getCompanyTwilioStatus(): Promise<CompanyTwilioStatus | nu
     }>();
 
   const base = portalBaseUrl();
+  const shared = sharedTwilio();
+  const connected = !!(data?.twilio_account_sid && data?.twilio_auth_token_enc && data?.twilio_phone_number);
+  const source = twilioSource(
+    {
+      company_id: profile.company_id,
+      company_name: null,
+      twilio_account_sid: data?.twilio_account_sid ?? null,
+      twilio_phone_number: data?.twilio_phone_number ?? null,
+      has_token: !!data?.twilio_auth_token_enc,
+      has_voice: false,
+    },
+    !!shared
+  );
+  const canAdoptShared =
+    isPlatformAdmin(profile) &&
+    source !== "own" &&
+    adoptSharedBlock(profile.company_id, await loadAllCompanyTwilio(), shared) === null;
   return {
-    connected: !!(data?.twilio_account_sid && data?.twilio_auth_token_enc && data?.twilio_phone_number),
+    source,
+    sharedNumber: source === "borrowing" ? shared?.phoneNumber ?? null : null,
+    canAdoptShared,
+    connected,
     accountSid: data?.twilio_account_sid ?? null,
     phoneNumber: data?.twilio_phone_number ?? null,
     hasVoice: !!(data?.twilio_api_key_sid && data?.twilio_twiml_app_sid),
@@ -153,5 +182,56 @@ export async function clearCompanyTwilio(): Promise<{ error?: string; ok?: boole
   if (error || !data?.length) return { error: error?.message || "Could not disconnect." };
 
   revalidatePath("/settings");
+  return { ok: true };
+}
+
+/**
+ * Moves the server's shared Twilio account (the TWILIO_* settings) into
+ * this company's own settings -- run once, by a platform admin, inside
+ * the company that account really belongs to (La Home Contractor).
+ *
+ * After it, that company texts and calls from its own row like any other
+ * company, so the shared account can stop being lent to companies
+ * without one and the owner loses nothing. The secrets are copied
+ * server-side and sealed; they never pass through a browser. Refused
+ * when this company already has its own account, or another company
+ * already holds the shared account or its number (adoptSharedBlock).
+ */
+export async function adoptSharedTwilio(): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await requireAdmin();
+  if (!profile || !isPlatformAdmin(profile)) return { error: "Only a Platform Admin can do this." };
+  if (!encryptionAvailable()) {
+    return { error: "Credential encryption isn't configured on the server (APP_ENCRYPTION_KEY)." };
+  }
+
+  const env = getTwilioEnv();
+  const block = adoptSharedBlock(profile.company_id, await loadAllCompanyTwilio(), sharedTwilio());
+  if (block || !env) return { error: block ?? "There's no shared Twilio account configured on this server." };
+
+  const tokenEnc = encryptSecret(env.authToken);
+  if (!tokenEnc) return { error: "Could not encrypt the auth token. Nothing was saved." };
+  // In-app calling moves too when the server has it; otherwise this
+  // company stays SMS-only, exactly as the shared account was.
+  const voice = getTwilioVoiceEnv();
+  const voiceSecretEnc = voice && voice.accountSid === env.accountSid ? encryptSecret(voice.apiKeySecret) : null;
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("company_profile")
+    .update({
+      twilio_account_sid: env.accountSid,
+      twilio_auth_token_enc: tokenEnc,
+      twilio_phone_number: toE164(env.phoneNumber) || env.phoneNumber,
+      twilio_api_key_sid: voiceSecretEnc ? voice!.apiKeySid : null,
+      twilio_api_key_secret_enc: voiceSecretEnc,
+      twilio_twiml_app_sid: voiceSecretEnc ? voice!.twimlAppSid : null,
+      twilio_connected_at: new Date().toISOString(),
+    })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error || !data?.length) return { error: error?.message || "Could not save." };
+
+  revalidatePath("/settings");
+  revalidatePath("/platform-admin");
   return { ok: true };
 }
