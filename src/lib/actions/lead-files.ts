@@ -20,7 +20,7 @@ import {
   trashFileInDrive,
   uploadBlobToDrive,
   uploadFileToDrive,
-} from "./google-drive";
+} from "@/lib/google-drive-api";
 
 /**
  * The ceiling for a file going straight to Supabase Storage.
@@ -50,6 +50,28 @@ const MAX_SUPABASE_FILE_BYTES = 80 * 1024 * 1024;
 const MAX_DRIVE_FILE_BYTES = 4 * 1024 * 1024;
 const BUCKET = "lead-files";
 
+/**
+ * Whether the contact is in the company the signed-in person is working
+ * in -- the boundary for every file action here.
+ *
+ * Checked with the admin client on purpose: a sales-scoped rep
+ * photographing their own visit is often standing at a customer that
+ * belongs to a colleague's book, which their RLS view hides -- reading as
+ * the signed-in user refused exactly the person the Photos tab exists
+ * for. Another company's contact still fails here, before any storage,
+ * Drive or database work, and the lead_files insert policy has the final
+ * word on whether their role may record the file at all.
+ */
+async function leadInCompany(leadId: string, companyId: string): Promise<boolean> {
+  const { data } = await createAdminClient()
+    .from("leads")
+    .select("id")
+    .eq("id", leadId)
+    .eq("company_id", companyId)
+    .maybeSingle<{ id: string }>();
+  return !!data;
+}
+
 export async function uploadLeadFile(
   leadId: string,
   formData: FormData,
@@ -62,6 +84,9 @@ export async function uploadLeadFile(
 
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
+  if (!(await leadInCompany(leadId, profile.company_id))) {
+    return { error: "That contact isn't available." };
+  }
 
   const supabase = await createClient();
   const drive = await getValidAccessToken(profile.company_id);
@@ -161,21 +186,9 @@ export async function createLeadFileUploadUrl(
     };
   }
 
-  // The boundary here is the company, checked with the admin client on
-  // purpose: a sales-scoped rep photographing their own visit is often
-  // standing at a customer that belongs to a colleague's book, which
-  // their RLS view hides -- reading as the signed-in user refused
-  // exactly the person the Photos tab exists for. Cross-company probing
-  // still dies here, and the lead_files insert policy has the final
-  // word on whether their role may record the file at all.
-  const adminCheck = createAdminClient();
-  const { data: lead } = await adminCheck
-    .from("leads")
-    .select("id")
-    .eq("id", leadId)
-    .eq("company_id", profile.company_id)
-    .maybeSingle<{ id: string }>();
-  if (!lead) return { error: "That contact isn't available." };
+  if (!(await leadInCompany(leadId, profile.company_id))) {
+    return { error: "That contact isn't available." };
+  }
 
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const path = `${leadId}/${Date.now()}-${safeName}`;
@@ -230,6 +243,11 @@ export async function recordLeadFile(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!path.startsWith(`${leadId}/`)) return { error: "That upload doesn't belong here." };
+  // Before anything touches the object: the path only proves it was made
+  // for this lead, not that the lead is this company's.
+  if (!(await leadInCompany(leadId, profile.company_id))) {
+    return { error: "That contact isn't available." };
+  }
 
   const admin = createAdminClient();
 

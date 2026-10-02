@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
+import { oauthTargetAllowed } from "@/lib/oauth-target";
 import { calendarOAuthCredentials, googleAccountEmail } from "@/lib/google-calendar/client";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -27,6 +30,13 @@ export async function GET(req: NextRequest) {
   }
   if (!code || !state || !expectedState || state !== expectedState || !target?.company_id) {
     return done("State mismatch — please try connecting again.");
+  }
+  // The cookie's company and person must be the signed-in user's own: a
+  // cookie is the browser's to edit (lib/oauth-target.ts).
+  const profile = await getCurrentProfile();
+  const viewer = profile && { id: profile.id, company_id: profile.company_id, isAdmin: isAdminRole(profile) };
+  if (!oauthTargetAllowed(viewer, { company_id: target.company_id, profile_id: target.profile_id ?? null })) {
+    return done("That Google sign-in doesn't match your account — please try connecting again.");
   }
 
   const creds = calendarOAuthCredentials();

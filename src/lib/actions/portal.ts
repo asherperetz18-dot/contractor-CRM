@@ -4,6 +4,8 @@ import { todayForCompany } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { exactEmailPattern } from "@/lib/portal/email-match";
 import { sendEmail } from "@/lib/email-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
@@ -58,14 +60,17 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   };
   const fields =
     "id, company_id, first_name, second_contact_first_name, portal_access_expires_at";
-  const primary = await admin.from("leads").select(fields).ilike("email", trimmed).limit(1);
+  // Escaped so the typed address matches itself only: to ilike, "_" and
+  // "%" are wildcards, and underscores are ordinary in email addresses.
+  const pattern = exactEmailPattern(trimmed);
+  const primary = await admin.from("leads").select(fields).ilike("email", pattern).limit(1);
   let lead = (primary.data as MatchRow[] | null)?.[0];
   let greeting = lead?.first_name ?? null;
   if (!lead) {
     const second = await admin
       .from("leads")
       .select(fields)
-      .ilike("second_contact_email", trimmed)
+      .ilike("second_contact_email", pattern)
       .limit(1);
     lead = (second.data as MatchRow[] | null)?.[0];
     greeting = lead?.second_contact_first_name ?? null;
@@ -142,10 +147,25 @@ async function companyNameFor(
 export async function sendPortalLink(
   leadId: string
 ): Promise<{ error?: string; channels?: string[]; expiresAt?: string }> {
-  const admin = createAdminClient();
   // Whoever pressed Send Portal Link -- stamped on the logged messages so
   // per-person activity credits them for it.
   const sender = await getCurrentProfile();
+  if (!sender) return { error: "Not signed in." };
+
+  // The button sits on the contact card, so whoever can open the contact
+  // may send it: the caller's own row-level security decides, in the
+  // company they are working in. Everything below runs with the admin
+  // client, and only on a contact this check found.
+  const supabase = await createClient();
+  const { data: visible } = await supabase
+    .from("leads")
+    .select("id")
+    .eq("id", leadId)
+    .eq("company_id", sender.company_id)
+    .maybeSingle();
+  if (!visible) return { error: "Contact not found." };
+
+  const admin = createAdminClient();
   const { data } = await admin.from("leads").select("*").eq("id", leadId).maybeSingle();
   const lead = data as Lead | null;
   if (!lead) return { error: "Contact not found." };
@@ -189,7 +209,7 @@ export async function sendPortalLink(
           direction: "outbound",
           from_number: "email",
           to_number: lead.email,
-          sent_by: sender?.id ?? null,
+          sent_by: sender.id,
           body: `[Portal sign-in link emailed] ${mail.subject}`,
           twilio_sid: sent.id || null,
           company_id: lead.company_id,
@@ -219,7 +239,7 @@ export async function sendPortalLink(
           direction: "outbound",
           from_number: twilioEnv.phoneNumber,
           to_number: lead.phone,
-          sent_by: sender?.id ?? null,
+          sent_by: sender.id,
           body,
           twilio_sid: sent.sid || null,
           company_id: lead.company_id,

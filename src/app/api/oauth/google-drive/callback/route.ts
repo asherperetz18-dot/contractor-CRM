@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
+import { oauthTargetAllowed } from "@/lib/oauth-target";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -14,6 +17,14 @@ export async function GET(req: NextRequest) {
 
   if (!code || !state || !expectedState || state !== expectedState || !companyId) {
     settingsUrl.searchParams.set("error", "State mismatch — please try connecting again.");
+    return NextResponse.redirect(settingsUrl);
+  }
+  // The company cookie must still be the signed-in admin's own: a cookie
+  // is the browser's to edit (lib/oauth-target.ts).
+  const profile = await getCurrentProfile();
+  const viewer = profile && { id: profile.id, company_id: profile.company_id, isAdmin: isAdminRole(profile) };
+  if (!oauthTargetAllowed(viewer, { company_id: companyId, profile_id: null })) {
+    settingsUrl.searchParams.set("error", "Only Office or Admin users can connect Google Drive.");
     return NextResponse.redirect(settingsUrl);
   }
 
