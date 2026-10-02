@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
@@ -51,11 +51,14 @@ export async function POST(req: NextRequest) {
   // The number that was called identifies the company, and each company
   // signs with its own auth token, so this has to be resolved before the
   // signature can be checked at all.
+  //
+  // A number no company has connected gets a polite refusal and nothing
+  // else: no signature can be checked without its owner's token, and
+  // guessing a company used to ring another business's phone and start
+  // its AI receptionist (DECISIONS #104).
   const inboundCompanyId = await companyForInboundNumber(to);
-  const twilioEnv = inboundCompanyId
-    ? await getTwilioForCompany(inboundCompanyId)
-    : getTwilioEnv();
-  if (!twilioEnv) {
+  const twilioEnv = inboundCompanyId ? await getTwilioForCompany(inboundCompanyId) : null;
+  if (!inboundCompanyId || !twilioEnv) {
     return twiml(`<Say>This line is not configured.</Say>`);
   }
 
@@ -70,14 +73,10 @@ export async function POST(req: NextRequest) {
   // company with any forwarding number configured, because one shared
   // number genuinely could not tell two companies apart -- which meant a
   // call to one business could ring another's phone.
-  let companyQuery = admin
+  const { data: companies } = await admin
     .from("company_profile")
-    .select("company_id, call_forward_number, call_forward_timeout");
-  companyQuery = inboundCompanyId
-    ? companyQuery.eq("company_id", inboundCompanyId)
-    : companyQuery.not("call_forward_number", "is", null);
-
-  const { data: companies } = await companyQuery;
+    .select("company_id, call_forward_number, call_forward_timeout")
+    .eq("company_id", inboundCompanyId);
   const company =
     ((companies as
       | { company_id: string; call_forward_number: string | null; call_forward_timeout: number }[]

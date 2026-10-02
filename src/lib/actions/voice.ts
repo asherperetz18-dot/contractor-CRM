@@ -60,7 +60,7 @@ export async function getVoiceAccessToken(): Promise<{ token?: string; error?: s
   // The dialer calls out on this company's own number, so the customer
   // sees the business they are actually dealing with.
   const env = await getTwilioVoiceForCompany(profile.company_id);
-  if (!env) return { error: "Calling isn't configured for this company yet." };
+  if (!env) return { error: "Calling isn't set up for this company yet. An admin can connect its own Twilio account, with in-app calling, in Settings → Twilio." };
 
   const token = buildAccessToken(user.id, env);
   return { token };

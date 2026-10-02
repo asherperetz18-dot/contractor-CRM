@@ -72,7 +72,7 @@ export function CompanyTwilio() {
     startTransition(async () => {
       const res = await clearCompanyTwilio();
       if (res.error) return setError(res.error);
-      setNote("Disconnected — this company falls back to the platform number.");
+      setNote("Disconnected — this company can't text or call until it connects an account again.");
       setStatus(await getCompanyTwilioStatus());
       router.refresh();
     });
@@ -130,17 +130,11 @@ export function CompanyTwilio() {
           <code>APP_ENCRYPTION_KEY</code> and redeploy.
         </p>
       )}
-      {status.source === "borrowing" && (
-        <p className="error-note">
-          This company doesn&apos;t have its own Twilio account yet, so its texts and calls go out
-          from the shared number <strong>{status.sharedNumber}</strong>, which belongs to another
-          business. Connect this company&apos;s own account below. Soon a company without its own
-          number won&apos;t be able to text or call until it connects one.
-        </p>
-      )}
       {status.source === "none" && (
         <p className="error-note">
           Texting and calling are off until this company connects its own Twilio account below.
+          Each company needs its own account: if one Twilio login runs several companies, create a
+          subaccount for each one in Twilio (Account → Subaccounts).
         </p>
       )}
       {status.canAdoptShared && (
@@ -177,6 +171,9 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Account SID</span>
             <input
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               placeholder="AC…"
               value={accountSid}
@@ -187,9 +184,11 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Auth token</span>
             <input
+              autoComplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               type="password"
-              autoComplete="off"
               value={authToken}
               onChange={(e) => setAuthToken(e.target.value)}
               disabled={pending || !status.encryptionReady}
@@ -198,6 +197,9 @@ export function CompanyTwilio() {
           <label className="field">
             <span className="field-label">Twilio phone number</span>
             <input
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
               className="est-title-input"
               placeholder="(818) 555-0100"
               value={phoneNumber}
@@ -214,6 +216,9 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">API Key SID</span>
                 <input
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   placeholder="SK…"
                   value={apiKeySid}
@@ -224,9 +229,11 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">API Key Secret</span>
                 <input
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   type="password"
-                  autoComplete="off"
                   value={apiKeySecret}
                   onChange={(e) => setApiKeySecret(e.target.value)}
                   disabled={pending}
@@ -235,6 +242,9 @@ export function CompanyTwilio() {
               <label className="field">
                 <span className="field-label">TwiML App SID</span>
                 <input
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="est-title-input"
                   placeholder="AP…"
                   value={twimlAppSid}

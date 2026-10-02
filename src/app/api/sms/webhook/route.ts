@@ -4,7 +4,8 @@ import { normalizePhone } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
 import { phoneMatchIn, type LeadPhoneRow } from "@/lib/data/phone-match";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
+import { logWarn } from "@/lib/observability/logger";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import { withRouteObservability } from "@/lib/observability/observe";
 
@@ -80,14 +81,20 @@ async function handlePost(req: NextRequest) {
   // so the company has to be known to verify at all.
   //
   // Naming a company in the payload buys an attacker nothing: they still
-  // cannot produce a valid signature without that company's token, and a
-  // number nobody owns falls through to the platform credentials.
+  // cannot produce a valid signature without that company's token. A
+  // number no company has connected is answered with an empty reply and
+  // nothing stored: it used to be checked with the shared account's
+  // token and then matched against every company's contacts, so a reply
+  // could land in -- or confirm an appointment of -- the wrong business
+  // (DECISIONS #104).
   const inboundCompanyId = await companyForInboundNumber(to);
-  const twilioEnv = inboundCompanyId
-    ? await getTwilioForCompany(inboundCompanyId)
-    : getTwilioEnv();
-  if (!twilioEnv) {
-    return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
+  const twilioEnv = inboundCompanyId ? await getTwilioForCompany(inboundCompanyId) : null;
+  if (!inboundCompanyId || !twilioEnv) {
+    logWarn({ event: "sms.inbound.unknown_number", route: "api/sms/webhook", service: "twilio" });
+    return new NextResponse("<Response></Response>", {
+      status: 200,
+      headers: { "Content-Type": "text/xml" },
+    });
   }
 
   const signature = req.headers.get("x-twilio-signature");
@@ -99,30 +106,36 @@ async function handlePost(req: NextRequest) {
   const normalizedBody = body.trim().toLowerCase();
 
   const admin = createAdminClient();
-  // Scoped to the receiving company once one is known. Matching the
-  // sender across every company's leads was only safe while there was a
-  // single number: two companies holding the same homeowner's number
-  // would race, and the reply could attach to the wrong business.
+  // Scoped to the receiving company. Matching the sender across every
+  // company's leads was only safe while there was a single number: two
+  // companies holding the same homeowner's number would race, and the
+  // reply could attach to the wrong business.
   // selectAll, not a bare select: PostgREST stops at 1000 rows and says
   // nothing. With 1520 leads on this company, 520 customers -- all with
   // working phone numbers -- could text in and match nothing, so their
   // reply attached to no job and their YES never confirmed anything.
-  const [leadRows, { data: profiles }] = await Promise.all([
+  const [leadRows, { data: members }] = await Promise.all([
     selectAll<LeadPhoneRow & { company_id: string }>(
       // Named rangeFrom/rangeTo deliberately: `from` and `to` in this
       // scope are the phone numbers on the message, and shadowing those
       // inside a query builder is a mistake waiting to be made.
-      (rangeFrom, rangeTo) => {
-        let q = admin
+      (rangeFrom, rangeTo) =>
+        admin
           .from("leads")
           .select("id, company_id, phone, phone2, phone3, second_contact_phone")
-          .range(rangeFrom, rangeTo);
-        if (inboundCompanyId) q = q.eq("company_id", inboundCompanyId);
-        return q;
-      }
+          .eq("company_id", inboundCompanyId)
+          .range(rangeFrom, rangeTo)
     ),
-    admin.from("profiles").select("id, name, phone"),
+    // This company's people only: a rep who also works for another
+    // company is matched here as this company's rep, never that one's.
+    admin
+      .from("company_members")
+      .select("profiles(id, name, phone)")
+      .eq("company_id", inboundCompanyId),
   ]);
+  const profiles = ((members ?? []) as unknown as { profiles: { id: string; name: string | null; phone: string | null } | null }[])
+    .map((m) => m.profiles)
+    .filter((p): p is { id: string; name: string | null; phone: string | null } => !!p);
   // All four numbers a contact can be reached on (0150) -- the same
   // matcher the call importer uses, so a text and a call from the same
   // phone2 land on the same card. On an ambiguous number (several
@@ -137,7 +150,7 @@ async function handlePost(req: NextRequest) {
         : null;
   const matchedLead = matchedLeadId ? leadRows.find((l) => l.id === matchedLeadId) : undefined;
 
-  const profileRows = (profiles as { id: string; name: string | null; phone: string | null }[]) ?? [];
+  const profileRows = profiles;
   const matchedRep = profileRows.find((p) => p.phone && normalizePhone(p.phone) === normalizedFrom);
 
   const isYesNo = YES_WORDS.has(normalizedBody) || NO_WORDS.has(normalizedBody);
@@ -166,6 +179,7 @@ async function handlePost(req: NextRequest) {
     const { data: candidateEvents } = await admin
       .from("events")
       .select(EVENT_COLUMNS)
+      .eq("company_id", inboundCompanyId)
       .or(`assigned_to.eq.${matchedRep.id},second_assigned_to.eq.${matchedRep.id}`)
       .in("status", ["New", "Confirmed"]);
 
@@ -183,16 +197,16 @@ async function handlePost(req: NextRequest) {
     // was about a different customer entirely -- and the reply landed on
     // whoever had most recently been auto-texted. Outbound crew messages
     // carry the job on them, so they answer this directly.
-    let crewQuery = admin
+    const { data: crewOut } = await admin
       .from("sms_messages")
       .select("lead_id, to_number, created_at")
+      .eq("company_id", inboundCompanyId)
       .eq("direction", "outbound")
       .eq("channel", "rep")
       .not("lead_id", "is", null)
       .order("created_at", { ascending: false })
-      .limit(300);
-    if (inboundCompanyId) crewQuery = crewQuery.eq("company_id", inboundCompanyId);
-    const { data: crewOut } = await crewQuery.returns<
+      .limit(300)
+      .returns<
       { lead_id: string; to_number: string | null; created_at: string }[]
     >();
     // Numbers are stored as they were typed, so this cannot be matched in
@@ -264,12 +278,6 @@ async function handlePost(req: NextRequest) {
     }
   }
 
-  // The receiving number is the most reliable answer, so it wins; the
-  // lead and event matches remain as fallbacks for numbers that predate
-  // per-company Twilio.
-  const companyId =
-    inboundCompanyId ?? matchedLead?.company_id ?? targetEvent?.company_id ?? null;
-
   // Which job this message belongs to on the record.
   //
   // A lead match wins: a customer texting from their own number belongs in
@@ -285,18 +293,17 @@ async function handlePost(req: NextRequest) {
   // homeowner was told.
   const fromCrew = !matchedLead && !!matchedRep;
 
-  if (companyId) {
-    await admin.from("sms_messages").insert({
-      lead_id: attachedLeadId,
-      direction: "inbound",
-      from_number: from,
-      to_number: to,
-      body,
-      twilio_sid: params.MessageSid || null,
-      company_id: companyId,
-      channel: fromCrew ? "rep" : "sms",
-    });
-  }
+  await admin.from("sms_messages").insert({
+    lead_id: attachedLeadId,
+    direction: "inbound",
+    from_number: from,
+    to_number: to,
+    body,
+    twilio_sid: params.MessageSid || null,
+    // The receiving number decides the company, always.
+    company_id: inboundCompanyId,
+    channel: fromCrew ? "rep" : "sms",
+  });
 
   const twiml = replyMessage
     ? `<Response><Message>${escapeXml(replyMessage)}</Message></Response>`
