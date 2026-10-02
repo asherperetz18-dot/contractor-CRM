@@ -1076,6 +1076,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** A new table referencing `leads` needs `select public.apply_lead_company_checks();` at the end of its migration; `lead-company-check-migrations.test.ts` fails otherwise, as for the billing lock. Every write to these tables costs one primary-key lookup per named contact. Moving a contact to another company (no feature does today) would need its rows moved in the same statement batch, or the trigger refuses the stragglers.
 
+## 099 — Settings → Backup exports the current company only; the full export is the nightly job's
+
+**Date:** 2026-10-02
+
+**Context:** The Backup page's download (`downloadBackup`) was gated on Office or Admin, the company-level roles every self-serve owner gets, and then called `buildBackup()`. That read all 44 backup tables through the service role with no company filter. So any company's admin downloaded every company's customers, texts, calls, staff and settings, encrypted keys included, and the page showed platform-wide row counts.
+
+**Decision:** `buildBackup` and `countBackupRows` take a scope. `"all"` is used only by the nightly cron route, behind the cron secret, and a test fails if anything else asks for it. Settings passes `{ companyId }` for the current company. `companyScopeColumn` (`src/lib/backup-scope.ts`, tested) narrows each table: `companies` by `id`, people through `company_members` (not `profiles.company_id`, which is the legacy first company; seats granted only for platform admins are left out, as the roster leaves them out), and everything else by `company_id`. A company's own file also drops saved keys, webhook secrets and access tokens (`withoutSecrets`: `*_enc`, `secret`, `token`, `password`, `api_key`), matching the settings pages, which never send those back to a browser. The nightly export keeps them, because it is the copy a restore is made from.
+
+**Consequence:** A company's download can't be restored as-is into another database: it has no secrets and no other companies' rows. It is an export of the company's own records, which is what the page now says. A table added to `BACKUP_TABLES` without a `company_id` column fails the company-scoped read and shows up under "Couldn't read", so it can't silently leak.
+
 ## 100 — The recording proxy sends Twilio credentials only to Twilio, for that account's recordings
 
 **Date:** 2026-10-02

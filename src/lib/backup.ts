@@ -1,69 +1,43 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { summarizeBackupCounts, type BackupCountSummary } from "@/lib/backup-counts";
-
-/**
- * Every table worth restoring from, in dependency order -- companies and
- * profiles first so a restore can satisfy foreign keys as it goes.
- *
- * activity_events is deliberately excluded: it's ~19k page-view pings that
- * would dominate the file and that nobody would ever restore. Portal
- * session/token tables are excluded too -- they hold short-lived
- * credentials, are worthless a day later, and shouldn't be copied around.
- */
-export const BACKUP_TABLES = [
-  "companies",
-  "profiles",
-  "company_members",
-  "company_profile",
-  "pipeline_stages",
-  "calendars",
-  "project_types",
-  "lead_sources",
-  "call_dispositions",
-  "role_page_visibility",
-  "sms_quick_texts",
-  "leads",
-  "events",
-  "jobs",
-  "documents",
-  "contracts",
-  "lead_tasks",
-  "lead_notes",
-  "lead_files",
-  "setter_contacts",
-  "sms_messages",
-  "call_logs",
-  "dial_lists",
-  "ai_action_proposals",
-  // The estimate tables were missing entirely -- the list predates the
-  // estimates feature and was never extended, which was discovered the
-  // day a deleted contact took a $121k estimate down with it and no
-  // backup had ever held a single estimate row. Priced, signed dollar
-  // commitments are the last thing a backup should be missing.
-  "estimates",
-  "estimate_groups",
-  "estimate_items",
-  "estimate_signers",
-  "estimate_files",
-  "estimate_payments",
-  "estimate_views",
-  "portal_payments",
-  "contract_templates",
-  "scope_templates",
-  "company_documents",
-  "company_phone_numbers",
-  "vendors",
-  "job_expenses",
-  "lead_duplicate_dismissals",
-  "lead_trash",
-  "lead_ai_analysis",
-  "property_reports",
-  "checklist_templates",
-  "project_checklist_items",
-] as const;
+import {
+  BACKUP_TABLES,
+  companyScopeColumn,
+  withoutSecrets,
+  type BackupScope,
+} from "@/lib/backup-scope";
 
 const PAGE_SIZE = 1000;
+
+type HeadCount = { count: "exact"; head: true };
+
+/**
+ * A table's rows within the scope. In a company scope, people are read
+ * through company_members, so the member list decides who is included --
+ * without the seats that exist only because someone is a platform admin
+ * (0132), which the company's own roster leaves out too.
+ */
+function selectScoped(
+  admin: ReturnType<typeof createAdminClient>,
+  table: string,
+  scope: BackupScope,
+  head?: HeadCount
+) {
+  if (scope === "all") return admin.from(table).select("*", head);
+  switch (companyScopeColumn(table)) {
+    case "id":
+      return admin.from(table).select("*", head).eq("id", scope.companyId);
+    case "members":
+      return admin
+        .from("company_members")
+        .select("profiles(*)", head)
+        .eq("company_id", scope.companyId)
+        .eq("granted_via_platform_admin", false);
+    case "company_id":
+      return admin.from(table).select("*", head).eq("company_id", scope.companyId);
+  }
+}
 
 /**
  * How many rows a backup would contain, without reading any of them.
@@ -74,13 +48,11 @@ const PAGE_SIZE = 1000;
  * budget and failed the whole deploy. One head-count query per table
  * keeps the page's cost proportional to the table list, not the data.
  */
-export async function countBackupRows(): Promise<BackupCountSummary> {
+export async function countBackupRows(scope: BackupScope): Promise<BackupCountSummary> {
   const admin = createAdminClient();
   const results = [];
   for (const table of BACKUP_TABLES) {
-    const { count, error } = await admin
-      .from(table)
-      .select("*", { count: "exact", head: true });
+    const { count, error } = await selectScoped(admin, table, scope, { count: "exact", head: true });
     results.push({ table: table as string, count, error: error?.message ?? null });
   }
   return summarizeBackupCounts(results);
@@ -95,14 +67,16 @@ export type BackupResult = {
 };
 
 /**
- * Reads every backup table in full.
+ * Reads every backup table in full -- every company's rows for the
+ * nightly job ("all"), or one company's for its own Settings → Backup,
+ * which also leaves out saved keys and tokens (withoutSecrets).
  *
  * Paginates explicitly because PostgREST caps a plain select at 1000 rows
  * and returns the truncated set without complaining -- a backup that
  * silently stops at 1000 leads would be worse than no backup, since it
  * would look fine until the day it was needed.
  */
-export async function buildBackup(): Promise<BackupResult> {
+export async function buildBackup(scope: BackupScope): Promise<BackupResult> {
   const admin = createAdminClient();
   const tables: Record<string, unknown[]> = {};
   const counts: Record<string, number> = {};
@@ -113,15 +87,20 @@ export async function buildBackup(): Promise<BackupResult> {
     const rows: unknown[] = [];
     let from = 0;
     for (;;) {
-      const { data, error } = await admin
-        .from(table)
-        .select("*")
-        .range(from, from + PAGE_SIZE - 1);
+      const { data, error } = await selectScoped(admin, table, scope).range(from, from + PAGE_SIZE - 1);
       if (error) {
         skipped[table] = error.message;
         break;
       }
-      rows.push(...(data ?? []));
+      const page = (data ?? []) as Record<string, unknown>[];
+      if (scope === "all") {
+        rows.push(...page);
+      } else {
+        const own = companyScopeColumn(table) === "members" ? page.map((r) => r.profiles) : page;
+        for (const row of own) {
+          if (row) rows.push(withoutSecrets(row as Record<string, unknown>));
+        }
+      }
       if (!data || data.length < PAGE_SIZE) break;
       from += PAGE_SIZE;
     }
