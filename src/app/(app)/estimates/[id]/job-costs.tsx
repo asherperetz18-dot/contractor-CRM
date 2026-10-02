@@ -12,12 +12,11 @@ import {
   type JobExpense,
 } from "@/lib/data/types";
 import { openBillsByPhase, type OpenJobBill } from "@/lib/data/bills";
-import { assignExpensePhase, deleteJobExpense, getJobExpenses } from "@/lib/actions/job-expenses";
+import { assignExpensePhase, getJobExpenses } from "@/lib/actions/job-expenses";
 import { getOpenJobBills } from "@/lib/actions/vendor-bills";
 import { getVendors } from "@/lib/actions/vendors";
 import type { Vendor } from "@/lib/data/types";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
-import { AddBillModal } from "@/components/bills/add-bill-modal";
 
 const fmtDay = (s: string) =>
   new Date(s + "T00:00:00").toLocaleDateString("en-US", {
@@ -43,12 +42,18 @@ const fmtDay = (s: string) =>
  * the phases. Spreading would move every phase's margin by an amount
  * nobody chose, and the resulting percentages would look precise while
  * being invented.
+ *
+ * Bills are added, fixed and deleted in Projects and Bills to Pay, never
+ * here: this panel's × once deleted a bill payment's job cost and left
+ * the payment standing, so the two pages disagreed on what was spent.
+ * What stays is filing each cost to its phase -- that moves no money,
+ * and this is the one place it can be done.
  */
 // memo: the estimate builder re-renders on every keystroke; this panel's
 // props are stable then, so it sits those renders out.
 export const JobCosts = memo(function JobCosts({
   leadId,
-  jobLabel,
+  estimateId,
   payments,
   totalCents,
   depositPercentBp,
@@ -57,20 +62,20 @@ export const JobCosts = memo(function JobCosts({
   canBills,
 }: {
   leadId: string;
-  jobLabel: string;
+  /** This contract -- its row on Projects, where bills are added and fixed. */
+  estimateId: string;
   payments: EstimatePayment[];
   totalCents: number;
   depositPercentBp: number;
   depositCapCents: number;
   canEdit: boolean;
-  /** May file an UNPAID bill -- Bookkeeping, Office, Admin. */
+  /** Can open Bills to Pay -- Bookkeeping, Office, Admin. */
   canBills: boolean;
 }) {
   const [expenses, setExpenses] = useState<JobExpense[] | null>(null);
   const [openBills, setOpenBills] = useState<OpenJobBill[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState("");
-  const [adding, setAdding] = useState(false);
   const [pending, startTransition] = useTransition();
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -125,36 +130,27 @@ export const JobCosts = memo(function JobCosts({
           <p className="est-pay-sub">
             Every bill on this job, filed against the phase it belongs to — paid ones count as
             Spent, unpaid ones wait in Bills to Pay. Costs follow the job, so change orders and
-            the original contract share one pile.
+            the original contract share one pile. Bills are added, fixed and deleted in Projects
+            and Bills to Pay; here you file them to a phase.
           </p>
         </div>
         {canEdit && (
           <div className="est-pay-actions">
-            <button className="btn-ghost" onClick={() => setAdding(true)} disabled={pending}>
-              + Add bill
-            </button>
+            <Link className="btn-ghost" href={`/projects?focus=${estimateId}`}>
+              Open in Projects →
+            </Link>
+            {canBills && (
+              <Link className="btn-ghost" href="/bills">
+                Bills to Pay →
+              </Link>
+            )}
           </div>
         )}
       </div>
 
-      {adding && (
-        <AddBillModal
-          jobs={[{ leadId, label: jobLabel }]}
-          initialLeadId={leadId}
-          lockJob
-          phases={payments.map((p) => ({ id: p.id, name: p.name || "Unnamed phase" }))}
-          canBills={canBills}
-          defaultPaid
-          vendors={vendors}
-          onSaved={() => setReloadKey((k) => k + 1)}
-          onClose={() => setAdding(false)}
-        />
-      )}
-
       {nothingYet ? (
         <p className="empty-hint">
-          No bills recorded on this job yet. Add them here, or connect QuickBooks to pull
-          them in from the project automatically.
+          No bills on this job yet. Add them with + Add bill on the job in Projects.
         </p>
       ) : (
         <>
@@ -357,7 +353,6 @@ export const JobCosts = memo(function JobCosts({
                     <th>What for</th>
                     <th className="right">Amount</th>
                     <th>Phase</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -421,24 +416,6 @@ export const JobCosts = memo(function JobCosts({
                           </select>
                         ) : (
                           payments.find((p) => p.id === e.estimate_payment_id)?.name || "Not filed"
-                        )}
-                      </td>
-                      <td>
-                        {canEdit && (
-                          <button
-                            className="btn-ghost est-row-remove"
-                            aria-label="Remove cost"
-                            disabled={pending}
-                            onClick={() =>
-                              startTransition(async () => {
-                                const res = await deleteJobExpense(e.id);
-                                if (res.error) return setError(res.error);
-                                setReloadKey((k) => k + 1);
-                              })
-                            }
-                          >
-                            ×
-                          </button>
                         )}
                       </td>
                     </tr>

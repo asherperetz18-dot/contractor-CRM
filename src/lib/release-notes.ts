@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.172.0",
+    date: "2026-10-02",
+    notes: [
+      "Fix: deleting a bill payment's cost from a contract's Job costs panel only removed it from the job. The payment itself stayed in Bills to Pay, so the two pages disagreed and the job's profit read too high. A bill payment is now deleted only in Bills to Pay (✕ on the payment line), which removes it from the job too. Anywhere else, the CRM says where to go instead of deleting half of it.",
+      "A contract's Job costs panel no longer adds or deletes bills. It still shows profit by phase and still lets you file each cost to a phase. Add, fix and delete bills on the job in Projects or in Bills to Pay; the panel's new Open in Projects and Bills to Pay buttons take you there.",
+      "Filing a bill payment to a phase now moves the whole bill and all its payments to that phase, so one bill is never split across two phases and its next payment lands in the right place.",
+    ],
+  },
+  {
     version: "1.171.2",
     date: "2026-10-01",
     notes: [

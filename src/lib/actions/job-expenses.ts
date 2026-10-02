@@ -15,8 +15,10 @@ import {
 } from "@/lib/data/types";
 import {
   canEditJobCosts,
+  expenseDeleteLock,
   expenseEditLock,
   jobExpensePatch,
+  phaseRefileIds,
   type JobExpenseEdit,
 } from "@/lib/data/expense-edit";
 import {
@@ -273,6 +275,10 @@ export async function createJobExpense(
  * take whatever id arrived, and a server action is reachable directly --
  * so another company's cost would be one guessed uuid from being moved
  * onto a job it has nothing to do with.
+ *
+ * A bill payment's cost files its whole bill: the bill and every one of
+ * its payments' costs take the phase, so the bill's next payment lands
+ * there too and one bill never sits in two phases.
  */
 export async function assignExpensePhase(
   expenseId: string,
@@ -282,16 +288,55 @@ export async function assignExpensePhase(
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
+  const { data: cost } = await supabase
+    .from("job_expenses")
+    .select("id, lead_id, source")
+    .eq("id", expenseId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; lead_id: string; source: string }>();
+  if (!cost) return { error: "That cost couldn't be updated." };
+  if (estimatePaymentId && !(await phaseIsOnJob(profile.company_id, cost.lead_id, estimatePaymentId))) {
+    return { error: "That phase isn't on this job." };
+  }
+
+  const now = new Date().toISOString();
+  let billCostIds: (string | null)[] = [];
+  if (cost.source === "bill") {
+    const { data: payment } = await supabase
+      .from("vendor_bill_payments")
+      .select("bill_id")
+      .eq("job_expense_id", cost.id)
+      .eq("company_id", profile.company_id)
+      .maybeSingle<{ bill_id: string }>();
+    if (payment) {
+      const [{ error: billError }, { data: siblings }] = await Promise.all([
+        supabase
+          .from("vendor_bills")
+          .update({ estimate_payment_id: estimatePaymentId || null, updated_at: now })
+          .eq("id", payment.bill_id)
+          .eq("company_id", profile.company_id),
+        supabase
+          .from("vendor_bill_payments")
+          .select("job_expense_id")
+          .eq("bill_id", payment.bill_id)
+          .eq("company_id", profile.company_id),
+      ]);
+      if (billError) return { error: billError.message };
+      billCostIds = ((siblings ?? []) as { job_expense_id: string | null }[]).map((s) => s.job_expense_id);
+    }
+  }
+
   const { data, error } = await supabase
     .from("job_expenses")
-    .update({ estimate_payment_id: estimatePaymentId || null, updated_at: new Date().toISOString() })
-    .eq("id", expenseId)
+    .update({ estimate_payment_id: estimatePaymentId || null, updated_at: now })
+    .in("id", phaseRefileIds(cost, billCostIds))
     .eq("company_id", profile.company_id)
     .select("id");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "That cost couldn't be updated." };
 
   revalidatePath("/estimates");
+  if (cost.source === "bill") revalidatePath("/bills");
   return {};
 }
 
@@ -300,12 +345,25 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
   if (!profile) return { error: "Not signed in." };
 
   const supabase = await createClient();
+  // Read before deleting: a bill payment's cost is refused here, whatever
+  // screen sent it, or the payment survives it (0121's set null) and
+  // Bills to Pay and the job disagree on what was spent.
+  const { data: current } = await supabase
+    .from("job_expenses")
+    .select("source")
+    .eq("id", expenseId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ source: string }>();
+  if (!current) return { error: "That cost couldn't be deleted." };
+  const lock = expenseDeleteLock(current);
+  if (lock) return { error: lock };
+
   const { data, error } = await supabase
     .from("job_expenses")
     .delete()
     .eq("id", expenseId)
     .eq("company_id", profile.company_id)
-    .select("id, receipt_path, source");
+    .select("id, receipt_path");
   if (error) return { error: error.message };
   if (!data?.length) return { error: "That cost couldn't be deleted." };
 
@@ -313,12 +371,8 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
   // keeps serving at its old public URL and a Drive file sits in the
   // customer's folder claiming a cost that no longer exists. Best
   // effort: a cleanup hiccup must not resurrect the row.
-  //
-  // Except a cost written by paying a bill: the file is the BILL's, and
-  // the bill still points at it. Deleting it here would blank the bill's
-  // thumbnail on the checkbook page.
-  const row = data[0] as { receipt_path?: string | null; source?: string | null };
-  if (row.source !== "bill") await removeReceiptFile(profile.company_id, row.receipt_path ?? null);
+  const row = data[0] as { receipt_path?: string | null };
+  await removeReceiptFile(profile.company_id, row.receipt_path ?? null);
 
   revalidatePath("/estimates");
   return {};
