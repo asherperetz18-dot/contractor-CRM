@@ -5,6 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole, isStrictAdmin, type AppRole } from "@/lib/data/types";
+import {
+  accountEditBlock,
+  ACCOUNT_NOT_IN_COMPANY,
+  type AccountMembership,
+} from "@/lib/data/account-edit";
 
 // User creation and profile edits (name/phone/email) go through the Admin
 // API (service role, bypasses RLS) because changing a user's auth email
@@ -182,16 +187,49 @@ export async function updateUserProfile(
 
   const admin = createAdminClient();
 
-  const { data: current } = await admin
-    .from("profiles")
-    .select("email")
-    .eq("id", userId)
-    .single();
-  const currentEmail = (current as { email: string | null } | null)?.email;
+  // The service role writes whatever id it is handed, so the company
+  // check is this code's job: the person has to work here, and nowhere
+  // the editor doesn't also run (lib/data/account-edit.ts).
+  const [{ data: current }, { data: targetRows }, { data: actorRows }] = await Promise.all([
+    admin
+      .from("profiles")
+      .select("email, is_super_admin, is_platform_admin")
+      .eq("id", userId)
+      .maybeSingle(),
+    admin
+      .from("company_members")
+      .select("company_id, granted_via_platform_admin, status")
+      .eq("profile_id", userId),
+    admin
+      .from("company_members")
+      .select("company_id, roles, status")
+      .eq("profile_id", guard.actorId),
+  ]);
+  const target = current as {
+    email: string | null;
+    is_super_admin: boolean | null;
+    is_platform_admin: boolean | null;
+  } | null;
+  if (!target) return { error: ACCOUNT_NOT_IN_COMPANY };
+  const block = accountEditBlock({
+    actorId: guard.actorId,
+    targetId: userId,
+    companyId: guard.companyId,
+    actorAdminCompanyIds: ((actorRows ?? []) as { company_id: string; roles: AppRole[]; status: string }[])
+      .filter((m) => m.status === "Active" && (m.roles.includes("Office") || m.roles.includes("Admin")))
+      .map((m) => m.company_id),
+    targetMemberships: (targetRows ?? []) as AccountMembership[],
+    targetIsProtected: target.is_super_admin === true || target.is_platform_admin === true,
+  });
+  if (block) return { error: block };
+  const currentEmail = target.email;
 
+  // Lowercased the way Supabase Auth stores it, so the exact-match
+  // lookups (findUserByEmail, grantPlatformAdmin) find what is saved here.
+  const email = input.email.trim().toLowerCase();
   const authUpdates: { email?: string; email_confirm?: boolean; password?: string } = {};
-  if (input.email && input.email !== currentEmail) {
-    authUpdates.email = input.email;
+  if (email && email !== currentEmail) {
+    authUpdates.email = email;
     authUpdates.email_confirm = true;
   }
   if (input.password) {
@@ -206,7 +244,7 @@ export async function updateUserProfile(
     .from("profiles")
     .update({
       name: input.name || null,
-      email: input.email || null,
+      email: email || null,
       phone: input.phone || null,
     })
     .eq("id", userId);
@@ -503,14 +541,17 @@ export async function findUserByEmail(
   const guard = await requireOfficeOrAdmin();
   if ("error" in guard) return guard;
 
-  const trimmed = email.trim();
-  if (!trimmed) return { error: "Enter an email address." };
+  // Plain equality on the lowercased address, as grantPlatformAdmin does:
+  // to ilike, "_" and "%" are wildcards, so a pattern like "a%" found
+  // whoever matched it in any company.
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return { error: "Enter an email address." };
 
   const admin = createAdminClient();
   const { data } = await admin
     .from("profiles")
     .select("id, name, email")
-    .ilike("email", trimmed)
+    .eq("email", normalized)
     .maybeSingle();
   const found = data as { id: string; name: string | null; email: string | null } | null;
   if (!found?.email) return { error: "No user found with that email." };
