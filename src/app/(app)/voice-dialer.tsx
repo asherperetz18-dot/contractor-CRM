@@ -15,6 +15,7 @@ import {
   shouldRetryError,
 } from "@/lib/call-attempt";
 import { maskPhone, safeTwilioError } from "@/lib/observability/redact";
+import { callFailureMessage, shouldRebuildDevice, type DeviceError } from "@/lib/dialer-errors";
 import { addBreadcrumb, captureError } from "@/lib/observability/sentry";
 
 // Kept in sync with the @twilio/voice-sdk version in package.json --
@@ -60,6 +61,9 @@ export function VoiceDialer() {
   const callSidRef = useRef<string | null>(null);
   const durationRef = useRef(0);
   const tokenMintedAtRef = useRef(0);
+  // Twilio's reason for refusing the connection. It arrives as an event on
+  // the Device, not with the failed connect(), which rejects empty-handed.
+  const deviceErrorRef = useRef<DeviceError | null>(null);
   const retriedRef = useRef(false);
   // One id per call attempt (a retry keeps the original, since it's the
   // same attempt continuing on a rebuilt device) -- carried through the
@@ -132,6 +136,9 @@ export function VoiceDialer() {
     }
     const { Device } = await import("@twilio/voice-sdk");
     const device = new Device(result.token, { logLevel: "error", tokenRefreshMs: 180000 });
+    device.on("error", (err: DeviceError) => {
+      deviceErrorRef.current = { code: err?.code, message: err?.message };
+    });
     device.on("tokenWillExpire", async () => {
       const fresh = await getVoiceAccessToken();
       if (fresh.token) {
@@ -230,6 +237,7 @@ export function VoiceDialer() {
     // hang-up while ringing; disconnect AND error on a gateway drop),
     // and each handler used to log its own call_logs row.
     const attempt = newCallAttempt();
+    deviceErrorRef.current = null;
     try {
       const device = await ensureDevice(correlationId);
       const resolvedCallerId = callerId || window.localStorage.getItem(CALLER_ID_KEY) || "";
@@ -312,8 +320,24 @@ export function VoiceDialer() {
         finishCall(digits, "error", correlationId, eventId);
       });
     } catch (err) {
-      captureError(err, { route: "voice-dialer", correlationId, service: "twilio", extra: { stage: "connect" } });
-      setErrorMsg(err instanceof Error ? err.message : "Could not place the call.");
+      // Set by the Device's "error" listener during connect(), which the
+      // type checker can't see -- it still thinks this is the null above.
+      const deviceError = deviceErrorRef.current as DeviceError | null;
+      captureError(err, {
+        route: "voice-dialer",
+        correlationId,
+        service: "twilio",
+        extra: { stage: "connect", deviceErrorCode: deviceError?.code ?? null },
+      });
+      // A refused or closed connection is dead: keeping it made every later
+      // try fail the same way until the page was reloaded, even once the
+      // keys were fixed. The next try builds a new one with a fresh pass.
+      if (shouldRebuildDevice(err, deviceError)) {
+        deviceRef.current?.destroy();
+        deviceRef.current = null;
+        tokenMintedAtRef.current = 0;
+      }
+      setErrorMsg(callFailureMessage(err, deviceError));
       setStatus("error");
       // A connect that throws -- no token, no mic, Twilio not set up -- never
       // reached call.on("error"), so nothing was logged and a dial session had

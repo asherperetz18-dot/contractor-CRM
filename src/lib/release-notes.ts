@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.177.2",
+    date: "2026-10-02",
+    notes: [
+      "Settings → Twilio now checks what you enter with Twilio before saving it: the Account SID and Auth Token, that the number is in that account, and for in-app calling the API Key SID and Secret and the TwiML App. A mistake is explained on the spot instead of being saved and found out on the first call.",
+      "Fix: when Twilio refuses a call from the CRM's dialer, the dialer now says why (for example, calling keys that don't match) instead of \"Could not place the call.\", and the next try starts fresh without reloading the page.",
+    ],
+  },
+  {
     version: "1.177.1",
     date: "2026-10-02",
     notes: [
