@@ -43,9 +43,8 @@ async function viFetch(
  * The company's Voice Intelligence service, created on first use.
  *
  * The service carries the completion webhook, so transcripts announce
- * themselves instead of being polled for. Stored per company: two
- * companies on the shared platform account each get their own service,
- * which keeps their transcripts listable apart later.
+ * themselves instead of being polled for. Stored per company, on that
+ * company's own Twilio account, which keeps transcripts listable apart.
  */
 async function getOrCreateViService(
   companyId: string,

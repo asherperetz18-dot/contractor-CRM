@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import {
   companyForAccountSid,
-  companyForInboundNumber,
   getTwilioForCompany,
 } from "@/lib/twilio-company";
 import { maybeStartReceptionist } from "@/lib/ai-receptionist-engine";
@@ -41,8 +40,8 @@ export async function POST(req: NextRequest) {
   // its own Twilio, which left their inbound calls stuck reading
   // "ringing, 0 seconds" in Call Reports forever.
   const companyId = await companyForAccountSid(params.AccountSid || "");
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
-  if (!twilioEnv) return twiml("");
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
+  if (!companyId || !twilioEnv) return twiml("");
 
   const signature = req.headers.get("x-twilio-signature");
   if (!validateTwilioSignature(req.url, params, signature, twilioEnv.authToken)) {
@@ -71,12 +70,9 @@ export async function POST(req: NextRequest) {
   // switched it on; otherwise say so rather than dropping the caller
   // into silence, which reads as a broken line.
   if (dialStatus && dialStatus !== "completed" && dialStatus !== "answered") {
-    // AccountSid resolves companies on their own Twilio; on the shared
-    // platform account it's null, and the number dialled answers it.
-    const aiCompanyId = companyId ?? (await companyForInboundNumber(params.To || ""));
-    if (aiCompanyId && callSid) {
+    if (callSid) {
       const aiTwiml = await maybeStartReceptionist(createAdminClient(), {
-        companyId: aiCompanyId,
+        companyId,
         callSid,
         from: params.From || "",
         to: params.To || "",

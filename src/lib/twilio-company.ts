@@ -1,14 +1,13 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
-import { getTwilioEnv, getTwilioVoiceEnv } from "@/lib/twilio-env";
+import { getTwilioEnv } from "@/lib/twilio-env";
 import type { CompanyTwilioRow, SharedTwilio } from "@/lib/twilio-source";
 
 export type CompanyTwilio = {
   accountSid: string;
   authToken: string;
   phoneNumber: string;
-  source: "company" | "platform";
 };
 
 export type CompanyTwilioVoice = {
@@ -17,7 +16,6 @@ export type CompanyTwilioVoice = {
   apiKeySecret: string;
   twimlAppSid: string;
   phoneNumber: string;
-  source: "company" | "platform";
 };
 
 type TwilioColumns = {
@@ -50,11 +48,11 @@ async function loadColumns(companyId: string): Promise<TwilioColumns | null> {
  * on one number -- Ca Pro Builder texting a homeowner appeared to come
  * from La Home Contractor, and the reply landed in a shared inbox.
  *
- * Falls back to the platform credentials when a company has not
- * connected its own, so the original business keeps working unchanged.
- * All three parts must be present together: a company with a number but
- * no token cannot send, and silently borrowing the platform's token to
- * send from its number would be worse than not sending.
+ * A company that hasn't connected its own account gets null -- it does
+ * not text or call -- rather than the deployment's TWILIO_* account,
+ * which is one business's and used to be lent to every company without
+ * one (DECISIONS #104). All three parts must be present together: a
+ * company with a number but no token cannot send.
  */
 export async function getTwilioForCompany(companyId: string): Promise<CompanyTwilio | null> {
   const row = await loadColumns(companyId);
@@ -65,12 +63,9 @@ export async function getTwilioForCompany(companyId: string): Promise<CompanyTwi
       accountSid: row.twilio_account_sid,
       authToken,
       phoneNumber: row.twilio_phone_number,
-      source: "company",
     };
   }
-
-  const platform = getTwilioEnv();
-  return platform ? { ...platform, source: "platform" } : null;
+  return null;
 }
 
 /** Voice needs an API key pair and a TwiML app on top of the account. */
@@ -93,12 +88,9 @@ export async function getTwilioVoiceForCompany(
       apiKeySecret,
       twimlAppSid: row.twilio_twiml_app_sid,
       phoneNumber: row.twilio_phone_number,
-      source: "company",
     };
   }
-
-  const platform = getTwilioVoiceEnv();
-  return platform ? { ...platform, source: "platform" } : null;
+  return null;
 }
 
 /**
@@ -150,9 +142,9 @@ export async function companyForInboundNumber(toNumber: string): Promise<string 
  * request carries AccountSid, and a company's account is its own, so this
  * answers it directly for all of them.
  *
- * Null means the platform account (or one nobody has connected), and
- * callers fall back to the platform credentials -- which is what the
- * original business still runs on.
+ * Null means no company has connected that account. Callers then have
+ * no credentials to verify the request with, and answer without acting
+ * on it (DECISIONS #104).
  */
 export async function companyForAccountSid(accountSid: string): Promise<string | null> {
   const sid = accountSid.trim();

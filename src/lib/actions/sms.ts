@@ -50,7 +50,7 @@ export async function sendSms(
   // business's own number rather than a shared one.
   const twilioEnv = await getTwilioForCompany(profile.company_id);
   if (!twilioEnv) {
-    return { error: "Texting isn't configured for this company yet." };
+    return { error: "Texting isn't set up for this company yet. An admin can connect its own Twilio number in Settings → Twilio." };
   }
   const { accountSid, authToken, phoneNumber: fromNumber } = twilioEnv;
 

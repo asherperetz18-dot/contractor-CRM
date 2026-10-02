@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.178.0",
+    date: "2026-10-02",
+    notes: [
+      "Texts and calls now always go out from each company's own Twilio number. A company that hasn't connected its own can't text or call until an admin connects it in Settings → Twilio.",
+      "A text or call to a number no company has connected is no longer delivered into some company's inbox.",
+    ],
+  },
+  {
     version: "1.177.0",
     date: "2026-10-02",
     notes: [

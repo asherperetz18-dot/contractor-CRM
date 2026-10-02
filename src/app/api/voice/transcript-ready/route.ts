@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 import { writeAiCallNote } from "@/lib/ai-call-notes";
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle<{ id: string; company_id: string | null }>();
   if (!log?.company_id) return new NextResponse("", { status: 200 });
 
-  const twilioEnv = (await getTwilioForCompany(log.company_id)) ?? getTwilioEnv();
+  const twilioEnv = await getTwilioForCompany(log.company_id);
   if (!twilioEnv) return new NextResponse("", { status: 200 });
 
   const signatureOk = rawBody

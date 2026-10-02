@@ -2,7 +2,7 @@ import { PlatformAdminGate } from "@/components/platform-admin-gate";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isPlatformAdmin } from "@/lib/data/types";
 import { listInviteHistory, listPlatformAdmins } from "@/lib/data/platform-admin";
-import { loadAllCompanyTwilio, sharedTwilio } from "@/lib/twilio-company";
+import { loadAllCompanyTwilio } from "@/lib/twilio-company";
 import { twilioOverview } from "@/lib/twilio-source";
 import { PlatformAdminView } from "./platform-admin-view";
 
@@ -25,7 +25,7 @@ export default async function PlatformAdminPage() {
   const [admins, invites, twilioRows] = isPlatformAdmin(profile)
     ? await Promise.all([listPlatformAdmins(), listInviteHistory(), loadAllCompanyTwilio()])
     : [[], [], []];
-  const twilio = twilioOverview(twilioRows, sharedTwilio());
+  const twilio = twilioOverview(twilioRows);
 
   // Read once here so every history row is judged against the same
   // instant (the view is a client component and may not read the clock

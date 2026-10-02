@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { recordingNoticeSay } from "@/lib/voice-notice";
 import { resolveCorrelationId } from "@/lib/observability/context";
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const companyId = await companyForAccountSid(params.AccountSid || "");
   setRouteScope({ route: "api/voice/announce", correlationId, companyId: companyId ?? undefined });
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
 
   // No credentials means no signature to verify against. Answering with
   // the notice anyway is the safe failure: the alternative is a call

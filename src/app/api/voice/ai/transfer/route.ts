@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
 import {
   failsafeTwiml,
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   const companyId =
     (await companyForAccountSid(params.AccountSid || "")) ??
     (await companyForInboundNumber(params.To || ""));
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
   if (!twilioEnv) return twiml(failsafeTwiml());
 
   const signature = req.headers.get("x-twilio-signature");

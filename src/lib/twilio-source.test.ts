@@ -4,11 +4,10 @@ import { readFileSync } from "node:fs";
 import { adoptSharedBlock, twilioOverview, twilioSource, type CompanyTwilioRow } from "./twilio-source.ts";
 
 /**
- * Until every company sends from its own Twilio account, the server's
- * shared account (the TWILIO_* settings -- La Home Contractor's) stands
- * in for any company without one. These rules say which company is on
- * which, and when the shared account may be moved into a company's own
- * settings, so it can stop being anyone's fallback (DECISIONS #103).
+ * Every company texts and calls from its own Twilio account or not at all
+ * (DECISIONS #104). These rules say which company has one, and when the
+ * server's shared account (the TWILIO_* settings -- La Home Contractor's)
+ * may be moved into its owner's own settings (DECISIONS #103).
  */
 
 const SHARED_SID = "AC" + "a".repeat(32);
@@ -29,17 +28,13 @@ const own = (over: Partial<CompanyTwilioRow> = {}) =>
   row({ twilio_account_sid: OTHER_SID, twilio_phone_number: "+15555550111", has_token: true, ...over });
 
 test("a company with its account, token and number sends from its own", () => {
-  assert.equal(twilioSource(own(), true), "own");
+  assert.equal(twilioSource(own()), "own");
 });
 
-test("anything less borrows the shared account while one is configured", () => {
-  assert.equal(twilioSource(row(), true), "borrowing");
+test("anything less can't text or call -- nothing is lent", () => {
+  assert.equal(twilioSource(row()), "none");
   // A number without a token cannot send -- it is not "own" yet.
-  assert.equal(twilioSource(row({ twilio_account_sid: OTHER_SID, twilio_phone_number: "+15555550111" }), true), "borrowing");
-});
-
-test("with no shared account configured, a company without its own has none", () => {
-  assert.equal(twilioSource(row(), false), "none");
+  assert.equal(twilioSource(row({ twilio_account_sid: OTHER_SID, twilio_phone_number: "+15555550111" })), "none");
 });
 
 test("the shared account moves into a company that has none of its own", () => {
@@ -74,11 +69,11 @@ test("the overview says who sends from what, and flags a shared account", () => 
     row({ company_id: "B", company_name: "Ca Pro" }),
     own({ company_id: "C", company_name: "Third Co", twilio_account_sid: SHARED_SID, twilio_phone_number: "+15555550122" }),
   ];
-  const view = twilioOverview(rows, SHARED);
+  const view = twilioOverview(rows);
   assert.deepEqual(
     view.map((v) => [v.companyName, v.source, v.sendsFrom, v.voice, v.sharesAccountWith]),
     [
-      ["Ca Pro", "borrowing", SHARED.phoneNumber, false, []],
+      ["Ca Pro", "none", null, false, []],
       ["La Home", "own", SHARED.phoneNumber, true, ["Third Co"]],
       ["Third Co", "own", "+15555550122", false, ["La Home"]],
     ]
