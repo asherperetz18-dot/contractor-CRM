@@ -50,7 +50,7 @@ export function BackupView({
         <div>
           <h1 className="module-title">Backup &amp; Export</h1>
           <p className="module-sub">
-            A full copy of your CRM data — runs automatically every night, or download one now
+            A copy of this company&apos;s CRM data — download one any time
           </p>
         </div>
         <button className="btn-primary" onClick={handleDownload} disabled={pending}>
@@ -88,10 +88,11 @@ export function BackupView({
       )}
 
       <p className="hint-note">
-        This is an export of your records, not a substitute for Supabase&apos;s own backups. It
-        gives you last night&apos;s snapshot; it can&apos;t rewind to an arbitrary moment. Page-view
-        tracking and portal sign-in tokens are deliberately left out — the first is noise, the
-        second is short-lived credentials that shouldn&apos;t be copied around.
+        This is an export of this company&apos;s records only. Saved passwords and connection
+        keys stay in the CRM and are left out of the file. The CRM also keeps its own nightly
+        backup, which is not a substitute for Supabase&apos;s and can&apos;t rewind to an arbitrary
+        moment. Page-view tracking and portal sign-in tokens are deliberately left out — the first
+        is noise, the second is short-lived credentials that shouldn&apos;t be copied around.
       </p>
 
       <div className="table-scroll">
