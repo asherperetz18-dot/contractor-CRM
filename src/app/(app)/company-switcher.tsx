@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { openInCompany } from "@/lib/open-in-company";
 import { switchCompany, createCompany } from "@/lib/actions/company";
 import type { CompanyMembership } from "@/lib/data/profile";
 
@@ -19,7 +19,6 @@ export function CompanySwitcher({
   const [newName, setNewName] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
 
   const current = companies.find((c) => c.company_id === currentCompanyId);
 
@@ -38,7 +37,7 @@ export function CompanySwitcher({
       return;
     }
     setOpen(false);
-    router.refresh();
+    openInCompany();
   }
 
   async function handleCreate() {
@@ -55,7 +54,7 @@ export function CompanySwitcher({
     setNewName("");
     setCreating(false);
     setOpen(false);
-    router.refresh();
+    openInCompany();
   }
 
   return (

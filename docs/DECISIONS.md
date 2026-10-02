@@ -1116,6 +1116,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** The Platform Admin list is the checklist for the switch. Every "Borrowing the shared number" row is a company whose texting stops then.
 
+## 105 — Switching company ends in a full page load
+
+**Date:** 2026-10-02
+
+**Context:** `switchCompany` only changes the `current_company_id` cookie. Its callers then ran `router.refresh()` or `router.push()`, which re-render the server components but keep every client component's state. The dialer (`voice-dialer.tsx`) builds its Twilio `Device` once and reuses it while its token is fresh. So after switching from La Home Contractor to Ca Pro Builder, the owner's calls still went out on La Home's account, and his phone showed La Home's number and name. Views that copy server props into `useState` (tasks, pipeline board, dashboard) showed the previous company's rows the same way.
+
+**Decision:** Every switch (the company switcher, including New company; Platform Admin's Open company and Open Twilio settings; the billing-lock screen) finishes with `openInCompany(path)`: a full `window.location.assign` to an absolute URL on this site (`companyUrl` keeps the destination on-origin). Nothing from the previous company survives in the browser, the dialer included. `open-in-company.test.ts` fails if a client file calls `switchCompany(` or `createCompany(` without it.
+
+**Consequence:** A switch costs a full page load, which a person switching company barely notices. The dialer still needs the new company's own calling setup to call from that company's number: a company without one borrows the shared account until #104 removes the lending.
+
 ## 104 — No company texts or calls from another's Twilio account, and an unknown number is never guessed
 
 **Date:** 2026-10-02

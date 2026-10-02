@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
 import { resendSignupInvite, sendManualSignupInvite } from "@/lib/actions/admin-invite";
 import { switchCompany } from "@/lib/actions/company";
+import { openInCompany } from "@/lib/open-in-company";
 import { grantPlatformAdmin, revokePlatformAdmin } from "@/lib/actions/platform-admin";
 import type { PlatformAdminRow } from "@/lib/data/platform-admin";
 import type { CompanyTwilioView } from "@/lib/twilio-source";
@@ -159,8 +160,7 @@ function InviteHistoryCard({ invites, now }: { invites: InviteHistoryRow[]; now:
       setRowError({ id, message: result.error });
       return;
     }
-    router.push("/");
-    router.refresh();
+    openInCompany();
   }
 
   return (
@@ -406,7 +406,6 @@ const TWILIO_SOURCE_CHIP: Record<CompanyTwilioView["source"], string> = {
  * two apart.
  */
 function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
-  const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
 
@@ -419,8 +418,7 @@ function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
       setRowError({ id: companyId, message: result.error });
       return;
     }
-    router.push("/settings/twilio");
-    router.refresh();
+    openInCompany("/settings/twilio");
   }
 
   return (
