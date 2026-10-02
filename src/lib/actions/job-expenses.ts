@@ -28,7 +28,7 @@ import {
   getOrCreateLeadDriveFolder,
   getValidAccessToken,
   uploadBlobToDrive,
-} from "@/lib/actions/google-drive";
+} from "@/lib/google-drive-api";
 import { phaseIsOnJob } from "@/lib/data/job-phase-check";
 import {
   MAX_RECEIPT_BYTES,
