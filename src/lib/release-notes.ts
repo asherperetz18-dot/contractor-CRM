@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.177.1",
+    date: "2026-10-02",
+    notes: [
+      "Fix: after switching company, a call from the CRM could still ring the customer from the previous company's number. Switching company now reloads the page, so calls, texts and every screen start fresh in the company you switched to.",
+    ],
+  },
+  {
     version: "1.177.0",
     date: "2026-10-02",
     notes: [
