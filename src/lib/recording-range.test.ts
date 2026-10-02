@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordingResponseInit, upstreamRecordingHeaders } from "./recording-range.ts";
+import { readFileSync } from "node:fs";
+import {
+  recordingResponseInit,
+  twilioRecordingUrlAllowed,
+  upstreamRecordingHeaders,
+} from "./recording-range.ts";
 
 /**
  * A recording is only seekable when the proxy answers a "Range:" request
@@ -68,4 +73,60 @@ test("a compressed upstream body drops its Content-Length -- fetch inflates it, 
 
 test("any other 2xx is served as a plain 200 (a 203 or 204 upstream is not a slice)", () => {
   assert.equal(recordingResponseInit({ status: 203, headers: new Headers() }).status, 200);
+});
+
+// ── twilioRecordingUrlAllowed ────────────────────────────────────────
+// The Twilio branch sends the company's account SID and auth token with
+// the fetch, so the stored URL decides who receives them. Only Twilio's
+// own API, and only that account's recordings, ever get them.
+
+// Built, not written out: a literal in this shape trips GitHub's secret
+// scanning, which reads it as a real Twilio account SID.
+const SID = "AC" + "0123456789abcdef".repeat(2);
+const OWN = `https://api.twilio.com/2010-04-01/Accounts/${SID}/Recordings/RE0123456789abcdef0123456789abcdef.mp3`;
+
+test("a recording on the company's own Twilio account is fetched", () => {
+  assert.equal(twilioRecordingUrlAllowed(OWN, SID), true);
+});
+
+test("a Twilio regional API host is fetched too", () => {
+  assert.equal(twilioRecordingUrlAllowed(OWN.replace("api.twilio.com", "api.dublin.ie1.twilio.com"), SID), true);
+});
+
+test("any other host never receives the credentials", () => {
+  for (const url of [
+    OWN.replace("api.twilio.com", "example.com"),
+    OWN.replace("api.twilio.com", "api.twilio.com.example.com"),
+    OWN.replace("api.twilio.com", "eviltwilio.com"),
+    `https://example.com/?u=${encodeURIComponent(OWN)}`,
+    `https://api.twilio.com@example.com/2010-04-01/Accounts/${SID}/Recordings/RE1.mp3`,
+  ]) {
+    assert.equal(twilioRecordingUrlAllowed(url, SID), false, url);
+  }
+});
+
+test("plain http, another account's recording, or a non-recording path is refused", () => {
+  assert.equal(twilioRecordingUrlAllowed(OWN.replace("https:", "http:"), SID), false);
+  assert.equal(twilioRecordingUrlAllowed(OWN.replace(SID, "AC" + "f".repeat(32)), SID), false);
+  assert.equal(
+    twilioRecordingUrlAllowed(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Messages.json`, SID),
+    false
+  );
+  assert.equal(
+    twilioRecordingUrlAllowed(`https://api.twilio.com/2010-04-01/Accounts/${SID}/Recordings/../Messages.json`, SID),
+    false
+  );
+});
+
+test("junk is refused, not thrown", () => {
+  assert.equal(twilioRecordingUrlAllowed("not a url", SID), false);
+  assert.equal(twilioRecordingUrlAllowed(OWN, ""), false);
+});
+
+test("the recording proxy checks the URL before sending Twilio credentials", () => {
+  const route = readFileSync(new URL("../app/api/voice/recording/[id]/route.ts", import.meta.url), "utf8");
+  const check = route.indexOf("twilioRecordingUrlAllowed(recordingUrl, twilioEnv.accountSid)");
+  const credentialedFetch = route.indexOf("Basic ${basicAuth}");
+  assert.ok(check > 0, "the Twilio branch must call twilioRecordingUrlAllowed");
+  assert.ok(check < credentialedFetch, "the check must come before the credentialed fetch");
 });
