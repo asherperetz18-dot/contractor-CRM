@@ -6,7 +6,11 @@ import {
   callrailAuthHeader,
   getCallRailForCompany,
 } from "@/lib/callrail-company";
-import { recordingResponseInit, upstreamRecordingHeaders } from "@/lib/recording-range";
+import {
+  recordingResponseInit,
+  twilioRecordingUrlAllowed,
+  upstreamRecordingHeaders,
+} from "@/lib/recording-range";
 import { getPrimeCallForCompany, recordingAccessUrl } from "@/lib/primecall-company";
 import { PRIMECALL_RECORDING_PREFIX } from "@/lib/primecall-sync";
 
@@ -116,6 +120,12 @@ export async function GET(
   // surfaced as a player that simply refused to start.
   const twilioEnv = await getTwilioForCompany(data.company_id);
   if (!twilioEnv) return NextResponse.json({ error: "Twilio not configured." }, { status: 500 });
+  // The credentials ride along with this fetch, so the stored URL must be
+  // Twilio's own API and a recording on this same account -- never
+  // wherever a call_logs row happens to point.
+  if (!twilioRecordingUrlAllowed(recordingUrl, twilioEnv.accountSid)) {
+    return NextResponse.json({ error: "No recording." }, { status: 404 });
+  }
 
   const basicAuth = Buffer.from(`${twilioEnv.accountSid}:${twilioEnv.authToken}`).toString(
     "base64"

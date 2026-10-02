@@ -41,3 +41,28 @@ export function recordingResponseInit(upstream: { status: number; headers: Heade
   if (length && !upstream.headers.get("content-encoding")) headers["Content-Length"] = length;
   return { status: partial ? 206 : 200, headers };
 }
+
+/**
+ * Whether a stored Twilio recording URL may be fetched with this
+ * account's credentials.
+ *
+ * The proxy sends the company's account SID and auth token along with
+ * the fetch, so the URL decides who receives them -- and call_logs rows
+ * are written by more than the recording webhook. Only Twilio's own API
+ * (api.twilio.com, or a regional api.<edge>.<region>.twilio.com), over
+ * https, for a recording on that same account, ever gets them. Anything
+ * else is answered as "no recording" without a request being made.
+ */
+export function twilioRecordingUrlAllowed(url: string, accountSid: string): boolean {
+  if (!/^AC[0-9a-f]{32}$/i.test(accountSid)) return false;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:" || u.username || u.password || u.port) return false;
+  const twilioApi = u.hostname === "api.twilio.com" || /^api(\.[a-z0-9-]+){2}\.twilio\.com$/.test(u.hostname);
+  if (!twilioApi) return false;
+  return new RegExp(`^/2010-04-01/Accounts/${accountSid}/Recordings/RE[0-9a-f]{32}(\\.(mp3|wav))?$`, "i").test(u.pathname);
+}

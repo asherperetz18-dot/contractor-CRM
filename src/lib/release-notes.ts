@@ -21,6 +21,11 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.175.0",
+    date: "2026-10-02",
+    notes: ["Security improvements to how call recordings are played."],
+  },
+  {
     version: "1.174.0",
     date: "2026-10-02",
     notes: [
