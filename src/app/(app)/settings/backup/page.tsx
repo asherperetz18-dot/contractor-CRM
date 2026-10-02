@@ -1,5 +1,7 @@
 import { AdminGate } from "@/components/admin-gate";
 import { countBackupRows } from "@/lib/backup";
+import { getCurrentProfile } from "@/lib/data/profile";
+import { isAdminRole } from "@/lib/data/types";
 import { BackupView } from "./backup-view";
 
 // Never prerendered: the counts must reflect the live database, and a
@@ -12,7 +14,10 @@ export default async function BackupPage() {
   // Counts only -- the page shows what a backup would contain without
   // reading a single customer record just to render a table. The full
   // read stays in buildBackup(), reached only when a backup actually runs.
-  const backup = await countBackupRows();
+  // This company's rows only, as the download is (DECISIONS #099).
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return <AdminGate>{null}</AdminGate>;
+  const backup = await countBackupRows({ companyId: profile.company_id });
 
   return (
     <AdminGate>
