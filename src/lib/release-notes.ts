@@ -29,6 +29,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.172.2",
+    date: "2026-10-02",
+    notes: [
+      "Users & Roles: Office and Admin can change a person's name, phone, email or password only if that person works just in companies they run. Someone who also works for another company changes their own account, and can reset their password with \"Forgot password\" on the sign-in page.",
+      "Security improvements to how accounts are protected.",
+    ],
+  },
+  {
     version: "1.172.1",
     date: "2026-10-02",
     notes: ["Behind-the-scenes improvements."],
