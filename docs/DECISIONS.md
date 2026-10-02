@@ -1126,6 +1126,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** A switch costs a full page load, which a person switching company barely notices. The dialer still needs the new company's own calling setup to call from that company's number: a company without one borrows the shared account until #104 removes the lending.
 
+## 106 — Twilio details are checked with Twilio before they are saved, and the dialer shows Twilio's reason
+
+**Date:** 2026-10-02
+
+**Context:** Setting up Ca Pro Builder's in-app calling, Settings → Twilio saved the API Key SID, Secret and TwiML App SID without asking Twilio anything, and the page then said "In-app calling is configured". The first call failed with "Could not place the call." When Twilio refuses the calling pass (a secret that doesn't belong to the SK key, or a key from another Twilio account), the Voice SDK closes its connection and rejects `connect()` with no value at all. Twilio's reason only arrives as an `error` event on the Device, which `voice-dialer.tsx` never listened for. The closed connection was also kept and reused, so every later try failed the same way until the page was reloaded, even after the keys were fixed.
+
+**Decision:** `saveCompanyTwilio` refuses half-filled calling boxes (`voiceFieldsBlock`) and then asks Twilio before saving (`checkTwilioSetup`). It fetches the account with the Account SID and Auth Token, looks the number up in that account, and fetches the TwiML app with the API Key SID and Secret, the same pair the calling pass is signed with. It also checks that the app's Voice Request URL is the CRM's `/api/voice/twiml`, by POST, on any of its domains. Each refusal says what to fix. If Twilio can't be reached, nothing is saved. In the dialer, the Device's `error` event is kept for the attempt. A failed connect is explained from it (`callFailureMessage`), and after a refusal or a reasonless close the Device is destroyed so the next try mints a fresh pass (`shouldRebuildDevice`). Never after an ordinary error such as "A Call is already active", where that would hang up a live call.
+
+**Consequence:** A wrong key, number or app is caught when it's typed, not on the first customer call. Saving Settings → Twilio now needs Twilio to answer (a few hundred milliseconds). The Platform Admin "move the shared account" action doesn't go through this check: it copies the server's own working settings.
+
 ## 104 — No company texts or calls from another's Twilio account, and an unknown number is never guessed
 
 **Date:** 2026-10-02
