@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { openBillingPortal, recheckBilling, renewSubscription } from "@/lib/actions/billing";
+import { openInCompany } from "@/lib/open-in-company";
 import { switchCompany } from "@/lib/actions/company";
 import { logout } from "@/lib/actions/auth";
 import type { CompanyMembership } from "@/lib/data/profile";
@@ -106,7 +107,7 @@ export function BillingLockActions({
           onClick={async () => {
             setBusy(true);
             await switchCompany(c.company_id);
-            router.replace("/");
+            openInCompany();
           }}
         >
           Switch to {c.company_name ?? "another company"}
