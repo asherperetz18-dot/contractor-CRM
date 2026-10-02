@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   saveCompanyTwilio,
   clearCompanyTwilio,
+  adoptSharedTwilio,
   getCompanyTwilioStatus,
   type CompanyTwilioStatus,
 } from "@/lib/actions/twilio-admin";
@@ -77,6 +78,25 @@ export function CompanyTwilio() {
     });
   }
 
+  function adoptShared() {
+    if (
+      !window.confirm(
+        "Move the shared Twilio account into THIS company? Do this only in the company that account belongs to. Its texts and calls will then come from this company's own settings."
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setNote(null);
+    startTransition(async () => {
+      const res = await adoptSharedTwilio();
+      if (res.error) return setError(res.error);
+      setNote("Moved. This company now sends from its own Twilio settings.");
+      setStatus(await getCompanyTwilioStatus());
+      router.refresh();
+    });
+  }
+
   const copy = (value: string, which: string) => {
     navigator.clipboard.writeText(value);
     setCopied(which);
@@ -109,6 +129,31 @@ export function CompanyTwilio() {
           Credential encryption isn&apos;t configured on the server. Set{" "}
           <code>APP_ENCRYPTION_KEY</code> and redeploy.
         </p>
+      )}
+      {status.source === "borrowing" && (
+        <p className="error-note">
+          This company doesn&apos;t have its own Twilio account yet, so its texts and calls go out
+          from the shared number <strong>{status.sharedNumber}</strong>, which belongs to another
+          business. Connect this company&apos;s own account below. Soon a company without its own
+          number won&apos;t be able to text or call until it connects one.
+        </p>
+      )}
+      {status.source === "none" && (
+        <p className="error-note">
+          Texting and calling are off until this company connects its own Twilio account below.
+        </p>
+      )}
+      {status.canAdoptShared && (
+        <div className="hint-note">
+          <p>
+            <strong>Platform admin:</strong> if the shared account belongs to this company, move it
+            into this company&apos;s own settings. Nothing changes for its customers, and it stops
+            being lent to companies that haven&apos;t connected their own.
+          </p>
+          <button className="btn-ghost" onClick={adoptShared} disabled={pending}>
+            Move the shared account into this company
+          </button>
+        </div>
       )}
       {error && <p className="error-note">{error}</p>}
       {note && <p className="hint-note">{note}</p>}

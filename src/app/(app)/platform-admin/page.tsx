@@ -2,6 +2,8 @@ import { PlatformAdminGate } from "@/components/platform-admin-gate";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isPlatformAdmin } from "@/lib/data/types";
 import { listInviteHistory, listPlatformAdmins } from "@/lib/data/platform-admin";
+import { loadAllCompanyTwilio, sharedTwilio } from "@/lib/twilio-company";
+import { twilioOverview } from "@/lib/twilio-source";
 import { PlatformAdminView } from "./platform-admin-view";
 
 // Not under /settings: every other card there is scoped to "the company
@@ -20,9 +22,10 @@ export default async function PlatformAdminPage() {
   // pays for that query -- and, until migration 0132 has run, never hits
   // the column-does-not-exist error it would raise, since nobody can
   // pass this check before the migration exists to make it true.
-  const [admins, invites] = isPlatformAdmin(profile)
-    ? await Promise.all([listPlatformAdmins(), listInviteHistory()])
-    : [[], []];
+  const [admins, invites, twilioRows] = isPlatformAdmin(profile)
+    ? await Promise.all([listPlatformAdmins(), listInviteHistory(), loadAllCompanyTwilio()])
+    : [[], [], []];
+  const twilio = twilioOverview(twilioRows, sharedTwilio());
 
   // Read once here so every history row is judged against the same
   // instant (the view is a client component and may not read the clock
@@ -31,7 +34,13 @@ export default async function PlatformAdminPage() {
 
   return (
     <PlatformAdminGate>
-      <PlatformAdminView admins={admins} invites={invites} now={now} selfId={profile?.id ?? ""} />
+      <PlatformAdminView
+        admins={admins}
+        invites={invites}
+        twilio={twilio}
+        now={now}
+        selfId={profile?.id ?? ""}
+      />
     </PlatformAdminGate>
   );
 }
