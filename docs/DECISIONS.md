@@ -1056,6 +1056,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** Someone who also works for a company the editor doesn't run changes their own account. They reset a forgotten password from the sign-in page. Any new self-editable profile column needs adding to 0188's grant in a new migration, or its save fails with "permission denied". Proven on a replay of the migrations into local Postgres. Before 0188, a Field user could make themselves a platform admin (gaining Office+Admin in every company), change their own email, and an Office user could rewrite another company's rep's phone. After it, all three are refused while the four self-edits still save.
 
+## 098 — The nightly backup is stored only locked with a password
+
+**Date:** 2026-10-02
+
+**Context:** `nightly-backup.yml` saved the full export (every company's customers, texts, calls, staff and settings) as a plain JSON GitHub Actions artifact, kept for 90 days. This repository is public, and anyone signed in to GitHub can download a public repository's artifacts. The 57 stored backups were deleted on 2026-10-02 at the owner's request.
+
+**Decision:** The job checks the `BACKUP_PASSPHRASE` secret first and stops before exporting anything if it is missing. After the existing checks it locks the file with gpg (symmetric AES-256), deletes the plain copy, and uploads only `crm-backup-*.json.gpg`. gpg runs with a fresh `mktemp -d` key folder, because its agent can't start where the socket path is too long and gpg then exits non-zero. `src/lib/backup-workflow.test.ts` fails if the check, the lock or the upload path changes.
+
+**Consequence:** Until the owner adds the `BACKUP_PASSPHRASE` secret (Settings → Secrets and variables → Actions), the nightly job fails instead of storing an open copy. Opening a backup: `gpg --decrypt crm-backup-YYYY-MM-DD.json.gpg > crm-backup.json`, then type the password. On Windows, Gpg4win provides `gpg`. A lost password means the stored backups can't be opened, so it belongs in the owner's password manager. Moving the backup off GitHub entirely (or making the repository private) would remove the need for this. The company-scoped Backup download is a separate change.
+
 ## 099 — Settings → Backup exports the current company only; the full export is the nightly job's
 
 **Date:** 2026-10-02
