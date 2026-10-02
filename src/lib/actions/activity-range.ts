@@ -3,6 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isStrictAdmin, type ActivityEvent } from "@/lib/data/types";
+import { hiddenActivityUserIds } from "@/lib/data/hidden-activity";
 
 const PAGE_SIZE = 1000; // the project's PostgREST max-rows
 const BATCH = 6; // pages fetched at once
@@ -26,7 +27,9 @@ const HARD_CAP = 60000;
  * Reads through the service role and gates on isStrictAdmin first,
  * exactly as the lead-view range query beside it does: this is every
  * teammate's browsing history and there is no reason to fetch it for
- * somebody who may not see it.
+ * somebody who may not see it. A super admin's rows are left out in the
+ * query itself unless the viewer is one (canSeeActivityOf), so they
+ * never reach the browser and never count toward the cap below.
  */
 export async function getActivityEventsInRange(
   sinceISO: string,
@@ -36,6 +39,10 @@ export async function getActivityEventsInRange(
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
 
+  const hidden = await hiddenActivityUserIds(profile);
+  if (hidden.error) return { error: hidden.error };
+  const hiddenIds = hidden.ids ?? [];
+
   const supabase = createAdminClient();
   const page = (from: number) => {
     let q = supabase
@@ -44,6 +51,7 @@ export async function getActivityEventsInRange(
       .eq("company_id", profile.company_id)
       .gte("created_at", sinceISO);
     if (untilISO) q = q.lte("created_at", untilISO);
+    if (hiddenIds.length) q = q.not("user_id", "in", `(${hiddenIds.join(",")})`);
     // Newest first, so if the cap below is ever reached it is old data
     // that is missing rather than today's.
     return q.order("created_at", { ascending: false }).range(from, from + PAGE_SIZE - 1);
