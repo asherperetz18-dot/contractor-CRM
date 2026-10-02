@@ -33,7 +33,7 @@ Every tenant-scoped table carries `company_id`; there is no query pattern anywhe
 | `task-reminders` | — | Texts the assigned rep ~2h before a lead task is due. |
 | `appointment-reminders` | — | Texts leads 2–20h ahead of their appointment. |
 | `callrail-backfill` | — | Syncs/backfills CallRail call data into leads. |
-| `backup` (nightly) | nightly | Full data export, same logic the manual Backup settings page uses. |
+| `backup` (nightly) | nightly | Full data export, same logic the manual Backup settings page uses. Locked with the `BACKUP_PASSPHRASE` secret (gpg, AES-256) before it is stored as an Actions artifact; the job refuses to run without the secret (DECISIONS #098). |
 | `google-calendar-sync` | every 15 min | Pull then push for every connected Google Calendar (per-rep and company-wide). |
 
 ## Where to look for X

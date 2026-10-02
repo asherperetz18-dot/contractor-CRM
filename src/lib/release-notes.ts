@@ -21,6 +21,11 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.172.3",
+    date: "2026-10-02",
+    notes: ["Behind the scenes: the nightly backup is now locked with a password before it is stored."],
+  },
+  {
     version: "1.172.1",
     date: "2026-10-02",
     notes: ["Behind-the-scenes improvements."],
