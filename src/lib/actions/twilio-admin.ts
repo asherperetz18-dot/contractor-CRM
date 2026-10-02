@@ -9,6 +9,7 @@ import { portalBaseUrl } from "@/lib/portal/session";
 import { getTwilioEnv, getTwilioVoiceEnv } from "@/lib/twilio-env";
 import { loadAllCompanyTwilio, sharedTwilio } from "@/lib/twilio-company";
 import { adoptSharedBlock, twilioSource, type TwilioSource } from "@/lib/twilio-source";
+import { checkTwilioSetup, voiceFieldsBlock } from "@/lib/twilio-credential-check";
 
 export type CompanyTwilioStatus = {
   connected: boolean;
@@ -124,6 +125,14 @@ export async function saveCompanyTwilio(input: {
   if (authToken.length < 20) return { error: "That auth token looks too short." };
   if (!phoneNumber) return { error: "Enter the Twilio number in a recognisable format." };
 
+  const voice = {
+    apiKeySid: input.apiKeySid?.trim() || null,
+    apiKeySecret: input.apiKeySecret?.trim() || null,
+    twimlAppSid: input.twimlAppSid?.trim() || null,
+  };
+  const voiceBlock = voiceFieldsBlock(voice);
+  if (voiceBlock) return { error: voiceBlock };
+
   // Inbound routing keys off the receiving number, so two companies
   // sharing one would make every reply ambiguous. A unique index also
   // enforces this, but a clear message beats a constraint violation.
@@ -136,11 +145,21 @@ export async function saveCompanyTwilio(input: {
     .maybeSingle();
   if (clash) return { error: "Another company on this platform already uses that number." };
 
+  // Asked of Twilio itself, so a wrong token, number, key or TwiML app is
+  // refused here rather than saved and found out on the first call.
+  const twilioBlock = await checkTwilioSetup({
+    accountSid,
+    authToken,
+    phoneNumber,
+    ...voice,
+    expectedVoiceUrl: `${portalBaseUrl()}/api/voice/twiml`,
+  });
+  if (twilioBlock) return { error: twilioBlock };
+
   const tokenEnc = encryptSecret(authToken);
   if (!tokenEnc) return { error: "Could not encrypt the auth token. Nothing was saved." };
 
-  const apiKeySecret = input.apiKeySecret?.trim();
-  const secretEnc = apiKeySecret ? encryptSecret(apiKeySecret) : null;
+  const secretEnc = voice.apiKeySecret ? encryptSecret(voice.apiKeySecret) : null;
 
   const { data, error } = await admin
     .from("company_profile")
@@ -148,9 +167,9 @@ export async function saveCompanyTwilio(input: {
       twilio_account_sid: accountSid,
       twilio_auth_token_enc: tokenEnc,
       twilio_phone_number: phoneNumber,
-      twilio_api_key_sid: input.apiKeySid?.trim() || null,
+      twilio_api_key_sid: voice.apiKeySid,
       twilio_api_key_secret_enc: secretEnc,
-      twilio_twiml_app_sid: input.twimlAppSid?.trim() || null,
+      twilio_twiml_app_sid: voice.twimlAppSid,
       twilio_connected_at: new Date().toISOString(),
     })
     .eq("company_id", profile.company_id)
