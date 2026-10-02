@@ -6,10 +6,27 @@ on:
     - cron: "15 9 * * *"
   workflow_dispatch: {}
 
+# This repository is public, and anyone signed in to GitHub can download
+# a public repository's artifacts. The backup holds every company's
+# customers, so it is locked with the BACKUP_PASSPHRASE secret before it
+# is uploaded, and the job refuses to run without that secret rather than
+# store an unlocked copy (DECISIONS #098). To open one:
+#   gpg --decrypt crm-backup-YYYY-MM-DD.json.gpg > crm-backup.json
+# and type the password when asked.
+
 jobs:
   backup:
     runs-on: ubuntu-latest
+    env:
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
     steps:
+      - name: Check the backup password is set
+        run: |
+          if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+            echo "::error::Add the BACKUP_PASSPHRASE secret (Settings -> Secrets and variables -> Actions) -- the backup is never stored unlocked."
+            exit 1
+          fi
+
       - name: Export CRM data
         run: |
           set -euo pipefail
@@ -34,10 +51,22 @@ jobs:
           if [ "$SKIPPED" -ne 0 ]; then echo "::error::tables were skipped"; exit 1; fi
           if [ "$LEADS" -lt 1 ]; then echo "::error::no leads in backup"; exit 1; fi
 
+      - name: Lock the backup with the password
+        run: |
+          set -euo pipefail
+          FILE="$(ls crm-backup-*.json)"
+          # A fresh, short-pathed key folder: gpg's agent cannot start
+          # where the socket path is too long, and then exits non-zero.
+          export GNUPGHOME="$(mktemp -d)"
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "$FILE.gpg" "$FILE"
+          rm -f "$FILE"
+          ls -l crm-backup-*.json.gpg
+
       - name: Upload backup
         uses: actions/upload-artifact@v4
         with:
           name: crm-backup-${{ github.run_id }}
-          path: crm-backup-*.json
+          path: crm-backup-*.json.gpg
           retention-days: 90
           if-no-files-found: error
