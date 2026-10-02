@@ -1,6 +1,7 @@
 import { dayStartInZone, isoDateInZone } from "@/lib/company-clock";
 import { getCompanyZone } from "@/lib/data/company-today";
 import { isStrictAdmin } from "@/lib/data/types";
+import { canSeeActivityOf } from "@/lib/data/activity-visibility";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
 import { getActivityEventsInRange } from "@/lib/actions/activity-range";
 import { getCompanyMembers } from "@/lib/data/company";
@@ -37,10 +38,13 @@ export default async function TeamActivityPage() {
   const since = dayStartInZone(isoDateInZone(new Date(), zone), zone).toISOString();
 
   const companyId = await getCurrentCompanyId();
-  const [initial, users] = await Promise.all([
+  const [initial, members] = await Promise.all([
     companyId ? getActivityEventsInRange(since) : Promise.resolve({ events: [] }),
     companyId ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
+  // The people table and the User filter are built from this roster, so
+  // a super admin is left out here too -- not just their rows.
+  const users = members.filter((m) => canSeeActivityOf(profile, m));
 
   return (
     <AdminGate adminOnly>

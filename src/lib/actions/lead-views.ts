@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isStrictAdmin } from "@/lib/data/types";
+import { hiddenActivityUserIds } from "@/lib/data/hidden-activity";
 
 // Opening a lead, closing it and opening it again is one look, not three.
 // Without this a rep flicking through the board would bury the trail in
@@ -46,7 +47,9 @@ export async function recordLeadView(leadId: string): Promise<void> {
 
 /**
  * The most recent opens of a lead, newest first. Admin role only -- this
- * reports on people, not on the lead.
+ * reports on people, not on the lead. A super admin's opens are left out
+ * unless the viewer is one, so "Last opened by" never names them. RLS
+ * holds the same line from 0187; this is what holds it until that runs.
  */
 export async function getLeadViews(
   leadId: string,
@@ -56,13 +59,17 @@ export async function getLeadViews(
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
 
+  const hidden = await hiddenActivityUserIds(profile);
+  if (hidden.error) return { error: hidden.error };
+  const hiddenIds = hidden.ids ?? [];
+
   const supabase = await createClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("lead_views")
     .select("id, user_id, opened_at")
-    .eq("lead_id", leadId)
-    .order("opened_at", { ascending: false })
-    .limit(limit);
+    .eq("lead_id", leadId);
+  if (hiddenIds.length) query = query.not("user_id", "in", `(${hiddenIds.join(",")})`);
+  const { data, error } = await query.order("opened_at", { ascending: false }).limit(limit);
   if (error) return { error: error.message };
 
   const rows = (data as { id: string; user_id: string; opened_at: string }[] | null) ?? [];

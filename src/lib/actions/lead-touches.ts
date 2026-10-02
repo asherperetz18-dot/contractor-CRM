@@ -3,6 +3,7 @@
 import { getCurrentProfile } from "@/lib/data/profile";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isStrictAdmin, leadDisplayName, type Lead, type TouchKind } from "@/lib/data/types";
+import { hiddenActivityUserIds } from "@/lib/data/hidden-activity";
 
 export type LeadTouch = {
   id: string;
@@ -20,6 +21,10 @@ export type LeadTouch = {
  * activity_events records page paths and has no lead reference at all, so
  * "which lead did they touch" can only be answered by the records the
  * actions themselves left behind.
+ *
+ * Nothing at all for a person the viewer may not see (canSeeActivityOf),
+ * whatever id is asked for -- the report never lists a super admin to a
+ * non-super-admin, but the action is reachable without the report.
  */
 export async function getLeadTouches(
   userId: string,
@@ -29,6 +34,10 @@ export async function getLeadTouches(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
+
+  const hidden = await hiddenActivityUserIds(profile);
+  if (hidden.error) return { error: hidden.error };
+  if (hidden.ids?.includes(userId)) return { touches: [] };
 
   // Admin client on purpose. Authorisation is enforced above -- signed
   // in, Admin role, and every query below pinned to this company. Going
@@ -141,7 +150,7 @@ export type RangeLeadView = {
 /**
  * Every lead-open in the window, for attaching lead names to the page
  * visits in Team Activity. One query for the range rather than one per
- * visit row.
+ * visit row. A super admin's opens are left out unless the viewer is one.
  */
 export async function getLeadViewsInRange(
   sinceISO: string,
@@ -151,6 +160,10 @@ export async function getLeadViewsInRange(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!isStrictAdmin(profile)) return { error: "Admin access required." };
+
+  const hidden = await hiddenActivityUserIds(profile);
+  if (hidden.error) return { error: hidden.error };
+  const hiddenIds = hidden.ids ?? [];
 
   const supabase = createAdminClient();
   // The upper bound is only set for a custom range. Without it, a window
@@ -163,6 +176,7 @@ export async function getLeadViewsInRange(
     .eq("company_id", profile.company_id)
     .gte("opened_at", sinceISO);
   if (untilISO) query = query.lte("opened_at", untilISO);
+  if (hiddenIds.length) query = query.not("user_id", "in", `(${hiddenIds.join(",")})`);
   const { data, error } = await query.order("opened_at", { ascending: true }).limit(limit);
   if (error) return { error: error.message };
 

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { isStrictAdmin } from "@/lib/data/types";
+import { canSeeActivityOf } from "@/lib/data/activity-visibility";
 
 // The tracker heartbeats every 30s, and only while the tab is visible and
 // the person has interacted in the last minute. So a ping inside the last
@@ -54,7 +55,8 @@ export async function getLiveUsers(): Promise<{
   const users: PresenceUser[] = [];
   for (const [userId, seenAt] of latest) {
     const member = members.find((m) => m.id === userId);
-    if (!member) continue;
+    // A super admin is never listed as online to anyone but a super admin.
+    if (!member || !canSeeActivityOf(profile, member)) continue;
     const age = now - seenAt;
     users.push({
       id: userId,
