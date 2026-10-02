@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canEditJobCosts, expenseEditLock, jobExpensePatch } from "./expense-edit.ts";
+import {
+  canEditJobCosts,
+  expenseDeleteLock,
+  expenseEditLock,
+  jobExpensePatch,
+  phaseRefileIds,
+} from "./expense-edit.ts";
 
 test("only the roles the database lets write costs get Edit -- Field records, never edits", () => {
   assert.equal(canEditJobCosts({ roles: ["Office"] }), true);
@@ -70,4 +76,25 @@ test("a contract picked in the window wins -- including moving it to 'not filed'
   const cleared = jobExpensePatch({ ...input, estimatePaymentId: "" }, current);
   assert.ok("patch" in cleared);
   assert.equal(cleared.patch.estimate_payment_id, null);
+});
+
+// The contract page's × once deleted a bill payment's job cost and left
+// the payment behind: Bills to Pay still read check #180408 as $6,030
+// paid while the job counted $0 spent and profit read $6,030 high.
+test("a bill payment's cost can't be deleted on its own -- the payment is deleted in Bills to Pay", () => {
+  assert.equal(expenseDeleteLock({ source: "manual" }), null);
+  const bill = expenseDeleteLock({ source: "bill" }) ?? "";
+  assert.match(bill, /Bills to Pay/);
+  assert.match(bill, /delete the payment/);
+  assert.match(expenseDeleteLock({ source: "quickbooks" }) ?? "", /QuickBooks/);
+});
+
+test("filing a receipt to a phase moves just that receipt", () => {
+  assert.deepEqual(phaseRefileIds({ id: "c1", source: "manual" }, []), ["c1"]);
+});
+
+test("filing a bill payment's cost moves every payment of that bill -- one bill, one phase", () => {
+  assert.deepEqual(phaseRefileIds({ id: "c1", source: "bill" }, ["c1", "c2", null]), ["c1", "c2"]);
+  // Its payment row not found: the cost itself still moves.
+  assert.deepEqual(phaseRefileIds({ id: "c1", source: "bill" }, []), ["c1"]);
 });

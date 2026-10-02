@@ -26,6 +26,34 @@ export function expenseEditLock(expense: { source: string }): string | null {
   return null;
 }
 
+/**
+ * Why a cost can't be deleted here, or null when it can. A bill
+ * payment's cost goes only with its payment: deleted alone, the payment
+ * stays in Bills to Pay as money out while the job counts it as never
+ * spent -- the two pages disagree and the job's profit reads high.
+ */
+export function expenseDeleteLock(expense: { source: string }): string | null {
+  if (expense.source === "bill") {
+    return "Paid from Bills to Pay — delete the payment there and this cost goes with it.";
+  }
+  const lock = expenseEditLock(expense);
+  return lock && `${lock} — delete it there.`;
+}
+
+/**
+ * The costs a phase change files. A bill payment's cost is filed with
+ * its bill: every payment's cost moves together (and the action moves
+ * the bill), or one bill would sit in two phases and its next payment
+ * would land on the old one.
+ */
+export function phaseRefileIds(
+  expense: { id: string; source: string },
+  billCostIds: readonly (string | null)[]
+): string[] {
+  if (expense.source !== "bill") return [expense.id];
+  return [...new Set([expense.id, ...billCostIds.filter((id): id is string => !!id)])];
+}
+
 export type JobExpenseEdit = {
   leadId: string;
   /** A vendor record, or "" for a typed name. */
