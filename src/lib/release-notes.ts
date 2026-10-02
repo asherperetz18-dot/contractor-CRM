@@ -21,12 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.175.0",
+    version: "1.176.0",
     date: "2026-10-02",
     notes: [
       "Security improvements: sending a portal link, attaching files, and connecting Google Drive or Google Calendar now always check the contact or account belongs to the company you're working in.",
       "Customer portal: asking for a sign-in link by email now matches the exact address typed.",
     ],
+  },
+  {
+    version: "1.175.0",
+    date: "2026-10-02",
+    notes: ["Security improvements to how call recordings are played."],
   },
   {
     version: "1.174.0",

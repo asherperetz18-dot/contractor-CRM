@@ -1086,6 +1086,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** A company's download can't be restored as-is into another database: it has no secrets and no other companies' rows. It is an export of the company's own records, which is what the page now says. A table added to `BACKUP_TABLES` without a `company_id` column fails the company-scoped read and shows up under "Couldn't read", so it can't silently leak.
 
+## 100 — The recording proxy sends Twilio credentials only to Twilio, for that account's recordings
+
+**Date:** 2026-10-02
+
+**Context:** `/api/voice/recording/[id]` plays a Twilio recording by fetching the URL stored on the call's `call_logs` row with the company's account SID and auth token as Basic auth. For a company without its own Twilio, those are the platform account's (`getTwilioForCompany` falls back). The row is not written only by the recording webhook: `call_logs` insert/update RLS lets members write it. Nothing checked where the URL pointed, so the credentials went wherever the row said.
+
+**Decision:** Before the credentialed fetch, `twilioRecordingUrlAllowed` (`src/lib/recording-range.ts`, tested) requires https, no userinfo or port, host `api.twilio.com` or a regional `api.<edge>.<region>.twilio.com`, and the path `/2010-04-01/Accounts/<this account's SID>/Recordings/RE<32 hex>` (with an optional `.mp3`/`.wav`, which is what `recording-status` stores). Anything else answers 404 "No recording." with no request made. A test also fails if the route's check stops coming before its fetch. The other credentialed Twilio fetches (`sms.ts`, `phone-numbers.ts`, `voice-intelligence.ts`, `screen-share.ts`, `twilio-env.ts`) build their URLs from fixed Twilio hosts and were left as they are. The PrimeCall branch already sends its key only to its own server. The CallRail branch's media URL comes from CallRail's API response, not from the row.
+
+**Consequence:** A recording made on one Twilio account and played while the company is on another (it connected its own after recording on the platform's) now gets a 404 from the check rather than a 401 from Twilio. Playing those needs the call's account SID stored on the row, which belongs with the Phase 1 per-company Twilio work. Rotating the platform account's auth token after this ships closes off anything taken before it.
+
 ## 101 — Admin-client actions check the id they're handed belongs to the caller's company; Drive plumbing is server-only
 
 **Date:** 2026-10-02
