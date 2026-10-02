@@ -1325,9 +1325,7 @@ export function EstimateBuilder({
       {estimate.status === "Signed" && estimate.kind === "contract" && (
         <JobCosts
           leadId={estimate.lead_id}
-          jobLabel={
-            clientName(lead) || estimate.title || estimate.doc_number
-          }
+          estimateId={estimate.id}
           payments={payments}
           totalCents={estimate.total_cents}
           depositPercentBp={estimate.deposit_percent_bp}
