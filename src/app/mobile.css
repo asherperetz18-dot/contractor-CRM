@@ -262,7 +262,7 @@
 
   /* More replaces the ☰ drawer and holds the tools -- all but the
      dialer, which stays in the bar beside the bell: reps dial all day,
-     and behind More it read as "there is no dial button" (#108). */
+     and behind More it read as "there is no dial button" (#109). */
   .mobile-nav-toggle {
     display: none;
   }

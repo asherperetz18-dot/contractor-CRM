@@ -1156,7 +1156,21 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** Merge only after the company that owns the shared account has moved it in (#103). Until then, that company's own inbound texts and calls would be answered as unknown. Every company the Platform Admin list shows as "Can't text or call" loses texting, reminders and calling until it connects its own account. Companies already saved with the same account SID must be split onto subaccounts first, or their callbacks resolve to neither.
 
-## 108 — The phone app asks for the microphone, and the dialer stays in the phone's top bar
+## 108 — Job files, receipts and company documents are private; the CRM checks who asks before it signs a link
+
+**Date:** 2026-10-05
+
+**Context:** The `lead-files` bucket (0024) and the `company-docs` bucket (0073) were created public. Every saved link (`lead_files.file_url`, `company_documents.file_url`, `job_expenses.receipt_url`, `vendor_bills.receipt_url`) was a permanent public Supabase URL from `getPublicUrl`. Anyone holding one could open the file for ever, signed in or not, whichever company they belonged to: a forwarded email, a former employee, a customer's old browser tab. No `storage.objects` policy existed at all.
+
+**Decision:** Both buckets are private (0190). Every saved link is the CRM's own address, `/api/files/<bucket>/<path>` (`privateFileUrl`, `src/lib/files/file-url.ts`). The route there (`src/app/api/files/[bucket]/[...path]/route.ts`) first decides who is asking, then redirects to a signed link that lasts an hour (long enough to play a site video through):
+- **Staff:** asked with their own signed-in client whether they can see a record that points at the object (`lead_files.file_path`, `job_expenses` / `vendor_bills.receipt_path`, `company_documents.file_path`). Row-level security on that record decides, the same rule that decides what the screens list (`staffCanReadFile`).
+- **Portal customers:** read from the portal cookie without writing to the session, and refused once their access has lapsed. They may open their own job's files, the company documents marked for the portal, and a receipt only while a line on one of their own non-draft documents bills that cost back with its receipt switched on (`portalCanReadFile`).
+
+The object is reached through its record, never its path alone: a merged duplicate keeps its old lead id in the path, and a bill and its job cost share one receipt object. "Not yours" and "not there" give the same 404. The migration rewrites every saved public link to the new address, keeping the path exactly as Supabase encoded it; Drive links are left alone. It counts any row the route can't authorise as a WARNING. Logos stay public: the portal shows one before the customer has signed in. `private-files.test.ts` fails if anything but the logo upload calls `getPublicUrl` again, or if the route signs before it checks.
+
+**Consequence:** A copied or forwarded link opens nothing for someone without access. Every view costs one extra request (the route, then the signed link); the person's own browser may reuse that redirect for five minutes (`private, max-age=300`, never a shared cache), so a page of photos isn't downloaded again on every visit. The migration must run after the version with the route is live; run earlier, pictures are blank until the deploy lands.
+
+## 109 — The phone app asks for the microphone, and the dialer stays in the phone's top bar
 
 **Date:** 2026-10-04
 

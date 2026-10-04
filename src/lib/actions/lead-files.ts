@@ -11,6 +11,7 @@ import {
   type LeadFileDeletion,
 } from "@/lib/data/lead-file-deletions";
 import { clientName } from "@/lib/data/client-name";
+import { privateFileUrl } from "@/lib/files/file-url";
 import {
   createDriveShortcut,
   deleteFileFromDrive,
@@ -136,16 +137,14 @@ export async function uploadLeadFile(
     .upload(path, file, { contentType: file.type || undefined });
   if (uploadError) return { error: uploadError.message };
 
-  const {
-    data: { publicUrl },
-  } = admin.storage.from(BUCKET).getPublicUrl(path);
+  const fileUrl = privateFileUrl(BUCKET, path);
 
   const { error } = await supabase.from("lead_files").insert({
     lead_id: leadId,
     uploaded_by: profile.id,
     file_name: file.name,
     file_path: path,
-    file_url: publicUrl,
+    file_url: fileUrl,
     file_size: file.size,
     content_type: file.type || null,
     storage_provider: "supabase",
@@ -272,9 +271,7 @@ export async function recordLeadFile(
     .list(path.slice(0, slash), { search: path.slice(slash + 1) });
   if (!found?.length) return { error: "That upload didn't finish. Please try again." };
 
-  const {
-    data: { publicUrl },
-  } = admin.storage.from(BUCKET).getPublicUrl(path);
+  const fileUrl = privateFileUrl(BUCKET, path);
 
   // When the company connected Google Drive, the file's real home is
   // there. It still ARRIVES via Supabase Storage -- the browser cannot
@@ -295,7 +292,7 @@ export async function recordLeadFile(
   } = {
     provider: "supabase",
     filePath: path,
-    fileUrl: publicUrl,
+    fileUrl,
   };
   if (fileSize <= 30 * 1024 * 1024) {
     const drive = await getValidAccessToken(profile.company_id);

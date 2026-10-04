@@ -10,7 +10,7 @@ import { join } from "node:path";
  * and denies the page unless both come back granted
  * (BridgeWebChromeClient.onPermissionRequest). A permission the manifest
  * never declares comes back denied without even asking, so every call from
- * the Android app failed before it rang (DECISIONS #108). iOS kills an app
+ * the Android app failed before it rang (DECISIONS #109). iOS kills an app
  * that opens the microphone without a usage string.
  */
 

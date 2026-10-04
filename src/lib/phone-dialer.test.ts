@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
  * only way to dial a number by hand was More → scroll past every page →
  * Tools → Dialer, and reps reported there was no dial button at all. The
  * dialer now stays in the phone's top bar, beside the bell, and its panel
- * fits the phone between the top bar and the tabs (DECISIONS #108).
+ * fits the phone between the top bar and the tabs (DECISIONS #109).
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");

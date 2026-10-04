@@ -71,7 +71,7 @@ test("the dialer listens for Twilio's reason and starts over after a refusal", (
  * "PermissionDeniedError (31401): The browser or end-user denied
  * permissions to user media..." -- which tells a rep nothing about what to
  * tap. In the phone app the fix is in the phone's Settings, not a browser
- * (DECISIONS #108).
+ * (DECISIONS #109).
  */
 const micDenied = twilioError(
   31401,
