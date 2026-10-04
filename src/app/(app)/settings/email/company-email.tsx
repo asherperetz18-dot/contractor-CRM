@@ -15,10 +15,10 @@ import {
  *
  * Every company shared one platform sender until this existed -- a Smart
  * HVAC customer's estimate email showed up from La Home Contractor, the
- * platform's original tenant. The Resend API key is optional: one Resend
- * account can send from every domain it has verified, so a company can
- * set just its own address and still use the platform's key, or bring a
- * fully separate account for complete independence.
+ * platform's original tenant. A company's own address now needs its own
+ * Resend account, where Resend checks the company controls the domain;
+ * without one, AI Build Pros sends under the company's name and replies go
+ * to the company (DECISIONS #110).
  */
 export function CompanyEmail() {
   const router = useRouter();
@@ -26,7 +26,6 @@ export function CompanyEmail() {
   const [fromAddress, setFromAddress] = useState("");
   const [fromName, setFromName] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -53,7 +52,7 @@ export function CompanyEmail() {
       if (res.error) return setError(res.error);
       setApiKey("");
       setEditing(false);
-      setNote("Connected.");
+      setNote("Connected. We sent you a test email from the new address.");
       setStatus(await getCompanyEmailStatus());
       router.refresh();
     });
@@ -64,7 +63,7 @@ export function CompanyEmail() {
     startTransition(async () => {
       const res = await clearCompanyEmail();
       if (res.error) return setError(res.error);
-      setNote("Disconnected — this company falls back to the platform sender.");
+      setNote("Disconnected. Emails now go out from AI Build Pros under this company's name.");
       setStatus(await getCompanyEmailStatus());
       router.refresh();
     });
@@ -76,8 +75,8 @@ export function CompanyEmail() {
         <div>
           <h2 className="est-pay-title">This company&apos;s email sender</h2>
           <p className="est-pay-sub">
-            Estimate and portal-link emails go out from this address, so customers see this
-            company, not the platform default.
+            Estimates, portal links and bulk emails go out from this company&apos;s own address,
+            through its own Resend account.
           </p>
         </div>
         {status.connected && !editing && (
@@ -107,18 +106,43 @@ export function CompanyEmail() {
               : ""}
             .
           </li>
+          <li>Sending through this company&apos;s own Resend account.</li>
           <li>
-            {status.hasOwnApiKey
-              ? "Sending through this company's own Resend account."
-              : "Sending through the platform's Resend account — the domain on that address must be verified there."}
+            Customers&apos; replies go to <strong>{status.replyTo ?? status.fromAddress}</strong>.
           </li>
         </ul>
       ) : (
         <>
-          {!status.connected && !status.platformFallbackAvailable && (
-            <p className="error-note">
-              No platform email is configured either, so a Resend API key is required below, not
-              optional.
+          {!status.connected && (
+            <ul className="pp-checks">
+              <li>
+                {status.sendsAs ? (
+                  <>
+                    Right now customer emails go out as <strong>{status.sendsAs}</strong>, from AI
+                    Build Pros.
+                  </>
+                ) : (
+                  "Right now this company can't send email: no shared sender is configured either."
+                )}
+              </li>
+              <li>
+                {status.replyTo ? (
+                  <>
+                    Customers&apos; replies go to <strong>{status.replyTo}</strong>.
+                  </>
+                ) : (
+                  <>
+                    Customers&apos; replies have nowhere to go. Add your company email in{" "}
+                    <a href="/settings/company-profile">Settings → Company Profile</a>.
+                  </>
+                )}
+              </li>
+            </ul>
+          )}
+          {status.addressWithoutAccount && !editing && (
+            <p className="hint-note">
+              {status.fromAddress} was saved without this company&apos;s own Resend account, so
+              nothing is sent from it. Add the account&apos;s API key below to start using it.
             </p>
           )}
           <label className="field">
@@ -142,28 +166,21 @@ export function CompanyEmail() {
             />
           </label>
 
-          <button
-            className="btn-ghost"
-            onClick={() => setShowApiKey((v) => !v)}
-            type="button"
-          >
-            {showApiKey ? "Hide" : "Add"} a dedicated Resend API key (optional)
-          </button>
-          {showApiKey && (
-            <label className="field">
-              <span className="field-label">Resend API Key</span>
-              <input
-                className="est-title-input"
-                type="password"
-                autoComplete="off"
-                placeholder="re_…"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                disabled={pending}
-              />
-            </label>
-          )}
-          {!status.encryptionReady && showApiKey && (
+          <label className="field">
+            <span className="field-label">Resend API key (this company&apos;s own account)</span>
+            <input
+              className="est-title-input"
+              type="password"
+              autoComplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              placeholder={status.hasOwnApiKey ? "Saved — leave blank to keep it" : "re_…"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              disabled={pending}
+            />
+          </label>
+          {!status.encryptionReady && (
             <p className="error-note">
               Credential encryption isn&apos;t configured on the server. Set{" "}
               <code>APP_ENCRYPTION_KEY</code> and redeploy before adding a key.
@@ -174,7 +191,7 @@ export function CompanyEmail() {
             <button
               className="btn-primary"
               onClick={save}
-              disabled={pending || !fromAddress.trim()}
+              disabled={pending || !fromAddress.trim() || (!apiKey.trim() && !status.hasOwnApiKey)}
             >
               {pending ? "Saving…" : "Connect"}
             </button>
@@ -189,10 +206,9 @@ export function CompanyEmail() {
 
       <div className="pp-webhook-url">
         <p className="est-tax-note">
-          The domain on the From address must be verified for whichever Resend account actually
-          sends it — the platform&apos;s account if no dedicated key is set above, or this
-          company&apos;s own account if one is. An unverified domain gets the send rejected, not
-          silently sent from somewhere else.
+          Resend only sends from a domain verified in your own Resend account (Domains → Add
+          domain, then add the DNS records it shows). When you click Connect, we send you a test
+          email from the new address. If Resend refuses it, nothing is saved.
         </p>
       </div>
     </section>

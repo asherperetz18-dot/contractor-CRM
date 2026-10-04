@@ -1375,7 +1375,7 @@ export async function sendEstimateToCustomer(
     // have meant nobody could see who else was included, which is
     // indistinguishable from everyone being Bcc'd.
     const sent = await sendEmail(resolved.to, mail.subject, mail.html, mail.text, {
-      replyTo: sender?.email ?? undefined,
+      replyTo: sender?.email ?? emailEnv?.replyTo ?? undefined,
       env: emailEnv ?? undefined,
       cc: resolved.cc,
       bcc: resolved.bcc,

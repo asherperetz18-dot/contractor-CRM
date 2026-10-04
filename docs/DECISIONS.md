@@ -1183,3 +1183,31 @@ The object is reached through its record, never its path alone: a merged duplica
 - At ≤700px the dialer panel spans the screen under the top bar and is capped between the bar and the tabs, scrolling inside, so Call and Hang Up are always on screen. Keys and buttons are 48px tall. The number box is `type="tel"`, so it opens the phone's number pad rather than the full keyboard. Tablets and desktops are unchanged.
 
 **Consequence:** The permission is native, so the Android app needs a new build from **Android App (Play release)** and an upload to Play before calls work there. The website and the phone browser get the rest with the deploy. The phone top bar now holds three controls (dialer, bell, Quick Create) next to search; it still fits at 360px.
+
+## 110 — A company sends from its own address only through its own Resend account; replies always go to the company
+
+**Date:** 2026-10-05
+
+**Context:** Every email goes through `sendEmail` with the shared `RESEND_API_KEY` and `EMAIL_FROM`, and that address is La Home Contractor's (`info@lahomecontractor.com`). This caused two problems:
+- **Replies went to La Home.** A company with no address of its own sent its customer emails from that address under its own name (`companyFromHeader`, release 1.158.3) with no Reply-To. A customer who replied to Ca Pro Builder's portal link or bulk email was writing to La Home's inbox. This is the email version of the problem #103/#104 fixed for texts and calls.
+- **Any company could send as another.** `getEmailForCompany` lent the shared key to any address a company typed in Settings → Email (0099). Resend sends from every domain verified in the shared account, La Home's included, and `saveCompanyEmail` checked only that the text looked like an address. A company admin could have typed La Home's address and sent as La Home.
+
+**Decision:**
+- **Who sends what is decided by `companyEmailPlan` (`src/lib/email-from.ts`, tested).**
+  - With its own address and its own Resend key, the company's account sends. Resend refuses any domain not verified in that account, which is the proof the company controls it.
+  - Otherwise the shared account sends from the shared address under the company's name, with Reply-To set to the company's main email (`company_profile.email`). If that's missing, Reply-To is the address the company typed.
+  - The shared key is never paired with a company's own address.
+- **Replies.** Portal links and bulk email pass that Reply-To. Bulk email falls back to the sender's own email. The estimate email keeps replying to the rep who sent it.
+- **Saving an address.** `saveCompanyEmail`:
+  - needs a key (a stored key is kept when none is retyped)
+  - refuses Resend's `resend.dev` sandbox address
+  - sends the admin a test email from the new address through that key before saving anything
+  - if Resend refuses, reports why and which domain to verify
+- **What stays the same.** System emails (password reset, signup invites) still use the shared sender.
+
+**Consequence:**
+- A company that had saved an address without its own key now sends from the shared address under its name, with replies to that address, until it adds a key. Settings → Email says so.
+- **Two owner steps finish the move to AI Build Pros:**
+  - **La Home:** add a Resend API key from the account where `lahomecontractor.com` is verified, in La Home → Settings → Email.
+  - **The shared sender:** verify `aibuildpros.com` in Resend, then change `EMAIL_FROM` in Vercel to an AI Build Pros address.
+

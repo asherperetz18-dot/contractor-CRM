@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.181.0",
+    date: "2026-10-05",
+    notes: [
+      "Customer emails from a company without its own email setup now go out from AI Build Pros under the company's name, and customers' replies go to the company's email, never to another business's inbox.",
+      "Settings → Email: sending from your own address now needs your own Resend account. When you click Connect, the CRM sends you a test email from that address first and saves nothing if it can't send.",
+      "Bulk emails and portal links now tell the customer's email app where to send replies.",
+    ],
+  },
+  {
     version: "1.180.0",
     date: "2026-10-04",
     notes: [
