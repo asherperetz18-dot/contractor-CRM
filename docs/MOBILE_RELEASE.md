@@ -90,3 +90,4 @@ The account is an Organization, so Play's 12-tester, 14-day closed test (a rule 
 - The signed Play build (**Android App (Play release)**) and the one-time key workflow (**Android upload key (create once)**), decision #086.
 - The app needs Android 7 (API 24) or newer, which Play's automatic protection requires; it refused the first upload at API 23.
 - The app targets Android 16 (API 36), which Play has required for new apps since 31 Aug 2026. On Android 15 and later, the CRM starts below the status bar instead of under it.
+- The microphone, for calls from the CRM's dialer (decision #108). Android asks once, on the first call. The iPhone app says why it wants it. **Builds made before 2026-10-04 can't place calls: run a new Play release and upload it.**
