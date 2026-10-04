@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { toE164 } from "@/lib/data/types";
 import { resolveCorrelationId } from "@/lib/observability/context";
@@ -38,14 +38,14 @@ export async function POST(req: NextRequest) {
   // instead, so it rides as a form field. See docs/features/observability.md.
   const correlationId = resolveCorrelationId(params.CorrelationId);
 
-  // No match means the platform account, which is what the original
-  // business still runs on -- falling through to it keeps that dialer
-  // working rather than answering 500 to every call.
+  // No match means an account no company has connected: there is no
+  // token to verify with, so the call is refused rather than placed on
+  // somebody else's account (DECISIONS #104).
   const companyId = await companyForAccountSid(params.AccountSid || "");
   setRouteScope({ route: "api/voice/twiml", correlationId, companyId: companyId ?? undefined });
 
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
-  if (!twilioEnv) {
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
+  if (!companyId || !twilioEnv) {
     captureError(new Error("Twilio not configured for this account"), {
       route: "api/voice/twiml",
       correlationId,
@@ -101,15 +101,12 @@ export async function POST(req: NextRequest) {
   const requested = params.CallerId ? toE164(params.CallerId) : "";
   if (requested && requested !== toE164(callerId)) {
     const admin = createAdminClient();
-    let q = admin
+    const { data: owned } = await admin
       .from("company_phone_numbers")
       .select("phone_number")
-      .eq("phone_number", requested);
-    // The platform account serves companies without their own Twilio;
-    // when the account doesn't name one company, the number itself must
-    // still be registered to somebody on this account's books.
-    if (companyId) q = q.eq("company_id", companyId);
-    const { data: owned } = await q.maybeSingle();
+      .eq("phone_number", requested)
+      .eq("company_id", companyId)
+      .maybeSingle();
     if (owned) callerId = requested;
   }
 

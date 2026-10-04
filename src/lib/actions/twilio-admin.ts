@@ -20,10 +20,8 @@ export type CompanyTwilioStatus = {
   encryptionReady: boolean;
   smsWebhookUrl: string;
   voiceWebhookUrl: string;
-  /** Own account, the borrowed shared one, or none (lib/twilio-source.ts). */
+  /** Its own account, or none: it can't text or call (lib/twilio-source.ts). */
   source: TwilioSource;
-  /** The shared number customers see while this company borrows it. */
-  sharedNumber: string | null;
   /** Shown to a platform admin: the shared account can move in here. */
   canAdoptShared: boolean;
 };
@@ -55,26 +53,21 @@ export async function getCompanyTwilioStatus(): Promise<CompanyTwilioStatus | nu
     }>();
 
   const base = portalBaseUrl();
-  const shared = sharedTwilio();
   const connected = !!(data?.twilio_account_sid && data?.twilio_auth_token_enc && data?.twilio_phone_number);
-  const source = twilioSource(
-    {
-      company_id: profile.company_id,
-      company_name: null,
-      twilio_account_sid: data?.twilio_account_sid ?? null,
-      twilio_phone_number: data?.twilio_phone_number ?? null,
-      has_token: !!data?.twilio_auth_token_enc,
-      has_voice: false,
-    },
-    !!shared
-  );
+  const source = twilioSource({
+    company_id: profile.company_id,
+    company_name: null,
+    twilio_account_sid: data?.twilio_account_sid ?? null,
+    twilio_phone_number: data?.twilio_phone_number ?? null,
+    has_token: !!data?.twilio_auth_token_enc,
+    has_voice: false,
+  });
   const canAdoptShared =
     isPlatformAdmin(profile) &&
     source !== "own" &&
-    adoptSharedBlock(profile.company_id, await loadAllCompanyTwilio(), shared) === null;
+    adoptSharedBlock(profile.company_id, await loadAllCompanyTwilio(), sharedTwilio()) === null;
   return {
     source,
-    sharedNumber: source === "borrowing" ? shared?.phoneNumber ?? null : null,
     canAdoptShared,
     connected,
     accountSid: data?.twilio_account_sid ?? null,
@@ -144,6 +137,22 @@ export async function saveCompanyTwilio(input: {
     .neq("company_id", profile.company_id)
     .maybeSingle();
   if (clash) return { error: "Another company on this platform already uses that number." };
+
+  // Callbacks say which account they came from, not which company, so
+  // two companies on one account could never be told apart. A Twilio
+  // subaccount per company keeps them separate under one login.
+  const { data: sidClash } = await admin
+    .from("company_profile")
+    .select("company_id")
+    .eq("twilio_account_sid", accountSid)
+    .neq("company_id", profile.company_id)
+    .limit(1);
+  if (sidClash?.length) {
+    return {
+      error:
+        "Another company on this platform already uses this Twilio account. Each company needs its own — in Twilio, open Account → Subaccounts, create one for this company, and connect that one here.",
+    };
+  }
 
   // Asked of Twilio itself, so a wrong token, number, key or TwiML app is
   // refused here rather than saved and found out on the first call.

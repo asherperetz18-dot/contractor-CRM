@@ -16,8 +16,8 @@ const twilioError = (code: number, message = `Twilio error ${code}`) =>
   Object.assign(new Error(message), { code });
 
 test("a refused calling setup says so, and where an admin fixes it", () => {
-  // 31100 is what Twilio answered for Ca Pro Builder: a key and TwiML app
-  // that weren't from the same Twilio account as the Account SID.
+  // 31100 is what Twilio answered for Ca Pro Builder's calling setup, saved
+  // before Settings → Twilio checked anything with Twilio.
   for (const code of [20101, 20103, 20107, 31100, 31201, 31202, 31204]) {
     const msg = callFailureMessage(undefined, { code });
     assert.match(msg, /calling setup/, String(code));

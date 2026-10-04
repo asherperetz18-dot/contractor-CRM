@@ -15,8 +15,8 @@ export type DeviceError = { code?: number; message?: string };
 
 /**
  * The calling pass itself was refused: the saved API key, secret, TwiML app
- * or account don't belong together. 31100 is what Twilio answered for a key
- * and app from a different account than the Account SID (DECISIONS #107).
+ * or account don't belong together. 31100 is what Twilio answered for Ca Pro
+ * Builder's setup, saved before the save-time checks existed (DECISIONS #107).
  */
 const KEY_CODES = new Set([20101, 20102, 20103, 20106, 20107, 20151, 31100, 31201, 31202, 31203, 31204]);
 /** The calling pass ran out; a fresh one fixes it. */

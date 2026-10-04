@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 import { requestCallTranscript } from "@/lib/voice-intelligence";
 import { resolveCorrelationId } from "@/lib/observability/context";
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   // back. See the recording route.
   const companyId = await companyForAccountSid(params.AccountSid || "");
   setRouteScope({ route: "api/voice/recording-status", correlationId, companyId: companyId ?? undefined });
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
   if (!twilioEnv) {
     captureError(new Error("Twilio not configured for this account"), {
       route: "api/voice/recording-status",

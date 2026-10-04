@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getTwilioEnv, validateTwilioSignature } from "@/lib/twilio-env";
+import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
 
 /**
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   // webhook: claiming an account buys an attacker nothing without that
   // account's auth token to sign with.
   const companyId = await companyForAccountSid(params.AccountSid || "");
-  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : getTwilioEnv();
+  const twilioEnv = companyId ? await getTwilioForCompany(companyId) : null;
   if (!twilioEnv) {
     return NextResponse.json({ error: "Twilio not configured" }, { status: 500 });
   }

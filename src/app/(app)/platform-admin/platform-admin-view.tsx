@@ -391,22 +391,19 @@ function PlatformAdminsCard({ admins, selfId }: { admins: PlatformAdminRow[]; se
 
 const TWILIO_SOURCE_LABEL: Record<CompanyTwilioView["source"], string> = {
   own: "Own account",
-  borrowing: "Borrowing the shared number",
   none: "Can't text or call",
 };
 
 const TWILIO_SOURCE_CHIP: Record<CompanyTwilioView["source"], string> = {
   own: "chip-c-done",
-  borrowing: "chip-c-hold",
   none: "chip-c-dead",
 };
 
 /**
- * Which Twilio account every company texts and calls from. The shared
- * account (the server's TWILIO_* settings) is lent to any company without
- * its own until the switch to own-numbers-only (DECISIONS #103): the
- * borrowing rows are the companies whose texting stops at that switch
- * unless they connect their own first.
+ * Which Twilio account every company texts and calls from. A company
+ * without its own can't text or call (DECISIONS #104); one saved with
+ * another company's account is flagged, because callbacks can't tell the
+ * two apart.
  */
 function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -429,9 +426,9 @@ function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
       <div className="cp-card-head">📞 Twilio by company</div>
       <p className="cp-card-sub">
         The number each company&apos;s customers see texts and calls from. A company
-        borrowing the shared number sends as another business; connect its own, or for
-        the company the shared account belongs to, open its settings and move the shared
-        account in.
+        without its own account can&apos;t text or call until it connects one; for the
+        company the server&apos;s shared account belongs to, open its settings and move the
+        shared account in.
       </p>
       {rows.length === 0 ? (
         <p className="hint-note">No companies yet.</p>
