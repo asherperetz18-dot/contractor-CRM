@@ -13,7 +13,7 @@ import { MORE_STATE_EVENT, MORE_TOGGLE_EVENT } from "./phone-tab-bar";
 // for them: a tap closes the sheet and clicks the real, hidden button, so
 // every tool still opens from where it has always lived -- one instance,
 // its own panels and its once-a-day daily brief untouched. The dialer is
-// not here: it stays in the phone's top bar (DECISIONS #110).
+// not here: it stays in the phone's top bar (DECISIONS #109).
 const TOOLS: { key: string; label: string; icon: MobileIconName | ChromeIconName; tone: string }[] = [
   { key: "ai", label: "AI assistant", icon: "spark", tone: "schedule" },
   { key: "daily-brief", label: "Daily brief", icon: "sun", tone: "accounting" },
