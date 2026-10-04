@@ -1135,3 +1135,14 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 **Decision:** `saveCompanyTwilio` refuses half-filled calling boxes (`voiceFieldsBlock`) and then asks Twilio before saving (`checkTwilioSetup`). It fetches the account with the Account SID and Auth Token, looks the number up in that account, and fetches the TwiML app with the API Key SID and Secret, the same pair the calling pass is signed with. It also checks that the app's Voice Request URL is the CRM's `/api/voice/twiml`, by POST, on any of its domains. Each refusal says what to fix. If Twilio can't be reached, nothing is saved. In the dialer, the Device's `error` event is kept for the attempt. A failed connect is explained from it (`callFailureMessage`), and after a refusal or a reasonless close the Device is destroyed so the next try mints a fresh pass (`shouldRebuildDevice`). Never after an ordinary error such as "A Call is already active", where that would hang up a live call.
 
 **Consequence:** A wrong key, number or app is caught when it's typed, not on the first customer call. Saving Settings → Twilio now needs Twilio to answer (a few hundred milliseconds). The Platform Admin "move the shared account" action doesn't go through this check: it copies the server's own working settings.
+
+## 107 — The calling key must be the company's own account's key
+
+**Date:** 2026-10-04
+
+**Context:** After #106, Ca Pro Builder's calls still failed. The dialer now showed Twilio's reason: error 31100, "The request could not be understood due to malformed syntax". California Pro Builders sits in the same Twilio login as La Home's main account. Twilio's access tokens want the API key from the same account as the Account SID they carry. A main account's key can read its sub-accounts, though, so #106's check (reading the TwiML App with the API key) would pass for a key made in the main account. That is the likeliest cause of Ca Pro's 31100, not yet confirmed: the setup was saved before #106's check existed.
+
+**Decision:** `checkTwilioSetup` also asks the account itself, with its Account SID and Auth Token, for `Keys/{SK}`. An account only lists its own keys, so a 404 means the key was made elsewhere. The refusal says to pick the company's account in Twilio's account menu and create the key there. In the dialer, 31100 joins the codes that mean a refused calling setup. The message now says the API key and TwiML App must both come from the number's own Twilio account, and the connection is rebuilt for the next try.
+
+**Consequence:** One more request to Twilio when in-app calling is saved. A setup that saved before this check isn't re-checked until it's saved again; the dialer's message points the admin there.
+

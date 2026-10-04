@@ -13,8 +13,12 @@
 
 export type DeviceError = { code?: number; message?: string };
 
-/** The calling pass itself was refused: the saved API key, secret or account don't match. */
-const KEY_CODES = new Set([20101, 20102, 20103, 20106, 20107, 20151, 31201, 31202, 31203, 31204]);
+/**
+ * The calling pass itself was refused: the saved API key, secret, TwiML app
+ * or account don't belong together. 31100 is what Twilio answered for a key
+ * and app from a different account than the Account SID (DECISIONS #107).
+ */
+const KEY_CODES = new Set([20101, 20102, 20103, 20106, 20107, 20151, 31100, 31201, 31202, 31203, 31204]);
 /** The calling pass ran out; a fresh one fixes it. */
 const EXPIRED_CODES = new Set([20104, 31205]);
 
@@ -27,7 +31,7 @@ function codeOf(err: unknown): number | undefined {
 export function callFailureMessage(err: unknown, deviceError: DeviceError | null): string {
   const code = codeOf(err) ?? deviceError?.code;
   if (code !== undefined && KEY_CODES.has(code)) {
-    return `Twilio didn't accept this company's calling keys (error ${code}). An admin can re-enter the API Key SID and Secret in Settings → Twilio → Replace → in-app calling.`;
+    return `Twilio didn't accept this company's calling setup (error ${code}). An admin should re-enter it in Settings → Twilio → Replace → in-app calling, with the API key and TwiML App both made in the same Twilio account as the number.`;
   }
   if (code !== undefined && EXPIRED_CODES.has(code)) {
     return "The calling pass expired. Please try again.";

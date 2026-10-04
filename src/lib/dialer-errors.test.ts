@@ -15,10 +15,13 @@ import { callFailureMessage, shouldRebuildDevice } from "./dialer-errors.ts";
 const twilioError = (code: number, message = `Twilio error ${code}`) =>
   Object.assign(new Error(message), { code });
 
-test("refused calling keys say so, and where an admin fixes them", () => {
-  for (const code of [20101, 20103, 20107, 31201, 31202, 31204]) {
+test("a refused calling setup says so, and where an admin fixes it", () => {
+  // 31100 is what Twilio answered for Ca Pro Builder: a key and TwiML app
+  // that weren't from the same Twilio account as the Account SID.
+  for (const code of [20101, 20103, 20107, 31100, 31201, 31202, 31204]) {
     const msg = callFailureMessage(undefined, { code });
-    assert.match(msg, /calling keys/, String(code));
+    assert.match(msg, /calling setup/, String(code));
+    assert.match(msg, /same Twilio account/, String(code));
     assert.match(msg, /Settings → Twilio/, String(code));
     assert.match(msg, new RegExp(String(code)));
   }
@@ -42,12 +45,13 @@ test("the connection closing with no reason still says what happened", () => {
 test("an ordinary error keeps its own message", () => {
   assert.equal(callFailureMessage(new Error("Calling isn't configured for this company yet."), null), "Calling isn't configured for this company yet.");
   // A Twilio error thrown straight from connect() is explained by its code.
-  assert.match(callFailureMessage(twilioError(20101), null), /calling keys/);
+  assert.match(callFailureMessage(twilioError(20101), null), /calling setup/);
 });
 
 test("the connection is rebuilt after a refusal, never in the middle of a live call", () => {
   assert.equal(shouldRebuildDevice(undefined, null), true); // closed with no reason
   assert.equal(shouldRebuildDevice(undefined, { code: 20101 }), true);
+  assert.equal(shouldRebuildDevice(undefined, { code: 31100 }), true);
   assert.equal(shouldRebuildDevice(twilioError(31204), null), true);
   assert.equal(shouldRebuildDevice(twilioError(20104), null), true);
   // "A Call is already active" -- tearing the device down would hang it up.
