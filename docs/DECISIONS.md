@@ -1136,6 +1136,16 @@ The funnel cards follow the filtered rows (cards-follow-filters rule), and each 
 
 **Consequence:** A wrong key, number or app is caught when it's typed, not on the first customer call. Saving Settings → Twilio now needs Twilio to answer (a few hundred milliseconds). The Platform Admin "move the shared account" action doesn't go through this check: it copies the server's own working settings.
 
+## 107 — The calling key must be the company's own account's key
+
+**Date:** 2026-10-04
+
+**Context:** After #106, Ca Pro Builder's calls still failed. The dialer now showed Twilio's reason: error 31100, "The request could not be understood due to malformed syntax". Ca Pro's setup was saved before #106's checks existed, so it hadn't been checked. The owner's screenshot showed both of the CRM's API keys listed in the California Pro Builders account, so a key from the wrong account isn't the cause there. Looking into it showed one gap left in #106's check, though. Twilio's access tokens want the API key from the same account as the Account SID they carry. A main account's key can read its sub-accounts, so reading the TwiML App with the API key would pass for a key made in the main account.
+
+**Decision:** `checkTwilioSetup` also asks the account itself, with its Account SID and Auth Token, for `Keys/{SK}`. An account only lists its own keys, so a 404 means the key was made elsewhere. The refusal says to pick the company's account in Twilio's account menu and create the key there. In the dialer, 31100 joins the codes that mean a refused calling setup. The message now says the API key and TwiML App must both come from the number's own Twilio account, and the connection is rebuilt for the next try.
+
+**Consequence:** One more request to Twilio when in-app calling is saved. A setup that saved before this check isn't re-checked until it's saved again; the dialer's message points the admin there.
+
 ## 104 — No company texts or calls from another's Twilio account, and an unknown number is never guessed
 
 **Date:** 2026-10-02

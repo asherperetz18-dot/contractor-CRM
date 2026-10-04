@@ -30,6 +30,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.177.3",
+    date: "2026-10-04",
+    notes: [
+      "Settings → Twilio now also checks that the API key for in-app calling was made in the same Twilio account as the number. A key from another account (for example the main account above a sub-account) could save fine and then fail every call.",
+      "Fix: when Twilio refuses the dialer's calling setup (error 31100), the dialer now says which setting to fix instead of only showing Twilio's technical message.",
+    ],
+  },
+  {
     version: "1.177.2",
     date: "2026-10-02",
     notes: [

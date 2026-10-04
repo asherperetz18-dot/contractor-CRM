@@ -8,7 +8,10 @@
  * the call." because Twilio refused the calling pass signed with it. Each
  * part is now asked for with the credentials that will later use it: the
  * account and number with the auth token, the TwiML app with the API key
- * the calling pass is signed with (DECISIONS #106).
+ * the calling pass is signed with (DECISIONS #106). The key must also be
+ * one of this account's own: a main account's key can read its
+ * sub-accounts, so it would pass the app check, but a calling pass needs
+ * the key from the same account as its Account SID (DECISIONS #107).
  *
  * Pure apart from the injected fetch, so it is tested without Twilio
  * (twilio-credential-check.test.ts).
@@ -78,6 +81,12 @@ export async function checkTwilioSetup(s: TwilioSetup, fetchImpl: FetchLike = fe
     }
 
     if (!s.apiKeySid || !s.apiKeySecret || !s.twimlAppSid) return null;
+    const key = await fetchImpl(`${API}/Accounts/${s.accountSid}/Keys/${s.apiKeySid}.json`, { headers: account });
+    if (key.status === 404) {
+      return "That API key wasn't created in this Twilio account. In Twilio, pick this company's account in the account menu (top left), create the API key there (API keys & tokens), and copy its SID and Secret.";
+    }
+    if (!key.ok) return UNREACHABLE;
+
     const app = await fetchImpl(`${API}/Accounts/${s.accountSid}/Applications/${s.twimlAppSid}.json`, {
       headers: basicAuth(s.apiKeySid, s.apiKeySecret),
     });

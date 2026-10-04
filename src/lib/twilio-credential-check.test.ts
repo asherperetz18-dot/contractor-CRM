@@ -32,18 +32,21 @@ type Reply = { status: number; body?: unknown } | "throw";
 type Seen = { url: string; auth: string };
 
 /** A stand-in for Twilio: answers by which resource was asked for. */
-function twilio(replies: { account?: Reply; numbers?: Reply; app?: Reply } = {}) {
+function twilio(replies: { account?: Reply; numbers?: Reply; key?: Reply; app?: Reply } = {}) {
   const seen: Seen[] = [];
   const fetchImpl = async (url: string, init: { headers: Record<string, string> }) => {
     seen.push({ url, auth: init.headers.Authorization });
     const which = url.includes("/Applications/")
       ? "app"
-      : url.includes("/IncomingPhoneNumbers")
-        ? "numbers"
-        : "account";
+      : url.includes("/Keys/")
+        ? "key"
+        : url.includes("/IncomingPhoneNumbers")
+          ? "numbers"
+          : "account";
     const defaults: Record<string, Reply> = {
       account: { status: 200, body: { sid: AC, status: "active" } },
       numbers: { status: 200, body: { incoming_phone_numbers: [{ phone_number: "+15555550100" }] } },
+      key: { status: 200, body: { sid: SK } },
       app: { status: 200, body: { voice_url: VOICE_URL, voice_method: "POST" } },
     };
     const reply = replies[which] ?? defaults[which];
@@ -67,14 +70,16 @@ test("a correct setup passes, each part checked with its own credentials", async
     [
       `https://api.twilio.com/2010-04-01/Accounts/${AC}.json`,
       `https://api.twilio.com/2010-04-01/Accounts/${AC}/IncomingPhoneNumbers.json?PhoneNumber=%2B15555550100`,
+      `https://api.twilio.com/2010-04-01/Accounts/${AC}/Keys/${SK}.json`,
       `https://api.twilio.com/2010-04-01/Accounts/${AC}/Applications/${AP}.json`,
     ]
   );
-  // The account and number with the auth token; the TwiML app with the
-  // API key -- the same pair the calling pass is signed with.
+  // The account, number and key's home with the auth token; the TwiML app
+  // with the API key -- the same pair the calling pass is signed with.
   assert.equal(seen[0].auth, basic(AC, "t".repeat(32)));
   assert.equal(seen[1].auth, basic(AC, "t".repeat(32)));
-  assert.equal(seen[2].auth, basic(SK, "s".repeat(32)));
+  assert.equal(seen[2].auth, basic(AC, "t".repeat(32)));
+  assert.equal(seen[3].auth, basic(SK, "s".repeat(32)));
 });
 
 test("texting only: no calling boxes, no calling check", async () => {
@@ -92,6 +97,16 @@ test("an Account SID and Auth Token Twilio refuses are named", async () => {
 test("a number that isn't in this Twilio account is refused", async () => {
   const { fetchImpl } = twilio({ numbers: { status: 200, body: { incoming_phone_numbers: [] } } });
   assert.match((await checkTwilioSetup(setup(), fetchImpl)) ?? "", /\+15555550100 isn't a number in this Twilio account/);
+});
+
+test("an API key made in another Twilio account is refused, even one that can read this account", async () => {
+  // A main account's key can read its sub-accounts, so the TwiML app check
+  // alone would pass -- but a calling pass needs the key from the same
+  // account as its Account SID. Asking the account itself whether the key
+  // is one of its own catches it.
+  const { seen, fetchImpl } = twilio({ key: { status: 404 } });
+  assert.match((await checkTwilioSetup(setup(), fetchImpl)) ?? "", /API key wasn't created in this Twilio account/);
+  assert.ok(!seen.some((s) => s.url.includes("/Applications/")), "stops at the key");
 });
 
 test("an API Key SID and Secret that don't belong together are refused", async () => {
@@ -123,7 +138,12 @@ test("a TwiML App set to GET is refused -- the CRM only answers POST", async () 
 });
 
 test("Twilio unreachable: nothing is saved, and it says so", async () => {
-  for (const replies of [{ account: "throw" as const }, { account: { status: 500 } }, { app: { status: 503 } }]) {
+  for (const replies of [
+    { account: "throw" as const },
+    { account: { status: 500 } },
+    { key: { status: 500 } },
+    { app: { status: 503 } },
+  ]) {
     const { fetchImpl } = twilio(replies);
     assert.match((await checkTwilioSetup(setup(), fetchImpl)) ?? "", /Couldn't reach Twilio/);
   }
