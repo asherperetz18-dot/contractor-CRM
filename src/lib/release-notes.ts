@@ -21,6 +21,16 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.180.0",
+    date: "2026-10-04",
+    notes: [
+      "Phones: the green dial button is back in the top bar, beside the bell, on every screen. Tap it to open the dialer; it no longer hides under More.",
+      "Phones: the dialer opens across the screen with big number keys and a full-width Call button that always stays above the bottom tabs. Typing a number opens the number pad.",
+      "Android app: calls can now use the microphone. The first call asks once; tap Allow. This needs the new app build from Google Play.",
+      "If the microphone is blocked, the dialer now says where to allow it (the phone's Settings in the app, the browser on the website) instead of Twilio's technical message.",
+    ],
+  },
+  {
     version: "1.179.0",
     date: "2026-10-05",
     notes: [

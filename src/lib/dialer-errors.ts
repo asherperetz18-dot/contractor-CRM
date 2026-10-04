@@ -21,15 +21,30 @@ export type DeviceError = { code?: number; message?: string };
 const KEY_CODES = new Set([20101, 20102, 20103, 20106, 20107, 20151, 31100, 31201, 31202, 31203, 31204]);
 /** The calling pass ran out; a fresh one fixes it. */
 const EXPIRED_CODES = new Set([20104, 31205]);
+/** The microphone was refused (31401) or wouldn't open (31402). */
+const MIC_DENIED = 31401;
+const MIC_FAILED = 31402;
 
 function codeOf(err: unknown): number | undefined {
   const code = (err as { code?: unknown } | null | undefined)?.code;
   return typeof code === "number" ? code : undefined;
 }
 
-/** The sentence shown under the dialer for a call that never started. */
-export function callFailureMessage(err: unknown, deviceError: DeviceError | null): string {
+/**
+ * The sentence shown under the dialer for a call that never started.
+ * `inApp` is the phone app, where a blocked microphone is fixed in the
+ * phone's Settings rather than the browser (DECISIONS #109).
+ */
+export function callFailureMessage(err: unknown, deviceError: DeviceError | null, inApp = false): string {
   const code = codeOf(err) ?? deviceError?.code;
+  if (code === MIC_DENIED) {
+    return inApp
+      ? "The app isn't allowed to use the microphone, so the call can't start. Open your phone's Settings → Apps → AI Build Pros CRM → Permissions → Microphone, choose Allow, then try again."
+      : "The browser blocked the microphone, so the call can't start. Allow the microphone for this site (the icon left of the address bar), then try again.";
+  }
+  if (code === MIC_FAILED) {
+    return "The microphone couldn't be opened, so the call can't start. Make sure another app isn't using it, then try again.";
+  }
   if (code !== undefined && KEY_CODES.has(code)) {
     return `Twilio didn't accept this company's calling setup (error ${code}). An admin should re-enter it in Settings → Twilio → Replace → in-app calling, with the API key and TwiML App both made in the same Twilio account as the number.`;
   }

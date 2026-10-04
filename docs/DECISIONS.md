@@ -1170,3 +1170,16 @@ The object is reached through its record, never its path alone: a merged duplica
 
 **Consequence:** A copied or forwarded link opens nothing for someone without access. Every view costs one extra request (the route, then the signed link); the person's own browser may reuse that redirect for five minutes (`private, max-age=300`, never a shared cache), so a page of photos isn't downloaded again on every visit. The migration must run after the version with the route is live; run earlier, pictures are blank until the deploy lands.
 
+## 109 — The phone app asks for the microphone, and the dialer stays in the phone's top bar
+
+**Date:** 2026-10-04
+
+**Context:** Reps reported they couldn't dial from the Android app, and that there was no dial button. Two separate causes. First, the in-app dialer is a WebRTC call, so it needs the microphone. Inside the app, the WebView's request for it goes to Capacitor (`BridgeWebChromeClient.onPermissionRequest`), which asks Android for `RECORD_AUDIO` and `MODIFY_AUDIO_SETTINGS` and denies the page unless both are granted. The manifest declared only `INTERNET`, and Android refuses a permission the manifest never declares without asking. So every call from the app failed before it rang, and the dialer showed Twilio's own sentence ("PermissionDeniedError (31401): ... user media"). Second, #089 hid the top bar's tools on phones and put them in More. The dialer went with them, so dialing a number by hand meant More → scroll past every page tile → Tools → Dialer.
+
+**Decision:**
+- The Android manifest declares both microphone permissions, and the iPhone app's Info.plist carries `NSMicrophoneUsageDescription` (iOS closes an app that opens the microphone without one). `phone-app-mic.test.ts` fails if either goes missing. Android asks once, on the first call.
+- A blocked (31401) or unopenable (31402) microphone gets a plain sentence from `callFailureMessage`: in the app, where to allow it in the phone's Settings; on the website, to allow it for the site. Call errors now go through the same function, so Twilio's raw sentence is never shown.
+- At ≤700px the dialer's `.tool-slot` is the one tool not hidden, so the green phone sits beside the bell and Quick Create. Its row leaves More. The other tools stay in More as #089 set out.
+- At ≤700px the dialer panel spans the screen under the top bar and is capped between the bar and the tabs, scrolling inside, so Call and Hang Up are always on screen. Keys and buttons are 48px tall. The number box is `type="tel"`, so it opens the phone's number pad rather than the full keyboard. Tablets and desktops are unchanged.
+
+**Consequence:** The permission is native, so the Android app needs a new build from **Android App (Play release)** and an upload to Play before calls work there. The website and the phone browser get the rest with the deploy. The phone top bar now holds three controls (dialer, bell, Quick Create) next to search; it still fits at 360px.

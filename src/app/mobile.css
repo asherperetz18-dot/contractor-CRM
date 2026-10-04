@@ -260,11 +260,13 @@
     font-weight: 700;
   }
 
-  /* More replaces the ☰ drawer and holds the tools. */
+  /* More replaces the ☰ drawer and holds the tools -- all but the
+     dialer, which stays in the bar beside the bell: reps dial all day,
+     and behind More it read as "there is no dial button" (#109). */
   .mobile-nav-toggle {
     display: none;
   }
-  .tool-slot .topbar-icon-btn {
+  .tool-slot:not([data-tool="dialer"]) .topbar-icon-btn {
     display: none;
   }
   /* With the tools gone there is room for search again (hidden at
@@ -278,6 +280,49 @@
   }
   .gsearch-wrap {
     min-width: 0;
+  }
+
+  /* The dialer opens as a phone-wide panel under the top bar. Capped
+     between the bar and the tabs and scrolling inside, so Call and Hang
+     Up are always on screen; keys and buttons sized for a thumb. */
+  .voice-dialer-wrap {
+    top: calc(var(--topbar-h) + 6px);
+    left: 8px;
+    right: 8px;
+    align-items: stretch;
+  }
+  .voice-dialer-panel {
+    width: auto;
+    max-height: calc(100vh - var(--topbar-h) - var(--phone-tabbar-h) - 12px);
+    max-height: calc(100dvh - var(--topbar-h) - var(--phone-tabbar-h) - 12px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px;
+  }
+  .voice-dialer-head {
+    font-size: 15px;
+  }
+  .voice-dialer-input {
+    padding: 10px;
+  }
+  .voice-dialer-keypad {
+    gap: 8px;
+  }
+  .voice-dialer-key {
+    min-height: 48px;
+    font-size: 20px;
+  }
+  .voice-dialer-record {
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .voice-dialer-record .est-tax-note {
+    flex-basis: 100%;
+  }
+  .voice-dialer-actions > button {
+    flex: 1 1 0;
+    min-height: 48px;
+    font-size: 16px;
   }
 
   /* What floats at the bottom of the screen sits above the tabs. */

@@ -65,3 +65,44 @@ test("the dialer listens for Twilio's reason and starts over after a refusal", (
   assert.match(src, /shouldRebuildDevice\(/);
   assert.ok(!src.includes('"Could not place the call."'), "the reasonless message is gone");
 });
+
+/**
+ * A blocked microphone used to show Twilio's own sentence --
+ * "PermissionDeniedError (31401): The browser or end-user denied
+ * permissions to user media..." -- which tells a rep nothing about what to
+ * tap. In the phone app the fix is in the phone's Settings, not a browser
+ * (DECISIONS #109).
+ */
+const micDenied = twilioError(
+  31401,
+  "PermissionDeniedError (31401): The browser or end-user denied permissions to user media. Therefore we were unable to acquire input audio."
+);
+
+test("a blocked microphone in the phone app says where on the phone to allow it", () => {
+  const msg = callFailureMessage(micDenied, null, true);
+  assert.match(msg, /microphone/i);
+  assert.match(msg, /Settings/);
+  assert.match(msg, /AI Build Pros CRM/);
+  assert.match(msg, /Allow/);
+  assert.doesNotMatch(msg, /PermissionDeniedError|user media|browser/i);
+});
+
+test("a blocked microphone on the website says to allow it for the site", () => {
+  const msg = callFailureMessage(micDenied, null, false);
+  assert.match(msg, /microphone/i);
+  assert.match(msg, /browser/i);
+  assert.doesNotMatch(msg, /PermissionDeniedError|user media/);
+});
+
+test("a microphone that won't open says so in plain words", () => {
+  const msg = callFailureMessage(twilioError(31402, "AcquisitionFailedError (31402): ..."), null, true);
+  assert.match(msg, /microphone/i);
+  assert.match(msg, /another app/);
+  assert.doesNotMatch(msg, /AcquisitionFailedError/);
+});
+
+test("a call's own error goes through the same plain-language messages", () => {
+  const src = readFileSync(new URL("../app/(app)/voice-dialer.tsx", import.meta.url), "utf8");
+  assert.ok(!src.includes("setErrorMsg(err.message"), "Twilio's raw sentence is never shown");
+  assert.match(src, /Capacitor\.isNativePlatform\(\)/, "the dialer knows when it runs in the phone app");
+});
