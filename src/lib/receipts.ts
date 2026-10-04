@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { privateFileUrl } from "./files/file-url.ts";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -51,7 +52,7 @@ export async function confirmReceiptUpload(
   }
   return {
     fields: {
-      receipt_url: admin.storage.from(RECEIPT_BUCKET).getPublicUrl(path).data.publicUrl,
+      receipt_url: privateFileUrl(RECEIPT_BUCKET, path),
       receipt_path: path,
     },
   };

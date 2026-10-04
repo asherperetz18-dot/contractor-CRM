@@ -4,6 +4,7 @@ import { todayForCompany } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { privateFileUrl } from "@/lib/files/file-url";
 import { createClient } from "@/lib/supabase/server";
 import { exactEmailPattern } from "@/lib/portal/email-match";
 import { sendEmail } from "@/lib/email-env";
@@ -474,8 +475,6 @@ export async function portalUploadFile(formData: FormData): Promise<{ error?: st
     .upload(path, file, { contentType: file.type || undefined, upsert: false });
   if (uploadError) return { error: uploadError.message };
 
-  const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(path);
-
   // uploaded_by is a staff profiles FK, so a customer upload leaves it
   // null -- that null is what marks a file as client-supplied.
   const { error } = await admin.from("lead_files").insert({
@@ -483,7 +482,7 @@ export async function portalUploadFile(formData: FormData): Promise<{ error?: st
     uploaded_by: null,
     file_name: file.name,
     file_path: path,
-    file_url: pub?.publicUrl ?? null,
+    file_url: privateFileUrl(BUCKET, path),
     file_size: file.size,
     content_type: file.type || null,
     storage_provider: "supabase",

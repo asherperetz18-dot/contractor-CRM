@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { privateFileUrl } from "@/lib/files/file-url";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
 import { COMPANY_DOC_KINDS, type CompanyDocKind } from "@/lib/data/company-docs";
@@ -72,10 +73,6 @@ export async function uploadCompanyDocument(form: FormData): Promise<{ error?: s
     .upload(path, file, { contentType: file.type || undefined });
   if (uploadError) return { error: uploadError.message };
 
-  const {
-    data: { publicUrl },
-  } = admin.storage.from(BUCKET).getPublicUrl(path);
-
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("company_documents")
@@ -85,7 +82,7 @@ export async function uploadCompanyDocument(form: FormData): Promise<{ error?: s
       title,
       file_name: file.name,
       file_path: path,
-      file_url: publicUrl,
+      file_url: privateFileUrl(BUCKET, path),
       content_type: file.type || null,
       file_size: file.size,
       expires_on: expiresOn || null,

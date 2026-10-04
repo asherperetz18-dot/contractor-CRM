@@ -5,7 +5,8 @@
  * surface used to re-derive on its own: what the file IS (a browser's
  * content_type claim, backstopped by the extension), and WHERE it lives
  * (a Drive file's file_url is the Drive viewer page -- HTML, not
- * pixels -- while a bucket file serves itself). Getting either wrong
+ * pixels -- while a bucket file's /api/files address redirects to the
+ * file itself, DECISIONS #108). Getting either wrong
  * shows a broken image or a refused frame.
  */
 
