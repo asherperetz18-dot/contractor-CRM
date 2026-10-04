@@ -62,8 +62,11 @@ export async function sendBulkEmail(
   const sent: string[] = [];
   const failed: { id: string; error: string }[] = [];
   for (const target of targets) {
+    // Replies reach the company -- its main email, or failing that the
+    // person who sent this -- never the shared sender's inbox.
     const result = await sendEmail(target.email, cleanSubject, html, text, {
       env: emailEnv ?? undefined,
+      replyTo: emailEnv?.replyTo ?? profile.email ?? undefined,
     });
     if (result.error) {
       failed.push({ id: target.id, error: result.error });

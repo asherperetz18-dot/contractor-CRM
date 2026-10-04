@@ -33,7 +33,7 @@ function codeOf(err: unknown): number | undefined {
 /**
  * The sentence shown under the dialer for a call that never started.
  * `inApp` is the phone app, where a blocked microphone is fixed in the
- * phone's Settings rather than the browser (DECISIONS #109).
+ * phone's Settings rather than the browser (DECISIONS #110).
  */
 export function callFailureMessage(err: unknown, deviceError: DeviceError | null, inApp = false): string {
   const code = codeOf(err) ?? deviceError?.code;

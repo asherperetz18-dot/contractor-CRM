@@ -99,6 +99,7 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
   const emailEnv = await getEmailForCompany(lead.company_id);
   const result = await sendEmail(trimmed, mail.subject, mail.html, mail.text, {
     env: emailEnv ?? undefined,
+    replyTo: emailEnv?.replyTo ?? undefined,
   });
   if (result.error) return { sent: false, error: result.error };
   return { sent: true };
@@ -197,6 +198,7 @@ export async function sendPortalLink(
       const emailEnv = await getEmailForCompany(lead.company_id);
       const sent = await sendEmail(lead.email, mail.subject, mail.html, mail.text, {
         env: emailEnv ?? undefined,
+        replyTo: emailEnv?.replyTo ?? undefined,
       });
       if (sent.error) {
         problems.push(`email failed (${sent.error})`);
