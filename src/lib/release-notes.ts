@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.179.0",
+    date: "2026-10-05",
+    notes: [
+      "Photos, documents, receipts and licence/insurance certificates are now private. A file opens only for someone signed in to that company, or for the customer whose project it belongs to in their portal. Old links that were copied or forwarded stop working once the switch is made.",
+      "Nothing changes on screen: thumbnails, previews and downloads work as before.",
+    ],
+  },
+  {
     version: "1.178.0",
     date: "2026-10-02",
     notes: [

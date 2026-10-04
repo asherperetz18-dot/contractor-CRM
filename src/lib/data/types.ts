@@ -2672,7 +2672,8 @@ export type LeadPhoto = {
  * is the Drive VIEWER page -- HTML, not pixels -- which is why photo
  * grids showed broken icons for every file that had graduated to
  * Drive. Drive's thumbnail endpoint serves a real image for the id;
- * bucket files are public and serve themselves.
+ * a bucket file's file_url is the CRM's own /api/files address, which
+ * checks the viewer and redirects to the image (DECISIONS #108).
  */
 export function leadPhotoThumbUrl(
   photo: Pick<LeadPhoto, "file_url" | "file_path" | "storage_provider">,
