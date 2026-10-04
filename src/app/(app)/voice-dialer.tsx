@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { getVoiceAccessToken } from "@/lib/actions/voice";
 import { logCall } from "@/lib/actions/call-logs";
 import {
@@ -315,7 +316,7 @@ export function VoiceDialer() {
             callSid: callSidRef.current,
           },
         });
-        setErrorMsg(err.message || "Call error.");
+        setErrorMsg(callFailureMessage(err, null, Capacitor.isNativePlatform()));
         setStatus("error");
         finishCall(digits, "error", correlationId, eventId);
       });
@@ -337,7 +338,7 @@ export function VoiceDialer() {
         deviceRef.current = null;
         tokenMintedAtRef.current = 0;
       }
-      setErrorMsg(callFailureMessage(err, deviceError));
+      setErrorMsg(callFailureMessage(err, deviceError, Capacitor.isNativePlatform()));
       setStatus("error");
       // A connect that throws -- no token, no mic, Twilio not set up -- never
       // reached call.on("error"), so nothing was logged and a dial session had
