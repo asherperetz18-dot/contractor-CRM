@@ -12,11 +12,11 @@ import { MORE_STATE_EVENT, MORE_TOGGLE_EVENT } from "./phone-tab-bar";
 // On a phone their icons are hidden (mobile.css) and these rows stand in
 // for them: a tap closes the sheet and clicks the real, hidden button, so
 // every tool still opens from where it has always lived -- one instance,
-// its own panels and its once-a-day daily brief untouched.
+// its own panels and its once-a-day daily brief untouched. The dialer is
+// not here: it stays in the phone's top bar (DECISIONS #108).
 const TOOLS: { key: string; label: string; icon: MobileIconName | ChromeIconName; tone: string }[] = [
   { key: "ai", label: "AI assistant", icon: "spark", tone: "schedule" },
   { key: "daily-brief", label: "Daily brief", icon: "sun", tone: "accounting" },
-  { key: "dialer", label: "Dialer", icon: "dialer", tone: "calls" },
   { key: "live-users", label: "Who's online", icon: "online", tone: "staff" },
   { key: "screen-share", label: "Share my screen", icon: "screen", tone: "dispatch" },
   { key: "request-screen", label: "See a teammate's screen", icon: "eye", tone: "dispatch" },
