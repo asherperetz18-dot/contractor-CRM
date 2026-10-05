@@ -446,7 +446,8 @@ async function handlePost(request: NextRequest) {
   // Through the one AI door: no assistant for a locked company (DECISIONS #131).
   const ai = await aiForCompany(profile.company_id, "AI assistant isn't configured yet.");
   if ("error" in ai) {
-    return Response.json({ error: ai.error }, { status: ai.reason === "locked" ? 403 : 500 });
+    const status = ai.reason === "locked" ? 403 : ai.reason === "limit" ? 429 : 500;
+    return Response.json({ error: ai.error }, { status });
   }
 
   // Only roles that are allowed to approve bulk changes get the proposal

@@ -143,12 +143,30 @@ test("each company carries this month's AI uses, texts and emails, zero when it 
   ]);
 });
 
+test("each company carries its limits, none until one is set", () => {
+  const rows = buildCompanyDirectory(
+    [
+      { id: "c1", name: "Apex HVAC", created_at: "2026-09-01T00:00:00Z" },
+      { id: "c2", name: "Summit Builders Co", created_at: "2026-09-02T00:00:00Z" },
+    ],
+    [],
+    [],
+    [],
+    [{ company_id: "c2", ai_requests_per_month: 500, sms_per_month: null, emails_per_month: 100 }]
+  );
+  assert.deepEqual(rows.map((r) => [r.name, r.limits]), [
+    ["Apex HVAC", { ai: null, sms: null, email: null }],
+    ["Summit Builders Co", { ai: 500, sms: null, email: 100 }],
+  ]);
+});
+
 test("a closed company says so, with its reason; an open one carries nothing", () => {
   const rows = buildCompanyDirectory(
     [
       { id: "c1", name: "Apex HVAC", created_at: "2026-09-01T00:00:00Z" },
       { id: "c2", name: "Summit Builders Co", created_at: "2026-09-02T00:00:00Z" },
     ],
+    [],
     [],
     [],
     [],

@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { isCompanyLocked, LOCKED_SERVICES_ERROR, lockedServicesError } from "@/lib/billing/company-lock";
 import { recordUsage } from "@/lib/usage/record-usage";
+import { usageLimitError } from "@/lib/usage/company-limits";
 import { aiUsageDeltas } from "@/lib/usage/usage";
 
 /**
@@ -18,7 +19,7 @@ import { aiUsageDeltas } from "@/lib/usage/usage";
  */
 export type CompanyAi =
   | { client: Anthropic }
-  | { error: string; reason: "locked" | "not_configured" };
+  | { error: string; reason: "locked" | "limit" | "not_configured" };
 
 export async function aiForCompany(
   companyId: string,
@@ -27,6 +28,9 @@ export async function aiForCompany(
   if (await isCompanyLocked(companyId)) {
     return { error: (await lockedServicesError(companyId)) ?? LOCKED_SERVICES_ERROR, reason: "locked" };
   }
+  // This month's AI answers used up (DECISIONS #133).
+  const limited = await usageLimitError(companyId, "ai");
+  if (limited) return { error: limited, reason: "limit" };
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { error: notConfigured, reason: "not_configured" };
   return { client: metered(new Anthropic({ apiKey }), companyId) };
