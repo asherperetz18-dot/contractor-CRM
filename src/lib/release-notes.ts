@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.183.0",
+    date: "2026-10-05",
+    notes: [
+      "Dialer: a Text button next to Call. Type or pick a number, tap Text, write the message, and send. If the number belongs to a contact, the text shows on that contact.",
+      "Texts are private: Admin, Office, Dispatch and Call Center see every text; everyone else sees only their own conversations. A customer's reply goes to whoever texted them last; if nobody did, to the contact's assigned rep. (Starts once the new database step is run.)",
+    ],
+  },
+  {
     version: "1.182.1",
     date: "2026-10-05",
     notes: [

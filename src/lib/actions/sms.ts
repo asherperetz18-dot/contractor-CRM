@@ -9,7 +9,9 @@ import {
   leadDisplayName,
   normalizePhone,
   repMessagePreview,
+  toE164,
 } from "@/lib/data/types";
+import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 import { smsStatusCallbackUrl } from "@/lib/twilio-env";
 
@@ -93,6 +95,23 @@ export async function sendSms(
 
   revalidatePath("/reply-inbox");
   return {};
+}
+
+/**
+ * A text sent from the dialer (DECISIONS #113). A number typed into the
+ * keypad carries no contact, but it's often already in the book, so the
+ * text is filed on that contact the way the dialer's calls are
+ * (call-logs.ts) -- looked up as the signed-in user, so it never lands on
+ * a contact they can't see.
+ */
+export async function sendDialerText(phone: string, body: string): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  const to = toE164(phone);
+  if (!to) return { error: "Enter a phone number to text." };
+  const supabase = await createClient();
+  const leadId = await leadForPhoneNumber(supabase, profile.company_id, to);
+  return sendSms(leadId, to, body);
 }
 
 export type LeadMessage = {
