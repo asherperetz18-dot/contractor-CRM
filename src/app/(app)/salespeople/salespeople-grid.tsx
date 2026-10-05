@@ -21,7 +21,7 @@ export function SalespeopleGrid({
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
-  /** What this company calls each role (DECISIONS #137); display only. */
+  /** What this company calls each role (DECISIONS #138); display only. */
   roleNames?: RoleNames;
   reps: Profile[];
   /** Per-rep tallies, computed server-side from a slim scan. */

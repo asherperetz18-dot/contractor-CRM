@@ -40,7 +40,7 @@ export default async function CollectPage() {
   // check plus the View Financials switch, so this only ever widens who
   // gets in -- Bookkeeping, Office and Admin are unaffected.
   if (!canViewFinancials(profile)) {
-    // The role as this company names it (DECISIONS #137).
+    // The role as this company names it (DECISIONS #138).
     const bookkeeping = roleName(await getRoleNamesCached(profile.company_id), "Bookkeeping");
     return (
       <div className="empty-state">

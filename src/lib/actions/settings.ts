@@ -501,7 +501,7 @@ export async function getRoleNamesSettings(): Promise<RoleNamesSettings | null> 
 }
 
 /**
- * What the company calls its team roles (DECISIONS #137). Display only:
+ * What the company calls its team roles (DECISIONS #138). Display only:
  * every permission still uses the role itself. Only names that differ
  * from the standard ones are stored; a blank name clears it.
  */

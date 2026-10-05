@@ -18,7 +18,7 @@ const SUGGESTIONS: Partial<Record<AppRole, string[]>> = {
 };
 
 /**
- * Settings › Role Names (DECISIONS #137): a name for each team role the
+ * Settings › Role Names (DECISIONS #138): a name for each team role the
  * company can rename. Left blank, a role goes back to its standard name.
  */
 export function RoleNamesForm({ initial }: { initial: RoleNamesSettings }) {

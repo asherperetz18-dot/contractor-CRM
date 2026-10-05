@@ -65,7 +65,7 @@ export default async function PaymentsPage() {
   // is company-wide money like Bills and Collect, so it takes the same
   // gate. Unlike those two this genuinely narrows access -- see the PR.
   if (!canViewFinancials(profile)) {
-    // The role as this company names it (DECISIONS #137).
+    // The role as this company names it (DECISIONS #138).
     const bookkeeping = roleName(await getRoleNamesCached(profile.company_id), "Bookkeeping");
     return (
       <div className="empty-state">

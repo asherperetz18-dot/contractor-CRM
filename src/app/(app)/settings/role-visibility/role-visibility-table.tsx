@@ -32,7 +32,7 @@ export function RoleVisibilityTable({
   roleNames = STANDARD_ROLE_NAMES,
 }: {
   overrides: RolePageVisibilityRow[];
-  /** What this company calls each role (DECISIONS #137); display only. */
+  /** What this company calls each role (DECISIONS #138); display only. */
   roleNames?: RoleNames;
 }) {
   const router = useRouter();

@@ -25,7 +25,7 @@ export function TimeClockSettingsForm({
 }: {
   initial: TimeClockSettings;
   checkReady: boolean;
-  /** What this company calls each role (DECISIONS #137); display only. */
+  /** What this company calls each role (DECISIONS #138); display only. */
   roleNames?: RoleNames;
 }) {
   const [roles, setRoles] = useState<string[]>(initial.tracked_roles);

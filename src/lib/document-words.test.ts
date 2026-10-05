@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { documentLabels, documentWord } from "./document-words.ts";
+import {
+  changeOrderOnePaymentLine,
+  changeOrderScheduleNote,
+  documentLabels,
+  documentPaymentSection,
+  documentWord,
+  paymentPercentLabel,
+} from "./document-words.ts";
 import { STANDARD_WORDS, readCompanyWords } from "./company-words.ts";
 
 /**
@@ -51,6 +58,56 @@ test("a change order says so, and what it amends", () => {
   assert.equal(l.totalLabel, "This amendment");
 });
 
+test("a change order's deposit and schedule are its own, in the company's words", () => {
+  const l = documentLabels("change_order", WORDS);
+  assert.equal(l.scheduleHeading, "Payment schedule for this amendment");
+  // Not "upon agreement signing": the agreement was signed long ago.
+  assert.equal(l.depositDue, "Due when you sign this amendment");
+  assert.equal(documentLabels("contract", WORDS).scheduleHeading, "Payment schedule");
+  assert.equal(
+    changeOrderScheduleNote("EST-1112", WORDS),
+    "These payments are for this amendment only. They don't change the payments already scheduled on your agreement EST-1112."
+  );
+});
+
+test("a change order with no stages says how it is billed", () => {
+  assert.equal(
+    changeOrderOnePaymentLine(850000, "EST-1112", STANDARD_WORDS),
+    "Billed as one payment of $8,500.00, added to the payment schedule of your contract EST-1112."
+  );
+  // A credit is money back, not a payment of minus $500.
+  assert.equal(
+    changeOrderOnePaymentLine(-50000, "EST-1112", WORDS),
+    "A credit of $500.00, taken off the payment schedule of your agreement EST-1112."
+  );
+});
+
+test("which payment section a document prints", () => {
+  const doc = { depositCents: null, phaseCount: 0, totalCents: 850000, hasParent: true };
+  // A change order's own stages are what it is collected on (DECISIONS
+  // #015), so the customer signing it reads them -- this used to print
+  // nothing at all on a change order.
+  assert.equal(documentPaymentSection({ ...doc, kind: "change_order", phaseCount: 1 }), "schedule");
+  assert.equal(documentPaymentSection({ ...doc, kind: "change_order", depositCents: 425000 }), "schedule");
+  // No stages of its own: the one row signing adds to the contract.
+  assert.equal(documentPaymentSection({ ...doc, kind: "change_order" }), "one-payment");
+  // Nothing to say without the contract to name, or with nothing owed.
+  assert.equal(documentPaymentSection({ ...doc, kind: "change_order", hasParent: false }), null);
+  assert.equal(documentPaymentSection({ ...doc, kind: "change_order", totalCents: 0 }), null);
+  // A contract prints its schedule when it has one, as always.
+  assert.equal(documentPaymentSection({ ...doc, kind: "contract", phaseCount: 3, hasParent: false }), "schedule");
+  assert.equal(documentPaymentSection({ ...doc, kind: "contract", hasParent: false }), null);
+  // An invoice's Pay card is its payment terms.
+  assert.equal(documentPaymentSection({ ...doc, kind: "invoice", phaseCount: 1 }), null);
+});
+
+test("a stage's share of the total prints as a percent", () => {
+  assert.equal(paymentPercentLabel(425000, 850000), "50.00%");
+  // The PDF printed the raw number: "(33.333333333333336)".
+  assert.equal(paymentPercentLabel(100000, 300000), "33.33%");
+  assert.equal(paymentPercentLabel(100000, 0), null);
+});
+
 test("a certificate and an invoice keep their own names", () => {
   assert.equal(documentLabels("completion", WORDS).banner, "CERTIFICATE OF COMPLETION");
   const inv = documentLabels("invoice", WORDS);
@@ -85,8 +142,21 @@ test("the web copy and the PDF print no document labels of their own", () => {
       /[Dd]ue upon contract signing/,
       /"This change order"/,
       /\? "Contractor"|"Customer"/,
+      /"Payment schedule"|>Payment schedule</,
     ]) {
       assert.doesNotMatch(source, label, `${file}: ${label}`);
     }
+  }
+});
+
+test("the web copy and the PDF pick the same payment section", () => {
+  // The PDF is the signed copy the customer keeps: it must not drop the
+  // schedule the web page showed them when they signed.
+  for (const file of ["../components/estimate-document.tsx", "./pdf/document-pdf.ts"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /documentPaymentSection\(/, file);
+    assert.match(source, /changeOrderScheduleNote\(/, file);
+    assert.match(source, /changeOrderOnePaymentLine\(/, file);
+    assert.match(source, /paymentPercentLabel\(/, file);
   }
 });

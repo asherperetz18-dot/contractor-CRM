@@ -5,7 +5,7 @@ import { getPortalViewer, readPortalSession } from "@/lib/portal/session";
 import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { invoiceReceiptAttachments } from "@/lib/data/invoice-receipts";
-import { getParentContract } from "@/lib/actions/change-orders";
+import { portalParentContract } from "@/lib/portal/parent-contract";
 import {
   EstimateDocument,
   type DocumentCompany,
@@ -140,6 +140,11 @@ export default async function PortalEstimatePage({
   })),
   ];
 
+  // Not the staff lookup: the customer has no CRM login, so under
+  // row-level security it found nothing and the change order printed no
+  // contract to add to and no revised total.
+  const parent = await portalParentContract(admin, estimate.parent_estimate_id, viewer.lead.id);
+
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);
   const isExpired = estimateExpired(estimate);
@@ -180,7 +185,7 @@ export default async function PortalEstimatePage({
         company={company ?? null}
         customer={viewer.lead}
         team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
-        parent={await getParentContract(estimate.parent_estimate_id)}
+        parent={parent}
         words={words}
         // Live tick boxes only while the document can still change --
         // once it is signed, declined, cancelled or expired the choices
@@ -212,9 +217,7 @@ export default async function PortalEstimatePage({
           estimate.parent_estimate_id
             ? {
                 id: estimate.parent_estimate_id,
-                doc_number:
-                  (await getParentContract(estimate.parent_estimate_id))?.doc_number ??
-                  `your ${word(words, "contract", { lower: true })}`,
+                doc_number: parent?.doc_number ?? `your ${word(words, "contract", { lower: true })}`,
               }
             : null
         }

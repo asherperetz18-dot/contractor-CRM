@@ -84,7 +84,7 @@ export function getCompanyWordsCached(companyId: string): Promise<CompanyWords> 
 }
 
 /**
- * What the company calls its team roles (DECISIONS #137), for the
+ * What the company calls its team roles (DECISIONS #138), for the
  * screens that print a role. Cached with the chrome and dropped with it
  * when they are saved. Its own query, so a database without 0202 reads
  * the standard names instead of losing anything else.

@@ -1,4 +1,4 @@
--- Company role names (DECISIONS #137).
+-- Company role names (DECISIONS #138).
 --
 -- Each company can rename the team roles it shows -- "Sales" read as
 -- "Technicians", "Call Center" as "Front Desk" -- in Settings › Users &

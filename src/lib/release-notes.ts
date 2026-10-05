@@ -21,10 +21,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.206.0",
+    version: "1.207.0",
     date: "2026-10-05",
     notes: [
       "Settings › Role Names lets your company call its team roles what you call them, like Technicians instead of Sales or Front Desk instead of Call Center. The new names show on Users & Roles, Role Visibility, Time Clock settings and Salespeople. What each role can see and do doesn't change. Admin and Office keep their names.",
+    ],
+  },
+  {
+    version: "1.206.0",
+    date: "2026-10-05",
+    notes: [
+      "Change orders now show the customer their own payment schedule — the deposit and each stage you set — on the page they sign and on their PDF copy. A change order with no stages says it's billed as one payment on the contract's schedule.",
+      "A change order on the customer's page names the contract it adds to again, with the original contract total and the revised total. Customers were seeing neither.",
+      "Signed PDF copies show each payment's share as a percent (33.33%), not a long raw number.",
     ],
   },
   {
