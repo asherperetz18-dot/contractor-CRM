@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { privateFileUrl } from "@/lib/files/file-url";
 import { createClient } from "@/lib/supabase/server";
 import { exactEmailPattern } from "@/lib/portal/email-match";
-import { sendEmail } from "@/lib/email-env";
+import { escapeHtml, sendEmail } from "@/lib/email-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 import { getEmailForCompany } from "@/lib/email-company";
@@ -107,12 +107,15 @@ export async function requestPortalLink(email: string): Promise<{ sent: boolean;
 
 function buildPortalEmail(firstName: string | null, companyName: string, link: string) {
   const greeting = firstName || "there";
+  // The HTML copy is escaped: a company or customer name with "&" or "<"
+  // in it must read as typed, not as markup.
+  const safe = { greeting: escapeHtml(greeting), companyName: escapeHtml(companyName), link: escapeHtml(link) };
   return {
-    subject: `Your ${companyName} project portal sign-in link`,
+    subject: `Your ${companyName} portal sign-in link`,
     text: [
       `Hi ${greeting},`,
       ``,
-      `Here's your sign-in link for your project portal with ${companyName}:`,
+      `Here's your sign-in link for your portal with ${companyName}:`,
       link,
       ``,
       `This link works once and expires in 7 days.`,
@@ -120,9 +123,9 @@ function buildPortalEmail(firstName: string | null, companyName: string, link: s
     ].join("\n"),
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
-      <p>Hi ${greeting},</p>
-      <p>Here's your sign-in link for your project portal with <strong>${companyName}</strong>:</p>
-      <p><a href="${link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Open my project portal</a></p>
+      <p>Hi ${safe.greeting},</p>
+      <p>Here's your sign-in link for your portal with <strong>${safe.companyName}</strong>:</p>
+      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none">Open my portal</a></p>
       <p style="color:#666;font-size:13px">This link works once and expires in 7 days. If you didn't request it, you can ignore this email.</p>
     </div>
   `,
@@ -231,7 +234,10 @@ export async function sendPortalLink(
       problems.push("couldn't create a text sign-in link");
     } else {
       const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}`;
-      const body = `${companyName}: here's your project portal — see your appointments, photos and messages.\n${link}\n\nLink expires in 7 days.`;
+      // "Your portal", not "project portal": a plumber's customer has a
+      // job, not a project (DECISIONS #121). A plain hyphen: an em dash
+      // re-encodes the whole text and cuts each segment from 160 to 70.
+      const body = `${companyName}: here's your portal - see your appointments, photos and messages.\n${link}\n\nLink expires in 7 days.`;
       const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
       if (sent.error) {
         problems.push(`text failed (${sent.error})`);

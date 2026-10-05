@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.189.0",
+    date: "2026-10-05",
+    notes: [
+      "New: Settings › Company Words. Choose the words your customers read — Estimate, Proposal, Quote or Bid; Project, Job, Work Order and more; Change Order, Amendment or Addendum — or type your own.",
+      "A sent estimate's text and email now use the same word (they said \"estimate\" and \"proposal\"). Change orders, completion certificates and invoices are now sent as what they are, instead of as \"your estimate\".",
+      "The portal sign-in text and email now say \"your portal\".",
+    ],
+  },
+  {
     version: "1.188.0",
     date: "2026-10-05",
     notes: [

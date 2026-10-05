@@ -43,6 +43,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/company-profile",
       },
       {
+        title: "Company Words",
+        desc: "The words your customers read: Estimate or Quote, Project or Job, and more",
+        icon: "🔤",
+        href: "/settings/company-words",
+      },
+      {
         title: "Logo",
         desc: "Upload your company logo and configure how it appears in emails and documents",
         icon: "🖼",

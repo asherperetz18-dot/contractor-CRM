@@ -20,7 +20,16 @@ import { sendEmail, escapeHtml } from "@/lib/email-env";
 import { resolveEstimateRecipients } from "@/lib/estimate-recipients";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import { approvalOnSend, approvalHoldMessage, selfApprovalNote } from "@/lib/estimate-approval-gate";
-import { defaultEstimateNarrative, paragraphsToHtml } from "@/lib/estimate-email-copy";
+import {
+  defaultEstimateNarrative,
+  documentCallToAction,
+  documentQuestionsLine,
+  documentSendSms,
+  documentSendSubject,
+  paragraphsToHtml,
+} from "@/lib/estimate-email-copy";
+import type { CompanyWords } from "@/lib/company-words";
+import { loadCompanyWords } from "@/lib/load-company-words";
 import {
   balanceAfterDepositCents,
   canCreateEstimates,
@@ -131,6 +140,10 @@ type EstimateEmailCompany = {
 function buildEstimateEmail(params: {
   customerName: string | null;
   company: EstimateEmailCompany;
+  /** What the document is (estimate, change order, certificate, invoice)
+   *  and the company's own words for it (DECISIONS #121). */
+  kind: string | null;
+  words: CompanyWords;
   docNumber: string;
   title: string | null;
   projectAddress: string | null;
@@ -142,12 +155,14 @@ function buildEstimateEmail(params: {
    *  the link or the required footer/disclaimer. */
   narrative?: string;
 }) {
-  const { customerName, company, docNumber, title, projectAddress, totalCents, link } = params;
+  const { customerName, company, kind, words, docNumber, title, projectAddress, totalCents, link } = params;
   const greeting = customerName || "there";
-  const subject = `${company.name}: your proposal ${docNumber} is ready to review`;
+  const subject = documentSendSubject({ companyName: company.name, docNumber, kind, words });
   const narrative =
     params.narrative?.trim() ||
-    defaultEstimateNarrative({ companyName: company.name, docNumber, title, projectAddress, totalCents });
+    defaultEstimateNarrative({ companyName: company.name, docNumber, title, projectAddress, totalCents, kind, words });
+  const callToAction = documentCallToAction(kind);
+  const questions = documentQuestionsLine(kind, words);
 
   const safe = {
     greeting: escapeHtml(greeting),
@@ -195,26 +210,26 @@ function buildEstimateEmail(params: {
       ``,
       narrative,
       ``,
-      `Review & Sign:`,
+      `${callToAction}:`,
       link,
       ``,
-      `If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.`,
+      questions,
       ``,
       `Thank you,`,
       ...textFooterLines,
       ``,
       disclaimer,
     ].join("\n"),
-    // The CTA is a real button: its visible text is the fixed label
-    // "Review & Sign", never the link itself. The secure, single-use
+    // The CTA is a real button: its visible text is a fixed label
+    // ("Review & Sign", or "View Invoice"), never the link itself. The secure, single-use
     // token lives only in href, where a customer forwarding or
     // screen-sharing this email won't read it off the page by accident.
     html: `
     <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#1a1a1a">
       <p>Hi ${safe.greeting},</p>
       ${paragraphsToHtml(narrative)}
-      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Review &amp; Sign</a></p>
-      <p>If you have any questions about the proposal or would like to discuss any changes, please feel free to reach out.</p>
+      <p><a href="${safe.link}" style="display:inline-block;background:#C2410C;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">${escapeHtml(callToAction)}</a></p>
+      <p>${escapeHtml(questions)}</p>
       <p style="margin:16px 0 2px">Thank you,<br><strong>${safe.companyName}</strong></p>
       ${htmlFooterLines.join("\n      ")}
       <p style="color:#888;font-size:11px;margin-top:24px;border-top:1px solid #eee;padding-top:12px">${escapeHtml(disclaimer)}</p>
@@ -1279,6 +1294,7 @@ export async function sendEstimateToCustomer(
       license_number: string | null;
     }>();
   const companyName = companyRow?.name || "Your contractor";
+  const words = await loadCompanyWords(admin, guard.companyId);
 
   // Sending the link is the act of granting access, same as the existing
   // portal invite -- otherwise the customer gets a link that refuses them.
@@ -1332,9 +1348,9 @@ export async function sendEstimateToCustomer(
   }[] = [];
 
   if (canText) {
-    // Plain hyphens and no emoji: an em dash or emoji flips the message to
-    // UCS-2 and cuts each segment from 160 characters to 70.
-    const body = `${companyName}: your estimate ${estimate.doc_number} is ready to review and sign.\n${link}\n\nLink expires in 7 days.`;
+    // The same word the email uses, for what this document actually is
+    // (a change order is called a change order, not an estimate) -- DECISIONS #121.
+    const body = documentSendSms({ companyName, docNumber: estimate.doc_number, kind: estimate.kind, words, link });
     const sent = await sendTwilioSms(lead.phone!, body, twilioEnv!);
     if (sent.error) {
       problems.push(`Text failed (${sent.error})`);
@@ -1364,6 +1380,8 @@ export async function sendEstimateToCustomer(
         website: companyRow?.website ?? null,
         licenseNumber: companyRow?.license_number ?? null,
       },
+      kind: estimate.kind,
+      words,
       docNumber: estimate.doc_number,
       title: estimate.title,
       projectAddress: lead.address,
@@ -1546,7 +1564,7 @@ export async function previewEstimateEmail(
   const admin = createAdminClient();
   const { data: estimate } = await admin
     .from("estimates")
-    .select("id, lead_id, company_id, doc_number, title, total_cents")
+    .select("id, lead_id, company_id, doc_number, title, total_cents, kind")
     .eq("id", estimateId)
     .eq("company_id", guard.companyId)
     .maybeSingle<{
@@ -1556,6 +1574,7 @@ export async function previewEstimateEmail(
       doc_number: string;
       title: string | null;
       total_cents: number;
+      kind: string | null;
     }>();
   if (!estimate) return { error: "Estimate not found." };
 
@@ -1571,15 +1590,18 @@ export async function previewEstimateEmail(
     .eq("company_id", guard.companyId)
     .maybeSingle<{ name: string | null }>();
   const companyName = companyRow?.name || "Your contractor";
+  const words = await loadCompanyWords(admin, guard.companyId);
 
   return {
-    subject: `${companyName}: your proposal ${estimate.doc_number} is ready to review`,
+    subject: documentSendSubject({ companyName, docNumber: estimate.doc_number, kind: estimate.kind, words }),
     narrative: defaultEstimateNarrative({
       companyName,
       docNumber: estimate.doc_number,
       title: estimate.title,
       projectAddress: lead?.address ?? null,
       totalCents: estimate.total_cents,
+      kind: estimate.kind,
+      words,
     }),
   };
 }

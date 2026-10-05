@@ -13,6 +13,7 @@ import {
   type TimeFormat,
 } from "@/lib/data/types";
 import { depositRuleProblem, parseDepositRule } from "@/lib/deposit-rule";
+import { readCompanyWords, storedWords, type CompanyWords, type WordKey } from "@/lib/company-words";
 import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
@@ -414,6 +415,67 @@ export async function saveDepositRule(input: { percent: string; cap: string }): 
   if (!data?.length) return { error: "That change couldn't be saved." };
 
   revalidatePath("/settings/contracts");
+  return {};
+}
+
+export type CompanyWordsSettings = {
+  words: CompanyWords;
+  /** For the page's example message. */
+  companyName: string;
+  /** False until migration 0196 has run: the page says so, and saving waits. */
+  ready: boolean;
+};
+
+export async function getCompanyWordsSettings(): Promise<CompanyWordsSettings | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .select("wording")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ wording: unknown }>();
+  const { data: named } = await supabase
+    .from("company_profile")
+    .select("name")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ name: string | null }>();
+  return {
+    words: readCompanyWords(error ? null : data?.wording),
+    companyName: named?.name || "Your company",
+    ready: !error,
+  };
+}
+
+/**
+ * The company's own words (DECISIONS #121). Only words that differ from
+ * the standard ones are stored; sending the standard word clears it.
+ */
+export async function saveCompanyWords(
+  input: Partial<Record<WordKey, { one: string; many: string }>>
+): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const parsed = storedWords(input);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ wording: parsed.words })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) {
+    if (/wording/.test(error.message)) {
+      return { error: "Company words need a database update first: run 0196_company_wording.sql in Supabase." };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/company-words");
   return {};
 }
 
