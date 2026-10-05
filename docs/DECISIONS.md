@@ -1356,3 +1356,15 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Team Map** opens on the company's own address when nobody on the clock is located yet, falling back to the whole US.
 
 **Consequence:** a company's reminders, "today" and report days run on its own clock from the first day. A company's commission statements read $0 until an admin sets its rates in Settings → Sales Commission.
+
+## 119 — "New company" is a platform admin's tool, and a new company starts clean
+
+**Date:** 2026-10-05
+
+**Context:** The company switcher's "+ New company" was open to any Office or Admin user. They could make as many companies as they liked, none of them billed, and each was seeded with a copy of the current company's stages, calendars, call outcomes, project types, lead sources and time zone -- so a company made for someone else started as its creator's copy.
+
+**Decision:**
+- `createCompany` and the switcher's button require a platform admin (`isPlatformAdmin`), like the rest of Platform Admin.
+- A company made there starts from the standard starter lists (`createCompanyWithDefaults` without `sourceCompanyId`), the same as a paid sign-up.
+
+**Consequence:** Office and Admin users no longer see "+ New company". Customers get their company through sign-up or a setup link from Platform Admin. Billing for companies a platform admin makes by hand comes with Phase 4's trials and Subscribe button.

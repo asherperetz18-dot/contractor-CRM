@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { CURRENT_COMPANY_COOKIE, getCurrentProfile } from "@/lib/data/profile";
 import { createCompanyWithDefaults } from "@/lib/signup/provision";
-import { isAdminRole } from "@/lib/data/types";
+import { isPlatformAdmin } from "@/lib/data/types";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -47,10 +47,15 @@ export async function switchCompany(companyId: string): Promise<{ error?: string
  * The building itself now lives in lib/signup/provision.ts, shared with
  * the paid self-serve signup -- there is one answer to "what is a working
  * new company" and both doors walk through it. This function is what is
- * specific to this door: only an Office or Admin user may open it, the
- * new company is seeded from the one they are standing in, a clashing
+ * specific to this door: only a platform admin may open it, a clashing
  * name is reported rather than quietly suffixed, and they are switched
  * into it afterwards.
+ *
+ * It used to be open to any Office or Admin user -- who could make as
+ * many companies as they liked, none of them billed -- and it copied the
+ * current company's stages, sources and the rest into the new one, so a
+ * company built for someone else started as its creator's copy. A new
+ * company now starts from the standard starter lists (DECISIONS #119).
  */
 export async function createCompany(name: string): Promise<{ error?: string; companyId?: string }> {
   const trimmed = name.trim();
@@ -58,10 +63,9 @@ export async function createCompany(name: string): Promise<{ error?: string; com
 
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
-  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can create a company." };
+  if (!isPlatformAdmin(profile)) return { error: "Only a platform admin can create a company." };
 
   const { companyId, error } = await createCompanyWithDefaults(trimmed, profile.id, {
-    sourceCompanyId: profile.company_id,
     onNameClash: "fail",
   });
   if (!companyId) return { error: error ?? "Failed to create company." };

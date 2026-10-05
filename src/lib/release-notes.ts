@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.187.0",
+    date: "2026-10-05",
+    notes: [
+      "\"+ New company\" in the company menu is now only for AI Build Pros platform admins. A company made there starts with the standard starter lists, not a copy of the company you were in.",
+    ],
+  },
+  {
     version: "1.186.0",
     date: "2026-10-05",
     notes: [
