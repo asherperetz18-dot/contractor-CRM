@@ -1293,3 +1293,24 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Consequence:**
 - **Owner step:** run `0193_meta_secrets_encrypted.sql` in Supabase after the deploy. Its last line should read `plain_left = 0`.
 - Nothing changes for a connected Page. Leads keep arriving.
+
+## 115 — The database files record everything production has, and a catch-up file runs what it missed
+
+**Date:** 2026-10-05
+
+**Context:** Code deploys automatically, but database changes are pasted into the Supabase SQL editor by hand. A full read-only comparison of production with `schema.sql` + every migration (`supabase/checks/schema-drift-check.sql`, built from a local replay of the files) found the two had drifted both ways:
+- **Made by hand in production, recorded nowhere:** the company Twilio and Stripe columns (and the unique Twilio-number index), `leads.dispatcher_id`, `lead_files.event_id`, `company_profile.dispatcher_commission_bp`, the `logos` bucket, `dispatcher_may_touch_lead()`, and the split of `events_write` into `events_insert` / `events_update` / `events_delete` that 0084 already mentioned. A database built from the files failed at 0069, 0088, 0095, 0117 and 0191, and `schema.sql` itself stopped at a copy of 0165 that came before the table it needs.
+- **In the files, never run in production:** 0137 (Call Center edits a contact and adds call notes from the dialer), 0138 (AI call notes), 0171 (dispatch dashboard summary) and 0182 (record of deleted files). The `portal_payments.recorded_by` link also lacked the `on delete set null` 0151 intended.
+- About 230 more differences were noise: line endings (functions pasted from Windows) and comments.
+
+**Decision:**
+- **0067 records the hand-made objects**, copied exactly from production, in a free slot before the first file that needs them. Every statement is guarded, so running it in production changes nothing.
+- **0194 catches production up.** The owner runs 0137, 0138, 0171 and 0182, then 0194. 0194 stops with the list of files still missing if run too early. It restores the payment link's `on delete set null`, restates 0129's execute rights on `create_lead_for_unknown_caller` (0150 applied the same in production; restated so 0194 on its own guarantees it), and applies the billing lock and same-company trigger to the new table.
+- **`schema.sql` drops its out-of-order copy of 0165.**
+- **The check stays in the repo** (`supabase/checks/`). It ignores function comments and line endings, and covers function execute rights. It compares against the files as of 0194, so later migrations show as `only_live` until it is regenerated.
+- **Settings → Database Health probes 0067, 0138 and 0182–0193**, so a skipped file is named instead of a feature failing quietly.
+
+**Proof:** a database built from the files alone now applies with no errors and no stand-ins. A copy set up like production (those four files skipped, the old payment link) given 0137 → 0138 → 0171 → 0182 → 0194 ends identical to it, object for object (1,935). The check reads that copy as having no differences, also when pasted with Windows line endings.
+
+**Consequence:**
+- **Owner step:** run the five files in order in Supabase, then re-run the check. It should list nothing but the version row.
