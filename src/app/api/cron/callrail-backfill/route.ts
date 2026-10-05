@@ -3,6 +3,7 @@ import { getCronSecret } from "@/lib/cron-env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { backfillCallRail } from "@/lib/callrail-sync";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 /**
  * Scheduled re-pull of recent CallRail calls for every connected
@@ -34,11 +35,18 @@ async function handlePost(req: NextRequest) {
     .not("callrail_account_id", "is", null);
 
   const results: Record<string, { processed: number; created: number; error?: string }> = {};
-  for (const row of (data as { company_id: string }[]) ?? []) {
-    const r = await backfillCallRail(row.company_id, days);
-    results[row.company_id] = { processed: r.processed, created: r.created, ...(r.error ? { error: r.error } : {}) };
-  }
-  return NextResponse.json({ days, companies: Object.keys(results).length, results });
+  // Each company in its own safety net, inside the function's time limit
+  // (DECISIONS #126).
+  const run = await runForEachCompany(
+    "api.cron.callrail-backfill",
+    (data as { company_id: string }[]) ?? [],
+    (row) => row.company_id,
+    async (row) => {
+      const r = await backfillCallRail(row.company_id, days);
+      results[row.company_id] = { processed: r.processed, created: r.created, ...(r.error ? { error: r.error } : {}) };
+    }
+  );
+  return NextResponse.json({ days, companies: Object.keys(results).length, results, ...runSummary(run) });
 }
 
 // Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation

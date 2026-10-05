@@ -36,6 +36,8 @@ Every tenant-scoped table carries `company_id`; there is no query pattern anywhe
 | `backup` (nightly) | nightly | Full data export, same logic the manual Backup settings page uses. Locked with the `BACKUP_PASSPHRASE` secret (gpg, AES-256) before it is stored as an Actions artifact; the job refuses to run without the secret (DECISIONS #098). |
 | `google-calendar-sync` | every 15 min | Pull then push for every connected Google Calendar (per-rep and company-wide). |
 
+Jobs that work company by company go through `runForEachCompany` (`src/lib/cron/run-companies.ts`, DECISIONS #126): each company in its own try/catch, a turning order, and a four-minute budget, so one company's failure or a slow outside service never stops the rest. A new per-company job should use it too; `src/lib/cron/each-company.test.ts` lists the jobs that must.
+
 ## Where to look for X
 
 - Permission checks: `src/lib/data/types.ts`

@@ -14,6 +14,7 @@ import {
   type CompanyProfile,
   type Lead,
 } from "@/lib/data/types";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 // Advance notice window, in hours before the appointment. The lower
 // bound leaves the hour-before reminder its own job; the upper bound is
@@ -190,22 +191,28 @@ async function handlePost(req: NextRequest) {
   let checked = 0;
   let sent = 0;
   let skipped = 0;
-  for (const company of companyRows) {
-    // Resolved per company: each texts from its own number. One company
-    // without Twilio is skipped rather than aborting the run, so a
-    // half-configured tenant cannot stop everybody else's reminders.
+  // Each company in its own safety net (DECISIONS #126): one whose
+  // Twilio is unreachable is reported, and everyone after it still gets
+  // their reminders.
+  const run = await runForEachCompany("api.cron.appointment-reminders", companyRows, (c) => c.company_id, async (company) => {
+    // Resolved per company: each texts from its own number. A company
+    // without Twilio is skipped, not failed.
     const twilioEnv = await getTwilioForCompany(company.company_id);
     if (!twilioEnv) {
       skipped += 1;
-      continue;
+      return;
     }
     const result = await processCompany(admin, twilioEnv, company);
     checked += result.checked;
     sent += result.sent;
-  }
+  });
 
-  return NextResponse.json({ companies: companyRows.length, checked, sent, skipped });
+  return NextResponse.json({ companies: companyRows.length, checked, sent, skipped, ...runSummary(run) });
 }
+
+// Room for every company's turn (runForEachCompany stops starting new
+// ones at CRON_BUDGET_MS, before this limit).
+export const maxDuration = 300;
 
 // Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
 // id, and Sentry capture for every run, same wrapper as the dialer path.

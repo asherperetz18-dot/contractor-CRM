@@ -116,7 +116,7 @@ Configured in Sentry, separate from what gets recorded:
 - Beyond the Twilio voice path (this feature's proving case), the
   external-facing routes are now wrapped (#031): both Stripe webhooks,
   the SMS and inbound-email webhooks, the leads and Meta leadgen
-  webhooks, and all six cron jobs run under `withRouteObservability`
+  webhooks, and every cron job run under `withRouteObservability`
   (the per-company Stripe route calls `runObserved` directly, since the
   wrapper can't pass its dynamic segment through), and `sendEmail`
   failures log and reach Sentry instead of returning silently. Left out
