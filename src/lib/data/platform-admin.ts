@@ -125,7 +125,8 @@ export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
         .range(from, to)
     ),
     selectAll<DirectoryBilling>((from, to) =>
-      admin.from("company_billing").select("company_id, billing_status").order("company_id").range(from, to)
+      // "*": trial_ends_at (0198) may not exist yet, and naming it would empty the list.
+      admin.from("company_billing").select("*").order("company_id").range(from, to)
     ),
   ]);
   return buildCompanyDirectory(companies, members, billing);

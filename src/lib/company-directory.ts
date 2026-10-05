@@ -20,7 +20,12 @@ export type DirectoryMember = {
   profiles: Person | Person[] | null;
 };
 
-export type DirectoryBilling = { company_id: string; billing_status: string | null };
+export type DirectoryBilling = {
+  company_id: string;
+  billing_status: string | null;
+  /** When a free trial ends (0198); absent before it has run. */
+  trial_ends_at?: string | null;
+};
 
 export type BillingState = "paying" | "trial" | "payment_failed" | "locked" | "unsynced" | "not_billed";
 
@@ -57,6 +62,8 @@ export type CompanyDirectoryRow = {
   /** Active people of the company's own; platform admins looking in aren't counted. */
   team: number;
   billing: BillingState;
+  /** A free trial's end, for the trial's row (DECISIONS #130). */
+  trialEndsAt: string | null;
 };
 
 function person(p: DirectoryMember["profiles"]): Person | null {
@@ -92,6 +99,7 @@ export function buildCompanyDirectory(
         owner: owner ? person(owner.profiles) : null,
         team: team.length,
         billing: billingState(billingByCompany.get(c.id)),
+        trialEndsAt: billingByCompany.get(c.id)?.trial_ends_at ?? null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));

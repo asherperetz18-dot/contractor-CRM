@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.199.0",
+    date: "2026-10-05",
+    notes: [
+      "Platform admins can give a company on a free trial 7, 14 or 30 more days from the Companies page, which now also shows when each trial ends.",
+    ],
+  },
+  {
     version: "1.198.0",
     date: "2026-10-05",
     notes: [
