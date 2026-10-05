@@ -9,6 +9,7 @@ import {
   depositDueLine,
   documentWord,
   paymentPercentLabel,
+  scheduledPhases,
 } from "./document-words.ts";
 import { STANDARD_WORDS, readCompanyWords } from "./company-words.ts";
 
@@ -118,6 +119,20 @@ test("the Pay card says why a deposit is due", () => {
   );
 });
 
+test("a cancelled stage is not printed as owed", () => {
+  // Voiding a document cancels its unbilled stages; billed ones stay,
+  // because that request really went out.
+  const phases = [
+    { id: "a", amount_cents: 100, cancelled_at: null },
+    { id: "b", amount_cents: 200, cancelled_at: "2026-10-05T20:00:00Z" },
+    { id: "c", amount_cents: 300 },
+  ];
+  assert.deepEqual(
+    scheduledPhases(phases).map((p) => p.id),
+    ["a", "c"]
+  );
+});
+
 test("a certificate and an invoice keep their own names", () => {
   assert.equal(documentLabels("completion", WORDS).banner, "CERTIFICATE OF COMPLETION");
   const inv = documentLabels("invoice", WORDS);
@@ -168,6 +183,8 @@ test("the web copy and the PDF pick the same payment section", () => {
     assert.match(source, /changeOrderScheduleNote\(/, file);
     assert.match(source, /changeOrderOnePaymentLine\(/, file);
     assert.match(source, /paymentPercentLabel\(/, file);
+    // The PDF dropped cancelled stages and the web copy listed them.
+    assert.match(source, /scheduledPhases\(/, file);
   }
 });
 

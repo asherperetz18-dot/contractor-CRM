@@ -136,3 +136,11 @@ export function depositDueLine(
     : `${moneyCents(amountCents)} is due to schedule your ${word(words, "project", { lower: true })}.`;
 }
 
+/**
+ * The stages a document prints. Voiding it cancels the ones not yet
+ * billed -- they are no longer owed, so neither copy lists them. Billed
+ * ones stay: that request really went out.
+ */
+export function scheduledPhases<T extends { cancelled_at?: string | null }>(phases: T[]): T[] {
+  return phases.filter((p) => !p.cancelled_at);
+}
