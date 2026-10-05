@@ -1211,7 +1211,22 @@ The object is reached through its record, never its path alone: a merged duplica
   - **La Home:** add a Resend API key from the account where `lahomecontractor.com` is verified, in La Home → Settings → Email.
   - **The shared sender:** verify `aibuildpros.com` in Resend, then change `EMAIL_FROM` in Vercel to an AI Build Pros address.
 
-## 112 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
+
+## 111 — The Speaker button is the app's own plugin, and shows only where it works
+
+**Date:** 2026-10-05
+
+**Context:** Once calls worked in the Android app (#109), the owner asked for a speaker button. A call from the CRM is WebRTC inside the app's WebView. A web page can't choose between the phone's earpiece and its loudspeaker: browsers on Android offer no output choice, and the WebView picks the route itself when the call opens the microphone.
+
+**Decision:**
+- The app carries a small plugin of its own, `CallAudioPlugin.java` (`CallAudio`), registered in `MainActivity` before the bridge starts. It has two methods. `isSpeakerOn` reports the live route; `setSpeaker` switches it, then reports the result. On Android 12 and later it uses the communication device (loudspeaker or earpiece; a tablet with no earpiece hands the route back to Android). Earlier versions use `setSpeakerphoneOn`. It relies on `MODIFY_AUDIO_SETTINGS`, already declared for #109.
+- `src/lib/call-audio.ts` is the CRM's side. The dialer shows **Speaker** between Mute and Hang Up only when `speakerSwitchAvailable()` is true: inside the app, *and* the app build carries the plugin. The website, and an app installed before this build, show no button rather than one that does nothing.
+- The button's state is read back from the phone, never assumed. It's read when the call rings, when it's answered, and after every tap, so it shows the route that's actually live (blue while the loudspeaker is on).
+- `call-audio.test.ts` holds the plugin's name and methods to the Java side, and checks it's registered before the bridge starts. A mismatch would otherwise fail silently: the button would just never appear.
+
+**Consequence:** It needs a new Play build. The iPhone app has no plugin yet, so it shows no button. The route the WebView chooses at the start of a call is left as Android sets it.
+
+## 113 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
 
 **Date:** 2026-10-05
 

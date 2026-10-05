@@ -65,7 +65,7 @@ export async function connectPageForCompany(companyId: string, page: MetaPage): 
       ? (await loadMetaSecrets(companyId, admin)).pageAccessToken
       : null;
 
-  // The Page token is stored encrypted (DECISIONS #112).
+  // The Page token is stored encrypted (DECISIONS #113).
   const { error } = await saveMetaSecrets(
     companyId,
     { pageAccessToken: page.accessToken },

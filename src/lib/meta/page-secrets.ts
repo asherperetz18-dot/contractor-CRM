@@ -5,7 +5,7 @@ import { metaSecretWrite, pickMetaSecrets, type MetaSecretColumns, type MetaSecr
 
 /**
  * The one place that reads and writes a company's Facebook Page token and
- * app secret (DECISIONS #112). Server-only, with the service role: the
+ * app secret (DECISIONS #113). Server-only, with the service role: the
  * values never reach a browser, and company members can't read them.
  */
 

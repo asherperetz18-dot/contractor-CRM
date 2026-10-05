@@ -1,6 +1,6 @@
 /**
  * Which stored copy of a company's Facebook Page token and app secret to
- * use, and what a save writes (DECISIONS #112).
+ * use, and what a save writes (DECISIONS #113).
  *
  * They used to sit in plain text in company_profile, which every member
  * of the company can read. Now:

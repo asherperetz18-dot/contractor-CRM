@@ -10,7 +10,7 @@ import { metaSecretWrite, pickMetaSecrets } from "./page-secrets-rules.ts";
  * text in company_profile, which every member of the company can read --
  * a field rep could read the token that downloads the company's Facebook
  * leads. They are now encrypted like every other saved key, and the plain
- * copies are moved out of reach (DECISIONS #112).
+ * copies are moved out of reach (DECISIONS #113).
  */
 
 const decrypt = (v: string | null | undefined) => (v ? v.replace(/^enc:/, "") : null);
