@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.183.1",
+    date: "2026-10-05",
+    notes: [
+      "Fix: the database step that makes texts private now runs. It had stopped with \"contact_phone_key does not exist\".",
+      "Fix: a new caller from CallRail or the AI receptionist gets one contact even when two of their calls arrive at once. That guard was built earlier but never switched on.",
+    ],
+  },
+  {
     version: "1.183.0",
     date: "2026-10-05",
     notes: [

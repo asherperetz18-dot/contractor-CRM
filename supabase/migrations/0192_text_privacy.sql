@@ -21,6 +21,27 @@
 --
 -- Safe as one paste, and safe to run twice.
 
+-- ── The phone-number rule ────────────────────────────────────────────
+
+-- The digits two numbers are compared on: the last ten, or null for
+-- anything shorter. Defined here word for word as 0129 has it, because
+-- production never ran 0129 and the first paste of this file stopped at
+-- "function public.contact_phone_key(text) does not exist". Don't run
+-- 0129 to fix that: it would put back an older create_lead_for_unknown_
+-- caller over 0150's. With this helper in place, 0150's one-contact-per-
+-- new-caller guard (which calls it) starts working too.
+create or replace function public.contact_phone_key(p_phone text)
+returns text
+language sql
+immutable
+as $$
+  select case
+    when length(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')) >= 10
+      then right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 10)
+    else null
+  end
+$$;
+
 -- ── The owner ────────────────────────────────────────────────────────
 
 alter table public.sms_messages
