@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import {
   TRIAL_DAYS,
   billingNotice,
+  extendedTrialEnd,
+  isTrialExtension,
   lockReason,
   trialCheckoutOptions,
   trialDaysLeft,
@@ -89,4 +91,23 @@ test("the trial columns are written on their own, so a missing 0198 never stops 
   assert.match(sync, /isMissingSchemaError\(trialError\)/);
   // The read takes every column, so it works before and after 0198.
   assert.match(sync, /\.select\("\*"\)/);
+});
+
+test("extending a trial adds the full time, from its end or from now if that has passed", () => {
+  const secs = (iso: string) => Date.parse(iso) / 1000;
+  // Ends in 5 days, +14: ends in 19 days.
+  assert.equal(extendedTrialEnd(inDays(5), NOW, 14), secs(inDays(19)));
+  // Already ended yesterday, +7: a week from now, not six days.
+  assert.equal(extendedTrialEnd(inDays(-1), NOW, 7), secs(inDays(7)));
+  assert.equal(extendedTrialEnd(null, NOW, 30), secs(inDays(30)));
+  assert.ok(isTrialExtension(7) && isTrialExtension(14) && isTrialExtension(30));
+  assert.ok(!isTrialExtension(365) && !isTrialExtension(0) && !isTrialExtension(-7));
+});
+
+test("only a platform admin can extend a trial, checked inside the action itself", () => {
+  const action = source("../actions/trial-admin.ts");
+  const fn = action.slice(action.indexOf("export async function extendTrial"));
+  assert.ok(fn.indexOf("isPlatformAdmin(profile)") > 0);
+  assert.ok(fn.indexOf("isPlatformAdmin(profile)") < fn.indexOf("subscriptions.update("));
+  assert.match(fn, /isTrialExtension\(days\)/);
 });

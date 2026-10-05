@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { switchCompany } from "@/lib/actions/company";
+import { extendTrial } from "@/lib/actions/trial-admin";
+import { TRIAL_EXTENSIONS } from "@/lib/billing/trial";
 import { openInCompany } from "@/lib/open-in-company";
 import {
   BILLING_STATE_LABEL,
@@ -36,7 +39,57 @@ function fmtDay(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-export function CompaniesView({ companies }: { companies: CompanyDirectoryRow[] }) {
+function fmtTrialEnd(iso: string, zone: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { timeZone: zone, month: "short", day: "numeric" });
+}
+
+/**
+ * More free-trial time for one company (DECISIONS #130): Stripe moves the
+ * trial's end, and the page reloads with the new date.
+ */
+function ExtendTrial({ companyId }: { companyId: string }) {
+  const router = useRouter();
+  const [days, setDays] = useState<number>(TRIAL_EXTENSIONS[0]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function extend() {
+    setBusy(true);
+    setError(null);
+    const res = await extendTrial(companyId, days);
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    router.refresh();
+  }
+
+  return (
+    <div className="company-trial-extend">
+      <select
+        value={days}
+        onChange={(e) => setDays(Number(e.target.value))}
+        disabled={busy}
+        aria-label="Days to add to the free trial"
+      >
+        {TRIAL_EXTENSIONS.map((d) => (
+          <option key={d} value={d}>
+            +{d} days
+          </option>
+        ))}
+      </select>
+      <button type="button" className="btn-ghost small" onClick={extend} disabled={busy}>
+        {busy ? "Extending…" : "Extend trial"}
+      </button>
+      {error && <p className="error-note">{error}</p>}
+    </div>
+  );
+}
+
+export function CompaniesView({ companies, zone }: { companies: CompanyDirectoryRow[]; zone: string }) {
   const [filter, setFilter] = useState<DirectoryFilter>("all");
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -141,6 +194,14 @@ export function CompaniesView({ companies }: { companies: CompanyDirectoryRow[] 
                         <span className={`chip invite-status ${BILLING_CHIP[r.billing]}`}>
                           {BILLING_STATE_LABEL[r.billing]}
                         </span>
+                        {r.billing === "trial" && (
+                          <>
+                            {r.trialEndsAt && (
+                              <span className="hint-note"> until {fmtTrialEnd(r.trialEndsAt, zone)}</span>
+                            )}
+                            <ExtendTrial companyId={r.id} />
+                          </>
+                        )}
                       </td>
                       <td className="right">
                         <button type="button" className="btn-ghost small" onClick={() => open(r.id)} disabled={busy}>
