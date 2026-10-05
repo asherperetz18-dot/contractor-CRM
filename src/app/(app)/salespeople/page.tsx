@@ -23,12 +23,12 @@ export default async function SalespeoplePage() {
       const slim = await selectAll<{
         assigned_to: string | null;
         partner_rep_id: string | null;
-        stage: string;
+        stage_key: string | null;
         value: number;
       }>((f, t) =>
         supabase
           .from("leads")
-          .select("assigned_to, partner_rep_id, stage, value")
+          .select("assigned_to, partner_rep_id, stage_key, value")
           .eq("company_id", companyId)
           .order("created_at", { ascending: false })
           .range(f, t)

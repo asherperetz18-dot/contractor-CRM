@@ -2,7 +2,8 @@
 // stage chips over a list of cards. Pure, so it is tested without a
 // browser; src/app/(app)/pipeline/phone-lead-list.tsx draws it.
 
-import { isSettledStage, money } from "./data/types.ts";
+import { money } from "./data/types.ts";
+import { isClosedStageKey } from "./pipeline/stage-keys.ts";
 
 /** Which stage's cards the phone list shows: the one picked, while it is
  *  still a column, else the first stage with leads in it. */
@@ -17,13 +18,13 @@ export function pickPhoneStage(
 /** The line under a card's name. Stale matches the board's "stale" tag:
  *  an open lead received more than 14 days ago. */
 export function leadCardMeta(
-  card: { project_type: string | null; value: number; source: string | null; stage: string },
+  card: { project_type: string | null; value: number; source: string | null; stage_key: string | null },
   days: number
 ): { text: string; stale: boolean } {
   const age = days <= 0 ? "Came in today" : days === 1 ? "Came in yesterday" : `${days} days old`;
   const parts = [card.project_type, card.value > 0 ? money(card.value) : null, age, card.source];
   return {
     text: parts.filter(Boolean).join(" · "),
-    stale: days > 14 && !isSettledStage(card.stage),
+    stale: days > 14 && !isClosedStageKey(card.stage_key),
   };
 }

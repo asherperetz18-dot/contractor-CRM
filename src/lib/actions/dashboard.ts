@@ -13,6 +13,7 @@ import {
   type RollupInputs,
 } from "@/lib/data/dashboard-rollup";
 import { mergePanelOrder } from "@/lib/data/dashboard-layout";
+import { OPEN_LEADS_FILTER } from "@/lib/pipeline/stage-keys";
 
 /** The day after, in UTC -- the exclusive upper bound for timestamptz
  *  columns, so "to Sep 20" keeps everything stamped during Sep 20. */
@@ -100,9 +101,9 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
     selectAll<RollupInputs["openLeads"][number]>((f, t) =>
       supabase
         .from("leads")
-        .select("stage, value, updated_at")
+        .select("stage, stage_key, value, updated_at")
         .eq("company_id", companyId)
-        .not("stage", "in", "(Won,Lost,DNC)")
+        .or(OPEN_LEADS_FILTER)
         .range(f, t)
     ),
     selectAll<RollupInputs["signedSinceMonths"][number]>((f, t) =>

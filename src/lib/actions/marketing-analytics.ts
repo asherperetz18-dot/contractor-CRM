@@ -200,7 +200,7 @@ export async function getMarketingAnalytics(
 
   // ── Fallback: the same buckets from windowed queries ─────────────
   const LEAD =
-    "id, contact_type, company_name, first_name, last_name, phone, source, stage, value, has_appt, assigned_to, lead_cost, created_at, won_at";
+    "id, contact_type, company_name, first_name, last_name, phone, source, stage, stage_key, value, has_appt, assigned_to, lead_cost, created_at, won_at";
   const [leads, estimates, events, sourceDefaultCost] = await Promise.all([
     // From the oldest edge any bucket needs (the 12-week strip, the
     // previous period, the window). All Time is the one deliberately
@@ -289,7 +289,8 @@ export async function getWonWithoutContract(
       .from("leads")
       .select(FIELDS)
       .eq("company_id", companyId)
-      .eq("stage", "Won")
+      // By tag: whatever this company calls its Won stage (DECISIONS #120).
+      .eq("stage_key", "won")
       .order("created_at", { ascending: false })
       .range(f, t);
     if (win.from) q = q.gte("created_at", win.from);

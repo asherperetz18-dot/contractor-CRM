@@ -39,6 +39,7 @@ const lead = (over: Record<string, unknown>) => ({
   phone: null,
   source: null,
   stage: "New",
+  stage_key: null,
   value: 0,
   has_appt: false,
   assigned_to: null,
@@ -63,17 +64,17 @@ const est = (over: Record<string, unknown>) => ({
 
 const LEADS = [
   // Cohort, CA Pro: won by stage, backed by a signed contract.
-  lead({ id: "l1", source: "CA Pro", stage: "Won", value: 1000, has_appt: true, assigned_to: "asher", lead_cost: 375, won_at: "2026-09-10T00:00:00Z" }),
+  lead({ id: "l1", source: "CA Pro", stage: "Won", stage_key: "won", value: 1000, has_appt: true, assigned_to: "asher", lead_cost: 375, won_at: "2026-09-10T00:00:00Z" }),
   // Cohort, CA Pro: won by stage, NO contract -- the discrepancy the page flags.
-  lead({ id: "l2", source: "CA Pro", stage: "Won", value: 600000, assigned_to: "james", lead_cost: 375, won_at: "2026-09-12T00:00:00Z" }),
+  lead({ id: "l2", source: "CA Pro", stage: "Won", stage_key: "won", value: 600000, assigned_to: "james", lead_cost: 375, won_at: "2026-09-12T00:00:00Z" }),
   // Cohort, Cold List: nothing happened, default-priced.
   lead({ id: "l3", source: "Cold List", stage: "New", value: 0, assigned_to: "asher", lead_cost: 375 }),
   // Cohort, Roy: appointment, hand-priced, estimate sent, not signed.
-  lead({ id: "l4", source: "Roy", stage: "Contacted", value: 40, has_appt: true, assigned_to: "brendan", lead_cost: 197 }),
+  lead({ id: "l4", source: "Roy", stage: "Contacted", stage_key: "contacted", value: 40, has_appt: true, assigned_to: "brendan", lead_cost: 197 }),
   // Cohort, blank source folds to Unknown, no cost at all.
-  lead({ id: "l5", source: "", stage: "Lost", value: 5, created_at: "2026-09-19T23:30:00Z" }),
+  lead({ id: "l5", source: "", stage: "Lost", stage_key: "lost", value: 5, created_at: "2026-09-19T23:30:00Z" }),
   // Previous window: one lead with a contract.
-  lead({ id: "p1", source: "CA Pro", stage: "Won", value: 100, has_appt: true, created_at: "2026-08-01T00:00:00Z" }),
+  lead({ id: "p1", source: "CA Pro", stage: "Won", stage_key: "won", value: 100, has_appt: true, created_at: "2026-08-01T00:00:00Z" }),
   // Older still: in the weekly strip, outside both windows.
   lead({ id: "w1", source: "Roy", stage: "New", value: 0, created_at: "2026-07-01T00:00:00Z" }),
   // Before the strip entirely -- counted nowhere.

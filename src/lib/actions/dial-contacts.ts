@@ -31,7 +31,7 @@ import {
  */
 
 const ROW_COLUMNS =
-  "id, contact_type, company_name, first_name, last_name, phone, phone2, phone3, project_type, stage, assigned_to, address_type, created_at";
+  "id, contact_type, company_name, first_name, last_name, phone, phone2, phone3, project_type, stage, stage_key, assigned_to, address_type, created_at";
 
 /** PostgREST puts an .in() list in the request; keep each one bounded. */
 const IN_CHUNK = 150;
@@ -115,9 +115,11 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
     if (input.tab === "contact") {
       if (input.addressTypeFilter !== "All") out = out.eq("address_type", input.addressTypeFilter);
     } else {
-      if (input.statusFilter === "Won") out = out.eq("stage", "Won");
-      if (input.statusFilter === "Lost") out = out.eq("stage", "Lost");
-      if (input.statusFilter === "Open") out = out.not("stage", "in", "(Won,Lost)");
+      // By tag, so a renamed Won or Lost stage still filters (DECISIONS
+      // #120). A company's own stages have no tag and are open.
+      if (input.statusFilter === "Won") out = out.eq("stage_key", "won");
+      if (input.statusFilter === "Lost") out = out.eq("stage_key", "lost");
+      if (input.statusFilter === "Open") out = out.or("stage_key.is.null,stage_key.not.in.(won,lost)");
       if (input.stageFilter !== "All") out = out.eq("stage", input.stageFilter);
       if (input.repFilter !== "All") out = out.eq("assigned_to", input.repFilter);
       if (input.createdSince) out = out.gte("created_at", input.createdSince);

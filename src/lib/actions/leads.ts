@@ -11,8 +11,9 @@ import { snapshotLead, TRASH_RETENTION_DAYS } from "@/lib/lead-trash";
 import { syncSignersWithContact } from "@/lib/signers-sync";
 import { applyLeadTeamFills } from "@/lib/lead-team-sync";
 import type { ContactForSigners } from "@/lib/data/signers-follow-contact";
+import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { isPreAppointmentStage } from "@/lib/pipeline/stage-keys";
 import {
-  PRE_APPOINTMENT_STAGES,
   canDeleteLeads,
   leadDisplayName,
   normalizePhone,
@@ -410,9 +411,10 @@ export async function convertLeadToJob(lead: {
   });
   if (jobError) return { error: jobError.message };
 
+  // By tag: whatever this company calls its Won stage (DECISIONS #120).
   const { error: leadError } = await supabase
     .from("leads")
-    .update({ stage: "Won" })
+    .update({ stage_key: "won" })
     .eq("id", lead.id);
   if (leadError) return { error: leadError.message };
 
@@ -453,15 +455,16 @@ export async function bookAppointmentForLead(
   });
   if (eventError) return { error: eventError.message };
 
-  const nextStage = PRE_APPOINTMENT_STAGES.includes(currentStage)
-    ? "Appointment Scheduled"
-    : currentStage;
+  // Still waiting for a first appointment: on to this company's
+  // Appointment Scheduled stage, whatever it is called. Past that, the
+  // stage is the rep's call.
+  const advance = isPreAppointmentStage(await loadTaggedStages(supabase, profile.company_id), currentStage);
 
   const { error: leadError } = await supabase
     .from("leads")
     .update({
       has_appt: true,
-      stage: nextStage,
+      ...(advance ? { stage_key: "appointment_scheduled" } : {}),
       ...(details.projectType ? { project_type: details.projectType } : {}),
     })
     .eq("id", leadId);

@@ -11,11 +11,12 @@ import {
   coerceDispatchRollup,
   dispatchBoundaries,
   emptyDispatchRollup,
-  WAITING_STAGES,
   type DispatchInputs,
   type DispatchRollup,
   type TodayVisit,
 } from "@/lib/data/dispatch-rollup";
+import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { preAppointmentStageNames } from "@/lib/pipeline/stage-keys";
 
 /** The day after, in UTC -- the exclusive upper bound for timestamptz
  *  columns, so "to Sep 20" keeps everything stamped during Sep 20. */
@@ -123,6 +124,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
   };
 
   const hasPrev = !!B.prevFrom;
+  const waitingStages = preAppointmentStageNames(await loadTaggedStages(supabase, companyId));
   const [
     cohortLeads,
     prevLeads,
@@ -149,7 +151,9 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
         .from("leads")
         .select("id, created_at, dispatcher_id")
         .eq("company_id", companyId)
-        .in("stage", [...WAITING_STAGES])
+        // Still waiting for a first appointment -- the same stages the
+        // SQL takes (pre_appointment_stage_names, 0195).
+        .in("stage", waitingStages)
         .gte("created_at", B.waitingFrom)
         .range(f, t)
     ),

@@ -11,6 +11,7 @@ import {
   DEFAULT_PROJECT_TYPES,
   type DefaultDispositionRow,
   type DefaultSimpleRow,
+  type DefaultPipelineStageRow,
   type DefaultStageRow,
 } from "@/lib/data/company-defaults";
 import {
@@ -123,7 +124,7 @@ async function insertCompanyWithUniqueName(
 type SeedRows = {
   timezone?: string;
   timeFormat?: string;
-  stages: DefaultStageRow[];
+  stages: DefaultPipelineStageRow[];
   calendars: DefaultStageRow[];
   dispositions: DefaultDispositionRow[];
   projectTypes: DefaultSimpleRow[];
@@ -144,7 +145,7 @@ async function seedRowsFor(sourceCompanyId?: string): Promise<SeedRows> {
   const admin = createAdminClient();
   const [profile, stages, calendars, dispositions, projectTypes, leadSources] = await Promise.all([
     admin.from("company_profile").select("timezone, time_format").eq("company_id", sourceCompanyId).maybeSingle(),
-    admin.from("pipeline_stages").select("name, color, sort_order, is_system").eq("company_id", sourceCompanyId),
+    admin.from("pipeline_stages").select("name, color, sort_order, is_system, key").eq("company_id", sourceCompanyId),
     admin.from("calendars").select("name, color, sort_order, is_system").eq("company_id", sourceCompanyId),
     admin
       .from("call_dispositions")

@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.188.0",
+    date: "2026-10-05",
+    notes: [
+      "Every pipeline stage can now be renamed in Settings › Pipeline Stages, including Won, Lost, Unsorted and Appointment Scheduled. Booking, signing, no-show follow-ups and the reports keep working under the new names. A renamed standard stage shows what it works as.",
+      "Renaming a stage now also updates the dialer outcomes that move leads into it.",
+      "\"Not Interested\" and do-not-contact leads now count as closed everywhere: they no longer add to open pipeline value, open-lead counts, follow-ups due or stale tags.",
+    ],
+  },
+  {
     version: "1.187.0",
     date: "2026-10-05",
     notes: [

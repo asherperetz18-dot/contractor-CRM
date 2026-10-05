@@ -25,12 +25,12 @@ test("a picked stage that is no longer a column (Won/Lost, hidden) gives way", (
 });
 
 test("a card's line says what the job is, its value, how old it is and where it came from", () => {
-  const card = { project_type: "Kitchen remodel", value: 18400, source: "Facebook", stage: "Contacted" };
+  const card = { project_type: "Kitchen remodel", value: 18400, source: "Facebook", stage_key: "contacted" };
   assert.deepEqual(leadCardMeta(card, 3), { text: "Kitchen remodel · $18,400 · 3 days old · Facebook", stale: false });
 });
 
 test("empty parts are left out rather than printed as blanks or $0", () => {
-  const card = { project_type: null, value: 0, source: null, stage: "New Lead" };
+  const card = { project_type: null, value: 0, source: null, stage_key: "new_lead" };
   assert.deepEqual(leadCardMeta(card, 0), { text: "Came in today", stale: false });
   assert.equal(leadCardMeta(card, 1).text, "Came in yesterday");
   // A future date is a typo, not a lead from tomorrow.
@@ -38,8 +38,12 @@ test("empty parts are left out rather than printed as blanks or $0", () => {
 });
 
 test("an open lead over two weeks old is stale; a won or lost one never is", () => {
-  const open = { project_type: null, value: 0, source: "Angi", stage: "Contacted" };
+  const open = { project_type: null, value: 0, source: "Angi", stage_key: "contacted" };
   assert.deepEqual(leadCardMeta(open, 15), { text: "15 days old · Angi", stale: true });
   assert.equal(leadCardMeta(open, 14).stale, false);
-  assert.equal(leadCardMeta({ ...open, stage: "Won" }, 40).stale, false);
+  assert.equal(leadCardMeta({ ...open, stage_key: "won" }, 40).stale, false);
+  // Closed by tag: nobody chases a do-not-contact lead.
+  assert.equal(leadCardMeta({ ...open, stage_key: "dnc" }, 40).stale, false);
+  // A company's own stage has no tag and is open.
+  assert.equal(leadCardMeta({ ...open, stage_key: null }, 40).stale, true);
 });

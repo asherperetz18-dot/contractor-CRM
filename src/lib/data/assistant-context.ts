@@ -8,6 +8,7 @@ import {
   type Estimate,
 } from "./types.ts";
 import { funnelCardStats, effectiveEstimateStatus } from "./funnel-cards.ts";
+import { isClosedStageKey } from "../pipeline/stage-keys.ts";
 
 /**
  * Everything the AI assistant is allowed to read, rendered as one plain
@@ -172,7 +173,7 @@ export type AssistantContextInput = {
   /** The capped detail roster (query-limited to MAX_LEADS_IN_CONTEXT). */
   leads: AssistantLead[];
   /** Narrow columns for EVERY lead -- the accurate totals. */
-  leadTotals: { stage: string; value: number }[];
+  leadTotals: { stage_key: string | null; value: number }[];
   events: AssistantEvent[];
   tasks: AssistantTask[];
   /** Every document, like the Estimates page fetches. */
@@ -242,7 +243,9 @@ export function buildAssistantContext(input: AssistantContextInput): string {
   };
 
   // ── Leads (unchanged behavior: capped roster, whole-book summary) ──
-  const openTotals = input.leadTotals.filter((l) => l.stage !== "Won" && l.stage !== "Lost");
+  // Open: not won, lost, not interested or do-not-contact, by the stage's
+  // tag (DECISIONS #120) -- the same count as the Dashboard.
+  const openTotals = input.leadTotals.filter((l) => !isClosedStageKey(l.stage_key));
   const openPipelineValue = openTotals.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
 
   const leadLines = input.leads.map((l) => {

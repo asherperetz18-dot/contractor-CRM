@@ -88,6 +88,8 @@ export type MarketingLead = {
   phone: string | null;
   source: string | null;
   stage: string;
+  /** The stage's tag (DECISIONS #120): "won" goes by it. */
+  stage_key: string | null;
   value: number | string | null;
   has_appt: boolean | null;
   assigned_to: string | null;
@@ -294,7 +296,7 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
         t.signed += 1;
         t.signedCents += sc;
       }
-      if (l.stage === "Won") {
+      if (l.stage_key === "won") {
         t.wonStage += 1;
         t.wonStageValue += num(l.value);
         if (!(sc > 0)) t.wonNoContract += 1;

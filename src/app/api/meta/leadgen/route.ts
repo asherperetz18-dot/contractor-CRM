@@ -160,6 +160,8 @@ async function handlePost(req: NextRequest) {
         email: lead.email,
         address: lead.address,
         zip: fields.zip_code || null,
+        // Into this company's intake stage, whatever it is called: the
+        // database maps a new lead's unknown stage there (0195).
         stage: "Unsorted",
         source: "Facebook Lead Ads",
         // leads.company_id is NOT NULL. Without this every insert failed

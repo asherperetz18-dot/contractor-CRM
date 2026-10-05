@@ -255,10 +255,10 @@ async function gatherContext(
     // at 1000, so on 1520 leads the assistant answered "how many open
     // leads" from two thirds of the book while sounding certain, and
     // disagreed with the Dashboard it was meant to corroborate.
-    selectAll<{ stage: string; value: number }>((rangeFrom, rangeTo) =>
+    selectAll<{ stage_key: string | null; value: number }>((rangeFrom, rangeTo) =>
       supabase
         .from("leads")
-        .select("stage, value")
+        .select("stage_key, value")
         .eq("company_id", companyId)
         .match(repMatch)
         .range(rangeFrom, rangeTo)
@@ -399,7 +399,7 @@ async function gatherContext(
     team,
     access,
     leads: roster,
-    leadTotals: (allLeadTotals as { stage: string; value: number }[] | null) ?? [],
+    leadTotals: (allLeadTotals as { stage_key: string | null; value: number }[] | null) ?? [],
     events: ((events ?? []) as AssistantEvent[]) ?? [],
     tasks: ((tasks ?? []) as AssistantTask[]) ?? [],
     estimates,

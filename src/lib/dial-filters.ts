@@ -27,6 +27,8 @@ export type DialContactRow = {
   phone3: string | null;
   project_type: string | null;
   stage: string;
+  /** The stage's tag (lib/pipeline/stage-keys.ts), migration 0195. */
+  stage_key: string | null;
   assigned_to: string | null;
   address_type: string;
   created_at: string;

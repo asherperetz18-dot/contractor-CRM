@@ -57,12 +57,12 @@ import {
   sendPortalLink,
 } from "@/lib/actions/portal";
 
-// One-click ways out of the active pipeline, in the order they appear.
-// Only rendered when the stage actually exists for the current company --
-// "Not Interested" is a custom stage that exists in some companies and not
-// others, and a button that moves a lead to a stage this company doesn't
-// have would just fail.
-const QUICK_EXIT_STAGES = ["Not Interested", "Lost"] as const;
+// One-click ways out of the active pipeline, in the order they appear,
+// by tag and shown under the company's own names (DECISIONS #120). Only
+// rendered when the company has the stage -- Not Interested can be
+// deleted, and a button that moves a lead to a stage this company
+// doesn't have would just fail.
+const QUICK_EXIT_KEYS: StageKey[] = ["not_interested", "lost"];
 import { TasksPanel } from "./tasks-panel";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { LeadNotesPane } from "./lead-notes-pane";
@@ -73,6 +73,7 @@ import {
 } from "../calendar/dispatcher-picker";
 import { LeadFilesPanel } from "./lead-files-panel";
 import { CallsPanel } from "./calls-panel";
+import { stageKeyOf, stageLabel, stageNameFor, type StageKey } from "@/lib/pipeline/stage-keys";
 
 type Tab = "Overview" | "Appointments" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
@@ -80,7 +81,7 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function toInput(lead?: Lead): LeadInput {
+function toInput(lead: Lead | undefined, stages: PipelineStageRow[]): LeadInput {
   return {
     contact_type: lead?.contact_type ?? "Individual",
     company_name: lead?.company_name ?? "",
@@ -94,7 +95,7 @@ function toInput(lead?: Lead): LeadInput {
     zip: lead?.zip ?? "",
     source: lead?.source ?? "",
     project_type: lead?.project_type ?? "",
-    stage: lead?.stage ?? "Unsorted",
+    stage: lead?.stage ?? stageLabel(stages, "unsorted"),
     value: lead ? String(lead.value ?? "") : "",
     lead_cost: lead?.lead_cost != null ? String(lead.lead_cost) : "",
     date_received: lead?.date_received ?? todayISO(),
@@ -165,7 +166,7 @@ export function LeadForm({
   const [, startTransition] = useTransition();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState<LeadInput>(toInput(lead));
+  const [form, setForm] = useState<LeadInput>(toInput(lead, stages));
   const [hasSecondContact, setHasSecondContact] = useState(
     !!(lead?.second_contact_first_name || lead?.second_contact_phone || lead?.second_contact_email)
   );
@@ -977,9 +978,9 @@ export function LeadForm({
                 a lead is never offered a move that would do nothing. */}
             {!readOnly && (
               <span className="chip-row-end">
-                {QUICK_EXIT_STAGES.filter(
-                  (s) => stages.some((ps) => ps.name === s) && form.stage !== s
-                ).map((s) => (
+                {QUICK_EXIT_KEYS.map((k) => stageNameFor(stages, k))
+                  .filter((s): s is string => !!s && form.stage !== s)
+                  .map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -1398,7 +1399,7 @@ export function LeadForm({
                 Delete
               </button>
             )}
-            {lead && !readOnly && form.stage !== "Won" && (
+            {lead && !readOnly && stageKeyOf(stages, form.stage) !== "won" && (
               <button type="button" className="btn-ghost" onClick={handleConvert}>
                 Mark Won → Create Job
               </button>

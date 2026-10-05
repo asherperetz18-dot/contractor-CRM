@@ -93,7 +93,9 @@ test("options keep the settings order, then add book values A-Z, no dupes or bla
 });
 
 test("'With open leads' narrows the current stage ticks to open ones", () => {
-  const all = ["Unsorted", "Appointment Scheduled", "Won", "Lost", "DNC"];
-  assert.deepEqual(openStageSelection(all, []), ["Unsorted", "Appointment Scheduled"]);
-  assert.deepEqual(openStageSelection(all, ["Won", "Unsorted"]), ["Unsorted"]);
+  // "Won" renamed to "Sold": the closed names come from the stage tags.
+  const all = ["Unsorted", "Appointment Scheduled", "Sold", "Lost", "Not Interested", "DNC"];
+  const closed = ["Sold", "Lost", "Not Interested", "DNC"];
+  assert.deepEqual(openStageSelection(all, [], closed), ["Unsorted", "Appointment Scheduled"]);
+  assert.deepEqual(openStageSelection(all, ["Sold", "Unsorted"], closed), ["Unsorted"]);
 });

@@ -4,7 +4,8 @@ import { addDays } from "@/lib/company-clock";
 import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { appointmentAttended, isAdminRole, isSettledStage, type EventStatus } from "@/lib/data/types";
+import { appointmentAttended, isAdminRole, type EventStatus } from "@/lib/data/types";
+import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 import { selectAll } from "@/lib/data/select-all";
 
 type BriefLead = {
@@ -97,7 +98,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
       supabase
         .from("leads")
         .select(
-          "id, created_at, stage, value, won_at, source, refund_status, refund_requested_at, has_appt"
+          "id, created_at, stage, stage_key, value, won_at, source, refund_status, refund_requested_at, has_appt"
         )
         .eq("company_id", companyId)
         .range(rangeFrom, rangeTo)
@@ -134,7 +135,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   ]);
 
   const leadRows = (leads ?? []) as {
-    id: string; created_at: string; stage: string; value: number | null; won_at: string | null;
+    id: string; created_at: string; stage: string; stage_key: string | null; value: number | null; won_at: string | null;
     source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
   }[];
   const eventRows = events;
@@ -165,16 +166,16 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     };
   }
 
-  const settledLeadIds = new Set(leadRows.filter((l) => isSettledStage(l.stage)).map((l) => l.id));
+  const closedLeadIds = new Set(leadRows.filter((l) => isClosedStageKey(l.stage_key)).map((l) => l.id));
   const openRefunds = leadRows.filter((l) => l.refund_status === "Requested");
   const attention: BriefAttention = {
-    // Skips tasks hanging off a lead that is already Won or Lost. Three
-    // of these were auto-created "no outcome set" follow-ups on
-    // appointments whose leads were later won -- counting them made the
-    // brief disagree with the pipeline's Follow-ups Due panel, which has
-    // always ignored settled leads.
+    // Skips tasks hanging off a closed lead (won, lost, not interested,
+    // do-not-contact). Three of these were auto-created "no outcome set"
+    // follow-ups on appointments whose leads were later won -- counting
+    // them made the brief disagree with the pipeline's Follow-ups Due
+    // panel, which ignores closed leads too.
     overdueTasks: taskRows.filter(
-      (t) => !t.completed_at && t.due_date < todayISO && !settledLeadIds.has(t.lead_id)
+      (t) => !t.completed_at && t.due_date < todayISO && !closedLeadIds.has(t.lead_id)
     ).length,
     // Appointments in the next couple of days the customer hasn't confirmed
     // -- the ones most likely to become a wasted trip.
@@ -191,9 +192,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         l.refund_requested_at &&
         Date.now() - new Date(l.refund_requested_at).getTime() > 30 * 86400000
     ).length,
-    coldLeads: leadRows.filter(
-      (l) => l.stage !== "Won" && l.stage !== "Lost" && l.stage !== "DNC" && !l.has_appt
-    ).length,
+    coldLeads: leadRows.filter((l) => !isClosedStageKey(l.stage_key) && !l.has_appt).length,
     // Outdoor-sensitive appointments this week the rain-alerts cron has
     // flagged (50%+ chance of rain) -- the office's cue to call and
     // reschedule before the crew shows up to a wash-out.

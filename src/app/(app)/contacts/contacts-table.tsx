@@ -35,7 +35,6 @@ import { BulkEmailModal } from "@/components/bulk-email-modal";
 import { FilterSelect, type FilterOption } from "@/components/filter-select";
 import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
 import {
-  CONTACT_CLOSED_STAGES,
   NO_VALUE,
   contactFiltersQuery,
   hasContactFilters,
@@ -43,6 +42,7 @@ import {
   openStageSelection,
   type ContactFilters,
 } from "@/lib/contact-filters";
+import { closedStageNames } from "@/lib/pipeline/stage-keys";
 import { CONTACT_ROW_BATCH } from "./row-batch";
 
 /**
@@ -401,11 +401,12 @@ export function ContactsTable({
     setSearch("");
   }
   const narrowed = hasContactFilters(filters) || search.trim() !== "";
-  const openTicks = openStageSelection(stageNames, []);
+  const closedNames = closedStageNames(stages);
+  const openTicks = openStageSelection(stageNames, [], closedNames);
   const showingOpen =
     filters.stages.length > 0 &&
     filters.stages.length === openTicks.length &&
-    filters.stages.every((s) => !CONTACT_CLOSED_STAGES.includes(s));
+    filters.stages.every((s) => !closedNames.includes(s));
   const showingUnassigned = filters.reps.length === 1 && filters.reps[0] === NO_VALUE;
 
   const remaining = Math.max(0, total - rows.length);
@@ -469,7 +470,7 @@ export function ContactsTable({
         <button
           type="button"
           className={"stat-card" + (showingOpen ? " stat-card-active" : "")}
-          onClick={() => setFilters((f) => ({ ...f, stages: openStageSelection(stageNames, f.stages) }))}
+          onClick={() => setFilters((f) => ({ ...f, stages: openStageSelection(stageNames, f.stages, closedNames) }))}
           title="Show only contacts with an open lead"
         >
           <div className="stat-value mono">{stats.withOpenLeads.toLocaleString()}</div>

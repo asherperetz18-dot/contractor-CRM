@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, SYSTEM_STAGE_NAMES } from "@/lib/data/types";
+import { isAdminRole } from "@/lib/data/types";
+import { REQUIRED_STAGE_KEYS, isStageKey } from "@/lib/pipeline/stage-keys";
 
 async function requireOfficeOrAdmin(): Promise<{ error: string } | { companyId: string }> {
   const profile = await getCurrentProfile();
@@ -62,13 +63,16 @@ export async function renameStage(
   const supabase = await createClient();
   const { data: stage } = await supabase
     .from("pipeline_stages")
-    .select("name, is_system")
+    .select("name")
     .eq("id", id)
     .single();
-  const current = stage as { name: string; is_system: boolean } | null;
+  const current = stage as { name: string } | null;
   if (!current) return { error: "Stage not found." };
-  if (current.is_system) return { error: "System stages cannot be renamed." };
   if (current.name === trimmed) return {};
+
+  // Any stage can be renamed: the app goes by each stage's tag, not its
+  // name (DECISIONS #120). The database moves this company's leads and
+  // dialer outcomes to the new name in the same step (0195).
 
   const { error } = await supabase
     .from("pipeline_stages")
@@ -79,15 +83,8 @@ export async function renameStage(
     return { error: error.message };
   }
 
-  // Keep existing leads pointed at the renamed stage (this company's
-  // only -- stage names aren't unique across companies).
-  await supabase
-    .from("leads")
-    .update({ stage: trimmed })
-    .eq("stage", current.name)
-    .eq("company_id", guard.companyId);
-
   revalidatePath("/settings/pipeline-stages");
+  revalidatePath("/settings/call-dispositions");
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
   return {};
@@ -120,13 +117,13 @@ export async function deleteStage(id: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { data: stage } = await supabase
     .from("pipeline_stages")
-    .select("name, is_system")
+    .select("name, is_system, key")
     .eq("id", id)
     .single();
-  const current = stage as { name: string; is_system: boolean } | null;
+  const current = stage as { name: string; is_system: boolean; key: string | null } | null;
   if (!current) return { error: "Stage not found." };
-  if (current.is_system || SYSTEM_STAGE_NAMES.includes(current.name)) {
-    return { error: "System stages cannot be deleted." };
+  if (current.is_system || (isStageKey(current.key) && REQUIRED_STAGE_KEYS.includes(current.key))) {
+    return { error: "This stage can be renamed but not deleted: the app puts leads in it automatically." };
   }
 
   const { count } = await supabase

@@ -177,6 +177,8 @@ async function handlePost(req: NextRequest) {
         address: parsed.address,
         project_type: parsed.projectType,
         notes: parsed.message,
+        // Into this company's intake stage, whatever it is called: the
+        // database maps a new lead's unknown stage there (0195).
         stage: "Unsorted",
         source: parsed.source,
         company_id: companyId,

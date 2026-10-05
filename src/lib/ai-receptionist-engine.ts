@@ -5,7 +5,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
-import { PRE_APPOINTMENT_STAGES, TIMEZONE_IANA, toE164, type PipelineStage } from "@/lib/data/types";
+import { TIMEZONE_IANA, toE164, type PipelineStage } from "@/lib/data/types";
+import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { isPreAppointmentStage } from "@/lib/pipeline/stage-keys";
 import { nowInZone } from "@/lib/timezone";
 import {
   aiGreetingText,
@@ -462,6 +464,8 @@ async function createCallerLead(
       phone: phone || null,
       email: null,
       notes: null,
+      // Into this company's intake stage, whatever it is called: the
+      // database maps a new lead's unknown stage there (0195).
       stage: "Unsorted",
       source: "AI Receptionist",
       company_id: companyId,
@@ -565,14 +569,12 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
         .eq("id", leadId)
         .eq("company_id", claimed.company_id)
         .maybeSingle<{ stage: PipelineStage }>();
-      const stage = leadRow?.stage;
+      const advance = isPreAppointmentStage(await loadTaggedStages(admin, claimed.company_id), leadRow?.stage);
       await admin
         .from("leads")
         .update({
           has_appt: true,
-          ...(stage && PRE_APPOINTMENT_STAGES.includes(stage)
-            ? { stage: "Appointment Scheduled" }
-            : {}),
+          ...(advance ? { stage_key: "appointment_scheduled" } : {}),
         })
         .eq("id", leadId)
         .eq("company_id", claimed.company_id);

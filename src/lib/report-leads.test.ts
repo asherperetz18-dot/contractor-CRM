@@ -26,14 +26,15 @@ test("phone keys come from the counterparty side of unlinked messages only", () 
 
 test("rep tallies: assigned, open, won, and won value — same buckets the grid drew", () => {
   const stats = repLeadStats([
-    { assigned_to: "r1", stage: "New", value: 100 },
-    { assigned_to: "r1", stage: "Won", value: 50000 },
-    { assigned_to: "r1", stage: "Lost", value: 900 },
-    { assigned_to: "r1", stage: "DNC", value: 0 },
-    { assigned_to: "r2", stage: "Won", value: "2500" as unknown as number },
-    { assigned_to: null, stage: "New", value: 10 },
+    { assigned_to: "r1", stage_key: null, value: 100 },
+    { assigned_to: "r1", stage_key: "won", value: 50000 },
+    { assigned_to: "r1", stage_key: "lost", value: 900 },
+    { assigned_to: "r1", stage_key: "dnc", value: 0 },
+    { assigned_to: "r1", stage_key: "not_interested", value: 300 }, // closed, like DNC
+    { assigned_to: "r2", stage_key: "won", value: "2500" as unknown as number },
+    { assigned_to: null, stage_key: null, value: 10 },
   ]);
-  assert.deepEqual(stats.get("r1"), { assignedCount: 4, openCount: 1, wonCount: 1, wonValue: 50000 });
+  assert.deepEqual(stats.get("r1"), { assignedCount: 5, openCount: 1, wonCount: 1, wonValue: 50000 });
   assert.deepEqual(stats.get("r2"), { assignedCount: 1, openCount: 0, wonCount: 1, wonValue: 2500 });
   assert.equal(stats.has(""), false);
 });
@@ -48,9 +49,9 @@ test("rep tallies: assigned, open, won, and won value — same buckets the grid 
 
 test("a partnership lead counts for both reps, with the won value split", () => {
   const stats = repLeadStats([
-    { assigned_to: "r1", partner_rep_id: "r2", stage: "Won", value: 80000 },
-    { assigned_to: "r1", partner_rep_id: null, stage: "Won", value: 1000 },
-    { assigned_to: "r2", partner_rep_id: "r1", stage: "New", value: 500 },
+    { assigned_to: "r1", partner_rep_id: "r2", stage_key: "won", value: 80000 },
+    { assigned_to: "r1", partner_rep_id: null, stage_key: "won", value: 1000 },
+    { assigned_to: "r2", partner_rep_id: "r1", stage_key: null, value: 500 },
   ]);
   // r1: own solo win at full value + half the shared one; the open
   // partnership lead sits in their book too.
@@ -61,7 +62,7 @@ test("a partnership lead counts for both reps, with the won value split", () => 
 
 test("a partner equal to the owner never counts the same lead twice", () => {
   const stats = repLeadStats([
-    { assigned_to: "r1", partner_rep_id: "r1", stage: "Won", value: 6000 },
+    { assigned_to: "r1", partner_rep_id: "r1", stage_key: "won", value: 6000 },
   ]);
   assert.deepEqual(stats.get("r1"), { assignedCount: 1, openCount: 0, wonCount: 1, wonValue: 6000 });
 });
