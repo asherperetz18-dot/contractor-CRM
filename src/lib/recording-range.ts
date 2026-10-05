@@ -68,7 +68,7 @@ export function twilioRecordingUrlAllowed(url: string, accountSid: string): bool
 }
 
 /**
- * Which account's credentials may fetch a Twilio recording (DECISIONS #111).
+ * Which account's credentials may fetch a Twilio recording (DECISIONS #112).
  *
  * The company's own account, for a recording on that account. Otherwise
  * the shared account -- the server's TWILIO_* settings, La Home's -- but

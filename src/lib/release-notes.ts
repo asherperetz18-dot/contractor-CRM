@@ -21,10 +21,18 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.181.1",
+    version: "1.182.1",
     date: "2026-10-05",
     notes: [
       "Fix: call recordings made before a company had its own Twilio account play again. They had shown \"No recording\" since the switch to each company's own account.",
+    ],
+  },
+  {
+    version: "1.182.0",
+    date: "2026-10-05",
+    notes: [
+      "Android app: a Speaker button during calls, between Mute and Hang Up. Tap it to put the call on the loudspeaker; it turns blue while the speaker is on. Tap again for the earpiece.",
+      "The button arrives with the next app build from Google Play. The website doesn't show it, because a browser can't switch the speaker.",
     ],
   },
   {
