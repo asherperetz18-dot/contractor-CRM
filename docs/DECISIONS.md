@@ -1226,7 +1226,7 @@ The object is reached through its record, never its path alone: a merged duplica
 
 **Consequence:** It needs a new Play build. The iPhone app has no plugin yet, so it shows no button. The route the WebView chooses at the start of a call is left as Android sets it.
 
-## 112 — Recordings from the borrowing days play with the shared account, only from a list made once at the switch
+## 113 — Recordings from the borrowing days play with the shared account, only from a list made once at the switch
 
 **Date:** 2026-10-05
 
@@ -1237,7 +1237,7 @@ The object is reached through its record, never its path alone: a merged duplica
 The shared account can't simply be used for any recording on it. `call_logs` is writable by a company's own members, so a row edited to point at one of La Home's recordings would then be fetched with La Home's credentials.
 
 **Decision:**
-- **The list.** `0191_legacy_shared_recordings.sql` lists, once, every call whose saved Twilio recording is on an account other than the one its company has saved now. The table is not `call_logs`: RLS is on with no policies, and anon/authenticated have no rights on it. Only the migration writes it, and only the server reads it.
+- **The list.** `0192_legacy_shared_recordings.sql` lists, once, every call whose saved Twilio recording is on an account other than the one its company has saved now. The table is not `call_logs`: RLS is on with no policies, and anon/authenticated have no rights on it. Only the migration writes it, and only the server reads it.
 - **Which account plays a recording.** The recording route picks the account with `recordingCredentialChoice` (`src/lib/recording-range.ts`, tested):
   - the company's own account, for a recording on that account
   - otherwise the shared account, through `legacySharedRecordingCreds` (`src/lib/twilio-company.ts`), only for a recording on the shared account itself that is on the list for that exact call and URL

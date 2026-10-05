@@ -1,5 +1,5 @@
 -- Old call recordings keep playing after a company moved to its own Twilio
--- (DECISIONS #112).
+-- (DECISIONS #113).
 --
 -- Before every company had its own Twilio account, companies without one
 -- borrowed the shared account (the server's TWILIO_* settings -- La Home

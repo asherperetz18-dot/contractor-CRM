@@ -172,8 +172,8 @@ export function sharedTwilio(): SharedTwilio | null {
 /**
  * The shared account's credentials for one purpose only: playing back a
  * recording a company made on it while it borrowed that account, before
- * every company had its own (DECISIONS #104, #112). Only a recording
- * listed at the switch in legacy_shared_recordings (0191) -- a table no
+ * every company had its own (DECISIONS #104, #113). Only a recording
+ * listed at the switch in legacy_shared_recordings (0192) -- a table no
  * CRM user can read or write -- and only one on the shared account
  * itself. Never for texting, calling or anything new.
  */

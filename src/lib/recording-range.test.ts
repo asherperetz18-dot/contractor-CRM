@@ -138,7 +138,7 @@ test("the recording proxy checks the URL before sending Twilio credentials", () 
 });
 
 // ---- Recordings made on the shared account while a company borrowed it
-// (DECISIONS #112). Before every company had its own Twilio, Ca Pro's and
+// (DECISIONS #113). Before every company had its own Twilio, Ca Pro's and
 // others' calls were recorded on La Home's account. Once they moved to
 // their own (or to none), the player refused those older recordings. They
 // play again with the shared account -- but only the ones listed once, at

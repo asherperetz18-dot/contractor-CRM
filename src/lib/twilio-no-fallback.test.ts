@@ -63,7 +63,7 @@ test("the shared account plays back only the recordings listed at the switch", (
   assert.match(fn, /\.eq\("recording_url", recordingUrl\)/);
   assert.match(fn, /recordingCredentialChoice\(/, "and only for a Twilio recording on the shared account itself");
 
-  const sql = readFileSync(join(SRC, "../supabase/migrations/0191_legacy_shared_recordings.sql"), "utf8");
+  const sql = readFileSync(join(SRC, "../supabase/migrations/0192_legacy_shared_recordings.sql"), "utf8");
   assert.match(sql, /enable row level security/i);
   assert.match(sql, /revoke all on public\.legacy_shared_recordings from anon, authenticated/i);
   assert.doesNotMatch(sql, /create policy/i, "no CRM user may read or write the list");

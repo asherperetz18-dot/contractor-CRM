@@ -124,7 +124,7 @@ export async function GET(
   // wherever a call_logs row happens to point. Normally that's the
   // company's own account. A call made while the company borrowed the
   // shared account (before #104) was recorded there: it plays with the
-  // shared account only when it was listed at the switch (#112).
+  // shared account only when it was listed at the switch (#113).
   const own = await getTwilioForCompany(data.company_id);
   let twilioEnv: { accountSid: string; authToken: string } | null =
     own && recordingCredentialChoice(recordingUrl, own, null, false) === "own" ? own : null;
