@@ -35,6 +35,7 @@ import {
   journeyProgress,
   socialLinkClass,
 } from "@/lib/portal/portal-display";
+import { STANDARD_WORDS, word, type CompanyWords } from "@/lib/company-words";
 
 type PortalFile = {
   id: string;
@@ -83,13 +84,18 @@ type Tab = "Overview" | "Photos" | "Messages" | "Notes";
 // Internal pipeline stages are sales shorthand ("No Answer", "DNC",
 // "Close to Sale") and must never be shown to the customer. Everything is
 // mapped onto a short, client-safe journey instead.
-const JOURNEY = [
-  "Request received",
-  "Appointment scheduled",
-  "Estimate in progress",
-  "Proposal sent",
-  "Project confirmed",
-] as const;
+// In the company's own words (DECISIONS #121): a plumber's customer
+// sees "Quote sent" and "Job confirmed". It used to say "Estimate in
+// progress" and then "Proposal sent" for the same document.
+function journeyLabels(words: CompanyWords): string[] {
+  return [
+    "Request received",
+    "Appointment scheduled",
+    `${word(words, "estimate")} in progress`,
+    `${word(words, "estimate")} sent`,
+    `${word(words, "project")} confirmed`,
+  ];
+}
 
 /**
  * Where the customer actually is.
@@ -249,6 +255,7 @@ export function PortalHome({
   socialLinks,
   documents,
   sharedNotes,
+  words = STANDARD_WORDS,
 }: {
   lead: Lead;
   events: Event[];
@@ -266,7 +273,10 @@ export function PortalHome({
   documents: PortalDoc[];
   /** null until migration 0183 has run -- the Notes tab stays hidden. */
   sharedNotes: SharedNote[] | null;
+  /** The company's own words (DECISIONS #121). */
+  words?: CompanyWords;
 }) {
+  const JOURNEY = journeyLabels(words);
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
   const [busyEvent, setBusyEvent] = useState("");
@@ -406,7 +416,7 @@ export function PortalHome({
         </header>
 
         <div className="portal-hero-body">
-          <p className="portal-eyebrow">Your project portal</p>
+          <p className="portal-eyebrow">Your portal</p>
           <h1 className="portal-greeting">Hi {lead.first_name || leadDisplayName(lead)}</h1>
           {(lead.project_type || step !== null) && (
             <div className="portal-hero-chips">
@@ -455,7 +465,7 @@ export function PortalHome({
             {step !== null && (
               <section className="portal-card">
                 <CardHead icon="status" tone="green">
-                  Project status
+                  {word(words, "project")} status
                 </CardHead>
                 {progress && (
                   <>
@@ -497,17 +507,19 @@ export function PortalHome({
             {estimates.length > 0 && (
               <section className="portal-card">
                 <CardHead icon="estimate" tone="blue">
-                  {estimates.length === 1 ? "Your estimate" : "Your estimates"}
+                  Your {word(words, "estimate", { lower: true, many: estimates.length !== 1 })}
                 </CardHead>
                 {estimates.map((e) => {
                   const status = estimateStatusChip(e.status);
                   // Money still owed is the one thing worth surfacing
                   // here rather than a page deeper.
-                  const money = estimateMoneyChip(e);
+                  const money = estimateMoneyChip(e, word(words, "deposit"));
                   return (
                     <a key={e.id} className="portal-est" href={`/portal/estimates/${e.id}`}>
                       <div className="portal-est-main">
-                        <div className="portal-est-title">{e.title || "Project estimate"}</div>
+                        <div className="portal-est-title">
+                          {e.title || `${word(words, "project")} ${word(words, "estimate", { lower: true })}`}
+                        </div>
                         <div className="portal-est-sub">{e.doc_number}</div>
                         <div className="portal-chips">
                           <span className={`portal-chip portal-chip-${status.tone}`}>
@@ -805,7 +817,7 @@ export function PortalHome({
                       </span>
                       <span className="portal-file-name">{f.file_name}</span>
                       <span className="portal-file-meta">
-                        {f.uploaded_by ? "from your contractor" : "you"} ·{" "}
+                        {f.uploaded_by ? `from ${companyName}` : "you"} ·{" "}
                         {new Date(f.created_at).toLocaleDateString()}
                       </span>
                     </a>
@@ -872,6 +884,7 @@ export function PortalHome({
             clientName={leadDisplayName(lead)}
             companyName={companyName}
             repName={repName}
+            projectWord={word(words, "project")}
           />
         )}
       </main>

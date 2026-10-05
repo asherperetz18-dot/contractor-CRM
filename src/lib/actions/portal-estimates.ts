@@ -146,10 +146,10 @@ export async function setOptionalItemAsCustomer(
   }
   if (estimate.status === "Declined") return { error: "This estimate was declined." };
   if (estimate.status === "Void") {
-    return { error: "This document was cancelled. Ask your contractor for an updated one." };
+    return { error: "This document was cancelled. Please ask for an updated one." };
   }
   if (expired(estimate)) {
-    return { error: "This estimate has expired. Ask your contractor for an updated one." };
+    return { error: "This document has expired. Please ask for an updated one." };
   }
 
   const admin = createAdminClient();
@@ -252,10 +252,10 @@ export async function signEstimateAsCustomer(
   // change order appends a payment phase to its contract, so the company
   // would have billed for work it had already cancelled.
   if (estimate.status === "Void") {
-    return { error: "This document was cancelled. Ask your contractor for an updated one." };
+    return { error: "This document was cancelled. Please ask for an updated one." };
   }
   if (expired(estimate)) {
-    return { error: "This estimate has expired. Ask your contractor for an updated one." };
+    return { error: "This document has expired. Please ask for an updated one." };
   }
 
   const admin = createAdminClient();

@@ -1400,3 +1400,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The portal sign-in text and email say "your portal" (no longer "project portal"), and the text lost its em dash.
 
 **Consequence:** with the standard words, a sent estimate's email now says "estimate" where it said "proposal" — the text already did. A company that prefers "Proposal" picks it in Settings › Company Words. Run 0196 to save words; until then everyone has the standard words.
+
+## 122 — Documents and the customer portal speak the company's words, and its name
+
+**Date:** 2026-10-05
+
+**Context:** #121 put a company's words into what customers are sent. The document itself (web copy and PDF) and the customer portal still printed a remodeler's words — "Project", "Job location", "Original contract", "Due upon contract signing", "Customer", "Your estimates", "Proposal sent" — and called the company "your contractor" about a dozen times while its name was on the page. The PDF also had no INVOICE banner and printed "PREPARED FOR" on invoices.
+
+**Decision:**
+- **One set of document labels** (`src/lib/document-words.ts`, tested): banner, untitled title, prepared-for / bill-to, the project and location labels, "To/For contract", original and revised totals, the bottom line, deposit and its due line, and who signs — from the document's kind and the company's words. `components/estimate-document.tsx` and `lib/pdf/document-pdf.ts` both read it; a test stops either printing a label of its own. The PDF now says INVOICE and CERTIFICATE OF COMPLETION and leaves the schedule off an invoice, as the web copy does.
+- **The portal in the company's words:** progress steps ("Quote in progress", "Quote sent", "Job confirmed" — it said "Estimate in progress" then "Proposal sent" for the same document), the documents list, the status card, notes, the deposit card and chip, the sign / decline buttons and messages ("Sign quote", "Decline this amendment"), and the card payment page's description and deposit name.
+- **The company by name, not "your contractor"**, wherever the portal knows it. Before sign-in the portal serves every company, so it stays neutral: "Your Customer Portal", "matches our records".
+- Settings › Company Words now offers contract, customer and deposit too (six of eight), each saying where customers see it, with an example of the document line. Appointment and rep follow with the quick texts and the AI receptionist.
+- The completion certificate's legal text (Settings › Certificates, "the Owner", "Contractor") is the company's own template and is not reworded.
+
+**Consequence:** with the standard words the portal's step three reads "Estimate sent" (was "Proposal sent"), a document's work address reads "Project location" (was "Job location"), and the portal is titled "Your portal" / "Customer Portal". No database step.

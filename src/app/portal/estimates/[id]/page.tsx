@@ -17,6 +17,8 @@ import { PortalEstimateActions } from "./portal-estimate-actions";
 import { DepositPayment } from "./deposit-payment";
 import { PhasePayments } from "./phase-payments";
 import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments";
+import { loadCompanyWords } from "@/lib/load-company-words";
+import { word } from "@/lib/company-words";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  const fallback = "Your estimate";
+  const fallback = "Your document";
   const { id } = await params;
   const session = await readPortalSession();
   if (!session) return { title: fallback };
@@ -146,10 +148,15 @@ export default async function PortalEstimatePage({
   // it: the "Pay here" text lands on this page, and a Pay button at the
   // foot of a long document is one the customer never scrolls to.
   const owing = phases.some((p) => p.state !== "paid" && p.state !== "clearing");
+  // The company by name, and in its own words (DECISIONS #121) -- the
+  // customer is dealing with Summit Builders Co, not "your contractor".
+  const companyName = company?.name || "us";
+  const words = await loadCompanyWords(admin, estimate.company_id);
   const phaseCard = (
     <PhasePayments
       phases={phases}
       invoicedSeparately={viewer.lead.portal_payments_disabled === true}
+      companyName={companyName}
     />
   );
 
@@ -174,6 +181,7 @@ export default async function PortalEstimatePage({
         customer={viewer.lead}
         team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
         parent={await getParentContract(estimate.parent_estimate_id)}
+        words={words}
         // Live tick boxes only while the document can still change --
         // once it is signed, declined, cancelled or expired the choices
         // on it are a record, not an offer.
@@ -188,6 +196,8 @@ export default async function PortalEstimatePage({
         estimateId={id}
         state={await getDepositState(id)}
         justPaid={paid === "1"}
+        companyName={companyName}
+        words={words}
       />
       {/* Receipts for progress payments sit below the deposit: the
           deposit comes first in time, so it comes first on the page. */}
@@ -203,11 +213,14 @@ export default async function PortalEstimatePage({
             ? {
                 id: estimate.parent_estimate_id,
                 doc_number:
-                  (await getParentContract(estimate.parent_estimate_id))?.doc_number ?? "your contract",
+                  (await getParentContract(estimate.parent_estimate_id))?.doc_number ??
+                  `your ${word(words, "contract", { lower: true })}`,
               }
             : null
         }
         kind={estimate.kind}
+        companyName={companyName}
+        words={words}
       />
     </main>
   );

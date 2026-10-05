@@ -61,7 +61,7 @@ export function PortalChallengeForm({
             </label>
             {/* The example is deliberately generic -- naming a real
                 address here would print someone's answer on their screen. */}
-            <p className="portal-gate-hint">Enter your house number from the project address</p>
+            <p className="portal-gate-hint">Enter the house number from your address</p>
 
             <div className="portal-gate-input-wrap">
               <input

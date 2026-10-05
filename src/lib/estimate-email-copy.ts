@@ -1,5 +1,8 @@
 import { moneyCents } from "./data/types.ts";
-import { STANDARD_WORDS, formText, word, type CompanyWords, type WordForm } from "./company-words.ts";
+import { STANDARD_WORDS, formText, word, type CompanyWords } from "./company-words.ts";
+import { documentWord } from "./document-words.ts";
+
+export { documentWord };
 
 // A copy of email-env.ts's escapeHtml, not an import of it: that module
 // starts with `import "server-only"`, which would make this file unusable
@@ -23,18 +26,6 @@ function escapeHtml(value: string): string {
         return ch;
     }
   });
-}
-
-/**
- * What a sent document is called, in the company's own words (DECISIONS
- * #121): its word for an estimate or a change order; a completion
- * certificate and an invoice are always called that.
- */
-export function documentWord(kind: string | null | undefined, words: CompanyWords = STANDARD_WORDS): WordForm {
-  if (kind === "change_order") return words.change_order;
-  if (kind === "completion") return { one: "Completion Certificate", many: "Completion Certificates" };
-  if (kind === "invoice") return { one: "Invoice", many: "Invoices" };
-  return words.estimate;
 }
 
 type SendCopy = {

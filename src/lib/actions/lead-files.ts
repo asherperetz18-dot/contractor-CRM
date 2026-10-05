@@ -22,6 +22,7 @@ import {
   uploadBlobToDrive,
   uploadFileToDrive,
 } from "@/lib/google-drive-api";
+import { loadCompanyWords } from "@/lib/load-company-words";
 
 /**
  * The ceiling for a file going straight to Supabase Storage.
@@ -650,6 +651,7 @@ async function backupDocumentsBatch(
   let synced = 0;
 
   const { renderDocumentPdf } = await import("@/lib/pdf/document-pdf");
+  const words = await loadCompanyWords(admin, companyId);
 
   for (const row of batch) {
     type EstimateRow = import("@/lib/data/types").Estimate & {
@@ -723,6 +725,7 @@ async function backupDocumentsBatch(
         company: companyRes.data ?? null,
         customer: lead ?? null,
         parent: parent ?? null,
+        words,
       });
     } catch {
       continue;

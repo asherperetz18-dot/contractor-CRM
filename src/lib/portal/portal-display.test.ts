@@ -169,3 +169,14 @@ test("a bank transfer that went through checkout is clearing, not owed", () => {
     0
   );
 });
+
+test("the chip uses the company's word for a deposit", () => {
+  assert.deepEqual(estimateMoneyChip({ depositPaid: true, amountDueCents: 0 }, "Down Payment"), {
+    label: "Down Payment paid",
+    tone: "green",
+  });
+  assert.equal(
+    estimateMoneyChip({ depositPaid: false, amountDueCents: 50000 }, "Retainer")?.label,
+    "$500.00 retainer due"
+  );
+});

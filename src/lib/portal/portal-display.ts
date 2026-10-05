@@ -27,11 +27,15 @@ export function estimateStatusChip(status: string): PortalChip {
 /** Money still owed wins: it is the one thing the customer has to act on.
  *  Owed means the deposit and every billed-but-unpaid progress phase --
  *  a paid deposit must not read as "all paid" while completion is due. */
-export function estimateMoneyChip(e: {
-  depositPaid: boolean;
-  amountDueCents: number;
-  phaseDueCents?: number;
-}): PortalChip | null {
+export function estimateMoneyChip(
+  e: {
+    depositPaid: boolean;
+    amountDueCents: number;
+    phaseDueCents?: number;
+  },
+  /** The company's word for a deposit (DECISIONS #121). */
+  deposit = "Deposit"
+): PortalChip | null {
   const phaseDue = e.phaseDueCents ?? 0;
   const owed = e.amountDueCents + phaseDue;
   if (owed > 0) {
@@ -39,9 +43,9 @@ export function estimateMoneyChip(e: {
       style: "currency",
       currency: "USD",
     });
-    return { label: phaseDue > 0 ? `${due} due` : `${due} deposit due`, tone: "amber" };
+    return { label: phaseDue > 0 ? `${due} due` : `${due} ${deposit.toLowerCase()} due`, tone: "amber" };
   }
-  if (e.depositPaid) return { label: "Deposit paid", tone: "green" };
+  if (e.depositPaid) return { label: `${deposit} paid`, tone: "green" };
   return null;
 }
 

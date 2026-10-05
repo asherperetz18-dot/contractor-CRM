@@ -4,16 +4,25 @@ import { useState, useTransition } from "react";
 import { moneyCents } from "@/lib/data/types";
 import { startDepositCheckout } from "@/lib/actions/portal-payments";
 import type { DepositState } from "@/lib/actions/portal-payments";
+import { STANDARD_WORDS, word, type CompanyWords } from "@/lib/company-words";
 
 export function DepositPayment({
   estimateId,
   state,
   justPaid,
+  companyName,
+  words = STANDARD_WORDS,
 }: {
   estimateId: string;
   state: DepositState;
   justPaid: boolean;
+  /** Who the customer is paying, by name -- not "your contractor". */
+  companyName: string;
+  /** The company's own words (DECISIONS #121). */
+  words?: CompanyWords;
 }) {
+  const deposit = word(words, "deposit");
+  const project = word(words, "project", { lower: true });
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -21,7 +30,7 @@ export function DepositPayment({
   if (state.paid) {
     return (
       <div className="portal-card estdoc-result estdoc-result-ok">
-        <strong>Deposit received.</strong> Thank you — your contractor has been notified.
+        <strong>{deposit} received.</strong> Thank you — {companyName} has been notified.
         {state.paidAt && ` Paid ${new Date(state.paidAt).toLocaleDateString("en-US")}.`}
       </div>
     );
@@ -37,8 +46,8 @@ export function DepositPayment({
     return (
       <div className="portal-card estdoc-result">
         <strong>Thanks — your payment is being confirmed.</strong> Bank transfers take a few
-        business days to clear. This page updates on its own once it is confirmed, and your
-        contractor sees it at the same time.
+        business days to clear. This page updates on its own once it is confirmed, and {companyName}{" "}
+        sees it at the same time.
       </div>
     );
   }
@@ -49,8 +58,8 @@ export function DepositPayment({
   if (state.invoicedSeparately) {
     return (
       <div className="portal-card estdoc-result">
-        <strong>Payments for this project are invoiced separately.</strong> Your contractor
-        sends the invoice — nothing is paid on this page.
+        <strong>Payments for this {project} are invoiced separately.</strong> {companyName} sends
+        the invoice — nothing is paid on this page.
       </div>
     );
   }
@@ -71,10 +80,10 @@ export function DepositPayment({
 
   return (
     <div className="portal-card estdoc-sign">
-      <h2 className="portal-card-title">Pay your deposit</h2>
+      <h2 className="portal-card-title">Pay your {word(words, "deposit", { lower: true })}</h2>
       <p className="estdoc-muted">
-        {moneyCents(state.amountCents)} is due to schedule your project. You can pay by card or
-        by bank transfer.
+        {moneyCents(state.amountCents)} is due to schedule your {project}. You can pay by card or by
+        bank transfer.
       </p>
       {error && <p className="error-note">{error}</p>}
       <div className="estdoc-sign-actions">
@@ -86,7 +95,7 @@ export function DepositPayment({
           touches the contractor's system. */}
       <p className="est-tax-note">
         Payment is handled by Stripe on their secure page. Your card details are never seen or
-        stored by {`your contractor's`} system.
+        stored by {companyName}&apos;s system.
       </p>
     </div>
   );
