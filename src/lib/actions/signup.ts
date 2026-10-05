@@ -15,6 +15,7 @@ import {
   releaseInvite,
 } from "@/lib/signup/invites";
 import { createCompanyWithDefaults, signupConfig } from "@/lib/signup/provision";
+import { signupLocationProblem } from "@/lib/data/us-states";
 
 /**
  * Starts a paid signup: company name and email in, a Stripe Checkout URL
@@ -131,6 +132,13 @@ export async function completeSignup(
   const companyName = (invite.company_name ?? String(formData.get("company_name") ?? "")).trim();
   if (!companyName) return { error: "Enter your company name." };
 
+  // The company's own state and time zone, not Pacific for everyone
+  // (DECISIONS #118). Checked before the invite is spent, like the name.
+  const companyState = String(formData.get("state") ?? "").trim().toUpperCase();
+  const companyTimezone = String(formData.get("timezone") ?? "").trim();
+  const locationProblem = signupLocationProblem(companyState, companyTimezone);
+  if (locationProblem) return { error: locationProblem };
+
   // Checked before the invite is spent, not after: an empty company name
   // must not burn the one use a manually-sent link gets.
   // Taken before anything is created, not after. loadUsableInvite only
@@ -182,10 +190,10 @@ export async function completeSignup(
   // copies had already drifted -- only one of them deleted the auth user
   // it had just made -- and the next thing added to the failure path
   // would have had to be remembered twice.
-  const { companyId, error: companyError } = await createCompanyWithDefaults(
-    companyName,
-    profileId
-  );
+  const { companyId, error: companyError } = await createCompanyWithDefaults(companyName, profileId, {
+    timezone: companyTimezone,
+    licenseState: companyState,
+  });
   if (!companyId) {
     // Roll back only what this call made. An account that existed before
     // belongs to somebody who is still using it.
