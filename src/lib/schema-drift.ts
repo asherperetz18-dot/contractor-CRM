@@ -71,6 +71,7 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "leads", column: "stage_key", migration: "0195_stage_tags.sql" },
   { table: "company_profile", column: "wording", migration: "0196_company_wording.sql" },
   { table: "platform_access_log", column: "opened_at", migration: "0197_platform_access_log.sql" },
+  { table: "company_billing", column: "trial_ends_at", migration: "0198_billing_trial.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

@@ -2,6 +2,9 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { AdminGate } from "@/components/admin-gate";
 import { readCompanyBilling } from "@/lib/billing/company-billing";
 import { ManageBillingButton } from "./manage-billing-button";
+import { TrialCardCheck } from "./trial-card-check";
+import { trialDaysLeft } from "@/lib/billing/trial";
+import { getCompanyZone } from "@/lib/data/company-today";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +24,18 @@ export default async function BillingSettingsPage() {
   const profile = await getCurrentProfile();
   if (!profile) return null;
   const billing = await readCompanyBilling(profile.company_id);
+  const zone = await getCompanyZone();
+  const now = new Date().getTime();
+  const trialing = billing?.status === "trialing";
+  const daysLeft = trialing ? trialDaysLeft(billing?.trialEndsAt, now) : null;
+  const trialEnd = billing?.trialEndsAt
+    ? new Date(billing.trialEndsAt).toLocaleDateString("en-US", {
+        timeZone: zone,
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
 
   return (
     <AdminGate>
@@ -36,8 +51,23 @@ export default async function BillingSettingsPage() {
           <>
             <h2 className="est-pay-title">
               Status: {STATUS_LABELS[billing.status ?? ""] ?? billing.status ?? "Checking with Stripe"}
+              {daysLeft !== null && ` — ${daysLeft === 1 ? "1 day" : `${daysLeft} days`} left`}
             </h2>
-            <ManageBillingButton />
+            {trialing && !billing.cardOnFile ? (
+              <>
+                <TrialCardCheck />
+                <ManageBillingButton
+                  label="Add a card"
+                  intro={`Your free trial ends ${trialEnd ? `on ${trialEnd}` : "soon"}. Add a card before then to keep using AI Build Pro. You won't be charged until the trial ends. It opens on Stripe's own secure page and brings you back here.`}
+                />
+              </>
+            ) : trialing ? (
+              <ManageBillingButton
+                intro={`Your card is on file. It will be charged ${trialEnd ? `on ${trialEnd}, ` : ""}when the free trial ends. You can update it, see invoices or cancel on Stripe's own secure page.`}
+              />
+            ) : (
+              <ManageBillingButton />
+            )}
           </>
         ) : (
           <>

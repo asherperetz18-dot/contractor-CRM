@@ -12,10 +12,13 @@ import { WebOnly } from "@/components/web-only";
 export function BillingLockActions({
   canManage,
   renewed,
+  trialEnded = false,
   otherCompanies,
 }: {
   canManage: boolean;
   renewed: boolean;
+  /** The free trial ran out with no card (DECISIONS #129): the first payment is subscribing, not renewing. */
+  trialEnded?: boolean;
   otherCompanies: CompanyMembership[];
 }) {
   const router = useRouter();
@@ -77,19 +80,23 @@ export function BillingLockActions({
             disabled={busy}
             onClick={() => goTo(renewSubscription)}
           >
-            Renew subscription
+            {trialEnded ? "Subscribe" : "Renew subscription"}
           </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            disabled={busy}
-            onClick={() => goTo(openBillingPortal)}
-          >
-            Card declined? Update it and see invoices
-          </button>
+          {!trialEnded && (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={busy}
+              onClick={() => goTo(openBillingPortal)}
+            >
+              Card declined? Update it and see invoices
+            </button>
+          )}
         </WebOnly>
       ) : (
-        <p className="hint-note">Ask your company&apos;s Office or Admin user to renew it.</p>
+        <p className="hint-note">
+          Ask your company&apos;s Office or Admin user to {trialEnded ? "subscribe" : "renew it"}.
+        </p>
       )}
 
       <button type="button" className="btn-ghost" disabled={busy} onClick={recheck}>
