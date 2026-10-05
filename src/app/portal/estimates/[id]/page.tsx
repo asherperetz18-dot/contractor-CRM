@@ -199,6 +199,7 @@ export default async function PortalEstimatePage({
       />
       <DepositPayment
         estimateId={id}
+        kind={estimate.kind}
         state={await getDepositState(id)}
         justPaid={paid === "1"}
         companyName={companyName}

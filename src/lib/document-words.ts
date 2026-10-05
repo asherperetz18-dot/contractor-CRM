@@ -124,3 +124,23 @@ export function paymentPercentLabel(amountCents: number, totalCents: number): st
   const p = paymentPercentOfTotal(amountCents, totalCents);
   return p === null ? null : `${p.toFixed(2)}%`;
 }
+
+/** Why the Pay card asks for a deposit. A change order's job is already scheduled. */
+export function depositDueLine(
+  kind: string | null | undefined,
+  amountCents: number,
+  words: CompanyWords = STANDARD_WORDS
+): string {
+  return kind === "change_order"
+    ? `${moneyCents(amountCents)} is due now that you've signed this ${word(words, "change_order", { lower: true })}.`
+    : `${moneyCents(amountCents)} is due to schedule your ${word(words, "project", { lower: true })}.`;
+}
+
+/**
+ * The stages a document prints. Voiding it cancels the ones not yet
+ * billed -- they are no longer owed, so neither copy lists them. Billed
+ * ones stay: that request really went out.
+ */
+export function scheduledPhases<T extends { cancelled_at?: string | null }>(phases: T[]): T[] {
+  return phases.filter((p) => !p.cancelled_at);
+}

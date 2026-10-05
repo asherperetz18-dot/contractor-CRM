@@ -6,8 +6,10 @@ import {
   changeOrderScheduleNote,
   documentLabels,
   documentPaymentSection,
+  depositDueLine,
   documentWord,
   paymentPercentLabel,
+  scheduledPhases,
 } from "./document-words.ts";
 import { STANDARD_WORDS, readCompanyWords } from "./company-words.ts";
 
@@ -108,6 +110,29 @@ test("a stage's share of the total prints as a percent", () => {
   assert.equal(paymentPercentLabel(100000, 0), null);
 });
 
+test("the Pay card says why a deposit is due", () => {
+  assert.equal(depositDueLine("contract", 425000, WORDS), "$4,250.00 is due to schedule your job.");
+  // A change order's job is already on the calendar.
+  assert.equal(
+    depositDueLine("change_order", 425000, WORDS),
+    "$4,250.00 is due now that you've signed this amendment."
+  );
+});
+
+test("a cancelled stage is not printed as owed", () => {
+  // Voiding a document cancels its unbilled stages; billed ones stay,
+  // because that request really went out.
+  const phases = [
+    { id: "a", amount_cents: 100, cancelled_at: null },
+    { id: "b", amount_cents: 200, cancelled_at: "2026-10-05T20:00:00Z" },
+    { id: "c", amount_cents: 300 },
+  ];
+  assert.deepEqual(
+    scheduledPhases(phases).map((p) => p.id),
+    ["a", "c"]
+  );
+});
+
 test("a certificate and an invoice keep their own names", () => {
   assert.equal(documentLabels("completion", WORDS).banner, "CERTIFICATE OF COMPLETION");
   const inv = documentLabels("invoice", WORDS);
@@ -158,5 +183,13 @@ test("the web copy and the PDF pick the same payment section", () => {
     assert.match(source, /changeOrderScheduleNote\(/, file);
     assert.match(source, /changeOrderOnePaymentLine\(/, file);
     assert.match(source, /paymentPercentLabel\(/, file);
+    // The PDF dropped cancelled stages and the web copy listed them.
+    assert.match(source, /scheduledPhases\(/, file);
   }
+});
+
+test("the Pay card reads its reason from the shared wording", () => {
+  const source = readFileSync(new URL("../app/portal/estimates/[id]/deposit-payment.tsx", import.meta.url), "utf8");
+  assert.match(source, /depositDueLine\(/);
+  assert.doesNotMatch(source, /is due to schedule your/);
 });

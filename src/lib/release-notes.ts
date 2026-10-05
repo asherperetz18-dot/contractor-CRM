@@ -28,6 +28,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.207.1",
+    date: "2026-10-05",
+    notes: [
+      "The Pay card on a signed change order says the deposit is due now that it's signed, not \"to schedule your project\" — the project is already scheduled.",
+      "A cancelled contract or change order no longer lists its cancelled payment stages on the customer's page, matching the PDF copy.",
+    ],
+  },
+  {
     version: "1.207.0",
     date: "2026-10-05",
     notes: [
