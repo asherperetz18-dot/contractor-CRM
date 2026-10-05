@@ -2,6 +2,7 @@ import "server-only";
 import { withLegalFooter } from "./email-footer";
 import { logError } from "@/lib/observability/logger";
 import { recordUsage } from "@/lib/usage/record-usage";
+import { usageLimitError } from "@/lib/usage/company-limits";
 import { captureError } from "@/lib/observability/sentry";
 
 // Same BOM defense as twilio-env.ts -- `vercel env add` has intermittently
@@ -87,6 +88,11 @@ export async function sendEmail(
   if (keyProblem) return { error: keyProblem };
   const fromProblem = nonAsciiComplaint("The sender address (EMAIL_FROM)", env.from);
   if (fromProblem) return { error: fromProblem };
+  // This month's emails used up (DECISIONS #133): checked before it goes out.
+  if (options.env?.companyId) {
+    const limited = await usageLimitError(options.env.companyId, "email");
+    if (limited) return { error: limited };
+  }
 
   const branded = withLegalFooter(html, text);
   const body: Record<string, unknown> = {

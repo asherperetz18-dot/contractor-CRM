@@ -10,6 +10,7 @@ import {
   type DirectoryMember,
 } from "@/lib/company-directory";
 import { usageMonth, type UsageRow } from "@/lib/usage/usage";
+import type { LimitsRow } from "@/lib/usage/limits";
 
 export type PlatformAdminRow = {
   id: string;
@@ -135,5 +136,9 @@ export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
   const usage = await selectAll<UsageRow>((from, to) =>
     admin.from("company_usage").select("*").eq("month", month).order("company_id").range(from, to)
   );
-  return buildCompanyDirectory(companies, members, billing, usage);
+  // Monthly limits (0200): none until it has run, which reads as no limits.
+  const limits = await selectAll<LimitsRow>((from, to) =>
+    admin.from("company_limits").select("*").order("company_id").range(from, to)
+  );
+  return buildCompanyDirectory(companies, members, billing, usage, limits);
 }
