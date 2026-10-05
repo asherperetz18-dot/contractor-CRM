@@ -4,6 +4,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { repLeadStats, repLeadStatsFromRows, type RepLeadStatsRow } from "@/lib/report-leads";
 import { SalespeopleGrid } from "./salespeople-grid";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export default async function SalespeoplePage() {
   const supabase = await createClient();
@@ -40,6 +42,7 @@ export default async function SalespeoplePage() {
 
   return (
     <SalespeopleGrid
+      title={staffPageLabel("/salespeople", "Salespeople", await getCompanyWordsCached(companyId))}
       reps={reps}
       statsByRep={Object.fromEntries(stats)}
     />

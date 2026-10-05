@@ -3,32 +3,46 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const GROUPS = [
-  {
-    label: "Pipeline",
-    items: [
-      { label: "New Lead", href: "/pipeline?new=1" },
-      { label: "New Appointment", href: "/schedule?new=1" },
-    ],
-  },
-  {
-    label: "Production",
-    items: [{ label: "New Job", href: "/production?new=1" }],
-  },
-  {
-    label: "Estimates & Invoices",
-    items: [
-      { label: "New Estimate", href: "/estimates?new=1" },
-      { label: "New Invoice", href: "/estimates?new=invoice" },
-    ],
-  },
-  {
-    label: "Contracts",
-    items: [{ label: "New Contract", href: "/contracts?new=1" }],
-  },
-];
+type QuickCreateLabels = {
+  appointment: string;
+  job: string;
+  estimatesGroup: string;
+  estimate: string;
+  contractsGroup: string;
+  contract: string;
+};
 
-export function QuickCreateMenu() {
+// In the company's own words (DECISIONS #125): "New Service Call",
+// "New Quote". The labels come from lib/staff-words.ts via the layout.
+function groupsFor(l: QuickCreateLabels) {
+  return [
+    {
+      label: "Pipeline",
+      items: [
+        { label: "New Lead", href: "/pipeline?new=1" },
+        { label: l.appointment, href: "/schedule?new=1" },
+      ],
+    },
+    {
+      label: "Production",
+      items: [{ label: l.job, href: "/production?new=1" }],
+    },
+    {
+      label: l.estimatesGroup,
+      items: [
+        { label: l.estimate, href: "/estimates?new=1" },
+        { label: "New Invoice", href: "/estimates?new=invoice" },
+      ],
+    },
+    {
+      label: l.contractsGroup,
+      items: [{ label: l.contract, href: "/contracts?new=1" }],
+    },
+  ];
+}
+
+export function QuickCreateMenu({ labels }: { labels: QuickCreateLabels }) {
+  const GROUPS = groupsFor(labels);
   const [open, setOpen] = useState(false);
   const router = useRouter();
 

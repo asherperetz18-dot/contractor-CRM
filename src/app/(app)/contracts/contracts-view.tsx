@@ -72,6 +72,7 @@ function shortDateTime(value: string) {
 }
 
 export function ContractsView({
+  title = "Contracts",
   contracts,
   signers,
   leads,
@@ -79,6 +80,8 @@ export function ContractsView({
   viewsByEstimate,
   canCreate,
 }: {
+  /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
+  title?: string;
   contracts: Estimate[];
   signers: EstimateSigner[];
   /** Only the leads these contracts reference, not the whole book. */
@@ -223,7 +226,7 @@ export function ContractsView({
     <div>
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Contracts</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">
             {boardDocs.length === 0
               ? "No contracts yet"

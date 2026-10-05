@@ -2,6 +2,8 @@ import "server-only";
 import { unstable_cache, updateTag } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { RolePageVisibilityRow, TimeFormat } from "@/lib/data/types";
+import { loadCompanyWords } from "@/lib/load-company-words";
+import type { CompanyWords } from "@/lib/company-words";
 
 /**
  * The parts of the app shell that are the same on every page.
@@ -62,6 +64,20 @@ export function getCompanyChrome(companyId: string): Promise<CompanyChrome> {
       return (data as CompanyChrome | null) ?? EMPTY_CHROME;
     },
     ["company-chrome", companyId],
+    { tags: [chromeTag(companyId)], revalidate: BACKSTOP_SECONDS }
+  )(companyId);
+}
+
+/**
+ * The company's words (DECISIONS #121), for the menus every page draws
+ * (#125). Cached with the chrome and dropped with it when the words are
+ * saved. Its own query, so a database without 0196 reads the standard
+ * words instead of losing the chrome.
+ */
+export function getCompanyWordsCached(companyId: string): Promise<CompanyWords> {
+  return unstable_cache(
+    async (id: string): Promise<CompanyWords> => loadCompanyWords(createAdminClient(), id),
+    ["company-words", companyId],
     { tags: [chromeTag(companyId)], revalidate: BACKSTOP_SECONDS }
   )(companyId);
 }

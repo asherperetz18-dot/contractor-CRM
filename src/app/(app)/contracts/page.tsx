@@ -8,6 +8,8 @@ import {
   type EstimateSigner,
 } from "@/lib/data/types";
 import { ContractsView, type ContractLead, type ContractRep } from "./contracts-view";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +101,7 @@ export default async function ContractsPage() {
 
   return (
     <ContractsView
+      title={staffPageLabel("/contracts", "Contracts", await getCompanyWordsCached(profile.company_id))}
       contracts={contracts}
       signers={signers}
       leads={leads}

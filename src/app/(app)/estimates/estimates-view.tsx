@@ -37,6 +37,8 @@ import {
   type EstimateSortKey,
   type FollowUpChip,
 } from "@/lib/data/estimate-list-filters";
+import { estimatesCardLabel } from "@/lib/staff-words";
+import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
 export type EstimateLead = {
   id: string;
@@ -128,6 +130,8 @@ function shortDateTime(value: string) {
 }
 
 export function EstimatesView({
+  title = "Estimates & Contracts",
+  words = STANDARD_WORDS,
   estimates,
   signers,
   leads,
@@ -136,6 +140,10 @@ export function EstimatesView({
   viewsByEstimate,
   savedCardOrder,
 }: {
+  /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
+  title?: string;
+  /** The company's words, for the count cards (DECISIONS #125). */
+  words?: CompanyWords;
   estimates: Estimate[];
   signers: EstimateSigner[];
   /** Only the leads these documents reference, not the whole book --
@@ -377,7 +385,7 @@ export function EstimatesView({
     <div>
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Estimates &amp; Contracts</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">
             {(() => {
               const contracts = estimates.filter((e) => isSellableKind(e.kind)).length;
@@ -433,7 +441,7 @@ export function EstimatesView({
                 setDragOverCard(null);
               }}
             >
-              <span className="est-funnel-label">{b.label}</span>
+              <span className="est-funnel-label">{estimatesCardLabel(b.key, b.label, words)}</span>
               <span className="est-funnel-value">{moneyCents(b.totalCents)}</span>
               <span className="est-funnel-hint">
                 {b.count} {b.hint}

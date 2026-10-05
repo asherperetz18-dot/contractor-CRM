@@ -3,6 +3,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateSigner } from "@/lib/data/types";
 import { EstimatesView, type EstimateLead, type EstimateRep } from "./estimates-view";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +92,8 @@ export default async function EstimatesPage() {
 
   return (
     <EstimatesView
+      title={staffPageLabel("/estimates", "Estimates & Contracts", await getCompanyWordsCached(profile.company_id))}
+      words={await getCompanyWordsCached(profile.company_id)}
       estimates={estimates}
       signers={signers}
       leads={leads}

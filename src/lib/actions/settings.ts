@@ -475,6 +475,8 @@ export async function saveCompanyWords(
   }
   if (!data?.length) return { error: "That change couldn't be saved." };
 
+  // The menus read the words through the cached chrome (DECISIONS #125).
+  revalidateCompanyChrome(profile.company_id);
   revalidatePath("/settings/company-words");
   return {};
 }
