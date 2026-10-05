@@ -21,6 +21,8 @@ export type BoardCard = {
   source: string | null;
   project_type: string | null;
   stage: string;
+  /** The stage's tag (lib/pipeline/stage-keys.ts), migration 0195. */
+  stage_key: string | null;
   value: number;
   assigned_to: string | null;
   dispatcher_id: string | null;

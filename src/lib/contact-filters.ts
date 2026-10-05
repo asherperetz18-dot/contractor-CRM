@@ -13,9 +13,6 @@ export type ContactFilters = { sources: string[]; reps: string[]; stages: string
 /** The tick for "No source" / "Unassigned". Not a value a lead can hold. */
 export const NO_VALUE = "__none";
 
-/** What the "With Open Leads" tile counts as closed. */
-export const CONTACT_CLOSED_STAGES = ["Won", "Lost", "DNC"];
-
 /** Ticks kept per group. Far past any real list; stops a crafted
  *  request from building a query-string the size of the book. */
 const MAX_TICKS = 100;
@@ -96,8 +93,9 @@ export function mergeFilterOptions(configured: string[], extra: Iterable<string>
 /**
  * The "With Open Leads" tile's click: the stage ticks that itemize its
  * number -- the current ticks (or every stage, when none) minus the
- * closed ones.
+ * closed ones (closedStageNames: won, lost, not interested and
+ * do-not-contact, under this company's names -- DECISIONS #120).
  */
-export function openStageSelection(stageOptions: string[], current: string[]): string[] {
-  return (current.length ? current : stageOptions).filter((s) => !CONTACT_CLOSED_STAGES.includes(s));
+export function openStageSelection(stageOptions: string[], current: string[], closedNames: string[]): string[] {
+  return (current.length ? current : stageOptions).filter((s) => !closedNames.includes(s));
 }

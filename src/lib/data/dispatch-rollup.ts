@@ -1,5 +1,5 @@
 import { isoDay, prevWindow, type DateWindow } from "./date-range.ts";
-import { NO_DISPOSITION, PRE_APPOINTMENT_STAGES, type EventStatus } from "./types.ts";
+import { NO_DISPOSITION, type EventStatus } from "./types.ts";
 
 /**
  * The Dispatch Dashboard, reduced to the numbers its cards render.
@@ -367,9 +367,6 @@ export function buildDispatchRollup(inputs: DispatchInputs): DispatchRollup {
     ),
   };
 }
-
-/** The stages a lead is still being chased in -- the SQL takes the same list. */
-export const WAITING_STAGES: readonly string[] = PRE_APPOINTMENT_STAGES;
 
 /**
  * The RPC's jsonb, coerced field by field: aggregates can cross JSON as

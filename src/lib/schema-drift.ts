@@ -68,6 +68,7 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "legacy_shared_recordings", column: "recording_url", migration: "0191_legacy_shared_recordings.sql" },
   { table: "sms_messages", column: "owner_id", migration: "0192_text_privacy.sql" },
   { table: "company_profile", column: "meta_page_access_token_enc", migration: "0193_meta_secrets_encrypted.sql" },
+  { table: "leads", column: "stage_key", migration: "0195_stage_tags.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

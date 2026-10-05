@@ -31,13 +31,14 @@ import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { DialSession } from "./dial-session";
 import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
 import { dialNumberOf } from "@/lib/data/phone-match";
+import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
 type Tab = "contact" | "lead";
 type LeadStatus = "Open" | "Won" | "Lost";
 
-function leadStatus(lead: Pick<DialContactRow, "stage">): LeadStatus {
-  if (lead.stage === "Won") return "Won";
-  if (lead.stage === "Lost") return "Lost";
+function leadStatus(lead: Pick<DialContactRow, "stage_key">): LeadStatus {
+  if (lead.stage_key === "won") return "Won";
+  if (lead.stage_key === "lost") return "Lost";
   return "Open";
 }
 
@@ -780,6 +781,7 @@ export function DialQueueView({
           leads={session.leads}
           callInfo={session.callInfo}
           dispositions={dispositions}
+          bookingStage={stageNameFor(stages, "appointment_scheduled")}
           reps={reps}
           callScript={callScript}
           onClose={(completed) => {

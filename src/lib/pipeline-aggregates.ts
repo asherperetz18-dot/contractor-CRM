@@ -1,4 +1,5 @@
-import { daysSince, isSettledStage } from "./data/types.ts";
+import { daysSince } from "./data/types.ts";
+import { isClosedStageKey } from "./pipeline/stage-keys.ts";
 
 /**
  * The pipeline board's stat tiles, computed server-side from a slim
@@ -11,6 +12,8 @@ import { daysSince, isSettledStage } from "./data/types.ts";
 /** The columns the aggregates need; the scan selects exactly these. */
 export type BoardSlimLead = {
   stage: string;
+  /** The stage's tag (DECISIONS #120): won and closed go by it. */
+  stage_key: string | null;
   value: number;
   has_appt: boolean;
   date_received: string;
@@ -43,13 +46,14 @@ export function computeBoardAggregates(slim: BoardSlimLead[]): BoardAggregates {
 
   for (const l of slim) {
     const value = Number(l.value) || 0;
-    if (l.stage === "Won") {
+    if (l.stage_key === "won") {
       wonCount += 1;
       wonValue += value;
       if (!value) wonNoValueCount += 1;
       continue;
     }
-    if (isSettledStage(l.stage)) continue;
+    // Lost, Not Interested and do-not-contact are no one's pipeline.
+    if (isClosedStageKey(l.stage_key)) continue;
 
     openCount += 1;
     pipelineValue += value;

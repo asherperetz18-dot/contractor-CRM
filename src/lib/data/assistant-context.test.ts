@@ -201,8 +201,9 @@ test("lead summary totals come from every row, lines from the capped roster", ()
     date_received: "2026-09-01",
     created_at: "2026-09-01T00:00:00Z",
   }));
+  // 1500 open, 10 won, 10 do-not-contact (closed too).
   const totals = Array.from({ length: 1520 }, (_, i) => ({
-    stage: i < 1500 ? "New" : "Won",
+    stage_key: i < 1500 ? null : i < 1510 ? "won" : "dnc",
     value: 100,
   }));
   const text = buildAssistantContext(baseInput({ leads, leadTotals: totals }));
@@ -425,7 +426,7 @@ test("scoped context announces the viewer and stops claiming company-wide", () =
   const text = buildAssistantContext(
     baseInput({
       repScope: { id: REP, name: "Josh Closer" },
-      leadTotals: [{ stage: "New", value: 5000 }],
+      leadTotals: [{ stage_key: "new_lead", value: 5000 }],
     })
   );
   assert.ok(text.includes("VIEWER SCOPE"), "has the scope banner");
@@ -439,7 +440,7 @@ test("scoped context announces the viewer and stops claiming company-wide", () =
 });
 
 test("unscoped context keeps the company-wide summary and no viewer banner", () => {
-  const text = buildAssistantContext(baseInput({ leadTotals: [{ stage: "New", value: 5000 }] }));
+  const text = buildAssistantContext(baseInput({ leadTotals: [{ stage_key: "new_lead", value: 5000 }] }));
   assert.ok(text.includes("company-wide"), "full view keeps the company-wide label");
   assert.ok(!text.includes("VIEWER SCOPE"), "no banner for desk roles");
 });

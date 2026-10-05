@@ -1,8 +1,5 @@
-import {
-  FALLBACK_STAGE_COLOR,
-  NO_DISPOSITION,
-  SYSTEM_STAGE_NAMES,
-} from "@/lib/data/types";
+import { FALLBACK_STAGE_COLOR, NO_DISPOSITION } from "@/lib/data/types";
+import { REQUIRED_STAGE_KEYS, STANDARD_STAGE_NAMES, type StageKey } from "@/lib/pipeline/stage-keys";
 
 /**
  * The starter lists a brand new company opens with.
@@ -23,7 +20,7 @@ import {
  * "Not Interested", 0091 disposition rules) and that every company on the
  * system still shares; the per-business extras ("Meta", "Roy Leads", ...)
  * are deliberately left out. Everything is editable in Settings
- * afterwards, except the is_system rows, which the app relies on by name.
+ * afterwards; the is_system rows can be renamed but not deleted.
  *
  * Colours are quoted from those migrations rather than picked, because a
  * self-serve company and an admin-created one drawing the same board in
@@ -35,6 +32,7 @@ export type DefaultDispositionRow = DefaultStageRow & {
   move_to_stage: string | null;
   creates_followup_task: boolean;
 };
+export type DefaultPipelineStageRow = DefaultStageRow & { key: StageKey | null };
 export type DefaultSimpleRow = { name: string; sort_order: number };
 
 // sort_order is always the row's position in its own list -- deriving it
@@ -49,36 +47,41 @@ function ordered<T extends { sort_order?: number }>(
   return rows.map((row, index) => ({ ...row, sort_order: index + 1 })) as T[];
 }
 
-// is_system is derived, not retyped. It marks the stages the app itself
-// moves leads into -- Unsorted for anything unrecognised, Appointment
-// Scheduled when an appointment is booked, Won/Lost at the end -- and
-// lib/actions/pipeline-stages.ts refuses to rename or delete them by
-// consulting this same list. A fifth protected stage added there would
-// otherwise arrive unprotected in every new company.
-const STAGES: { name: string; color: string }[] = [
-  { name: "Unsorted", color: FALLBACK_STAGE_COLOR },
-  { name: "New Lead", color: "#7C8798" },
-  { name: "No Answer", color: "#B7862B" },
-  { name: "Contacted", color: "#2D5F8A" },
-  { name: "Appointment Scheduled", color: "#C7691B" },
-  { name: "Appointment Follow Up", color: "#C7691B" },
-  { name: "2nd Appointment", color: "#C7691B" },
-  { name: "Estimate Prepared", color: "#2D5F8A" },
-  { name: "Proposal Sent", color: "#2D5F8A" },
-  { name: "Pending Finance", color: "#B7862B" },
-  { name: "Close to Sale", color: "#B7862B" },
-  { name: "Won", color: "#2F855A" },
-  { name: "Lost", color: "#C0392B" },
+// Every standard stage carries its tag (DECISIONS #120): the app moves
+// leads by tag, so the company can rename any of them. Names come from
+// STANDARD_STAGE_NAMES. is_system is derived, not retyped: it marks the
+// stages the app always needs somewhere to put a lead (Unsorted for
+// anything new, Appointment Scheduled when one is booked, Won/Lost at
+// the end), which lib/actions/pipeline-stages.ts won't delete.
+const STAGES: { key: StageKey; color: string }[] = [
+  { key: "unsorted", color: FALLBACK_STAGE_COLOR },
+  { key: "new_lead", color: "#7C8798" },
+  { key: "no_answer", color: "#B7862B" },
+  { key: "contacted", color: "#2D5F8A" },
+  { key: "appointment_scheduled", color: "#C7691B" },
+  { key: "appointment_follow_up", color: "#C7691B" },
+  { key: "second_appointment", color: "#C7691B" },
+  { key: "estimate_prepared", color: "#2D5F8A" },
+  { key: "proposal_sent", color: "#2D5F8A" },
+  { key: "pending_finance", color: "#B7862B" },
+  { key: "close_to_sale", color: "#B7862B" },
+  { key: "won", color: "#2F855A" },
+  { key: "lost", color: "#C0392B" },
   // 0048 seeded this one at #ea2610 for every existing company.
-  { name: "Not Interested", color: "#ea2610" },
+  { key: "not_interested", color: "#ea2610" },
   // 0008 seeded DNC at #C0392B. The disposition of the same name is a
   // different row in a different table and a different colour -- easy to
   // cross, so both are quoted from their own migration.
-  { name: "DNC", color: "#C0392B" },
+  { key: "dnc", color: "#C0392B" },
 ];
 
-export const DEFAULT_PIPELINE_STAGES: DefaultStageRow[] = ordered(
-  STAGES.map((stage) => ({ ...stage, is_system: SYSTEM_STAGE_NAMES.includes(stage.name) }))
+export const DEFAULT_PIPELINE_STAGES: DefaultPipelineStageRow[] = ordered(
+  STAGES.map(({ key, color }) => ({
+    name: STANDARD_STAGE_NAMES[key],
+    color,
+    key,
+    is_system: REQUIRED_STAGE_KEYS.includes(key),
+  }))
 );
 
 export const DEFAULT_CALENDARS: DefaultStageRow[] = ordered([

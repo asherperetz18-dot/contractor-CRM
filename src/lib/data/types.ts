@@ -1,4 +1,5 @@
 import { clientName } from "./client-name.ts";
+import { isPreAppointmentStage, type TaggedStage } from "../pipeline/stage-keys.ts";
 
 export type ContactType = "Individual" | "Company";
 
@@ -1087,31 +1088,8 @@ export const TOUCH_LABEL: Record<TouchKind, string> = {
   text: "Text",
 };
 
-export const CLOSED_PIPELINE_STAGES = ["Won", "Lost", "Not Interested", "DNC"];
-
-export function isClosedStage(stage: string): boolean {
-  return CLOSED_PIPELINE_STAGES.includes(stage);
-}
-
-// Stages that take a lead out of the working pipeline entirely. Chasing a
-// deal you already won isn't a follow-up, so counts of outstanding work
-// skip these -- and both the pipeline's Follow-ups Due panel and the
-// Daily Brief read it from here so they can't drift apart again.
-export const SETTLED_LEAD_STAGES = ["Won", "Lost"];
-
-export function isSettledStage(stage: string): boolean {
-  return SETTLED_LEAD_STAGES.includes(stage);
-}
-
-// Stage names that app logic depends on directly (auto-advance on
-// booking, pipeline value/won stats) -- protected from rename/delete
-// in the Pipeline Stages admin UI, but still reorderable.
-export const SYSTEM_STAGE_NAMES = [
-  "Unsorted",
-  "Appointment Scheduled",
-  "Won",
-  "Lost",
-];
+// Which stages count as closed, intake and so on is decided by each
+// stage's tag, not its name: lib/pipeline/stage-keys.ts (DECISIONS #120).
 
 export type PipelineStageRow = {
   id: string;
@@ -1120,6 +1098,9 @@ export type PipelineStageRow = {
   sort_order: number;
   is_system: boolean;
   created_at: string;
+  /** The stage's fixed tag (lib/pipeline/stage-keys.ts); null for a
+   *  company's own stages. Migration 0195. */
+  key: string | null;
 };
 
 export const FALLBACK_STAGE_COLOR = "#9A9384";
@@ -1292,14 +1273,6 @@ export const RESOLVED_EVENT_STATUSES: EventStatus[] = [
   "No-show",
   "Cancelled",
 ];
-
-/**
- * Where a lead lands when an appointment came and went without an outcome.
- * Seeded into every company's pipeline, but an admin can rename it -- if
- * no stage by this name exists, the automation leaves the lead alone
- * rather than inventing somewhere to put it.
- */
-export const FOLLOW_UP_STAGE = "Appointment Follow Up";
 
 export function hasAppointmentResult(status: EventStatus): boolean {
   return RESOLVED_EVENT_STATUSES.includes(status);
@@ -1547,6 +1520,10 @@ export type Lead = {
   source: string | null;
   project_type: string | null;
   stage: PipelineStage;
+  /** The tag of the stage the lead is in (lib/pipeline/stage-keys.ts),
+   *  kept by the database from the stage name (0195). Null for a
+   *  company's own stages. Automations and counts go by this. */
+  stage_key: string | null;
   value: number;
   notes: string | null;
   has_appt: boolean;
@@ -3503,38 +3480,23 @@ export function appointmentLockedForViewer(input: {
 }
 
 /**
- * Stages where a lead is still being chased for its first appointment.
- *
- * Shared by everything that advances a lead automatically -- booking an
- * appointment, a dialer disposition -- so they agree on where automation
- * is allowed to act. Past these, the lead is in a rep's hands and a
- * missed phone call must not drag it backwards.
- */
-export const PRE_APPOINTMENT_STAGES: PipelineStage[] = [
-  "Unsorted",
-  "New Lead",
-  "Meta",
-  "No Answer",
-  "Contacted",
-];
-
-/**
  * Where a dialer outcome moves the lead, or null for nowhere.
  *
  * Forward-only, early-stages-only: a customer at "Proposal Sent" who
  * misses one call must not fall back to "No Answer", so only leads
- * still in the pre-appointment stages move at all. The target must
- * exist in this company's pipeline -- a mapping pointing at a deleted
- * stage skips rather than writes a stage no board can show.
+ * still waiting for a first appointment move at all -- the same test
+ * booking an appointment uses (preAppointmentStageNames). The target
+ * must exist in this company's pipeline -- a mapping pointing at a
+ * deleted stage skips rather than writes a stage no board can show.
  */
 export function dispositionStageMove(input: {
   currentStage: string;
   moveToStage: string | null | undefined;
-  companyStages: string[];
+  stages: readonly TaggedStage[];
 }): string | null {
   if (!input.moveToStage) return null;
-  if (!PRE_APPOINTMENT_STAGES.includes(input.currentStage)) return null;
-  if (!input.companyStages.includes(input.moveToStage)) return null;
+  if (!isPreAppointmentStage(input.stages, input.currentStage)) return null;
+  if (!input.stages.some((s) => s.name === input.moveToStage)) return null;
   if (input.moveToStage === input.currentStage) return null;
   return input.moveToStage;
 }

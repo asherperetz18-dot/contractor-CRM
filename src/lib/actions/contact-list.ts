@@ -7,13 +7,13 @@ import { digitsSearchPattern } from "@/lib/dial-filters";
 import { buildDuplicateGroups, type DupContact, type DuplicateGroup } from "@/lib/contact-duplicates";
 import { leadDisplayName } from "@/lib/data/types";
 import {
-  CONTACT_CLOSED_STAGES,
   contactFilterClauses,
   hasContactFilters,
   parseContactFilters,
   type ContactFilters,
 } from "@/lib/contact-filters";
 import type { Lead } from "@/lib/data/types";
+import { OPEN_LEADS_FILTER } from "@/lib/pipeline/stage-keys";
 
 /**
  * The Contacts page's server side -- same cure as the Power Dialer and
@@ -125,7 +125,7 @@ export async function getContactStats(input?: { search?: string; filters?: Conta
   const base = () => narrow(book(), search, filters);
   const [total, open, unassigned, whole] = await Promise.all([
     base(),
-    base().not("stage", "in", `(${CONTACT_CLOSED_STAGES.join(",")})`),
+    base().or(OPEN_LEADS_FILTER),
     base().is("assigned_to", null),
     narrowed ? book() : null,
   ]);

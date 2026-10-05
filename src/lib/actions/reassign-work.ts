@@ -4,7 +4,8 @@ import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, isClosedStage } from "@/lib/data/types";
+import { isAdminRole } from "@/lib/data/types";
+import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 
 export type WorkCounts = {
   openLeads: number;
@@ -44,7 +45,7 @@ export async function getAssignedWork(userId: string): Promise<{
   const [leadsRes, eventsRes, tasksRes] = await Promise.all([
     supabase
       .from("leads")
-      .select("id, stage")
+      .select("id, stage_key")
       .eq("company_id", guard.companyId)
       .eq("assigned_to", userId),
     supabase
@@ -59,14 +60,14 @@ export async function getAssignedWork(userId: string): Promise<{
       .eq("assigned_to", userId),
   ]);
 
-  const leads = (leadsRes.data as { stage: string }[] | null) ?? [];
+  const leads = (leadsRes.data as { stage_key: string | null }[] | null) ?? [];
   const events = (eventsRes.data as { date: string }[] | null) ?? [];
   const tasks = (tasksRes.data as { completed_at: string | null }[] | null) ?? [];
 
   return {
     counts: {
-      openLeads: leads.filter((l) => !isClosedStage(l.stage)).length,
-      closedLeads: leads.filter((l) => isClosedStage(l.stage)).length,
+      openLeads: leads.filter((l) => !isClosedStageKey(l.stage_key)).length,
+      closedLeads: leads.filter((l) => isClosedStageKey(l.stage_key)).length,
       upcomingAppointments: events.filter((e) => e.date >= today).length,
       pastAppointments: events.filter((e) => e.date < today).length,
       openTasks: tasks.filter((t) => !t.completed_at).length,
@@ -100,13 +101,13 @@ export async function reassignWork(
   // --- Leads -------------------------------------------------------
   const { data: leadRows, error: leadReadError } = await supabase
     .from("leads")
-    .select("id, stage")
+    .select("id, stage_key")
     .eq("company_id", guard.companyId)
     .eq("assigned_to", fromUserId);
   if (leadReadError) return { error: leadReadError.message };
 
-  const leadIds = ((leadRows as { id: string; stage: string }[] | null) ?? [])
-    .filter((l) => scope === "all" || !isClosedStage(l.stage))
+  const leadIds = ((leadRows as { id: string; stage_key: string | null }[] | null) ?? [])
+    .filter((l) => scope === "all" || !isClosedStageKey(l.stage_key))
     .map((l) => l.id);
 
   if (leadIds.length > 0) {

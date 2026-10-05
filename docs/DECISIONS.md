@@ -1368,3 +1368,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - A company made there starts from the standard starter lists (`createCompanyWithDefaults` without `sourceCompanyId`), the same as a paid sign-up.
 
 **Consequence:** Office and Admin users no longer see "+ New company". Customers get their company through sign-up or a setup link from Platform Admin. Billing for companies a platform admin makes by hand comes with Phase 4's trials and Subscribe button.
+
+## 120 — Stages are known by a fixed tag, so any stage can be renamed
+
+**Date:** 2026-10-05
+
+**Context:** Each company names its own pipeline stages, but the app moved and counted leads by name: "Unsorted" for a new lead, "Appointment Scheduled" when a visit is booked, "Proposal Sent" and "Won" from estimates, "Appointment Follow Up" after a no-show, "Won"/"Lost"/"DNC" in every report. So four stages couldn't be renamed at all, renaming any other quietly switched its automation off, and a roofer couldn't call its stages what roofers call them. "Closed" also had a dozen definitions: most reports counted Not Interested (and some DNC) leads as open pipeline.
+
+**Decision:**
+- **Every standard stage has a fixed tag**, `pipeline_stages.key` (`unsorted`, `new_lead`, … `won`, `lost`, `not_interested`, `dnc`; 0195 tags existing companies' stages by name, a new company's come tagged). A company's own stages have none. The list and rules live in `src/lib/pipeline/stage-keys.ts`, tested against the migration.
+- **Every lead carries its stage's tag**, `leads.stage_key`, kept by the database (`resolve_lead_stage` trigger): set from the name on every write. An automation writes only the tag (`update({ stage_key: "won" })`) and lands in that company's stage under its current name; with no such stage the lead stays put. A new lead whose stage isn't on the board goes to the intake stage, so `stage: "Unsorted"` on new leads keeps working after a rename.
+- **Renaming a stage takes its leads and the dialer outcomes pointing at it along**, in the database (`follow_stage_rename`), and the won date stays (`set_won_at` goes by the tag).
+- **Any stage can be renamed.** The four the app always needs (Unsorted, Appointment Scheduled, Won, Lost) still can't be deleted. Settings shows "works as …" next to a renamed standard stage.
+- **One meaning of closed:** won, lost, not interested, do-not-contact (`CLOSED_STAGE_KEYS`, `is_closed_stage()`). Open-lead counts, pipeline value, follow-ups due, stale tags, the Dashboard, Salespeople, Contacts, Daily Brief and the assistant all use it. The board's and dialer's Open/Won/Lost views still show every column but Won and Lost.
+- **Waiting for a first appointment** (booking advances, dialer outcomes move, the dispatch waiting list) is the intake tags plus a company's own stages placed before its Appointment Scheduled stage. That replaces a list that named La Home's "Meta" column.
+- The portal's progress steps read the tag instead of guessing from words in the stage name. `marketing_funnel_rollup` (unused since 0164) is dropped.
+
+**Consequence:** run 0195 before this deploys: the app reads `stage_key`. Report numbers drop where Not Interested and DNC leads used to count as open. A browser's hidden board columns are remembered by name, so a renamed column shows again until hidden again. Trade starter pipelines (Phase 3e) build on the tags.

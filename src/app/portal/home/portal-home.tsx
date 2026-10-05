@@ -102,18 +102,20 @@ const JOURNEY = [
  * "Appointment scheduled".
  *
  * The stage is still the fallback, since before any estimate exists it
- * is the only thing that knows anything.
+ * is the only thing that knows anything. It is read by its tag
+ * (DECISIONS #120), never its name: a company calls its stages whatever
+ * it likes, and the customer only ever sees the steps above.
  */
-function journeyStep(stage: string, estimates: PortalEstimate[]): number | null {
+function journeyStep(stageKey: string | null, estimates: PortalEstimate[]): number | null {
   if (estimates.some((e) => e.status === "Signed")) return 4;
   if (estimates.some((e) => e.status === "Sent" || e.status === "Viewed")) return 3;
   if (estimates.length > 0) return 2;
 
-  const s = stage.toLowerCase();
-  if (s === "lost" || s === "dnc") return null; // show no tracker at all
+  // Closed without a sale: show no tracker at all.
+  if (stageKey === "lost" || stageKey === "dnc" || stageKey === "not_interested") return null;
   // Won is a fact about the deal, not a promise about a document, so it
   // still stands on the stage alone.
-  if (s === "won") return 4;
+  if (stageKey === "won") return 4;
 
   /**
    * Nothing here the customer can open, so the stage alone cannot claim
@@ -127,9 +129,21 @@ function journeyStep(stage: string, estimates: PortalEstimate[]): number | null 
    * Capped at "Estimate in progress": true whatever the stage says, and
    * it moves on by itself the moment the estimate is actually sent.
    */
-  if (s.includes("proposal") || s.includes("finance") || s.includes("close to sale")) return 2;
-  if (s.includes("estimate")) return 2;
-  if (s.includes("appointment") || s.includes("2nd")) return 1;
+  if (
+    stageKey === "estimate_prepared" ||
+    stageKey === "proposal_sent" ||
+    stageKey === "pending_finance" ||
+    stageKey === "close_to_sale"
+  ) {
+    return 2;
+  }
+  if (
+    stageKey === "appointment_scheduled" ||
+    stageKey === "appointment_follow_up" ||
+    stageKey === "second_appointment"
+  ) {
+    return 1;
+  }
   return 0;
 }
 
@@ -269,7 +283,7 @@ export function PortalHome({
   // they go, so the target is resolved once here.
   const reviewHref = socialLinks.find((l) => l.label === "Google Reviews")?.href;
 
-  const step = journeyStep(lead.stage, estimates);
+  const step = journeyStep(lead.stage_key, estimates);
   const progress = step === null ? null : journeyProgress(step, JOURNEY.length);
   const todayISO = new Date().toISOString().slice(0, 10);
   const upcoming = events.filter((e) => e.date >= todayISO && e.status !== "Cancelled");

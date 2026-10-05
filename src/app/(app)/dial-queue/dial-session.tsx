@@ -35,6 +35,7 @@ export function DialSession({
   leads,
   callInfo,
   dispositions,
+  bookingStage,
   reps,
   callScript,
   onClose,
@@ -45,6 +46,9 @@ export function DialSession({
    *  warns and pauses auto-dial so nobody gets rung twice in hours. */
   callInfo: Record<string, LeadCallInfo>;
   dispositions: CallDispositionRow[];
+  /** This company's Appointment Scheduled stage, by its own name (null if
+   *  it has none): an outcome moving a lead there opens the booking step. */
+  bookingStage: string | null;
   /** For the quick-booking step when an outcome sets an appointment. */
   reps: Profile[];
   callScript: string | null;
@@ -285,7 +289,7 @@ export function DialSession({
     // booking is what puts "Appointment Scheduled" leads on the board
     // with nothing behind them.
     const dispo = dispositions.find((d) => d.name === name);
-    if (dispo?.move_to_stage === "Appointment Scheduled") {
+    if (bookingStage && dispo?.move_to_stage === bookingStage) {
       // Linked cards: start with the customer's own rep when they have
       // one -- still changeable before booking.
       setBooking({ date: todayISO(), time: "09:00", assignedTo: lead?.assigned_to ?? "" });

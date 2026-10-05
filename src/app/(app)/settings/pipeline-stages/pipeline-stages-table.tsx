@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import type { PipelineStageRow } from "@/lib/data/types";
+import { STANDARD_STAGE_NAMES, isStageKey } from "@/lib/pipeline/stage-keys";
 import {
   createStage,
   deleteStage,
@@ -264,7 +265,10 @@ export function PipelineStagesTable({
                 ) : (
                   <>
                     {s.name}{" "}
-                    {s.is_system && <Badge color="#B7862B">SYSTEM</Badge>}
+                    {s.is_system && <Badge color="#B7862B">REQUIRED</Badge>}
+                    {isStageKey(s.key) && STANDARD_STAGE_NAMES[s.key] !== s.name && (
+                      <span className="stage-works-as">works as &ldquo;{STANDARD_STAGE_NAMES[s.key]}&rdquo;</span>
+                    )}
                   </>
                 )}
               </td>
@@ -309,7 +313,7 @@ export function PipelineStagesTable({
                 )}
               </td>
               <td className="right">
-                {!s.is_system && renamingId !== s.id && (
+                {renamingId !== s.id && (
                   <>
                     <button
                       type="button"
@@ -320,15 +324,17 @@ export function PipelineStagesTable({
                     >
                       ✎
                     </button>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() => handleDelete(s)}
-                      aria-label="Delete stage"
-                      title="Delete"
-                    >
-                      🗑
-                    </button>
+                    {!s.is_system && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => handleDelete(s)}
+                        aria-label="Delete stage"
+                        title="Delete"
+                      >
+                        🗑
+                      </button>
+                    )}
                   </>
                 )}
               </td>
@@ -338,9 +344,11 @@ export function PipelineStagesTable({
       </table>
 
       <p className="hint-note">
-        Drag rows to reorder (on a touch screen, use the ▲▼ buttons). Stages marked SYSTEM are required by app logic
-        (auto-advance on booking, pipeline stats) — you can reorder them, but
-        their names can&apos;t be changed and they can&apos;t be deleted.
+        Drag rows to reorder (on a touch screen, use the ▲▼ buttons). Every stage can be renamed &mdash; call them
+        whatever your business calls them. The app still knows what each
+        standard stage is for (moving a lead when an appointment is booked or a
+        contract is signed, counting won and closed leads), shown as &ldquo;works
+        as&rdquo; once renamed. Stages marked REQUIRED can&apos;t be deleted.
         &ldquo;⬇ CSV&rdquo; downloads every contact in a stage as a spreadsheet;
         &ldquo;Delete all…&rdquo; permanently deletes them (they do <b>not</b> go
         to the Trash) — download the CSV first if you might want them back.

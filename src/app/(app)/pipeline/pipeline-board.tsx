@@ -4,7 +4,6 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useT
 import { useRouter } from "next/navigation";
 import {
   daysSince,
-  isSettledStage,
   leadDisplayName,
   mapsUrl,
   money,
@@ -34,6 +33,7 @@ import { CsvImportPanel } from "./csv-import-panel";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
 import { useQuickCreate } from "../use-quick-create";
 import { PhoneLeadList } from "./phone-lead-list";
+import { isClosedStageKey, isEndingStageKey } from "@/lib/pipeline/stage-keys";
 
 type StatusFilter = "Open" | "Won" | "Lost";
 type SortBy = "Name" | "Days" | "Amount";
@@ -217,7 +217,7 @@ const PipelineColumn = memo(function PipelineColumn({
                     and "-3d old" reads as a bug. */}
                 <span className="lead-card-age">{stale <= 0 ? "today" : `${stale}d`}</span>
               </div>
-              {stale > 14 && !isSettledStage(l.stage) && (
+              {stale > 14 && !isClosedStageKey(l.stage_key) && (
                 <div className="lead-card-foot">
                   <span className="stale-tag">● {stale} days — stale</span>
                 </div>
@@ -614,7 +614,7 @@ export function PipelineBoard({
   const digest = board?.digest;
 
   const openStageNames = useMemo(
-    () => stages.map((s) => s.name).filter((s) => !isSettledStage(s)),
+    () => stages.filter((s) => !isEndingStageKey(s.key)).map((s) => s.name),
     [stages]
   );
   const visibleStageNames = useMemo(

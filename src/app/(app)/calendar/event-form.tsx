@@ -10,7 +10,6 @@ import { TimeField } from "@/components/ui/time-field";
 import {
   EVENT_STATUSES,
   QUICK_TEXT_DEFAULTS,
-  FOLLOW_UP_STAGE,
   REP_APPOINTMENT_INFO_DEFAULT,
   addHour,
   appointmentResultOverdue,
@@ -58,6 +57,7 @@ import { MessagesPanel } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
 import { NotesTimeline } from "../pipeline/notes-timeline";
+import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
 type Tab =
   | "Appointment"
@@ -92,8 +92,8 @@ const VALUED_OUTCOMES: EventStatus[] = ["Showed", "Won"];
  * starting suggestion -- the stage dropdown stays editable, because only
  * the rep knows whether "Showed" meant a signature or a maybe.
  */
-function suggestedStageFor(outcome: EventStatus, currentStage: string): string {
-  if (outcome === "No-show" || outcome === "Cancelled") return FOLLOW_UP_STAGE;
+function suggestedStageFor(outcome: EventStatus, currentStage: string, followUpStage: string | null): string {
+  if ((outcome === "No-show" || outcome === "Cancelled") && followUpStage) return followUpStage;
   return currentStage;
 }
 
@@ -240,6 +240,9 @@ export function EventForm({
     event?.second_rep_info_sent_at ?? null
   );
   const [resultStage, setResultStage] = useState("");
+  // Where a missed appointment sends the lead: this company's follow-up
+  // stage by its own name, or none if it was deleted (DECISIONS #120).
+  const followUpStage = stageNameFor(stages ?? [], "appointment_follow_up");
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
@@ -337,7 +340,7 @@ export function EventForm({
     setResultSaved(false);
     // No-show and Cancelled belong in follow-up; only suggest it while
     // the user hasn't chosen a stage themselves.
-    if (!resultStage && lead) setResultStage(suggestedStageFor(outcome, lead.stage));
+    if (!resultStage && lead) setResultStage(suggestedStageFor(outcome, lead.stage, followUpStage));
   }
 
   async function saveResult() {
@@ -350,7 +353,7 @@ export function EventForm({
       setError("Enter the estimated job value before saving this result.");
       return;
     }
-    const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage);
+    const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage, followUpStage);
     setResultPending(true);
     setError("");
 
@@ -1027,8 +1030,14 @@ export function EventForm({
               This appointment has been and gone with no result. {repName(form.assigned_to)
                 ? `${repName(form.assigned_to)} gets a text reminder`
                 : "A reminder goes out"}{" "}
-              an hour afterwards, and if it&apos;s still blank at 8pm the lead moves itself to{" "}
-              {FOLLOW_UP_STAGE} so it doesn&apos;t go cold.
+              an hour afterwards{followUpStage ? (
+                <>
+                  , and if it&apos;s still blank at 8pm the lead moves itself to {followUpStage} so it
+                  doesn&apos;t go cold.
+                </>
+              ) : (
+                "."
+              )}
             </p>
           ) : (
             <p className="empty-hint" style={{ marginTop: 0 }}>
@@ -1106,8 +1115,8 @@ export function EventForm({
             />
           </Field>
           <p className="hint-note">
-            Nothing here is saved until you press Save Result. No-show and Cancelled suggest{" "}
-            {FOLLOW_UP_STAGE}; change the stage if it belongs elsewhere.
+            Nothing here is saved until you press Save Result.
+            {followUpStage && <> No-show and Cancelled suggest {followUpStage}; change the stage if it belongs elsewhere.</>}
           </p>
         </div>
       )}

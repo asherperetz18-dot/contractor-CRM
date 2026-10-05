@@ -8,6 +8,7 @@ import { Field } from "@/components/ui/field";
 import type { PipelineStage, PipelineStageRow } from "@/lib/data/types";
 import { bulkImportLeads, getExistingContactKeys } from "@/lib/actions/leads";
 import { IMPORT_CHUNK_ROWS, chunkRows, matchDuplicateIndexes } from "@/lib/import-batching";
+import { stageLabel } from "@/lib/pipeline/stage-keys";
 
 type Mapping = {
   firstName: number;
@@ -117,7 +118,7 @@ export function CsvImportPanel({
   const [headers, setHeaders] = useState<string[]>([]);
   const [rows, setRows] = useState<unknown[][]>([]);
   const [mapping, setMapping] = useState<Mapping>(BLANK_MAPPING);
-  const [targetStage, setTargetStage] = useState<PipelineStage>("Unsorted");
+  const [targetStage, setTargetStage] = useState<PipelineStage>(() => stageLabel(stages, "unsorted"));
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [importedCount, setImportedCount] = useState<number | null>(null);

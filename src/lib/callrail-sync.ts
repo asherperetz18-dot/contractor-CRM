@@ -157,6 +157,8 @@ async function insertUnknownCallerLead(
       phone: input.phone || null,
       email: input.email || null,
       notes: input.notes,
+      // Into this company's intake stage, whatever it is called: the
+      // database maps a new lead's unknown stage there (0195).
       stage: "Unsorted",
       source: input.source,
       company_id: companyId,

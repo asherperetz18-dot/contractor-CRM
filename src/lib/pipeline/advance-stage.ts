@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { AT_OR_PAST_PROPOSAL_KEYS, type StageKey } from "./stage-keys";
 
 /**
  * Moving a lead's pipeline stage when the estimate says something the
@@ -11,25 +12,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * Scheduled" and an $18,000 proposal on a lead marked "Lost". The estimate
  * knows on its own, so it is allowed to move the stage.
  *
- * Stage names are per-company rows in pipeline_stages and are editable, so
- * every move is looked up in that company's own pipeline first. A company
- * that renamed or deleted the target stage gets a no-op rather than a
- * stage string its board cannot render.
+ * Stage names are per-company and editable, so every move goes by the
+ * stage's tag (DECISIONS #120): the lead lands in this company's stage
+ * with that tag, under whatever name it has. A company that deleted the
+ * target stage gets a no-op rather than a stage its board cannot render.
  */
-
-const PROPOSAL_SENT = "Proposal Sent";
-const WON = "Won";
-
-// Already at or past "proposal sent" in the sales sequence. Sending a
-// revised estimate to someone in Pending Finance must not drag them
-// backwards -- sort_order cannot decide this, because Lost and DNC are
-// terminal states parked at the end of the list rather than late stages.
-const AT_OR_PAST_PROPOSAL = new Set([
-  "proposal sent",
-  "pending finance",
-  "close to sale",
-  "won",
-]);
 
 export type StageMove = { moved: boolean; from?: string; to?: string };
 
@@ -37,37 +24,32 @@ async function moveTo(
   admin: SupabaseClient,
   leadId: string,
   companyId: string,
-  targetName: string,
-  allowed: (currentStage: string) => boolean
+  target: StageKey,
+  allowed: (currentKey: string | null) => boolean
 ): Promise<StageMove> {
   const { data: lead } = await admin
     .from("leads")
-    .select("id, stage")
+    .select("id, stage, stage_key")
     .eq("id", leadId)
-    .maybeSingle<{ id: string; stage: string }>();
+    .eq("company_id", companyId)
+    .maybeSingle<{ id: string; stage: string; stage_key: string | null }>();
   if (!lead) return { moved: false };
 
   const current = lead.stage || "";
-  if (!allowed(current)) return { moved: false, from: current };
+  if (lead.stage_key === target || !allowed(lead.stage_key)) return { moved: false, from: current };
 
-  const { data: stage } = await admin
-    .from("pipeline_stages")
-    .select("name")
-    .eq("company_id", companyId)
-    .ilike("name", targetName)
-    .maybeSingle<{ name: string }>();
-  if (!stage) return { moved: false, from: current };
-  if (stage.name === current) return { moved: false, from: current };
-
-  // Row count checked rather than trusting the absence of an error: a
-  // blocked update matches zero rows and raises nothing.
+  // The database resolves the tag to this company's stage (0195) and
+  // leaves the lead where it was if there is none -- so the answer, not
+  // the absence of an error, says whether it moved.
   const { data: updated } = await admin
     .from("leads")
-    .update({ stage: stage.name })
+    .update({ stage_key: target })
     .eq("id", leadId)
-    .select("id");
-
-  return { moved: !!updated?.length, from: current, to: stage.name };
+    .eq("company_id", companyId)
+    .select("stage, stage_key");
+  const after = (updated?.[0] ?? null) as { stage: string; stage_key: string | null } | null;
+  const moved = after?.stage_key === target;
+  return { moved, from: current, to: moved ? after.stage : undefined };
 }
 
 /**
@@ -83,10 +65,13 @@ export function advanceStageOnEstimateSent(
   leadId: string,
   companyId: string
 ): Promise<StageMove> {
-  return moveTo(admin, leadId, companyId, PROPOSAL_SENT, (s) => {
-    const cur = s.toLowerCase();
-    return cur !== "dnc" && !AT_OR_PAST_PROPOSAL.has(cur);
-  });
+  return moveTo(
+    admin,
+    leadId,
+    companyId,
+    "proposal_sent",
+    (key) => key !== "dnc" && !(AT_OR_PAST_PROPOSAL_KEYS as readonly (string | null)[]).includes(key)
+  );
 }
 
 /** Signed is won, from wherever the lead happened to be sitting. */
@@ -95,5 +80,5 @@ export function advanceStageOnEstimateSigned(
   leadId: string,
   companyId: string
 ): Promise<StageMove> {
-  return moveTo(admin, leadId, companyId, WON, (s) => s.toLowerCase() !== "won");
+  return moveTo(admin, leadId, companyId, "won", () => true);
 }

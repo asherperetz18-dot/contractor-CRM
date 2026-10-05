@@ -5,11 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { computeBoardAggregates, type BoardSlimLead } from "@/lib/pipeline-aggregates";
+import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { OPEN_LEADS_FILTER, isEndingStageKey, stageNameFor } from "@/lib/pipeline/stage-keys";
 import {
   computeLeadWarnings,
   hasFollowUpDue,
   isColdLead,
-  isSettledStage,
   type Lead,
   type LeadFile,
   type LeadNote,
@@ -35,7 +36,7 @@ import type {
  */
 
 const BOARD_COLUMNS =
-  "id, contact_type, company_name, first_name, last_name, phone, email, address, source, project_type, stage, value, assigned_to, dispatcher_id, date_received, has_appt, created_at";
+  "id, contact_type, company_name, first_name, last_name, phone, email, address, source, project_type, stage, stage_key, value, assigned_to, dispatcher_id, date_received, has_appt, created_at";
 
 /** How many leads the attention digest examines: the newest open slice
  *  of the book, where the leads being actively worked live. Exact
@@ -52,6 +53,7 @@ type LeadsQuery = {
   eq(column: string, value: unknown): LeadsQuery;
   is(column: string, value: unknown): LeadsQuery;
   not(column: string, operator: string, value: unknown): LeadsQuery;
+  or(filters: string): LeadsQuery;
   gte(column: string, value: unknown): LeadsQuery;
   lt(column: string, value: unknown): LeadsQuery;
   order(column: string, opts: { ascending: boolean }): LeadsQuery;
@@ -117,16 +119,13 @@ export async function getPipelineBoardData(input: PipelineBoardQuery): Promise<P
   const companyId = profile.company_id;
   const supabase = await createClient();
 
-  const { data: stageRows } = await supabase
-    .from("pipeline_stages")
-    .select("name")
-    .eq("company_id", companyId)
-    .order("sort_order", { ascending: true });
-  const openStages = ((stageRows ?? []) as { name: string }[])
-    .map((s) => s.name)
-    .filter((s) => !isSettledStage(s));
-
-  const columnStages = input.statusFilter === "Open" ? openStages : [input.statusFilter];
+  const stages = await loadTaggedStages(supabase, companyId);
+  // Open shows every column but the two endings; Won and Lost show that
+  // one column, by tag -- whatever the company calls it (DECISIONS #120).
+  const openStages = stages.filter((s) => !isEndingStageKey(s.key)).map((s) => s.name);
+  const ending = input.statusFilter === "Won" ? "won" : "lost";
+  const columnStages =
+    input.statusFilter === "Open" ? openStages : [stageNameFor(stages, ending)].filter((s): s is string => !!s);
 
   const [columns, slim, wonTopRes, totalRes, digest] = await Promise.all([
     Promise.all(
@@ -139,7 +138,7 @@ export async function getPipelineBoardData(input: PipelineBoardQuery): Promise<P
     // exactly what the in-browser reduction did.
     selectAll<BoardSlimLead>((f, t) =>
       applyFilters(
-        supabase.from("leads").select("stage, value, has_appt, date_received") as unknown as LeadsQuery,
+        supabase.from("leads").select("stage, stage_key, value, has_appt, date_received") as unknown as LeadsQuery,
         companyId,
         { ...input, receivedSince: "", receivedBefore: "", noApptOnly: false }
       ).range(f, t) as unknown as PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
@@ -149,7 +148,7 @@ export async function getPipelineBoardData(input: PipelineBoardQuery): Promise<P
       companyId,
       { ...input, receivedSince: "", receivedBefore: "", noApptOnly: false }
     )
-      .eq("stage", "Won")
+      .eq("stage_key", "won")
       .order("value", { ascending: false })
       .limit(WON_LIST_CAP),
     supabase
@@ -189,7 +188,8 @@ async function buildDigest(
       companyId,
       { ...input, receivedSince: "", receivedBefore: "", noApptOnly: false }
     )
-      .not("stage", "in", "(Won,Lost)")
+      // Open leads only: nobody follows up a closed one (DECISIONS #120).
+      .or(OPEN_LEADS_FILTER)
       .order("created_at", { ascending: false })
       .limit(DIGEST_WINDOW),
     selectAll<Pick<LeadTask, "lead_id" | "due_date" | "completed_at">>((f, t) =>

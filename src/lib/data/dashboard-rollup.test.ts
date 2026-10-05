@@ -67,11 +67,14 @@ const inputs: RollupInputs = {
   ],
   prevLeadCount: 7,
   openLeads: [
-    { stage: "New Leads", value: 100, updated_at: "2026-09-15T08:00:00Z" },
-    { stage: "New Leads", value: 200, updated_at: "2026-08-01T08:00:00Z" },
-    { stage: "Estimate Sent", value: 300, updated_at: "2026-05-01T08:00:00Z" },
-    // Defensive: a closed stage never reaches the panel even if fetched.
-    { stage: "Won", value: 999, updated_at: "2026-09-15T08:00:00Z" },
+    { stage: "New Leads", stage_key: null, value: 100, updated_at: "2026-09-15T08:00:00Z" },
+    { stage: "New Leads", stage_key: null, value: 200, updated_at: "2026-08-01T08:00:00Z" },
+    { stage: "Estimate Sent", stage_key: null, value: 300, updated_at: "2026-05-01T08:00:00Z" },
+    // Defensive: a closed stage never reaches the panel even if fetched --
+    // by tag, so a renamed Won or a Not Interested lead stays out too.
+    { stage: "Won", stage_key: "won", value: 999, updated_at: "2026-09-15T08:00:00Z" },
+    { stage: "Sold", stage_key: "won", value: 999, updated_at: "2026-09-15T08:00:00Z" },
+    { stage: "Not Interested", stage_key: "not_interested", value: 999, updated_at: "2026-09-15T08:00:00Z" },
   ],
   signedSinceMonths: [
     { assigned_to: "r1", signed_at: "2026-09-03T10:00:00Z", total_cents: 200000, kind: "contract", status: "Signed" },

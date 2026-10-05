@@ -18,6 +18,7 @@ import {
 import { sourceCost } from "@/lib/data/marketing-spend";
 import type { RepRow, SourceRow } from "@/lib/data/marketing-rollup";
 import { leadDisplayName, money, stageColor, type PipelineStageRow } from "@/lib/data/types";
+import { closedStageNames, stageLabel, stageNameFor, type StageKey } from "@/lib/pipeline/stage-keys";
 import { winRates } from "@/lib/data/win-rates";
 
 const PRESETS = [
@@ -29,7 +30,6 @@ const PRESETS = [
 const PRESET_LABELS: Record<string, string> = Object.fromEntries(
   PRESETS.map((p) => [p.key, p.label])
 );
-const CLOSED = new Set(["Won", "Lost", "DNC"]);
 
 /**
  * Change against the previous period, colored by direction (every
@@ -200,11 +200,21 @@ export function AnalyticsView({
 
   // Stages in pipeline order; the closed ones summarized underneath.
   const stageOrder = new Map(stages.map((s, i) => [s.name, i]));
+  // Closed by tag, under this company's own names (DECISIONS #120).
+  const closedNames = new Set(closedStageNames(stages));
   const openStages = R.byStage
-    .filter((s) => !CLOSED.has(s.stage))
+    .filter((s) => !closedNames.has(s.stage))
     .sort((a, b) => (stageOrder.get(a.stage) ?? 99) - (stageOrder.get(b.stage) ?? 99));
   const maxStage = Math.max(1, ...openStages.map((s) => s.count));
-  const closedCount = (name: string) => R.byStage.find((s) => s.stage === name)?.count ?? 0;
+  const closedCount = (key: StageKey) => {
+    const name = stageNameFor(stages, key);
+    return name ? R.byStage.find((s) => s.stage === name)?.count ?? 0 : 0;
+  };
+  const wonLabel = stageLabel(stages, "won");
+  const otherClosed = (["lost", "not_interested", "dnc"] as StageKey[]).flatMap((key) => {
+    const name = stageNameFor(stages, key);
+    return name ? [{ key, name }] : [];
+  });
 
   const spendTracked = data.spendTotalCents > 0;
   const costPerSale = spendTracked && T.signed > 0 ? Math.round(data.spendTotalCents / T.signed) : null;
@@ -467,7 +477,7 @@ export function AnalyticsView({
           onClick={() => (T.wonNoContract > 0 ? setWonOpen((v) => !v) : scrollToSources())}
           title={
             T.wonNoContract > 0
-              ? "Show the Won leads that have no signed contract"
+              ? `Show the ${wonLabel} leads that have no signed contract`
               : "See the sources behind this rate"
           }
         >
@@ -480,7 +490,7 @@ export function AnalyticsView({
                   {fmtInt(rates.fromLeads.signed)} signed of {fmtInt(rates.fromLeads.of)}
                 </span>
                 {T.wonNoContract > 0 && (
-                  <span className="mkt-flag">{fmtInt(T.wonNoContract)} at Won, no contract</span>
+                  <span className="mkt-flag">{fmtInt(T.wonNoContract)} at {wonLabel}, no contract</span>
                 )}
               </div>
             </div>
@@ -500,7 +510,7 @@ export function AnalyticsView({
       {wonOpen && (
         <section className="dash-panel mkt-won-panel" aria-labelledby="mkt-won">
           <div className="dash-panel-head">
-            <h3 id="mkt-won">At Won with no signed contract</h3>
+            <h3 id="mkt-won">At {wonLabel} with no signed contract</h3>
             <span className="dash-panel-sub">
               {periodLabel.toLowerCase()} · a stage set by hand, or a contract never entered
             </span>
@@ -511,7 +521,7 @@ export function AnalyticsView({
           {!wonList ? (
             <p className="empty-hint">Loading…</p>
           ) : wonList.length === 0 ? (
-            <p className="empty-hint">Every Won lead in this period has a signed contract.</p>
+            <p className="empty-hint">Every {wonLabel} lead in this period has a signed contract.</p>
           ) : (
             <div className="value-lead-list">
               {wonList.map((l) => (
@@ -721,12 +731,17 @@ export function AnalyticsView({
             />
           )}
           <p className="dash-note">
-            Closed: <b>{fmtInt(closedCount("Won"))} Won</b> ({money(T.wonStageValue)} lead value) ·{" "}
-            {fmtInt(closedCount("Lost"))} Lost · {fmtInt(closedCount("DNC"))} DNC.
+            Closed: <b>{fmtInt(closedCount("won"))} {wonLabel}</b> ({money(T.wonStageValue)} lead value)
+            {otherClosed.map((c) => (
+              <span key={c.key}>
+                {" "}· {fmtInt(closedCount(c.key))} {c.name}
+              </span>
+            ))}
+            .
             {T.wonNoContract > 0 && (
               <>
                 {" "}
-                {fmtInt(T.wonNoContract)} of the Won leads have no signed contract —{" "}
+                {fmtInt(T.wonNoContract)} of the {wonLabel} leads have no signed contract —{" "}
                 <button type="button" className="mkt-link-btn" onClick={() => setWonOpen(true)}>
                   open those
                 </button>

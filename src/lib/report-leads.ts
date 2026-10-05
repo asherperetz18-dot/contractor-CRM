@@ -1,4 +1,5 @@
 import { normalizePhone } from "./data/types.ts";
+import { isClosedStageKey } from "./pipeline/stage-keys.ts";
 
 /**
  * What the report pages need from the contact book, made precise. They
@@ -36,8 +37,9 @@ export type RepLeadStats = {
 
 /**
  * The Salespeople grid's per-rep tallies, from a slim scan
- * (assigned_to, stage, value) -- the same buckets the grid computed
- * from full rows in the browser.
+ * (assigned_to, stage_key, value) -- the same buckets the grid computed
+ * from full rows in the browser. Open and won go by the stage's tag
+ * (DECISIONS #120), like rep_lead_stats.
  */
 /** One row per rep from the rep_lead_stats SQL function (0156) --
  *  Postgres aggregates can arrive as strings through JSON, so every
@@ -54,7 +56,7 @@ export type RepLeadStatsRow = {
  * The same tallies repLeadStats builds from a scan, taken instead from
  * the grouped rows the database already reduced -- so the page reads
  * one row per rep, not one per lead. The two must bucket identically;
- * the buckets live in the SQL (migration 0156) and are pinned by the
+ * the buckets live in the SQL (0156, by stage tag since 0195) and are pinned by the
  * tests beside this file.
  */
 export function repLeadStatsFromRows(rows: RepLeadStatsRow[]): Map<string, RepLeadStats> {
@@ -78,16 +80,16 @@ export function repLeadStats(
      *  both books and both get the Won notch, but the value splits half
      *  and half -- one sale's money, never doubled on the grid. */
     partner_rep_id?: string | null;
-    stage: string;
+    stage_key: string | null;
     value: number;
   }[]
 ): Map<string, RepLeadStats> {
   const map = new Map<string, RepLeadStats>();
-  const credit = (repId: string, l: { stage: string; value: number }, valueShare: number) => {
+  const credit = (repId: string, l: { stage_key: string | null; value: number }, valueShare: number) => {
     const row = map.get(repId) ?? { assignedCount: 0, openCount: 0, wonCount: 0, wonValue: 0 };
     row.assignedCount += 1;
-    if (!["Won", "Lost", "DNC"].includes(l.stage)) row.openCount += 1;
-    if (l.stage === "Won") {
+    if (!isClosedStageKey(l.stage_key)) row.openCount += 1;
+    if (l.stage_key === "won") {
       row.wonCount += 1;
       row.wonValue += (Number(l.value) || 0) * valueShare;
     }

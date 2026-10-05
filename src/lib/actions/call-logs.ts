@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioVoiceForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { dispositionStageMove } from "@/lib/data/types";
+import type { TaggedStage } from "@/lib/pipeline/stage-keys";
 import { newCorrelationId } from "@/lib/observability/context";
 import { withActionObservability } from "@/lib/observability/observe";
 
@@ -155,12 +156,12 @@ async function applyDispositionToLead(
   if (dispo.move_to_stage) {
     const { data: stages } = await admin
       .from("pipeline_stages")
-      .select("name")
+      .select("name, key, sort_order")
       .eq("company_id", companyId);
     const target = dispositionStageMove({
       currentStage: lead.stage,
       moveToStage: dispo.move_to_stage,
-      companyStages: (stages ?? []).map((s) => (s as { name: string }).name),
+      stages: (stages ?? []) as TaggedStage[],
     });
     if (target) {
       const { error: moveError } = await admin

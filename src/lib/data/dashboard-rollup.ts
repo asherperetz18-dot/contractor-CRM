@@ -1,6 +1,7 @@
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
 import { phaseOwedCents, phaseState, type PortalPayment } from "./types.ts";
 import { saleCredits, splitCents } from "./sale-credit.ts";
+import { isClosedStageKey } from "../pipeline/stage-keys.ts";
 
 /**
  * The dashboard, reduced to the numbers its cards and graphs render.
@@ -112,7 +113,7 @@ export type RollupInputs = {
   }[];
   prevLeadCount: number;
   /** Open-stage leads (not Won/Lost/DNC), for the stage panel. */
-  openLeads: { stage: string; value: number | string | null; updated_at: string | null }[];
+  openLeads: { stage: string; stage_key: string | null; value: number | string | null; updated_at: string | null }[];
   /** Signed true contracts since fetchFrom (change orders excluded by the reader). */
   signedSinceMonths: {
     assigned_to: string | null;
@@ -156,8 +157,6 @@ export type RollupInputs = {
 };
 
 const num = (v: unknown) => Number(v) || 0;
-
-const CLOSED_STAGES = new Set(["Won", "Lost", "DNC"]);
 
 /** Whole days from `from` to `to` (both YYYY-MM-DD), DST-proof. */
 function daysBetween(from: string, to: string): number {
@@ -252,7 +251,7 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
   // ── Stage panel: open stages bucketed by last touch ──────────────
   const byStage = new Map<string, Record<"d30" | "d60" | "d90" | "all", StageBucket>>();
   for (const l of inputs.openLeads) {
-    if (CLOSED_STAGES.has(l.stage)) continue;
+    if (isClosedStageKey(l.stage_key)) continue;
     const buckets =
       byStage.get(l.stage) ??
       ({

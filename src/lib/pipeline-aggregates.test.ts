@@ -20,6 +20,7 @@ function daysAgoISO(days: number): string {
 function lead(overrides: Partial<BoardSlimLead>): BoardSlimLead {
   return {
     stage: "New",
+    stage_key: null,
     value: 0,
     has_appt: false,
     date_received: daysAgoISO(1),
@@ -32,8 +33,8 @@ test("money tiles: open value, average over all open, won separate", () => {
     lead({ stage: "New", value: 1000 }),
     lead({ stage: "Estimate Sent", value: 3000 }),
     lead({ stage: "New", value: 0 }), // counted in the average's denominator
-    lead({ stage: "Won", value: 50000 }),
-    lead({ stage: "Lost", value: 700 }), // settled: in neither figure
+    lead({ stage: "Won", stage_key: "won", value: 50000 }),
+    lead({ stage: "Lost", stage_key: "lost", value: 700 }), // closed: in neither figure
   ]);
   assert.equal(agg.pipelineValue, 4000);
   assert.equal(agg.avgDealSize, 4000 / 3);
@@ -48,7 +49,7 @@ test("stale counts open leads older than 14 days; no-appt counts open leads with
     lead({ date_received: daysAgoISO(20) }),
     lead({ date_received: daysAgoISO(15) }),
     lead({ date_received: daysAgoISO(14) }), // exactly 14 is not stale
-    lead({ stage: "Won", date_received: daysAgoISO(40) }), // settled: never stale
+    lead({ stage: "Won", stage_key: "won", date_received: daysAgoISO(40) }), // closed: never stale
     lead({ has_appt: true }),
   ]);
   assert.equal(agg.staleCount, 2);
@@ -64,7 +65,7 @@ test("value-by-stage lists open stages, biggest money first, count breaking ties
     lead({ stage: "Sold, In Production", value: 300 }),
     lead({ stage: "Measured", value: 400 }),
     lead({ stage: "Measured", value: 0 }),
-    lead({ stage: "Won", value: 9999 }), // settled: not a board column
+    lead({ stage: "Won", stage_key: "won", value: 9999 }), // closed: not open money
   ]);
   assert.deepEqual(agg.valueByStage, [
     { stage: "Estimate Sent", count: 1, value: 5000 },
@@ -73,6 +74,21 @@ test("value-by-stage lists open stages, biggest money first, count breaking ties
     { stage: "New", count: 2, value: 300 },
     { stage: "Sold, In Production", count: 1, value: 300 },
   ]);
+});
+
+test("won and closed go by the stage's tag, whatever the company calls it", () => {
+  const agg = computeBoardAggregates([
+    lead({ stage: "Sold", stage_key: "won", value: 8000 }), // "Won", renamed
+    lead({ stage: "Not Interested", stage_key: "not_interested", value: 1200 }),
+    lead({ stage: "Do Not Call", stage_key: "dnc", value: 900, date_received: daysAgoISO(30) }),
+    lead({ stage: "Won", stage_key: null, value: 50 }), // a company's own stage that merely says Won
+  ]);
+  assert.equal(agg.wonValue, 8000);
+  assert.equal(agg.wonCount, 1);
+  // Not Interested and do-not-contact are nobody's pipeline (they used to count).
+  assert.equal(agg.pipelineValue, 50);
+  assert.equal(agg.openCount, 1);
+  assert.equal(agg.staleCount, 0);
 });
 
 test("a string value from the database still adds up as a number", () => {

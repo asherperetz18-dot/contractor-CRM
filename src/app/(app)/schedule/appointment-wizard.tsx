@@ -18,6 +18,7 @@ import { repDropdownOptions } from "@/lib/data/rep-options";
 import { bookAppointmentForLead, createLead } from "@/lib/actions/leads";
 import { searchBookableLeads, type LeadMatch } from "@/lib/actions/lead-search";
 import { createEvent } from "@/lib/actions/events";
+import { stageLabel } from "@/lib/pipeline/stage-keys";
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -55,7 +56,7 @@ export function AppointmentWizard({
   });
   const [projectType, setProjectType] = useState("");
   const [value, setValue] = useState("");
-  const [leadStage, setLeadStage] = useState<PipelineStage>("Unsorted");
+  const [leadStage, setLeadStage] = useState<PipelineStage>(() => stageLabel(stages, "unsorted"));
   const [address, setAddress] = useState("");
 
   const [apptTitle, setApptTitle] = useState("");

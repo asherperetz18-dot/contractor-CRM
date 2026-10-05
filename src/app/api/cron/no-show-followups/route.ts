@@ -7,7 +7,6 @@ import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { withRouteObservability } from "@/lib/observability/observe";
 import {
-  FOLLOW_UP_STAGE,
   TIMEZONE_IANA,
   formatTimeRange,
   hasAppointmentResult,
@@ -20,11 +19,12 @@ import {
 // at five still has the evening to do it properly.
 const AUTO_MOVE_HOUR = 20;
 
-// The only stage this automation will move a lead out of. If someone has
+// The only stage this automation will move a lead out of (by tag, so
+// whatever the company calls it -- DECISIONS #120). If someone has
 // already advanced the lead -- to Proposal Sent, or Won -- the appointment
 // clearly did happen, and dragging it back into a follow-up bucket would
 // destroy real sales information.
-const MOVABLE_FROM_STAGE = "Appointment Scheduled";
+const MOVABLE_FROM_STAGE = "appointment_scheduled";
 
 type CompanyRow = Pick<
   CompanyProfile,
@@ -176,26 +176,26 @@ async function processCompany(
     if (dayIsOver && !row.followup_moved_at && row.lead_id) {
       const { data: lead } = await admin
         .from("leads")
-        .select("stage")
+        .select("stage_key")
         .eq("id", row.lead_id)
         .single();
-      const stage = (lead as { stage: string } | null)?.stage;
+      const stageKey = (lead as { stage_key: string | null } | null)?.stage_key;
 
-      if (stage === MOVABLE_FROM_STAGE) {
-        // Only into a stage the company actually has. An admin who renamed
-        // or deleted it gets no move, rather than a broken stage value.
+      if (stageKey === MOVABLE_FROM_STAGE) {
+        // Only into a stage the company actually has, under its own name.
+        // An admin who deleted it gets no move, rather than a broken stage.
         const { data: target } = await admin
           .from("pipeline_stages")
           .select("name")
           .eq("company_id", company.company_id)
-          .eq("name", FOLLOW_UP_STAGE)
-          .maybeSingle();
+          .eq("key", "appointment_follow_up")
+          .maybeSingle<{ name: string }>();
 
         if (target) {
-          await admin.from("leads").update({ stage: FOLLOW_UP_STAGE }).eq("id", row.lead_id);
+          await admin.from("leads").update({ stage_key: "appointment_follow_up" }).eq("id", row.lead_id);
           await admin.from("lead_notes").insert({
             lead_id: row.lead_id,
-            body: `Moved to ${FOLLOW_UP_STAGE} automatically - the ${row.date} appointment ended with no result recorded.`,
+            body: `Moved to ${target.name} automatically - the ${row.date} appointment ended with no result recorded.`,
             // No author_id: this wasn't a person, and attributing it to
             // one would put words in their mouth on the lead's timeline.
             event_id: row.id,

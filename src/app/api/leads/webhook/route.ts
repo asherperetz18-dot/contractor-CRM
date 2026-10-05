@@ -53,6 +53,8 @@ async function insertLead(
     .insert({
       contact_type: "Individual",
       ...lead,
+      // Into this company's intake stage, whatever it is called: the
+      // database maps a new lead's unknown stage there (0195).
       stage: "Unsorted",
       // Required since leads.company_id became NOT NULL. Without it every
       // authenticated call still failed, just at the insert instead.

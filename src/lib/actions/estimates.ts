@@ -1139,20 +1139,15 @@ export async function voidEstimate(
     const after = leadAfterContractVoid(contracts);
     if (after.demote) {
       // Only ever out of Won, and only into a stage this company's
-      // pipeline actually has -- a lead written into a stage no board
-      // shows would simply disappear.
-      const { data: stages } = await supabase
-        .from("pipeline_stages")
-        .select("name")
-        .eq("company_id", profile.company_id);
-      if ((stages ?? []).some((s) => (s as { name: string }).name === "Proposal Sent")) {
-        await supabase
-          .from("leads")
-          .update({ stage: "Proposal Sent", won_at: null })
-          .eq("id", existing.lead_id)
-          .eq("company_id", profile.company_id)
-          .eq("stage", "Won");
-      }
+      // pipeline actually has, by tag (DECISIONS #120): the database puts
+      // it in this company's Proposal Sent stage under its own name, and
+      // leaves it where it was if there is none.
+      await supabase
+        .from("leads")
+        .update({ stage_key: "proposal_sent" })
+        .eq("id", existing.lead_id)
+        .eq("company_id", profile.company_id)
+        .eq("stage_key", "won");
     } else if (after.valueDollars !== null) {
       await supabase
         .from("leads")
