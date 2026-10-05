@@ -1385,3 +1385,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The portal's progress steps read the tag instead of guessing from words in the stage name. `marketing_funnel_rollup` (unused since 0164) is dropped.
 
 **Consequence:** run 0195 before this deploys: the app reads `stage_key`. Report numbers drop where Not Interested and DNC leads used to count as open. A browser's hidden board columns are remembered by name, so a renamed column shows again until hidden again. Trade starter pipelines (Phase 3e) build on the tags.
+
+## 121 — Each company chooses the words its customers read
+
+**Date:** 2026-10-05
+
+**Context:** Every customer got a remodeler's words: an "Estimate" for a "Project". A plumber sends a Quote for a Job, a solar company a Proposal. Worse, one send used two words: the text said "your estimate", the email "your proposal". And change orders, completion certificates and invoices went out through the same path, so a change order arrived as "your estimate EST-1012-CO1" and a certificate as "the grand total of the proposal is $0.00".
+
+**Decision:**
+- **Eight words a company can choose** (`src/lib/company-words.ts`, tested): estimate, project, appointment, contract, rep, customer, change order, deposit. Each has a short list of usual choices (Estimate / Proposal / Quote / Bid …), or the company types its own. Typed words are limited to letters, numbers, spaces, hyphens, apostrophes and & — they go into text messages, where one dash or emoji re-encodes the whole message, and into emails.
+- **Stored as only what changed** (`company_profile.wording`, migration 0196), so a standard word the app later improves reaches every company that kept it. A missing or broken value reads as the standard word; a customer never sees a blank. The loader (`load-company-words.ts`) falls back to the standard words on any read error, so a send never fails over them, including before 0196 runs.
+- **A document is called what it is** (`estimate-email-copy.ts`): the company's estimate word for an estimate, its change order word for a change order, "completion certificate" and "invoice" for those. Text, subject, body, button ("Review & Sign" / "View Invoice") and the closing line all use the same word; a certificate names no price, an invoice gives the amount due and asks for no signature.
+- **Shown only where it is live.** Settings › Company Words lists the words customers already see (estimate, project, change order — `LIVE_WORD_KEYS`), with where each appears and an example text. The other five join as the portal and documents learn them, so no setting does nothing.
+- The portal sign-in text and email say "your portal" (no longer "project portal"), and the text lost its em dash.
+
+**Consequence:** with the standard words, a sent estimate's email now says "estimate" where it said "proposal" — the text already did. A company that prefers "Proposal" picks it in Settings › Company Words. Run 0196 to save words; until then everyone has the standard words.
