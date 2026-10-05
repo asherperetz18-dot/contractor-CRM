@@ -28,6 +28,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.203.0",
+    date: "2026-10-05",
+    notes: [
+      "Backups now include everything a company holds: vendor bills and payments, commission payouts, marketing spend, shared notes, AI receptionist calls and the time clock were missing before.",
+      "Platform admins can export any one company's data from the Companies page.",
+    ],
+  },
+  {
     version: "1.202.0",
     date: "2026-10-05",
     notes: [

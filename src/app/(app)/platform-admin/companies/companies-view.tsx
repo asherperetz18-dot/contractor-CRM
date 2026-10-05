@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { switchCompany } from "@/lib/actions/company";
+import { exportCompanyData } from "@/lib/actions/backup";
 import { closeCompany, reopenCompany } from "@/lib/actions/company-closure";
 import { extendTrial } from "@/lib/actions/trial-admin";
 import { TRIAL_EXTENSIONS } from "@/lib/billing/trial";
@@ -156,6 +157,49 @@ function LimitsEditor({ companyId, limits }: { companyId: string; limits: Compan
       </div>
       {error && <p className="error-note">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * Downloads one company's data as a file (DECISIONS #134): the same file
+ * its own Admin gets from Settings › Backup, without saved keys.
+ */
+function ExportCompany({ companyId }: { companyId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await exportCompanyData(companyId);
+      if (res.error) {
+        setNote({ ok: false, text: res.error });
+        return;
+      }
+      const blob = new Blob([res.json ?? ""], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const slug = (res.companyName ?? "company").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      a.href = url;
+      a.download = `crm-export-${slug || "company"}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setNote({ ok: true, text: `Downloaded ${res.rows?.toLocaleString() ?? 0} rows.` });
+    } catch {
+      setNote({ ok: false, text: "Something went wrong building the export." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button type="button" className="btn-ghost small company-export" onClick={run} disabled={busy}>
+        {busy ? "Exporting…" : "Export"}
+      </button>
+      {note && <p className={note.ok ? "hint-note" : "error-note"}>{note.text}</p>}
+    </>
   );
 }
 
@@ -370,6 +414,7 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                         <button type="button" className="btn-ghost small" onClick={() => open(r.id)} disabled={busy}>
                           {busy ? "Opening…" : "Open"}
                         </button>
+                        <ExportCompany companyId={r.id} />
                         <CloseCompany companyId={r.id} name={r.name} closed={r.closed !== null} />
                         {rowError?.id === r.id && <p className="error-note">{rowError.message}</p>}
                       </td>

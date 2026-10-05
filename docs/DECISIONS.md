@@ -1586,6 +1586,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** the platform can cap a company that uses too much without locking it. **Database step: run `supabase/migrations/0200_company_limits.sql`.**
 
+## 134 — Export any one company, with everything it holds
+
+**Date:** 2026-10-05
+
+**Context:** A company's own Admin could download its data from Settings › Backup, but a platform admin had no way to export a company they don't run — the first thing needed when a customer leaves, asks for its data, or is being closed. And the export's table list had fallen behind the product: 16 tables where a company's business lives (bills and bill payments, payment accounts, commission payouts, sales-team changes, marketing spend, shared notes, file deletions, contact views, AI receptionist calls, the whole time clock) were in no backup at all, the nightly one included.
+
+**Decision:**
+- **Export on Platform Admin › Companies** (`exportCompanyData`): any one company's file — the same as its own Admin's download, without saved keys or tokens. Platform admins only, checked inside the action before anything is read; each export is logged with who took it. "Every company at once" stays the nightly job's alone.
+- **The 16 tables are in every backup now**, each after the tables it points at, so a restore can load in order.
+- **No more silent gaps:** `backup-scope.test.ts` reads the database files for every table with a `company_id` and fails unless it is in `BACKUP_TABLES` or in `BACKUP_LEFT_OUT` with its reason (sign-in tokens and connections, page-view pings, which alerts were read, and the platform's own billing, usage, limits and access records).
+
+**Consequence:** a company's full data is one click away for the platform, and the next table a feature adds can't be forgotten by the backup. No database step.
+
 ## 135 — A platform admin can close a company, and reopen it
 
 **Date:** 2026-10-05
