@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BACKUP_TABLES, companyScopeColumn, withoutSecrets } from "./backup-scope.ts";
+import { BACKUP_LEFT_OUT, BACKUP_TABLES, companyScopeColumn, withoutSecrets } from "./backup-scope.ts";
 
 /**
  * Settings → Backup is run by a company's Office or Admin, and must hand
@@ -87,4 +87,55 @@ test("the Settings download and page pass the current company", () => {
   const page = readFileSync(join(SRC, "app/(app)/settings/backup/page.tsx"), "utf8");
   assert.match(action, /buildBackup\(\{ companyId: profile\.company_id \}\)/);
   assert.match(page, /countBackupRows\(\{ companyId: profile\.company_id \}\)/);
+});
+
+/**
+ * Every table that holds a company's rows, read from the database files
+ * themselves: created with a company_id column, or given one later.
+ */
+function companyTables(): Set<string> {
+  const dir = fileURLToPath(new URL("../../supabase/", import.meta.url));
+  const files = [join(dir, "schema.sql"), ...readdirSync(join(dir, "migrations")).map((f) => join(dir, "migrations", f))];
+  const found = new Set<string>();
+  for (const file of files) {
+    const sql = readFileSync(file, "utf8").replace(/--[^\n]*/g, "");
+    for (const m of sql.matchAll(/create table (?:if not exists )?(?:public\.)?(\w+)\s*\(([\s\S]*?)\n\);/gi)) {
+      if (/\bcompany_id\b/.test(m[2])) found.add(m[1].toLowerCase());
+    }
+    for (const m of sql.matchAll(/alter table (?:only )?(?:if exists )?(?:public\.)?(\w+)\s+add column (?:if not exists )?company_id\b/gi)) {
+      found.add(m[1].toLowerCase());
+    }
+  }
+  return found;
+}
+
+test("every table that holds a company's rows is in the backup, or left out on purpose", () => {
+  const tables = companyTables();
+  assert.ok(tables.size > 50, `found ${tables.size} company tables`);
+  const covered = new Set<string>([...BACKUP_TABLES, ...Object.keys(BACKUP_LEFT_OUT)]);
+  const forgotten = [...tables].filter((t) => !covered.has(t)).sort();
+  assert.deepEqual(forgotten, [], "add these to BACKUP_TABLES, or to BACKUP_LEFT_OUT with the reason");
+  // And nothing is both.
+  for (const t of Object.keys(BACKUP_LEFT_OUT)) assert.ok(!(BACKUP_TABLES as readonly string[]).includes(t), t);
+});
+
+test("the business data that had fallen out of the backup is in it now", () => {
+  for (const t of ["vendor_bills", "vendor_bill_payments", "payment_accounts", "rep_commission_payouts", "marketing_spend", "time_punches", "ai_receptionist_calls", "lead_shared_notes"]) {
+    assert.ok((BACKUP_TABLES as readonly string[]).includes(t), t);
+  }
+  // A table comes after the ones it points at, so a restore can load in order.
+  const at = (t: string) => (BACKUP_TABLES as readonly string[]).indexOf(t);
+  assert.ok(at("payment_accounts") < at("vendor_bill_payments"));
+  assert.ok(at("vendor_bills") < at("vendor_bill_payments"));
+  assert.ok(at("time_punches") < at("time_punch_changes"));
+  assert.ok(at("vendors") < at("vendor_bills") && at("estimates") < at("rep_commission_payouts"));
+});
+
+test("a platform admin can export any one company; nobody else can choose the company", () => {
+  const action = readFileSync(join(SRC, "lib/actions/backup.ts"), "utf8");
+  const fn = action.slice(action.indexOf("export async function exportCompanyData"));
+  const guard = fn.indexOf("isPlatformAdmin(profile)");
+  assert.ok(guard > 0 && guard < fn.indexOf("buildBackup("), "checked before anything is read");
+  // One company, never everyone's.
+  assert.match(fn, /buildBackup\(\{ companyId: company\.id \}\)/);
 });

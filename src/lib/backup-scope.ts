@@ -62,7 +62,49 @@ export const BACKUP_TABLES = [
   "property_reports",
   "checklist_templates",
   "project_checklist_items",
+  // Added with the platform's per-company export (DECISIONS #134): every
+  // table a company's business lives in, which the list had fallen behind
+  // as features shipped. backup-scope.test.ts now fails when a new
+  // company table is neither here nor in BACKUP_LEFT_OUT. Each comes
+  // after the tables it points at.
+  "payment_accounts",
+  "vendor_bills",
+  "vendor_bill_payments",
+  "rep_commission_payouts",
+  "sales_team_changes",
+  "marketing_spend",
+  "lead_shared_notes",
+  "lead_file_deletions",
+  "lead_views",
+  "ai_receptionist_calls",
+  "time_clock_settings",
+  "time_punches",
+  "time_punch_changes",
+  "location_pings",
+  "site_visits",
+  "tracking_notices",
 ] as const;
+
+/**
+ * Company tables a backup leaves out on purpose, and why. Anything with a
+ * company_id must be in BACKUP_TABLES or here (backup-scope.test.ts).
+ */
+export const BACKUP_LEFT_OUT: Record<string, string> = {
+  activity_events: "page-view pings: huge, and nobody restores them",
+  portal_login_tokens: "short-lived customer sign-in links",
+  portal_sessions: "short-lived customer sign-ins",
+  screen_shares: "a live screen-share's one-time token",
+  google_drive_connection: "a Google sign-in, not data",
+  google_calendar_connections: "a Google sign-in, not data",
+  meta_secrets_legacy: "an old Facebook key kept only for a rollback",
+  user_devices: "which phones and browsers signed in",
+  notification_reads: "which alerts a person has seen",
+  signup_invites: "the platform's own sign-up records",
+  company_billing: "the platform's own billing record",
+  platform_access_log: "the platform's own record of who opened the company",
+  company_usage: "the platform's own usage counts",
+  company_limits: "the platform's own limits",
+};
 
 /**
  * "all" is the nightly job's full export, behind the cron secret. A
