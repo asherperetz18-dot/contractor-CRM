@@ -1,6 +1,7 @@
 "use server";
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiForCompany } from "@/lib/ai/company-ai";
 import { thinkingFor } from "@/lib/ai-models";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -69,8 +70,8 @@ export async function analyzeLeadConversation(
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { error: "AI isn't configured yet." };
+  const ai = await aiForCompany(profile.company_id);
+  if ("error" in ai) return { error: ai.error };
 
   // The lead is loaded as the signed-in user, so RLS decides whether
   // this person can see this contact at all -- the analyzer must not be
@@ -199,7 +200,7 @@ Reply with ONLY a JSON object, no code fences:
 {"temperature":"Hot"|"Warm"|"Cold","summary":"2-3 plain sentences a salesperson would want","positive_signals":[{"signal":"short label","evidence":"what happened, briefly"}],"negative_signals":[{"signal":"short label","evidence":"what happened, briefly"}],"next_step":"one concrete suggested action, or null"}`;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = ai.client;
     const response = await client.messages.create({
       model: settingsRow.ai_analysis_model || "claude-opus-5",
       max_tokens: 2500,

@@ -4,7 +4,8 @@ import { companyToday } from "@/lib/data/company-today";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForSending } from "@/lib/twilio-company";
+import { lockedServicesError } from "@/lib/billing/company-lock";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import {
@@ -63,6 +64,9 @@ export async function requestProgressPayment(
 ): Promise<{ error?: string; sentTo?: string }> {
   const guard = await requireBiller();
   if ("error" in guard) return guard;
+  // Paused while the company's subscription is locked (DECISIONS #131).
+  const locked = await lockedServicesError(guard.companyId);
+  if (locked) return { error: locked };
 
   const admin = createAdminClient();
   const { data: phase } = await admin
@@ -103,7 +107,7 @@ export async function requestProgressPayment(
   if (!lead) return { error: "Customer not found." };
   if (!lead.phone) return { error: "This customer has no phone number on file." };
 
-  const twilioEnv = await getTwilioForCompany(guard.companyId);
+  const twilioEnv = await getTwilioForSending(guard.companyId);
   if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
 
   const due = dueDate || phase.due_date || defaultDueDate(await companyToday());

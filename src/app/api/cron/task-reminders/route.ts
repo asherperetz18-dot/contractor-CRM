@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
+import { getTwilioForSending, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, leadDisplayName, type CompanyProfile, type Lead } from "@/lib/data/types";
 import { withRouteObservability } from "@/lib/observability/observe";
@@ -108,7 +108,7 @@ async function handlePost(req: NextRequest) {
   // Each company in its own safety net (DECISIONS #126).
   const run = await runForEachCompany("api.cron.task-reminders", companyRows, (c) => c.company_id, async (company) => {
     // A company without Twilio is skipped, not failed.
-    const twilioEnv = await getTwilioForCompany(company.company_id);
+    const twilioEnv = await getTwilioForSending(company.company_id);
     if (!twilioEnv) {
       skipped += 1;
       return;

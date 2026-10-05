@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getTwilioForCompany } from "@/lib/twilio-company";
+import { isCompanyLocked } from "@/lib/billing/company-lock";
 
 /**
  * Twilio Voice Intelligence: turns a call recording into a transcript.
@@ -107,6 +108,8 @@ export async function requestCallTranscript(opts: {
     .maybeSingle<{ ai_call_notes_enabled: boolean }>();
   if (!settings?.ai_call_notes_enabled) return;
   if (!process.env.ANTHROPIC_API_KEY) return;
+  // No transcript means no AI call note: nothing for a locked company (DECISIONS #131).
+  if (await isCompanyLocked(opts.companyId)) return;
 
   const twilio = await getTwilioForCompany(opts.companyId);
   if (!twilio) return;

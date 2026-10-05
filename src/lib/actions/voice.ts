@@ -3,6 +3,7 @@
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { getTwilioVoiceForCompany, type CompanyTwilioVoice } from "@/lib/twilio-company";
+import { lockedServicesError } from "@/lib/billing/company-lock";
 import { getCurrentProfile } from "@/lib/data/profile";
 
 function base64url(input: Buffer | string): string {
@@ -56,6 +57,9 @@ export async function getVoiceAccessToken(): Promise<{ token?: string; error?: s
 
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
+  // Paused while the company's subscription is locked (DECISIONS #131).
+  const locked = await lockedServicesError(profile.company_id);
+  if (locked) return { error: locked };
 
   // The dialer calls out on this company's own number, so the customer
   // sees the business they are actually dealing with.

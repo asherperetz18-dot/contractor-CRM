@@ -2,7 +2,7 @@ import { isoDateInZone } from "@/lib/company-clock";
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForSending } from "@/lib/twilio-company";
 import { companyIanaZone, normalizePhone } from "@/lib/data/types";
 
 export type NewLeadAlertInput = {
@@ -79,7 +79,7 @@ export async function notifyNewLead(
 ): Promise<{ sent: number; skipped?: string }> {
   // This company's own number: an alert about a Ca Pro Builder lead must
   // not arrive from La Home Contractor's line.
-  const twilioEnv = await getTwilioForCompany(lead.companyId);
+  const twilioEnv = await getTwilioForSending(lead.companyId);
   if (!twilioEnv) return { sent: 0, skipped: "twilio not configured" };
 
   const { data } = await admin

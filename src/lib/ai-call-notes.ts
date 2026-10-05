@@ -1,5 +1,6 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiForCompany } from "@/lib/ai/company-ai";
 import { thinkingFor } from "@/lib/ai-models";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTranscriptText } from "@/lib/voice-intelligence";
@@ -25,9 +26,6 @@ Write the note a good rep would have typed during the call:
 Rules: only things actually said in the transcript — never invent or pad. Plain short lines, no headings, no markdown. At most 6 lines. If the call was too short or empty to say anything useful, reply with exactly NO_NOTE.`;
 
 export async function writeAiCallNote(callLogId: string): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return;
-
   const admin = createAdminClient();
   const { data: log } = await admin
     .from("call_logs")
@@ -43,6 +41,9 @@ export async function writeAiCallNote(callLogId: string): Promise<void> {
       duration_seconds: number;
     }>();
   if (!log?.lead_id || !log.company_id || !log.transcript_sid) return;
+  // No note for a locked company, or with no AI key (DECISIONS #131).
+  const ai = await aiForCompany(log.company_id);
+  if ("error" in ai) return;
   // Twilio retries webhooks; one call gets one note.
   if (log.ai_note_at) return;
 
@@ -69,7 +70,7 @@ export async function writeAiCallNote(callLogId: string): Promise<void> {
 
   let note = "";
   try {
-    const client = new Anthropic({ apiKey });
+    const client = ai.client;
     const response = await client.messages.create({
       model: settings.ai_analysis_model || "claude-opus-5",
       max_tokens: 1000,

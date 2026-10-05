@@ -19,6 +19,8 @@ export type EachCompanyResult<T> = {
   failed: CompanyFailure[];
   /** Not started: the time budget ran out. The next run picks them up. */
   deferred: string[];
+  /** Companies whose subscription is locked: paused, not run (DECISIONS #131). */
+  paused?: string[];
 };
 
 /** The list turned by `seed` places, so no company is always last. */
@@ -74,5 +76,25 @@ export function runSummary(result: EachCompanyResult<unknown>) {
   return {
     failures: result.failed,
     deferred: result.deferred.length,
+    paused: result.paused?.length ?? 0,
   };
+}
+
+/**
+ * Splits a job's companies into those to run and those paused because
+ * their subscription is locked (DECISIONS #131): a locked company gets
+ * no reminders, alerts or syncs until it renews.
+ */
+export function withoutLocked<C>(
+  items: readonly C[],
+  companyOf: (item: C) => string,
+  locked: ReadonlySet<string>
+): { kept: C[]; paused: string[] } {
+  const kept: C[] = [];
+  const paused: string[] = [];
+  for (const item of items) {
+    if (locked.has(companyOf(item))) paused.push(companyOf(item));
+    else kept.push(item);
+  }
+  return { kept, paused };
 }

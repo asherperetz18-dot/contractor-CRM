@@ -1,7 +1,9 @@
 import "server-only";
 import { logError, logWarn } from "@/lib/observability/logger";
 import { captureError } from "@/lib/observability/sentry";
-import { eachCompany, fairOrder, type EachCompanyResult } from "./each-company";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { LOCKED_STATUSES } from "@/lib/billing/subscription";
+import { eachCompany, fairOrder, withoutLocked, type EachCompanyResult } from "./each-company";
 
 export { runSummary } from "./each-company";
 
@@ -24,9 +26,16 @@ export async function runForEachCompany<C, T>(
   items: readonly C[],
   idOf: (item: C) => string,
   run: (item: C) => Promise<T>,
-  opts: { budgetMs?: number } = {}
+  opts: {
+    budgetMs?: number;
+    /** The company an item belongs to, when its id is something else (a calendar connection). */
+    companyOf?: (item: C) => string;
+  } = {}
 ): Promise<EachCompanyResult<T>> {
-  const stable = [...items].sort((a, b) => idOf(a).localeCompare(idOf(b)));
+  // Locked companies are paused (DECISIONS #131): one read per run, not
+  // one per company.
+  const { kept, paused } = withoutLocked(items, opts.companyOf ?? idOf, await lockedCompanyIds());
+  const stable = [...kept].sort((a, b) => idOf(a).localeCompare(idOf(b)));
   const result = await eachCompany(fairOrder(stable, Math.floor(Date.now() / 60_000)), idOf, run, {
     budgetMs: opts.budgetMs ?? CRON_BUDGET_MS,
     onFailure: (companyId, err) => {
@@ -37,5 +46,18 @@ export async function runForEachCompany<C, T>(
   if (result.deferred.length > 0) {
     logWarn({ event: `${route}.deferred`, route });
   }
-  return result;
+  return { ...result, paused };
+}
+
+/**
+ * Companies whose AI Build Pro subscription is locked. An unreadable
+ * table (0175 not run) locks nobody, exactly as the app shell treats it.
+ */
+async function lockedCompanyIds(): Promise<Set<string>> {
+  const { data, error } = await createAdminClient()
+    .from("company_billing")
+    .select("company_id")
+    .in("billing_status", [...LOCKED_STATUSES]);
+  if (error || !data) return new Set();
+  return new Set((data as { company_id: string }[]).map((r) => r.company_id));
 }

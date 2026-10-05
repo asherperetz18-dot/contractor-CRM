@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { exactEmailPattern } from "@/lib/portal/email-match";
 import { escapeHtml, sendEmail } from "@/lib/email-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForCompany, getTwilioForSending } from "@/lib/twilio-company";
+import { lockedServicesError } from "@/lib/billing/company-lock";
 import { getEmailForCompany } from "@/lib/email-company";
 import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import {
@@ -158,6 +159,10 @@ export async function sendPortalLink(
   // per-person activity credits them for it.
   const sender = await getCurrentProfile();
   if (!sender) return { error: "Not signed in." };
+  // Paused while the company's subscription is locked (DECISIONS #131) --
+  // for a platform admin looking in too, whom row-level security lets by.
+  const locked = await lockedServicesError(sender.company_id);
+  if (locked) return { error: locked };
 
   // The button sits on the contact card, so whoever can open the contact
   // may send it: the caller's own row-level security decides, in the
@@ -227,7 +232,7 @@ export async function sendPortalLink(
     }
   }
 
-  const twilioEnv = await getTwilioForCompany(lead.company_id);
+  const twilioEnv = await getTwilioForSending(lead.company_id);
   if (lead.phone && twilioEnv) {
     // A separate token per channel -- these are single-use, so one shared
     // token would silently break whichever link the customer opened second.

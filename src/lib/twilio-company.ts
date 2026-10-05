@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { getTwilioEnv } from "@/lib/twilio-env";
 import type { CompanyTwilioRow, SharedTwilio } from "@/lib/twilio-source";
+import { isCompanyLocked } from "@/lib/billing/company-lock";
 import { recordingCredentialChoice } from "@/lib/recording-range";
 
 export type CompanyTwilio = {
@@ -67,6 +68,19 @@ export async function getTwilioForCompany(companyId: string): Promise<CompanyTwi
     };
   }
   return null;
+}
+
+/**
+ * The account to SEND a text from: a company's own Twilio, unless its
+ * AI Build Pro subscription is locked, when it sends nothing (DECISIONS
+ * #131). Every path that texts goes through here (twilio-company.test.ts
+ * holds every caller of sendTwilioSms to it); getTwilioForCompany stays
+ * for checking Twilio's signatures and playing recordings, which a locked
+ * company still needs.
+ */
+export async function getTwilioForSending(companyId: string): Promise<CompanyTwilio | null> {
+  if (await isCompanyLocked(companyId)) return null;
+  return getTwilioForCompany(companyId);
 }
 
 /** Voice needs an API key pair and a TwiML app on top of the account. */

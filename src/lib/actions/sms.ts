@@ -12,7 +12,8 @@ import {
   toE164,
 } from "@/lib/data/types";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForSending } from "@/lib/twilio-company";
+import { lockedServicesError } from "@/lib/billing/company-lock";
 import { smsStatusCallbackUrl } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
@@ -48,9 +49,13 @@ export async function sendSms(
   if (!trimmedBody) return { error: "Message cannot be empty." };
   if (!toNumber.trim()) return { error: "No phone number to send to." };
 
+  // Paused while the company's subscription is locked (DECISIONS #131).
+  const locked = await lockedServicesError(profile.company_id);
+  if (locked) return { error: locked };
+
   // The company the sender belongs to, so the text goes out on that
   // business's own number rather than a shared one.
-  const twilioEnv = await getTwilioForCompany(profile.company_id);
+  const twilioEnv = await getTwilioForSending(profile.company_id);
   if (!twilioEnv) {
     return { error: "Texting isn't set up for this company yet. An admin can connect its own Twilio number in Settings → Twilio." };
   }
