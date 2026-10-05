@@ -494,9 +494,15 @@ export async function backfillCallRail(
         `?company_id=${encodeURIComponent(crCompanyId)}` +
         `&start_date=${start}&per_page=250&page=${page}` +
         `&fields=${encodeURIComponent("source,campaign,keywords,medium,recording_player")}`;
-      const res = await fetch(url, { headers: callrailAuthHeader(creds.apiKey) });
+      // A time limit, and an answer rather than a throw: CallRail being
+      // unreachable is this company's problem, not the run's (DECISIONS #126).
+      const res = await fetch(url, {
+        headers: callrailAuthHeader(creds.apiKey),
+        signal: AbortSignal.timeout(20_000),
+      }).catch(() => null);
+      if (!res) return { error: "CallRail could not be reached", processed, created };
       if (!res.ok) return { error: `CallRail API ${res.status}`, processed, created };
-      const body = (await res.json()) as { calls?: CallRailCall[]; total_pages?: number };
+      const body = (await res.json().catch(() => ({}))) as { calls?: CallRailCall[]; total_pages?: number };
       for (const call of body.calls ?? []) {
         const r = await processCallRailCall(admin, companyId, call, opts);
         processed++;

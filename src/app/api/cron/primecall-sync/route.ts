@@ -3,6 +3,7 @@ import { getCronSecret } from "@/lib/cron-env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncPrimeCall } from "@/lib/primecall-sync";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 /**
  * Scheduled re-read of recent PrimeCall calls for every connected
@@ -33,11 +34,18 @@ async function handlePost(req: NextRequest) {
     .not("primecall_domain", "is", null);
 
   const results: Record<string, { processed: number; created: number; error?: string }> = {};
-  for (const row of (data as { company_id: string }[]) ?? []) {
-    const r = await syncPrimeCall(row.company_id, minutes, { quiet: days > 0 });
-    results[row.company_id] = { processed: r.processed, created: r.created, ...(r.error ? { error: r.error } : {}) };
-  }
-  return NextResponse.json({ minutes, companies: Object.keys(results).length, results });
+  // Each company in its own safety net, inside the function's time limit
+  // (DECISIONS #126).
+  const run = await runForEachCompany(
+    "api.cron.primecall-sync",
+    (data as { company_id: string }[]) ?? [],
+    (row) => row.company_id,
+    async (row) => {
+      const r = await syncPrimeCall(row.company_id, minutes, { quiet: days > 0 });
+      results[row.company_id] = { processed: r.processed, created: r.created, ...(r.error ? { error: r.error } : {}) };
+    }
+  );
+  return NextResponse.json({ minutes, companies: Object.keys(results).length, results, ...runSummary(run) });
 }
 
 export const POST = withRouteObservability("api.cron.primecall-sync", handlePost);

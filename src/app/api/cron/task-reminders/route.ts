@@ -6,6 +6,7 @@ import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { TIMEZONE_IANA, leadDisplayName, type CompanyProfile, type Lead } from "@/lib/data/types";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 type TaskRow = {
   id: string;
@@ -104,20 +105,25 @@ async function handlePost(req: NextRequest) {
   let checked = 0;
   let sent = 0;
   let skipped = 0;
-  for (const company of companyRows) {
-    // One company without Twilio must not abort the whole run.
+  // Each company in its own safety net (DECISIONS #126).
+  const run = await runForEachCompany("api.cron.task-reminders", companyRows, (c) => c.company_id, async (company) => {
+    // A company without Twilio is skipped, not failed.
     const twilioEnv = await getTwilioForCompany(company.company_id);
     if (!twilioEnv) {
       skipped += 1;
-      continue;
+      return;
     }
     const result = await processCompany(admin, twilioEnv, company);
     checked += result.checked;
     sent += result.sent;
-  }
+  });
 
-  return NextResponse.json({ companies: companyRows.length, checked, sent, skipped });
+  return NextResponse.json({ companies: companyRows.length, checked, sent, skipped, ...runSummary(run) });
 }
+
+// Room for every company's turn (runForEachCompany stops starting new
+// ones at CRON_BUDGET_MS, before this limit).
+export const maxDuration = 300;
 
 // Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
 // id, and Sentry capture for every run, same wrapper as the dialer path.

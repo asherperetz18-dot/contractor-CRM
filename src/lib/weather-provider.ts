@@ -63,6 +63,10 @@ async function geocodeViaCensus(address: string): Promise<{ lat: number; lng: nu
   return answer.status === "found" ? { lat: answer.lat, lng: answer.lng } : null;
 }
 
+// The weather service can hang; a missing forecast just means no rain
+// flag this run (DECISIONS #126).
+const WEATHER_TIMEOUT_MS = 10_000;
+
 async function resolveNwsGridpoint(
   lat: number,
   lng: number,
@@ -70,8 +74,9 @@ async function resolveNwsGridpoint(
 ): Promise<{ office: string; gridX: number; gridY: number } | null> {
   const res = await fetch(`https://api.weather.gov/points/${lat},${lng}`, {
     headers: { "User-Agent": userAgent, Accept: "application/geo+json" },
-  });
-  if (!res.ok) return null;
+    signal: AbortSignal.timeout(WEATHER_TIMEOUT_MS),
+  }).catch(() => null);
+  if (!res?.ok) return null;
   const json = (await res.json().catch(() => null)) as {
     properties?: { gridId?: string; gridX?: number; gridY?: number };
   } | null;
@@ -86,11 +91,11 @@ async function fetchHourlyPeriods(
   gridY: number,
   userAgent: string
 ): Promise<NwsPeriod[] | null> {
-  const res = await fetch(
-    `https://api.weather.gov/gridpoints/${office}/${gridX},${gridY}/forecast/hourly`,
-    { headers: { "User-Agent": userAgent, Accept: "application/geo+json" } }
-  );
-  if (!res.ok) return null;
+  const res = await fetch(`https://api.weather.gov/gridpoints/${office}/${gridX},${gridY}/forecast/hourly`, {
+    headers: { "User-Agent": userAgent, Accept: "application/geo+json" },
+    signal: AbortSignal.timeout(WEATHER_TIMEOUT_MS),
+  }).catch(() => null);
+  if (!res?.ok) return null;
   const json = (await res.json().catch(() => null)) as {
     properties?: { periods?: NwsPeriod[] };
   } | null;
