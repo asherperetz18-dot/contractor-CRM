@@ -10,6 +10,8 @@ export type CompanyTwilio = {
   accountSid: string;
   authToken: string;
   phoneNumber: string;
+  /** Set by getTwilioForSending, so the sender can count the text (DECISIONS #132). */
+  companyId?: string;
 };
 
 export type CompanyTwilioVoice = {
@@ -80,7 +82,8 @@ export async function getTwilioForCompany(companyId: string): Promise<CompanyTwi
  */
 export async function getTwilioForSending(companyId: string): Promise<CompanyTwilio | null> {
   if (await isCompanyLocked(companyId)) return null;
-  return getTwilioForCompany(companyId);
+  const twilio = await getTwilioForCompany(companyId);
+  return twilio ? { ...twilio, companyId } : null;
 }
 
 /** Voice needs an API key pair and a TwiML app on top of the account. */

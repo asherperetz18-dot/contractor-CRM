@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.201.0",
+    date: "2026-10-05",
+    notes: [
+      "Settings › Subscription now shows what your company has used this month: AI answers, texts sent and emails sent.",
+    ],
+  },
+  {
     version: "1.200.0",
     date: "2026-10-05",
     notes: [

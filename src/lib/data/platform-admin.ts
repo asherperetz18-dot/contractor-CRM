@@ -9,6 +9,7 @@ import {
   type DirectoryCompany,
   type DirectoryMember,
 } from "@/lib/company-directory";
+import { usageMonth, type UsageRow } from "@/lib/usage/usage";
 
 export type PlatformAdminRow = {
   id: string;
@@ -129,5 +130,10 @@ export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
       admin.from("company_billing").select("*").order("company_id").range(from, to)
     ),
   ]);
-  return buildCompanyDirectory(companies, members, billing);
+  // This month's counts (0199): none until it has run, which reads as zeros.
+  const month = usageMonth(new Date());
+  const usage = await selectAll<UsageRow>((from, to) =>
+    admin.from("company_usage").select("*").eq("month", month).order("company_id").range(from, to)
+  );
+  return buildCompanyDirectory(companies, members, billing, usage);
 }
