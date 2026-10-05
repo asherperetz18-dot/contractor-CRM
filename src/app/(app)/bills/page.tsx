@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { roleName } from "@/lib/role-names";
 import { canViewFinancials } from "@/lib/data/accounting-access";
 import { canEditJobCosts } from "@/lib/data/expense-edit";
 import { type JobExpense, type Lead } from "@/lib/data/types";
@@ -29,11 +31,13 @@ export default async function BillsPage() {
   // check plus the View Financials switch, so this only ever widens who
   // gets in -- Bookkeeping, Office and Admin are unaffected.
   if (!canViewFinancials(profile)) {
+    // The role as this company names it (DECISIONS #137).
+    const bookkeeping = roleName(await getRoleNamesCached(profile.company_id), "Bookkeeping");
     return (
       <div className="empty-state">
         <p className="empty-label">You don&apos;t have access to bills</p>
         <p className="empty-hint">
-          Bills to Pay is the company checkbook — Bookkeeping, Office and Admin, or
+          Bills to Pay is the company checkbook — {bookkeeping}, Office and Admin, or
           anyone switched on under Settings › Users &amp; Roles › View Financials.
         </p>
       </div>

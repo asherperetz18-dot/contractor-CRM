@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { saveTimeClockSettings } from "@/lib/actions/time-clock";
 import { CLOCK_ROLES, type ClockInCheckMode, type TimeClockSettings } from "@/lib/time-clock/settings";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
+import { STANDARD_ROLE_NAMES, roleName, type RoleNames } from "@/lib/role-names";
 
 const CHECK_MODES: { value: ClockInCheckMode; label: string; hint: string }[] = [
   { value: "off", label: "Off", hint: "Where someone clocks in is saved but not checked." },
@@ -17,7 +18,16 @@ const CHECK_MODES: { value: ClockInCheckMode; label: string; hint: string }[] = 
 
 // checkReady: migration 0185 has run, so the check has somewhere to keep
 // its settings and verdicts.
-export function TimeClockSettingsForm({ initial, checkReady }: { initial: TimeClockSettings; checkReady: boolean }) {
+export function TimeClockSettingsForm({
+  initial,
+  checkReady,
+  roleNames = STANDARD_ROLE_NAMES,
+}: {
+  initial: TimeClockSettings;
+  checkReady: boolean;
+  /** What this company calls each role (DECISIONS #137); display only. */
+  roleNames?: RoleNames;
+}) {
   const [roles, setRoles] = useState<string[]>(initial.tracked_roles);
   const [radius, setRadius] = useState(String(initial.zone_radius_m));
   const [overtime, setOvertime] = useState(String(initial.overtime_weekly_hours));
@@ -61,7 +71,7 @@ export function TimeClockSettingsForm({ initial, checkReady }: { initial: TimeCl
                 checked={roles.includes(r)}
                 onChange={(e) => setRoles(e.target.checked ? [...roles, r] : roles.filter((x) => x !== r))}
               />
-              {r}
+              {roleName(roleNames, r)}
             </label>
           ))}
         </div>
@@ -114,7 +124,7 @@ export function TimeClockSettingsForm({ initial, checkReady }: { initial: TimeCl
                   checked={checkRoles.includes(r)}
                   onChange={(e) => setCheckRoles(e.target.checked ? [...checkRoles, r] : checkRoles.filter((x) => x !== r))}
                 />
-                {r}
+                {roleName(roleNames, r)}
               </label>
             ))}
           </div>

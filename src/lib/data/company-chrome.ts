@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { RolePageVisibilityRow, TimeFormat } from "@/lib/data/types";
 import { loadCompanyWords } from "@/lib/load-company-words";
 import type { CompanyWords } from "@/lib/company-words";
+import { STANDARD_ROLE_NAMES, readRoleNames, type RoleNames } from "@/lib/role-names";
 
 /**
  * The parts of the app shell that are the same on every page.
@@ -78,6 +79,27 @@ export function getCompanyWordsCached(companyId: string): Promise<CompanyWords> 
   return unstable_cache(
     async (id: string): Promise<CompanyWords> => loadCompanyWords(createAdminClient(), id),
     ["company-words", companyId],
+    { tags: [chromeTag(companyId)], revalidate: BACKSTOP_SECONDS }
+  )(companyId);
+}
+
+/**
+ * What the company calls its team roles (DECISIONS #137), for the
+ * screens that print a role. Cached with the chrome and dropped with it
+ * when they are saved. Its own query, so a database without 0202 reads
+ * the standard names instead of losing anything else.
+ */
+export function getRoleNamesCached(companyId: string): Promise<RoleNames> {
+  return unstable_cache(
+    async (id: string): Promise<RoleNames> => {
+      const { data, error } = await createAdminClient()
+        .from("company_profile")
+        .select("role_names")
+        .eq("company_id", id)
+        .maybeSingle<{ role_names: unknown }>();
+      return error ? STANDARD_ROLE_NAMES : readRoleNames(data?.role_names);
+    },
+    ["role-names", companyId],
     { tags: [chromeTag(companyId)], revalidate: BACKSTOP_SECONDS }
   )(companyId);
 }

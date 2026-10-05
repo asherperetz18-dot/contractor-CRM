@@ -1,6 +1,8 @@
 import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { roleName } from "@/lib/role-names";
 import { canViewFinancials } from "@/lib/data/accounting-access";
 import { selectAll } from "@/lib/data/select-all";
 import {
@@ -63,11 +65,13 @@ export default async function PaymentsPage() {
   // is company-wide money like Bills and Collect, so it takes the same
   // gate. Unlike those two this genuinely narrows access -- see the PR.
   if (!canViewFinancials(profile)) {
+    // The role as this company names it (DECISIONS #137).
+    const bookkeeping = roleName(await getRoleNamesCached(profile.company_id), "Bookkeeping");
     return (
       <div className="empty-state">
         <p className="empty-label">You don&apos;t have access to payments</p>
         <p className="empty-hint">
-          Payments is company-wide money — Bookkeeping, Office and Admin, or anyone
+          Payments is company-wide money — {bookkeeping}, Office and Admin, or anyone
           switched on under Settings › Users &amp; Roles › View Financials.
         </p>
       </div>

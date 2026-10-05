@@ -4,6 +4,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { roleName } from "@/lib/role-names";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   appointmentAttended,
@@ -323,6 +325,8 @@ export default async function RepReportPage({
   const profile = await getCurrentProfile();
   if (!profile) return null;
   const companyId = profile.company_id;
+  // The role as this company names it, for the notes (DECISIONS #137).
+  const roleNames = await getRoleNamesCached(companyId);
   const sp = await searchParams;
   // A custom range wins over the preset chips. Either edge alone is
   // allowed -- "everything since March" is a real question.
@@ -759,8 +763,8 @@ export default async function RepReportPage({
               <p>
                 Show rate is attended out of the appointments with a recorded outcome. Close
                 rate is contracts signed out of estimates sent. Team median is the middle
-                figure across everyone holding the Sales role, so half the team sits either
-                side of it.
+                figure across everyone holding the {roleName(roleNames, "Sales")} role, so half the
+                team sits either side of it.
               </p>
               <p>
                 <strong>Pipeline</strong> is what somebody estimated a job might be worth and

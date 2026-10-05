@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.206.0",
+    date: "2026-10-05",
+    notes: [
+      "Settings › Role Names lets your company call its team roles what you call them, like Technicians instead of Sales or Front Desk instead of Call Center. The new names show on Users & Roles, Role Visibility, Time Clock settings and Salespeople. What each role can see and do doesn't change. Admin and Office keep their names.",
+    ],
+  },
+  {
     version: "1.205.0",
     date: "2026-10-05",
     notes: [

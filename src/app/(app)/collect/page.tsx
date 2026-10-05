@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { collectsOnDocument } from "@/lib/data/invoices";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { roleName } from "@/lib/role-names";
 import { canViewFinancials } from "@/lib/data/accounting-access";
 import {
   paidTotalCents,
@@ -38,11 +40,13 @@ export default async function CollectPage() {
   // check plus the View Financials switch, so this only ever widens who
   // gets in -- Bookkeeping, Office and Admin are unaffected.
   if (!canViewFinancials(profile)) {
+    // The role as this company names it (DECISIONS #137).
+    const bookkeeping = roleName(await getRoleNamesCached(profile.company_id), "Bookkeeping");
     return (
       <div className="empty-state">
         <p className="empty-label">You don&apos;t have access to receivables</p>
         <p className="empty-hint">
-          Money to Collect is company-wide money — Bookkeeping, Office and Admin, or
+          Money to Collect is company-wide money — {bookkeeping}, Office and Admin, or
           anyone switched on under Settings › Users &amp; Roles › View Financials.
         </p>
       </div>
