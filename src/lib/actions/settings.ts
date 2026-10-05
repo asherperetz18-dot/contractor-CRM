@@ -14,6 +14,7 @@ import {
 } from "@/lib/data/types";
 import { depositRuleProblem, parseDepositRule } from "@/lib/deposit-rule";
 import { readCompanyWords, storedWords, type CompanyWords, type WordKey } from "@/lib/company-words";
+import { readRoleNames, storedRoleNames, type RoleNames } from "@/lib/role-names";
 import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
@@ -478,6 +479,57 @@ export async function saveCompanyWords(
   // The menus read the words through the cached chrome (DECISIONS #125).
   revalidateCompanyChrome(profile.company_id);
   revalidatePath("/settings/company-words");
+  return {};
+}
+
+export type RoleNamesSettings = {
+  names: RoleNames;
+  /** False until migration 0202 has run: the page says so, and saving waits. */
+  ready: boolean;
+};
+
+export async function getRoleNamesSettings(): Promise<RoleNamesSettings | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .select("role_names")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ role_names: unknown }>();
+  return { names: readRoleNames(error ? null : data?.role_names), ready: !error };
+}
+
+/**
+ * What the company calls its team roles (DECISIONS #138). Display only:
+ * every permission still uses the role itself. Only names that differ
+ * from the standard ones are stored; a blank name clears it.
+ */
+export async function saveRoleNames(input: Partial<Record<string, string>>): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const parsed = storedRoleNames(input);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ role_names: parsed.names })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) {
+    if (/role_names/.test(error.message)) {
+      return { error: "Role names need a database update first: run 0202_company_role_names.sql in Supabase." };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  // Every screen that prints a role reads the names through the cached chrome.
+  revalidateCompanyChrome(profile.company_id);
+  revalidatePath("/settings/role-names");
   return {};
 }
 

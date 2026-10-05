@@ -1644,3 +1644,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The portal reads the parent with the service role, scoped to the viewer's lead** (`portalParentContract`) — the same boundary the page already applies to the document itself. The staff preview keeps `getParentContract`.
 
 **Consequence:** the customer sees what they're agreeing to pay and when, and what the change order adds up to. Pay buttons are unchanged: they still appear only once a stage is billed, and not at all for a customer invoiced separately. No database step.
+
+## 138 — Each company can rename its team roles (display only)
+
+**Date:** 2026-10-05
+
+**Context:** Phase 3 let each company choose its own words (#121, #125), but the team roles stayed fixed: an HVAC company's technicians still showed as "Sales", a front desk as "Call Center". Role names were left out then because they need their own column (saving company words replaces the whole `wording` object).
+
+**Decision:**
+- **Display only.** `company_profile.role_names` (0202) maps a role to the company's name for it, e.g. `{"Sales": "Technicians"}`; only renamed roles are stored. Every permission, page rule, RLS policy and saved assignment still uses the role itself, so a rename can't change anyone's access. Pure rules in `src/lib/role-names.ts`.
+- **Admin and Office keep their names.** The app's messages name them everywhere ("ask an Office or Admin user", "Office or Admin only"); renamed, those would disagree with the screen. The other six (Field, Sales, Call Center, Dispatch, Bookkeeping, Production) can be renamed.
+- **Plain, short and distinct:** the same character rules as company words, 30 characters, and no two roles may read the same (case-blind), so people can always tell them apart. Blank goes back to the standard name; a broken or clashing stored value reads as the standard names.
+- **Settings › Role Names** (also linked from Users & Roles as "Rename roles"), Office or Admin, checked inside `saveRoleNames`.
+- **Where the names show:** Users & Roles (chips, add/remove tooltips, the role pickers when creating or adding a user), Role Visibility's column headers, Time Clock settings' role checkboxes, Salespeople (chips, "with the … role"), the rep report's notes, and the no-access notes on Bills, Collect and Payments. Read through the cached chrome (`getRoleNamesCached`), dropped on save.
+- **Left as they are:** access-rule error messages from the server (they name Office/Admin almost everywhere), the tutorials, the release notes, platform-admin screens (which span companies), and page or menu names that contain a role word ("Dispatch Dashboard", the "Call Center" menu group — menu orders are saved by group name).
+
+**Consequence:** a company sees its own role names on the screens that list roles, with no change to who can do what. **Database step: run `supabase/migrations/0202_company_role_names.sql`.**
+

@@ -2,10 +2,12 @@
 
 import { Fragment, useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
 import { Badge } from "@/components/ui/badge";
 import { APP_ROLES, isSuperAdmin, type AppRole, type Profile } from "@/lib/data/types";
+import { STANDARD_ROLE_NAMES, roleName, type RoleNames } from "@/lib/role-names";
 import {
   canViewFinancials,
   FINANCIALS_ALWAYS_ROLES,
@@ -87,10 +89,13 @@ function useHasHiddenColumns(): [(el: HTMLDivElement | null) => void, boolean] {
 export function UsersRolesTable({
   users,
   isAdmin,
+  roleNames = STANDARD_ROLE_NAMES,
 }: {
   users: MemberRow[];
   /** Admin role itself. Office may manage people but not mint Admins. */
   isAdmin: boolean;
+  /** What this company calls each role (DECISIONS #138); display only. */
+  roleNames?: RoleNames;
 }) {
   const router = useRouter();
   const [tableScrollRef, hasHiddenColumns] = useHasHiddenColumns();
@@ -306,6 +311,9 @@ export function UsersRolesTable({
           </p>
         </div>
         <div className="chip-row no-margin">
+          <Link href="/settings/role-names" className="btn-ghost">
+            Rename roles
+          </Link>
           <button className="btn-ghost" onClick={() => setShowAdd(true)}>
             + Add Existing User
           </button>
@@ -443,12 +451,12 @@ export function UsersRolesTable({
                               : locked
                                 ? "Only an Admin can grant or remove the Admin role"
                               : active
-                                ? `Remove ${role}`
-                                : `Add ${role}`
+                                ? `Remove ${roleName(roleNames, role)}`
+                                : `Add ${roleName(roleNames, role)}`
                           }
                         >
                           <Badge color={active ? "#2D5F8A" : "#B9B3A3"}>
-                            {role}
+                            {roleName(roleNames, role)}
                           </Badge>
                         </button>
                       );
@@ -798,7 +806,7 @@ export function UsersRolesTable({
                     )
                   }
                 >
-                  {role}
+                  {roleName(roleNames, role)}
                 </button>
               ))}
             </div>
@@ -877,7 +885,7 @@ export function UsersRolesTable({
                         )
                       }
                     >
-                      {role}
+                      {roleName(roleNames, role)}
                     </button>
                   ))}
                 </div>

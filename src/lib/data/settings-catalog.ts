@@ -81,6 +81,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/users-roles",
       },
       {
+        title: "Role Names",
+        desc: "What your company calls each team role, e.g. Technicians instead of Sales. Access stays the same.",
+        icon: "🏷",
+        href: "/settings/role-names",
+      },
+      {
         title: "Team Activity",
         desc: "Active users, session time, and top pages across your team",
         icon: "📈",

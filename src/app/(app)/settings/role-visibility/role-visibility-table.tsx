@@ -12,6 +12,7 @@ import {
   type RolePageVisibilityRow,
 } from "@/lib/data/types";
 import { resetPageVisibility, setPageVisibilityBulk } from "@/lib/actions/role-visibility";
+import { STANDARD_ROLE_NAMES, roleName, type RoleNames } from "@/lib/role-names";
 
 type Draft = Map<string, boolean>;
 
@@ -26,7 +27,14 @@ function groupPages(pages: typeof PAGE_REGISTRY) {
   return [...groups.entries()];
 }
 
-export function RoleVisibilityTable({ overrides }: { overrides: RolePageVisibilityRow[] }) {
+export function RoleVisibilityTable({
+  overrides,
+  roleNames = STANDARD_ROLE_NAMES,
+}: {
+  overrides: RolePageVisibilityRow[];
+  /** What this company calls each role (DECISIONS #138); display only. */
+  roleNames?: RoleNames;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   // Edits live here until saved, so a run of toggles costs one request
@@ -169,7 +177,7 @@ export function RoleVisibilityTable({ overrides }: { overrides: RolePageVisibili
               {VISIBILITY_MANAGED_ROLES.map((role) => (
                 <th key={role} className="center">
                   <div className="rv-role-head">
-                    <span>{role}</span>
+                    <span>{roleName(roleNames, role)}</span>
                     <span className="rv-bulk">
                       <button type="button" onClick={() => setColumn(role, true)} disabled={pending}>
                         All
