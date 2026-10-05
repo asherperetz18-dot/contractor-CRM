@@ -160,7 +160,7 @@ export function leadTabPlan(
 
 /**
  * A phone search as an ilike pattern that ignores formatting: "310-697"
- * matches "+1 (310) 697-6137" however the number was typed or imported.
+ * matches "+1 (310) 555-0137" however the number was typed or imported.
  * Null when the query holds fewer than 3 digits -- the same threshold
  * the in-browser filter used to decide a query is a phone search.
  */

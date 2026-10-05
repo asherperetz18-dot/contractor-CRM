@@ -13,7 +13,7 @@ export function nextAppointment<T extends Appointment>(rows: T[], todayISO: stri
   return ahead[0] ?? null;
 }
 
-/** "Source: Google Ads · Rep: Asher Peretz" -- a missing source is left
+/** "Source: Google Ads · Rep: Alex Morgan" -- a missing source is left
  *  out; a missing rep says so, because that is a gap to fill. */
 export function leadSubline(source: string | null, repName: string | null): string {
   return [source ? `Source: ${source}` : null, repName ? `Rep: ${repName}` : "Unassigned"]

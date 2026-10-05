@@ -37,7 +37,7 @@ export function parseAlertPhones(raw: string | null): string[] {
   for (const part of raw.split(/[,;\n]/)) {
     const trimmed = part.trim();
     if (!trimmed) continue;
-    // De-duplicated on digits, so "424-768-2268" and "4247682268" listed
+    // De-duplicated on digits, so "424-555-0168" and "4245550168" listed
     // twice don't text the same handset twice per lead.
     const key = normalizePhone(trimmed);
     if (!key || seen.has(key)) continue;

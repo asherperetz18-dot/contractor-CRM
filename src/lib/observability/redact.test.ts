@@ -9,7 +9,7 @@ import { maskPhone, pickSafeFields, safeTwilioError, safeUser, scrubForbiddenKey
  */
 
 test("maskPhone keeps enough to recognise, never the whole number", () => {
-  assert.equal(maskPhone("+17144035570"), "+1••••••5570");
+  assert.equal(maskPhone("+17145550170"), "+1••••••0170");
   assert.equal(maskPhone(""), "");
   assert.equal(maskPhone(null), "");
   assert.equal(maskPhone(undefined), "");

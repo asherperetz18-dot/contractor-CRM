@@ -210,7 +210,7 @@ async function handlePost(req: NextRequest) {
       { lead_id: string; to_number: string | null; created_at: string }[]
     >();
     // Numbers are stored as they were typed, so this cannot be matched in
-    // SQL -- "2138806622" and "+12138806622" are the same phone.
+    // SQL -- "2135550122" and "+12135550122" are the same phone.
     const lastToRep = (crewOut ?? []).find(
       (m) => normalizePhone(m.to_number ?? "") === normalizedFrom
     );

@@ -154,7 +154,7 @@ export function AiReceptionistForm({
               setTransfer(e.target.value);
               setSaved(false);
             }}
-            placeholder="+18183008242"
+            placeholder="+18185550142"
             disabled={transferPending}
           />
         </Field>

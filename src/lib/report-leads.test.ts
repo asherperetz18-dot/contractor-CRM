@@ -13,15 +13,15 @@ import { counterpartyPhoneKeys, repLeadStats, repLeadStatsFromRows } from "./rep
 test("phone keys come from the counterparty side of unlinked messages only", () => {
   const keys = counterpartyPhoneKeys([
     // Linked: resolved by lead_id, no phone lookup needed.
-    { lead_id: "L1", direction: "inbound", from_number: "+1 (310) 697-6137", to_number: "+15625255873" },
+    { lead_id: "L1", direction: "inbound", from_number: "+1 (310) 555-0137", to_number: "+15625255873" },
     // Unlinked inbound: the counterparty is the sender.
-    { lead_id: null, direction: "inbound", from_number: "310-697-6137", to_number: "+15625255873" },
+    { lead_id: null, direction: "inbound", from_number: "310-555-0137", to_number: "+15625255873" },
     // Unlinked outbound: the counterparty is the recipient.
     { lead_id: null, direction: "outbound", from_number: "+15625255873", to_number: "9099380628" },
     // Duplicate of the first unlinked number, differently formatted.
-    { lead_id: null, direction: "inbound", from_number: "+1 310 697 6137", to_number: "+15625255873" },
+    { lead_id: null, direction: "inbound", from_number: "+1 310 555 0137", to_number: "+15625255873" },
   ]);
-  assert.deepEqual([...keys].sort(), ["3106976137", "9099380628"]);
+  assert.deepEqual([...keys].sort(), ["3105550137", "9099380628"]);
 });
 
 test("rep tallies: assigned, open, won, and won value — same buckets the grid drew", () => {

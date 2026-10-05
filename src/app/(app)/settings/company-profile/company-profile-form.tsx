@@ -184,7 +184,7 @@ export function CompanyProfileForm({
           <input
             value={form.new_lead_alert_phones}
             onChange={(e) => set("new_lead_alert_phones", e.target.value)}
-            placeholder="424-768-2268, 213-880-6622"
+            placeholder="213-555-0100, 213-555-0101"
           />
         </Field>
         <Field label="Max Alerts Per Day">
@@ -205,7 +205,7 @@ export function CompanyProfileForm({
           <input
             value={form.call_forward_number}
             onChange={(e) => set("call_forward_number", e.target.value)}
-            placeholder="+18183008242"
+            placeholder="+18185550142"
           />
         </Field>
         <Field label="Ring For (seconds)">
