@@ -104,6 +104,7 @@ export const BACKUP_LEFT_OUT: Record<string, string> = {
   platform_access_log: "the platform's own record of who opened the company",
   company_usage: "the platform's own usage counts",
   company_limits: "the platform's own limits",
+  company_closures: "the platform's own record of a closed company",
 };
 
 /**
