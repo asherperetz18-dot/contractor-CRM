@@ -80,3 +80,21 @@ export function lockReason(billing: TrialBilling | null): "trial_ended" | "subsc
   }
   return "subscription_ended";
 }
+
+/** The extra time a platform admin can give a company on a free trial. */
+export const TRIAL_EXTENSIONS = [7, 14, 30] as const;
+
+export function isTrialExtension(days: number): days is (typeof TRIAL_EXTENSIONS)[number] {
+  return (TRIAL_EXTENSIONS as readonly number[]).includes(days);
+}
+
+/**
+ * The trial's new end, in Stripe's unix seconds: `days` past its current
+ * end -- or past now, if that end has already gone by -- so an extension
+ * always adds the full time it says.
+ */
+export function extendedTrialEnd(currentEnd: string | null, now: number, days: number): number {
+  const end = currentEnd ? Date.parse(currentEnd) : NaN;
+  const from = Number.isNaN(end) ? now : Math.max(end, now);
+  return Math.floor((from + days * 86_400_000) / 1000);
+}

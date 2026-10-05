@@ -12538,6 +12538,22 @@ textarea.est-item-desc:disabled {
   }
 }
 
+/* Platform Admin › Companies: a trial row's "+7 days / Extend trial". */
+.company-trial-extend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.company-trial-extend select {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+.company-trial-extend .error-note {
+  margin: 0;
+  white-space: normal;
+}
+
 /* Platform Admin › Companies: on a phone each company is a short stack
    (name, owner, team, started, billing, Open) instead of a table that
    scrolls sideways past its Open button. */

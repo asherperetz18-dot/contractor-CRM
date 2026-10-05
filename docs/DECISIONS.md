@@ -1523,6 +1523,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a new company signs up with an email address alone and has 30 days to add a card. **Database step: run `supabase/migrations/0198_billing_trial.sql`.**
 
+## 130 — A platform admin can give a company more trial time
+
+**Date:** 2026-10-05
+
+**Context:** With the free trial (#129), a company that needed a few more days to decide had no way to get them short of someone editing the subscription in Stripe's dashboard.
+
+**Decision:**
+- **Platform Admin › Companies** shows a trialing company's end date and an **Extend trial** control: +7, +14 or +30 days (`src/lib/actions/trial-admin.ts`, `extendTrial`).
+- **Stripe holds the trial, so Stripe changes:** the subscription's `trial_end` moves (no proration), counted from the trial's current end — or from now, if that has passed — so an extension always adds the full time (`extendedTrialEnd`, tested). The billing sync then brings the new date back to the banner and the list.
+- **Platform admins only**, checked inside the action, not just on the page. Only a subscription still trialing can be extended; a trial that has already ended is a Subscribe, not an extension. Each extension is logged (`billing.trial_extended`, with who and how many days).
+
+**Consequence:** giving a company more time is one click on the Companies page. No database step.
+
 ## 131 — A locked company is paused: no texts, no calls, no AI
 
 **Date:** 2026-10-05

@@ -86,12 +86,19 @@ test("rows carry billing and come out in name order", () => {
       { id: "c1", name: "Apex HVAC", created_at: "2026-09-01T00:00:00Z" },
     ],
     [],
-    [{ company_id: "c2", billing_status: "active" }]
+    [{ company_id: "c2", billing_status: "active" }, { company_id: "c1", billing_status: "trialing", trial_ends_at: "2026-10-30T00:00:00Z" }]
+  );
+  assert.deepEqual(
+    rows.map((r) => [r.name, r.trialEndsAt]),
+    [
+      ["Apex HVAC", "2026-10-30T00:00:00Z"],
+      ["zephyr Roofing", null],
+    ]
   );
   assert.deepEqual(
     rows.map((r) => [r.name, r.billing, r.createdAt]),
     [
-      ["Apex HVAC", "not_billed", "2026-09-01T00:00:00Z"],
+      ["Apex HVAC", "trial", "2026-09-01T00:00:00Z"],
       ["zephyr Roofing", "paying", "2026-09-02T00:00:00Z"],
     ]
   );
