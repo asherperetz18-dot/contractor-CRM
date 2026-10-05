@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentCompanyId, getCurrentProfile } from "@/lib/data/profile";
-import { isAdminRole, toE164, type TimeFormat } from "@/lib/data/types";
+import {
+  DEFAULT_DEPOSIT_CAP_CENTS,
+  DEFAULT_DEPOSIT_PERCENT_BP,
+  isAdminRole,
+  toE164,
+  type TimeFormat,
+} from "@/lib/data/types";
+import { depositRuleProblem, parseDepositRule } from "@/lib/deposit-rule";
 import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
@@ -350,6 +357,63 @@ export async function saveCallScript(body: string) {
   if (error) return { error: error.message };
   revalidatePath("/settings/call-scripts");
   revalidatePath("/dial-queue");
+  return {};
+}
+
+/** The deposit rule as Settings → Contracts shows it (DECISIONS #117). */
+export type DepositRuleSettings = {
+  percentBp: number;
+  capCents: number;
+  /** The company's licence state: California keeps its legal limit. */
+  licenseState: string | null;
+};
+
+export async function getDepositRule(): Promise<DepositRuleSettings | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("company_profile")
+    .select("deposit_percent_bp, deposit_cap_cents, license_state")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ deposit_percent_bp: number | null; deposit_cap_cents: number | null; license_state: string | null }>();
+  return {
+    percentBp: data?.deposit_percent_bp ?? DEFAULT_DEPOSIT_PERCENT_BP,
+    capCents: data?.deposit_cap_cents ?? DEFAULT_DEPOSIT_CAP_CENTS,
+    licenseState: data?.license_state ?? null,
+  };
+}
+
+/**
+ * The deposit each new estimate asks for at signing. Estimates already
+ * created keep the rule they were made with.
+ */
+export async function saveDepositRule(input: { percent: string; cap: string }): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const parsed = parseDepositRule(input.percent, input.cap);
+  if ("error" in parsed) return { error: parsed.error };
+
+  const supabase = await createClient();
+  const { data: company } = await supabase
+    .from("company_profile")
+    .select("license_state")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ license_state: string | null }>();
+  const problem = depositRuleProblem(parsed.rule, company?.license_state);
+  if (problem) return { error: problem };
+
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ deposit_percent_bp: parsed.rule.percentBp, deposit_cap_cents: parsed.rule.capCents })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/contracts");
   return {};
 }
 
