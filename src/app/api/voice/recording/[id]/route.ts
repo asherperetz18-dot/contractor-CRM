@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForCompany, legacySharedRecordingCreds } from "@/lib/twilio-company";
 import {
   CALLRAIL_API_BASE,
   callrailAuthHeader,
   getCallRailForCompany,
 } from "@/lib/callrail-company";
 import {
+  recordingCredentialChoice,
   recordingResponseInit,
-  twilioRecordingUrlAllowed,
   upstreamRecordingHeaders,
 } from "@/lib/recording-range";
 import { getPrimeCallForCompany, recordingAccessUrl } from "@/lib/primecall-company";
@@ -114,18 +114,22 @@ export async function GET(
     return new NextResponse(audio.body, recordingResponseInit(audio));
   }
 
-  // Fetched with the credentials of the company that recorded it. Twilio
+  // Fetched with the credentials of the account that owns it. Twilio
   // only serves a recording to the account that owns it, so playing back
   // a second company's call with the platform account answered 401 and
   // surfaced as a player that simply refused to start.
-  const twilioEnv = await getTwilioForCompany(data.company_id);
-  if (!twilioEnv) return NextResponse.json({ error: "Twilio not configured." }, { status: 500 });
+  //
   // The credentials ride along with this fetch, so the stored URL must be
-  // Twilio's own API and a recording on this same account -- never
-  // wherever a call_logs row happens to point.
-  if (!twilioRecordingUrlAllowed(recordingUrl, twilioEnv.accountSid)) {
-    return NextResponse.json({ error: "No recording." }, { status: 404 });
-  }
+  // Twilio's own API and a recording on that same account -- never
+  // wherever a call_logs row happens to point. Normally that's the
+  // company's own account. A call made while the company borrowed the
+  // shared account (before #104) was recorded there: it plays with the
+  // shared account only when it was listed at the switch (#112).
+  const own = await getTwilioForCompany(data.company_id);
+  let twilioEnv: { accountSid: string; authToken: string } | null =
+    own && recordingCredentialChoice(recordingUrl, own, null, false) === "own" ? own : null;
+  if (!twilioEnv) twilioEnv = await legacySharedRecordingCreds(id, recordingUrl);
+  if (!twilioEnv) return NextResponse.json({ error: "No recording." }, { status: 404 });
 
   const basicAuth = Buffer.from(`${twilioEnv.accountSid}:${twilioEnv.authToken}`).toString(
     "base64"
