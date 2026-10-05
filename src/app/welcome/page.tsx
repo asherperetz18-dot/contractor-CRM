@@ -8,7 +8,8 @@ export const metadata = { title: "Thanks for signing up" };
 export const dynamic = "force-dynamic";
 
 /**
- * Where Stripe returns the customer after payment.
+ * Where Stripe returns the customer after checkout -- paid, or a free
+ * trial that asked for no card (DECISIONS #129).
  *
  * Stripe recommends triggering fulfilment here as well as from the
  * webhook -- "webhooks can sometimes be delayed. To optimize your payment
@@ -34,7 +35,8 @@ export default async function WelcomePage({
             hasn't happened. */}
         {result.ok ? (
           <>
-            <h1 className="auth-title">Thanks — you&apos;re paid up</h1>
+            {/* Not "you're paid up": a free trial pays nothing at checkout. */}
+            <h1 className="auth-title">Thanks for signing up</h1>
             <p className="auth-sub">
               We&apos;ve emailed a setup link to <strong>{result.email}</strong>. Open it
               to pick a password, and {result.companyName} is ready to use.

@@ -17,11 +17,15 @@ import {
 import { createCompanyWithDefaults, signupConfig } from "@/lib/signup/provision";
 import { signupLocationProblem } from "@/lib/data/us-states";
 import { isTrade } from "@/lib/trade-starters";
+import { checkoutModeFor } from "@/lib/signup/checkout-mode";
+import { trialCheckoutOptions } from "@/lib/billing/trial";
 
 /**
- * Starts a paid signup: company name and email in, a Stripe Checkout URL
- * out. Nothing is written to our database here -- an abandoned checkout
- * should leave no trace, and the company only exists once the money does.
+ * Starts a signup: company name and email in, a Stripe Checkout URL out.
+ * A monthly plan starts as a 30-day free trial with no card asked for
+ * (DECISIONS #129); a one-off price is paid up front as before. Nothing
+ * is written to our database here -- an abandoned checkout should leave
+ * no trace, and the company only exists once checkout is complete.
  */
 export async function startSignupCheckout(input: {
   companyName: string;
@@ -62,6 +66,9 @@ export async function startSignupCheckout(input: {
       // waiting on webhook delivery.
       success_url: `${base}/welcome?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${base}/get-started`,
+      // The free trial: no card asked for, and Stripe cancels -- which
+      // locks the company -- if none has been added by day 30.
+      ...trialCheckoutOptions(mode),
     });
 
     if (!session.url) return { error: "Couldn't start checkout. Try again." };
@@ -69,30 +76,6 @@ export async function startSignupCheckout(input: {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Couldn't start checkout." };
   }
-}
-
-// The pending lookup is cached, not just its answer -- SIGNUP_PRICE_ID is
-// one env var, constant for the process, so there is only ever one key.
-// Caching the resolved value alone still let concurrent clicks on a cold
-// instance each start their own Stripe call before the first returned;
-// caching the promise means every caller in that window shares the one
-// request already in flight.
-let checkoutMode: Promise<"subscription" | "payment"> | undefined;
-
-function checkoutModeFor(
-  stripe: ReturnType<typeof stripeClient>,
-  priceId: string
-): Promise<"subscription" | "payment"> {
-  checkoutMode ??= stripe.prices
-    .retrieve(priceId)
-    .then((price) => (price.recurring ? "subscription" : "payment"))
-    .catch((err) => {
-      // A failed lookup must not be cached, or every signup attempt for
-      // the rest of the process's life fails the same way.
-      checkoutMode = undefined;
-      throw err;
-    });
-  return checkoutMode;
 }
 
 /**

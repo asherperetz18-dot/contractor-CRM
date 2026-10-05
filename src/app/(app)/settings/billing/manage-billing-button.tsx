@@ -4,7 +4,13 @@ import { useState } from "react";
 import { openBillingPortal } from "@/lib/actions/billing";
 import { WebOnly } from "@/components/web-only";
 
-export function ManageBillingButton() {
+export function ManageBillingButton({
+  label = "Manage billing",
+  intro = "Update the card you pay with, download invoices, or cancel. It opens on Stripe's own secure page and brings you back here when you're done.",
+}: {
+  label?: string;
+  intro?: string;
+} = {}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,12 +30,9 @@ export function ManageBillingButton() {
   // app may not point there either (DECISIONS #087).
   return (
     <WebOnly fallback={<p className="est-pay-sub">Billing can&apos;t be managed in the app.</p>}>
-      <p className="est-pay-sub">
-        Update the card you pay with, download invoices, or cancel. It opens on
-        Stripe&apos;s own secure page and brings you back here when you&apos;re done.
-      </p>
+      <p className="est-pay-sub">{intro}</p>
       <button type="button" className="btn-primary" disabled={busy} onClick={open}>
-        {busy ? "Opening…" : "Manage billing"}
+        {busy ? "Opening…" : label}
       </button>
       {error && <p className="error-note">{error}</p>}
     </WebOnly>

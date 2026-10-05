@@ -1,5 +1,6 @@
 import { GetStartedForm } from "./get-started-form";
 import { signupConfigured } from "@/lib/signup/provision";
+import { signupTrialDays } from "@/lib/signup/checkout-mode";
 
 export const metadata = { title: "Get started — Contractor CRM" };
 
@@ -14,7 +15,7 @@ export const metadata = { title: "Get started — Contractor CRM" };
 // worse than one server render on a page nobody hits in a loop.
 export const dynamic = "force-dynamic";
 
-export default function GetStartedPage() {
+export default async function GetStartedPage() {
   // No Stripe key or no plan configured means there is nothing to sell.
   // Saying so beats a checkout button that fails on click.
   if (!signupConfigured()) {
@@ -33,5 +34,5 @@ export default function GetStartedPage() {
       </div>
     );
   }
-  return <GetStartedForm />;
+  return <GetStartedForm trialDays={await signupTrialDays()} />;
 }

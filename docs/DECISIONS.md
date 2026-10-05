@@ -1507,3 +1507,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** every look into a customer's company leaves a line that can't be changed. **Database step: run `supabase/migrations/0197_platform_access_log.sql`.**
 
+## 129 — Self-serve signup starts with 30 days free and no card
+
+**Date:** 2026-10-05
+
+**Context:** The marketing site promises "First 30 days free" and "no card up front" (the owner kept that offer on 2026-09-24), but `/get-started` sent people straight to a paid Stripe Checkout. There was no trial, no countdown, and no way to tell an ended trial from a cancelled plan.
+
+**Decision:**
+- **Stripe runs the trial.** A monthly plan is sold through Checkout with `trial_period_days: 30`, `payment_method_collection: "if_required"` (no card asked for) and `trial_settings.end_behavior.missing_payment_method: "cancel"`. A trial that ends with no card becomes a cancelled subscription, which locks the company exactly as before (0175). The CRM keeps no trial clock of its own. A one-off price is still paid up front; the Get Started page promises a trial only when the plan is monthly.
+- **Two columns on `company_billing` (0198):** `trial_ends_at` and `card_on_file`, filled by the billing sync from Stripe. They are written separately from the status, so a database without 0198 still syncs the status (and the lock); it just can't count the days.
+- **A card added in Stripe's Customer Portal** lands on the customer, not the subscription. The sync copies it onto the subscription, so the "no card: cancel" rule can't miss a card that was added. Returning from the portal re-checks Stripe, so the prompt goes away at once.
+- **Countdown:** a banner on every page while the trial has no card ("Your free trial ends in 12 days. Add a card…"), linking Office/Admin to Settings › Subscription, which shows the end date and an **Add a card** button. With a card on file, the banner says nothing.
+- **Trial ended:** the lock screen says the free trial has ended and offers **Subscribe**, a plain paid checkout. Coming back never starts a second trial.
+- **Not touched:** companies without a subscription (made by a platform admin, or before self-serve signup) are never billed or locked. Giving a company more trial time from Platform Admin is the next step.
+
+**Consequence:** a new company signs up with an email address alone and has 30 days to add a card. **Database step: run `supabase/migrations/0198_billing_trial.sql`.**
+

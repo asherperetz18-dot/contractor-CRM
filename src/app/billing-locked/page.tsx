@@ -3,6 +3,7 @@ import { getCurrentProfile, getCurrentUserCompanies } from "@/lib/data/profile";
 import { isAdminRole, isPlatformAdmin } from "@/lib/data/types";
 import { readCompanyBilling } from "@/lib/billing/company-billing";
 import { isBillingLocked } from "@/lib/billing/subscription";
+import { lockReason } from "@/lib/billing/trial";
 import { BillingLockActions } from "./billing-lock-actions";
 
 export const metadata = { title: "Subscription ended" };
@@ -33,19 +34,33 @@ export default async function BillingLockedPage({
   const current = companies.find((c) => c.company_id === profile.company_id);
   const others = companies.filter((c) => c.company_id !== profile.company_id);
   const companyName = current?.company_name?.trim() || "Your company";
+  const trialEnded = lockReason(billing) === "trial_ended";
 
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        <h1 className="auth-title">{companyName}&apos;s subscription has ended</h1>
-        <p className="auth-sub">
-          The AI Build Pro subscription for {companyName} is no longer active, so the CRM is
-          locked. Nothing has been deleted — everything comes back as soon as the subscription
-          is renewed.
-        </p>
+        {trialEnded ? (
+          <>
+            <h1 className="auth-title">{companyName}&apos;s free trial has ended</h1>
+            <p className="auth-sub">
+              The free trial for {companyName} is over, so the CRM is locked. Nothing has been
+              deleted — subscribe and everything is back exactly as you left it.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="auth-title">{companyName}&apos;s subscription has ended</h1>
+            <p className="auth-sub">
+              The AI Build Pro subscription for {companyName} is no longer active, so the CRM is
+              locked. Nothing has been deleted — everything comes back as soon as the subscription
+              is renewed.
+            </p>
+          </>
+        )}
         <BillingLockActions
           canManage={isAdminRole(profile)}
           renewed={renewed === "1"}
+          trialEnded={trialEnded}
           otherCompanies={others}
         />
       </div>

@@ -42,7 +42,8 @@ import { mobileTabs, moreSections, navHrefs } from "@/lib/mobile-tabs";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { getCompanyBilling } from "@/lib/billing/company-billing";
-import { billingBanner, isBillingLocked } from "@/lib/billing/subscription";
+import { isBillingLocked } from "@/lib/billing/subscription";
+import { billingNotice } from "@/lib/billing/trial";
 import { version } from "../../../package.json";
 import { quickCreateLabels, relabelNav } from "@/lib/staff-words";
 
@@ -103,7 +104,9 @@ export default async function AppLayout({
   // the company's data (0175); this is the part that tells them why.
   // Platform admins are exempt there too, so they can still look in.
   if (isBillingLocked(billing?.status) && !isPlatformAdmin(profile)) redirect("/billing-locked");
-  const paymentWarning = billingBanner(billing?.status);
+  // A failed payment, or a free trial counting down with no card yet
+  // (DECISIONS #129). Days are whole, so a server clock is plenty.
+  const billingWarning = billingNotice(billing, new Date().getTime());
   const logoUrl = company.logo_url;
   const companyName = company.name?.trim();
   const timeFormat: TimeFormat = company.time_format ?? "12h";
@@ -255,11 +258,15 @@ export default async function AppLayout({
           />
 
           <main className="main">
-            {paymentWarning && (
+            {billingWarning && (
               <div className="est-locked-banner">
-                {paymentWarning}{" "}
+                {billingWarning.text}{" "}
                 {isAdminRole(profile) ? (
-                  <Link href="/settings/billing">Update payment</Link>
+                  <Link href="/settings/billing">
+                    {billingWarning.link === "subscribe" ? "Add a card" : "Update payment"}
+                  </Link>
+                ) : billingWarning.link === "subscribe" ? (
+                  "Ask your company's admin to add one."
                 ) : (
                   "Ask your company's admin to update it."
                 )}

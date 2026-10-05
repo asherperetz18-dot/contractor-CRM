@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { startSignupCheckout } from "@/lib/actions/signup";
 
-export function GetStartedForm() {
+/**
+ * `trialDays` is the free trial a monthly plan starts with (DECISIONS
+ * #129), or null for a one-off price -- or when Stripe couldn't be asked,
+ * in which case the form promises nothing it can't be sure of.
+ */
+export function GetStartedForm({ trialDays }: { trialDays: number | null }) {
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
@@ -35,7 +40,9 @@ export function GetStartedForm() {
     <div className="auth-shell">
       <div className="auth-card">
         <h1 className="auth-title">Contractor CRM</h1>
-        <p className="auth-sub">Start your account</p>
+        <p className="auth-sub">
+          {trialDays ? `Start your ${trialDays}-day free trial` : "Start your account"}
+        </p>
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="field">
             <span className="field-label">Company name</span>
@@ -58,11 +65,13 @@ export function GetStartedForm() {
             />
           </label>
           <p className="hint-note">
-            We&apos;ll email your setup link here after payment, so use an inbox you can open.
+            {trialDays
+              ? "No card needed. We'll email your setup link here, so use an inbox you can open."
+              : "We'll email your setup link here after payment, so use an inbox you can open."}
           </p>
           {error && <p className="error-note">{error}</p>}
           <button type="submit" className="btn-primary auth-submit" disabled={pending}>
-            {pending ? "Opening checkout…" : "Continue to payment"}
+            {pending ? "Opening checkout…" : trialDays ? "Start free trial" : "Continue to payment"}
           </button>
           <p className="auth-switch" style={{ marginTop: 8 }}>
             Already have an account? <a href="/login">Sign in</a>
