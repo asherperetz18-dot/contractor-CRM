@@ -1315,6 +1315,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Consequence:**
 - **Owner step:** run the five files in order in Supabase, then re-run the check. It should list nothing but the version row.
 
+## 116 — Examples, hints and "What's new" use made-up details, never a subscriber's
+
+**Date:** 2026-10-05
+
+**Context:** Every company sees the same contract merge-field examples, form hints and "What's new" notes. They carried La Home Contractor's name, address, phone, email and licence number, a client name, phone and address that looked real, the owner's name, another subscriber's email address, and three release notes naming La Home or a person. Code comments and tests in this public repository also held real-looking phone numbers.
+
+**Decision:**
+- Examples and hints use the tutorials' made-up company: Summit Builders Co, 555-01xx phone numbers, @example.com addresses, made-up people (Jordan Rivera, Alex Morgan).
+- Release notes describe the fix, not who it happened to ("never another company's name").
+- Real-looking numbers in comments and test data become 555-01xx numbers with the same area code and formatting, so every test still checks what it checked.
+- `src/lib/demo-details.test.ts` fails if any of those details come back, if a merge-field example stops being made up, or if a release note names a subscriber or a person.
+
+**Consequence:** nothing a company stored changes; only the shared text around it.
+
 ## 118 — A new company starts with its own state, time zone and zero commission rates
 
 **Date:** 2026-10-05

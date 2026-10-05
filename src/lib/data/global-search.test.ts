@@ -26,7 +26,7 @@ function lead(over: Partial<SearchableLead> = {}): SearchableLead {
     company_name: null,
     first_name: "Nuha",
     last_name: "Ibrahim",
-    phone: "(626) 325-4475",
+    phone: "(626) 555-0175",
     phone2: null,
     phone3: null,
     email: "nuha@example.com",
@@ -120,7 +120,7 @@ test("a client's name finds their contact, their contract, and their appointment
 });
 
 test("digits-only phone search matches a formatted stored number", () => {
-  const groups = run("6263254475");
+  const groups = run("6265550175");
   assert.equal(group(groups, "Contacts")?.hits.length, 1);
 });
 
@@ -316,9 +316,9 @@ test("a zip code finds the contact", () => {
 test("a number stored with a country code still matches its own full digits", () => {
   // normalizePhone keeps the last 10 digits; the raw digits must count
   // too, or typing the number exactly as stored finds nothing.
-  const intl = lead({ phone: "+1 (626) 325-4475" });
-  assert.equal(group(run("16263254475", { leads: [intl] }), "Contacts")?.hits.length, 1);
-  assert.equal(group(run("6263254475", { leads: [intl] }), "Contacts")?.hits.length, 1);
+  const intl = lead({ phone: "+1 (626) 555-0175" });
+  assert.equal(group(run("16265550175", { leads: [intl] }), "Contacts")?.hits.length, 1);
+  assert.equal(group(run("6265550175", { leads: [intl] }), "Contacts")?.hits.length, 1);
 });
 
 // When the global_search SQL function is missing or fails (a migration

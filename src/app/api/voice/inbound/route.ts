@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
       | { company_id: string; call_forward_number: string | null; call_forward_timeout: number }[]
       | null) ?? [])[0] ?? null;
 
-  // Same normalisation as the dialer: someone typing 818-300-8242 into
+  // Same normalisation as the dialer: someone typing 818-555-0142 into
   // Settings should not silently fail to ring.
   const forwardTo = toE164(company?.call_forward_number);
 

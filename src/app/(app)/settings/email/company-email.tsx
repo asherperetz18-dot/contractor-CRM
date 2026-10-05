@@ -149,7 +149,7 @@ export function CompanyEmail() {
             <span className="field-label">From address</span>
             <input
               className="est-title-input"
-              placeholder="estimates@smarthvacsystem.com"
+              placeholder="estimates@yourcompany.com"
               value={fromAddress}
               onChange={(e) => setFromAddress(e.target.value)}
               disabled={pending}

@@ -1451,7 +1451,7 @@ export type SmsMessage = {
  * A number in the form Twilio dials: "+1" followed by digits.
  *
  * Contacts are stored however they were typed or imported -- "+1
- * 714-403-5570", "714-403-5570", "1714-403-5570" are all the same
+ * 714-555-0170", "714-555-0170", "1714-555-0170" are all the same
  * person. Anything with a bracket, dash or space in it used to be
  * rejected as an invalid destination, so the call died after two
  * seconds and only bare ten-digit numbers ever connected.

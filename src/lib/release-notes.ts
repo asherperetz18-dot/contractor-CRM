@@ -30,6 +30,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.184.1",
+    date: "2026-10-05",
+    notes: [
+      "The examples next to contract fields and settings now use a made-up company (Summit Builders Co) and 555 phone numbers, never another company's or a customer's real details.",
+    ],
+  },
+  {
     version: "1.184.0",
     date: "2026-10-05",
     notes: [
@@ -406,21 +413,21 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     version: "1.158.5",
     date: "2026-09-25",
     notes: [
-      "A voided estimate or contract now says who voided it on its yellow banner — \"Voided on 9/18/2026 by Asher Peretz — reason\".",
+      "A voided estimate or contract now says who voided it on its yellow banner — \"Voided on 9/18/2026 by Alex Morgan — reason\".",
     ],
   },
   {
     version: "1.158.4",
     date: "2026-09-25",
     notes: [
-      "Fix: a company whose profile has no name filled in now also sends email under its own account name, never \"La Home Contractor\".",
+      "Fix: a company whose profile has no name filled in now also sends email under its own account name, never another company's name.",
     ],
   },
   {
     version: "1.158.3",
     date: "2026-09-25",
     notes: [
-      "Fix: estimate, portal-link and bulk emails from a company that hasn't set up its own sender (Settings → Email) now show that company's name in the customer's inbox, not \"La Home Contractor\".",
+      "Fix: estimate, portal-link and bulk emails from a company that hasn't set up its own sender (Settings → Email) now show that company's name in the customer's inbox, not another company's name.",
     ],
   },
   {

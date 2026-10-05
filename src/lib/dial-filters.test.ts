@@ -108,7 +108,7 @@ test("the By Lead call-status + disposition filters reduce to one plan", () => {
 });
 
 test("a phone search becomes a digits pattern that survives formatting", () => {
-  // "(310) 697" typed as 310697 must match a phone stored as "+1 310-697-6137".
+  // "(310) 697" typed as 310697 must match a phone stored as "+1 310-555-0137".
   assert.equal(digitsSearchPattern("310-697"), "%3%1%0%6%9%7%");
   assert.equal(digitsSearchPattern("Robert"), null);
   // Fewer than 3 digits is a name search, not a phone search — same

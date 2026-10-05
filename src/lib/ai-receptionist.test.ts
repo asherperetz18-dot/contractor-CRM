@@ -168,19 +168,19 @@ test("a transfer intent parses only from an explicit true", () => {
 
 test("the transfer TwiML rings the human and comes back to us either way", () => {
   const xml = transferTwiml({
-    number: "+18183008242",
+    number: "+18185550142",
     actionUrl: "https://app.example.com/api/voice/ai/transfer?x=1&y=2",
     say: "Sure — connecting you now.",
   });
   assert.ok(xml.includes("connecting you now"));
-  assert.ok(xml.includes("<Number>+18183008242</Number>"));
+  assert.ok(xml.includes("<Number>+18185550142</Number>"));
   // The action is what lets a no-answer resume the AI instead of dying.
   assert.ok(xml.includes(`action="https://app.example.com/api/voice/ai/transfer?x=1&amp;y=2"`));
   assert.ok(/<Dial timeout="\d+"/.test(xml));
 });
 
 test("the prompt only knows about transfers when a number is configured", () => {
-  const withTransfer = receptionistSystemPrompt({ ...FACTS, transferNumber: "+18183008242" });
+  const withTransfer = receptionistSystemPrompt({ ...FACTS, transferNumber: "+18185550142" });
   assert.ok(withTransfer.includes('"transfer": true'));
   assert.ok(withTransfer.includes("0"), "press-zero is part of the offer");
   const without = receptionistSystemPrompt(FACTS);
@@ -352,8 +352,8 @@ test("confirmation text names the company and only sends when there is something
   assert.ok(sms.length <= 320);
 
   const good = extraction({ first_name: "Bob", summary: "Roof leak" });
-  assert.equal(shouldSendConfirmationSms(good, "+18183008242"), true);
+  assert.equal(shouldSendConfirmationSms(good, "+18185550142"), true);
   // Nothing captured means nothing to confirm -- a text would be spam.
-  assert.equal(shouldSendConfirmationSms(extraction(), "+18183008242"), false);
+  assert.equal(shouldSendConfirmationSms(extraction(), "+18185550142"), false);
   assert.equal(shouldSendConfirmationSms(good, ""), false);
 });
