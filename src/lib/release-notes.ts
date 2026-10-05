@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.183.3",
+    date: "2026-10-05",
+    notes: [
+      "Security update: the framework the CRM runs on is updated to its latest patch, closing a published security hole. Nothing looks or works differently.",
+    ],
+  },
+  {
     version: "1.183.2",
     date: "2026-10-05",
     notes: [
