@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { completeSignup } from "@/lib/actions/signup";
 import type { AuthFormState } from "@/lib/actions/auth";
 import { US_STATES, timezoneForState } from "@/lib/data/us-states";
+import { TRADES } from "@/lib/trade-starters";
 import { TIMEZONE_OPTIONS } from "@/lib/data/types";
 
 export function RegisterForm({
@@ -53,6 +54,22 @@ export function RegisterForm({
               <input type="text" name="company_name" required autoComplete="organization" />
             </label>
           )}
+          <label className="field">
+            <span className="field-label">Your trade</span>
+            <select name="trade" required defaultValue="">
+              <option value="" disabled>
+                Choose your trade
+              </option>
+              {TRADES.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <span className="hint-note">
+              Sets the words and pipeline stages you start with. You can change any of them later.
+            </span>
+          </label>
           <label className="field">
             <span className="field-label">State your company works in</span>
             <select

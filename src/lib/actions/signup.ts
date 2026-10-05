@@ -16,6 +16,7 @@ import {
 } from "@/lib/signup/invites";
 import { createCompanyWithDefaults, signupConfig } from "@/lib/signup/provision";
 import { signupLocationProblem } from "@/lib/data/us-states";
+import { isTrade } from "@/lib/trade-starters";
 
 /**
  * Starts a paid signup: company name and email in, a Stripe Checkout URL
@@ -139,6 +140,11 @@ export async function completeSignup(
   const locationProblem = signupLocationProblem(companyState, companyTimezone);
   if (locationProblem) return { error: locationProblem };
 
+  // The trade sets the words and stages the company starts with
+  // (DECISIONS #124). Checked before the invite is spent, like the rest.
+  const trade = String(formData.get("trade") ?? "");
+  if (!isTrade(trade)) return { error: "Choose your trade." };
+
   // Checked before the invite is spent, not after: an empty company name
   // must not burn the one use a manually-sent link gets.
   // Taken before anything is created, not after. loadUsableInvite only
@@ -193,6 +199,7 @@ export async function completeSignup(
   const { companyId, error: companyError } = await createCompanyWithDefaults(companyName, profileId, {
     timezone: companyTimezone,
     licenseState: companyState,
+    trade,
   });
   if (!companyId) {
     // Roll back only what this call made. An account that existed before
