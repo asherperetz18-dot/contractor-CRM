@@ -1329,6 +1329,21 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** nothing a company stored changes; only the shared text around it.
 
+## 117 — The deposit is each company's own rule; the completion certificate names no state
+
+**Date:** 2026-10-05
+
+**Context:** Every estimate asked for California's limit -- 10% of the total or $1,000, whichever is less -- for every company, wherever it worked: new estimates took the column defaults, and `company_profile.deposit_percent_bp` / `deposit_cap_cents` (0061) existed but nothing read them. The default completion certificate printed "CSLB Licence No." and "under California law" for everyone, and two hints said "CSLB".
+
+**Decision:**
+- **Settings → Contracts → Deposit at signing** sets the company's rule: a percent of the total and an optional dollar cap (blank = none), whichever is less. Admin only. `src/lib/deposit-rule.ts` (tested) parses and checks it.
+- **Copied onto each new estimate** (`createEstimate`), like the contract body, so changing the rule never changes an estimate already made. Change orders, completion certificates and invoices still carry no deposit.
+- **California keeps its limit.** A company whose licence state is California can't save more than 10% or a cap above $1,000, or no cap (B&P 7159.5).
+- **Existing companies keep 10% / $1,000** -- their stored values -- until an admin changes them. Nothing to run.
+- **The default completion certificate names no state:** "Licence No." and "under the law". A company that saved its own certificate keeps it.
+
+**Consequence:** a company outside California can ask for the deposit its own state and terms allow.
+
 ## 119 — "New company" is a platform admin's tool, and a new company starts clean
 
 **Date:** 2026-10-05

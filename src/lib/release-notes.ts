@@ -28,6 +28,14 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.185.0",
+    date: "2026-10-05",
+    notes: [
+      "Settings → Contracts: set the deposit your estimates ask for at signing, as a percent of the total with an optional dollar cap. New estimates use it; existing ones keep theirs. Companies licensed in California still can't go above $1,000 or 10%.",
+      "The default completion certificate no longer mentions the CSLB or California law, so it fits a company in any state. A certificate you already edited and saved is unchanged.",
+    ],
+  },
+  {
     version: "1.184.1",
     date: "2026-10-05",
     notes: [
