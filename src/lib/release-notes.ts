@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.192.0",
+    date: "2026-10-05",
+    notes: [
+      "New companies pick their trade when they set up their account — Remodeling, HVAC, Plumbing, Roofing, Solar or Other — and start in its words: an HVAC company's board says \"Service Call Scheduled\", a solar company sends Proposals. Everything can still be changed in Settings.",
+    ],
+  },
+  {
     version: "1.191.0",
     date: "2026-10-05",
     notes: [

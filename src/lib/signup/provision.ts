@@ -21,6 +21,14 @@ import {
   registerUrl,
   sentInviteForSession,
 } from "@/lib/signup/invites";
+import {
+  tradeDispositionTarget,
+  tradeProjectTypes,
+  tradeStageNames,
+  tradeWords,
+  type TradeKey,
+} from "@/lib/trade-starters";
+import { STANDARD_WORDS, readCompanyWords, word } from "@/lib/company-words";
 
 /**
  * Everything the public signup needs in order to sell anything: a Stripe
@@ -131,9 +139,9 @@ type SeedRows = {
   leadSources: DefaultSimpleRow[];
 };
 
-async function seedRowsFor(sourceCompanyId?: string): Promise<SeedRows> {
+async function seedRowsFor(sourceCompanyId?: string, trade?: TradeKey): Promise<SeedRows> {
   if (!sourceCompanyId) {
-    return {
+    return trade ? tradeSeedRows(trade) : {
       stages: DEFAULT_PIPELINE_STAGES,
       calendars: DEFAULT_CALENDARS,
       dispositions: DEFAULT_CALL_DISPOSITIONS,
@@ -177,6 +185,30 @@ async function seedRowsFor(sourceCompanyId?: string): Promise<SeedRows> {
 }
 
 /**
+ * The starter lists for a trade (DECISIONS #124): the standard stages,
+ * renamed in the trade's words, the dialer outcomes pointing at those
+ * names, and the trade's own project types. Remodeling is exactly the
+ * standard set.
+ */
+function tradeSeedRows(trade: TradeKey): SeedRows {
+  const words = readCompanyWords(tradeWords(trade));
+  const names = tradeStageNames(words);
+  const appointmentChanged = words.appointment.one !== STANDARD_WORDS.appointment.one;
+  return {
+    stages: DEFAULT_PIPELINE_STAGES.map((s) => ({ ...s, name: s.key ? names[s.key] : s.name })),
+    calendars: DEFAULT_CALENDARS,
+    dispositions: DEFAULT_CALL_DISPOSITIONS.map((d) => ({
+      ...d,
+      // "Appointment Set" says what the call booked: "Inspection Set".
+      name: appointmentChanged && d.name === "Appointment Set" ? `${word(words, "appointment")} Set` : d.name,
+      move_to_stage: tradeDispositionTarget(d.move_to_stage, names),
+    })),
+    projectTypes: tradeProjectTypes(trade).map((name, i) => ({ name, sort_order: i + 1 })),
+    leadSources: DEFAULT_LEAD_SOURCES,
+  };
+}
+
+/**
  * Builds a working company from nothing: the row, its settings, the owner's
  * membership, and the starter lists without which the app renders empty
  * boards and empty dropdowns (see lib/data/company-defaults.ts).
@@ -200,10 +232,13 @@ export async function createCompanyWithDefaults(
     /** The company's own, from the setup form (DECISIONS #118). */
     timezone?: string;
     licenseState?: string;
+    /** The trade picked at sign-up: its words, stage names and project
+     *  types (DECISIONS #124). Ignored when copying another company. */
+    trade?: TradeKey;
   } = {}
 ): Promise<{ companyId?: string; error?: string }> {
   const admin = createAdminClient();
-  const seed = await seedRowsFor(options.sourceCompanyId);
+  const seed = await seedRowsFor(options.sourceCompanyId, options.trade);
 
   const created = await insertCompanyWithUniqueName(name, options.onNameClash ?? "suffix");
   if (!created.id) return { error: created.error };
@@ -263,6 +298,18 @@ export async function createCompanyWithDefaults(
   if (member.error) {
     await admin.from("companies").delete().eq("id", companyId);
     return { error: member.error.message };
+  }
+
+  // The trade's words (DECISIONS #124), written on their own: a database
+  // without 0196 just leaves the company on the standard words rather
+  // than failing its profile.
+  const starterWords = options.trade && !options.sourceCompanyId ? tradeWords(options.trade) : {};
+  if (Object.keys(starterWords).length > 0) {
+    const { error: wordsError } = await admin
+      .from("company_profile")
+      .update({ wording: starterWords })
+      .eq("company_id", companyId);
+    if (wordsError) console.error(`[signup] company ${companyId} kept the standard words: ${wordsError.message}`);
   }
 
   // Read rather than discarded. A company that quietly lost its

@@ -1429,3 +1429,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Settings › Company Words now offers all eight words, with a quick-text example.
 
 **Consequence:** with the standard words the receptionist now says "appointment" where it said "visit", and its confirmation reads "We've penciled in your appointment for …". No database step.
+
+## 124 — A new company picks its trade and starts in its own words
+
+**Date:** 2026-10-05
+
+**Context:** Every new company started as a remodeler: an "Estimate" for a "Project", "Appointment Scheduled" on the board, and Kitchen Remodel / Bathroom Remodel as its project types. With the words (#121–#123) and stage tags (#120) in place, a plumber or a solar company can change all of that, but each would have to find out how and do it by hand.
+
+**Decision:**
+- **The account setup form asks for the trade:** Remodeling, HVAC, Plumbing, Roofing, Solar or Other (`src/lib/trade-starters.ts`, tested). `completeSignup` refuses a missing or unknown one before the setup link is spent.
+- **The trade sets the starting words**, as approved by the owner on 2026-10-05: HVAC — Job, Service Call, Technician; Plumbing — the same plus Work Authorization; Roofing — Inspection; Solar — Proposal, Consultation, Energy Consultant, Agreement; Remodeling and Other — the standard words. Written to `company_profile.wording` on its own, so a database without 0196 leaves the company on the standard words rather than failing its profile.
+- **The stages follow the words:** an HVAC company starts with "Service Call Scheduled", "Service Call Follow Up", "2nd Service Call"; a solar company with "Proposal Prepared". Tags are unchanged (#120), so every automation works. A stage whose word is standard keeps its usual name — a remodeler's board is exactly what every company had before. The dialer outcomes point at the renamed stages, and "Appointment Set" becomes "Inspection Set" and the like.
+- **A few project types per trade**, only so the dropdown is never empty (AC Repair, Leak Repair, Roof Repair, Solar Panels…; Remodeling keeps the old four).
+- Calendars, lead sources and everything else are the same for every trade. A company made by a platform admin, or copied from another, is unchanged.
+
+**Consequence:** a new HVAC company's customers get "Service Call" texts and its board reads in its words from the first day. Everything stays editable in Settings › Company Words, Pipeline Stages and Project Types. No database step.
