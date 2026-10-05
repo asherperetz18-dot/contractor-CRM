@@ -1274,3 +1274,4 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - A Field, Bookkeeping or Production user sees no texts they didn't send, which includes office texts to crew about a job.
 - The AI conversation analysis still reads the contact's whole conversation through the admin client. It shows signals, not the texts themselves.
 - Reassigning a contact doesn't move texts already owned; a reply still goes to whoever texted last.
+- 0192 defines `contact_phone_key` itself, word for word as 0129 has it. Production never ran 0129, so the first paste stopped at "function contact_phone_key(text) does not exist". 0129 can't be run now: it would put back an older `create_lead_for_unknown_caller` over 0150's. With the helper in place, 0150's one-contact-per-new-caller guard, which calls it, starts working; until now CallRail and the AI receptionist had been taking their unguarded fallback.
