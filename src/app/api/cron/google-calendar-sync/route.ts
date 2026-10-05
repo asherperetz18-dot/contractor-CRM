@@ -31,7 +31,7 @@ async function handlePost(req: NextRequest) {
     totals.removed += s.removed;
     totals.pulled += s.pulled;
     if (s.error) totals.failed += 1;
-  });
+  }, { companyOf: (c) => c.company_id });
   return NextResponse.json({ ...totals, ...runSummary(run) });
 }
 

@@ -7,6 +7,7 @@ import { applyCustomerConfirmation } from "@/lib/events/confirmation";
 import { validateTwilioSignature } from "@/lib/twilio-env";
 import { logWarn } from "@/lib/observability/logger";
 import { companyForInboundNumber, getTwilioForCompany } from "@/lib/twilio-company";
+import { isCompanyLocked } from "@/lib/billing/company-lock";
 import { withRouteObservability } from "@/lib/observability/observe";
 
 const YES_WORDS = new Set(["yes", "y", "confirm", "confirmed", "ok", "okay", "yeah", "yep", "sure"]);
@@ -305,9 +306,12 @@ async function handlePost(req: NextRequest) {
     channel: fromCrew ? "rep" : "sms",
   });
 
-  const twiml = replyMessage
-    ? `<Response><Message>${escapeXml(replyMessage)}</Message></Response>`
-    : "<Response></Response>";
+  // A locked company still receives its customers' texts -- nothing is
+  // lost -- but sends nothing back until it renews (DECISIONS #131).
+  const twiml =
+    replyMessage && !(await isCompanyLocked(inboundCompanyId))
+      ? `<Response><Message>${escapeXml(replyMessage)}</Message></Response>`
+      : "<Response></Response>";
 
   return new NextResponse(twiml, {
     status: 200,

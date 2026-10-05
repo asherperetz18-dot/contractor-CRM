@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany, type CompanyTwilio } from "@/lib/twilio-company";
+import { getTwilioForSending, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
 import { withRouteObservability } from "@/lib/observability/observe";
 import {
@@ -243,7 +243,7 @@ async function handlePost(req: NextRequest) {
     // Per company, so each texts from its own number. Texting stays
     // best-effort: a company without Twilio still gets its tasks created
     // and its stages moved, which is the part that must not be skipped.
-    const twilioEnv = await getTwilioForCompany(company.company_id);
+    const twilioEnv = await getTwilioForSending(company.company_id);
     const result = await processCompany(admin, twilioEnv, company);
     checked += result.checked;
     flagged += result.flagged;

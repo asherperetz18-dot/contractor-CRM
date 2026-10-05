@@ -1523,3 +1523,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a new company signs up with an email address alone and has 30 days to add a card. **Database step: run `supabase/migrations/0198_billing_trial.sql`.**
 
+## 131 — A locked company is paused: no texts, no calls, no AI
+
+**Date:** 2026-10-05
+
+**Context:** A lapsed subscription locked a company's screens (the app shell redirects) and hid its data from its own people (row-level security, 0175). But texts, calls, the AI and every scheduled job run on the service-role client, which row-level security doesn't touch, and a server action or API route is reachable without the shell. A locked company's reminders kept going out, its new-lead alerts kept texting, its AI receptionist kept answering — on the platform's AI bill — and a stale tab could still send a text or ask the assistant.
+
+**Decision:**
+- **One check** (`isCompanyLocked`, `src/lib/billing/company-lock.ts`), on the same cached billing read as the app shell, dropped by the Stripe webhook the moment a subscription changes — so a renewal turns everything back on at once.
+- **Texts:** every send gets its account from `getTwilioForSending`, which gives a locked company none. The screens' actions (send a text, send an estimate, send a portal link, request a progress payment) say why. The inbound-text webhook still saves a locked company's incoming texts but sends no automatic reply. `getTwilioForCompany` stays for checking Twilio's signatures and playing recordings.
+- **Calls:** no dialer token for a locked company, and the outbound call route refuses too (a token lasts an hour). Inbound calls still ring through to the company's own phone — that costs the platform nothing, and its customers can still reach it.
+- **AI:** one door, `aiForCompany` (`src/lib/ai/company-ai.ts`); it is now the only place the AI client is created. A locked company gets no assistant, lead analysis, scope writer, estimator lines or call notes, and the AI receptionist doesn't pick up. A receptionist call already under way when the lock lands ends the way a model failure does, and its caller still becomes a lead. The usage tracking to come counts at the same door.
+- **Scheduled jobs:** `runForEachCompany` reads the locked companies once per run and pauses them; the job's report says how many (`paused`).
+- **Guard tests** (`company-lock.test.ts`) read the code: only the AI door creates an AI client, every text sender uses `getTwilioForSending`, and the screens' actions, the call route, the auto-reply and the receptionist's pickup all check.
+
+**Consequence:** a locked company costs the platform nothing and sends nothing until it renews; nothing is deleted, and incoming texts and leads are still captured. Platform admins looking in are paused there too. No database step.
+

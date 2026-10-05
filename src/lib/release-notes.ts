@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.200.0",
+    date: "2026-10-05",
+    notes: [
+      "When a company's subscription ends, its texting, calling, AI tools and automatic reminders pause until it's renewed. Calls and texts from its customers still come in, and nothing is deleted.",
+    ],
+  },
+  {
     version: "1.198.0",
     date: "2026-10-05",
     notes: [

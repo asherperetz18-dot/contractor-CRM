@@ -1,6 +1,7 @@
 "use server";
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiForCompany } from "@/lib/ai/company-ai";
 import { thinkingFor } from "@/lib/ai-models";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -133,8 +134,8 @@ export async function formatScopeWithAI(
     return { error: "You don't have permission to edit estimates." };
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { error: "AI isn't configured yet." };
+  const ai = await aiForCompany(profile.company_id);
+  if ("error" in ai) return { error: ai.error };
 
   const system = [
     "You clean up scope-of-work text for a residential construction estimate that a homeowner will read and sign.",
@@ -149,7 +150,7 @@ export async function formatScopeWithAI(
   ].join("\n");
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = ai.client;
     const response = await client.messages.create({
       model: "claude-opus-5",
       // Must fit a formatted copy of the whole input, or the response
@@ -214,8 +215,8 @@ export async function generateScopeWithAI(
   const loaded = await loadEstimatorSettings(profile.company_id);
   if ("error" in loaded) return loaded;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { error: "AI isn't configured yet." };
+  const ai = await aiForCompany(profile.company_id);
+  if ("error" in ai) return { error: ai.error };
 
   // Worked examples from this contractor's own scope library, preferring
   // ones tagged with this job's project type. Examples teach structure and
@@ -257,7 +258,7 @@ export async function generateScopeWithAI(
   ].join("\n");
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = ai.client;
     const response = await client.messages.create({
       model: loaded.settings.ai_estimator_model || "claude-opus-5",
       max_tokens: 3000,
@@ -310,8 +311,8 @@ export async function generatePricedLines(
   const loaded = await loadEstimatorSettings(profile.company_id);
   if ("error" in loaded) return loaded;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { error: "AI isn't configured yet." };
+  const ai = await aiForCompany(profile.company_id);
+  if ("error" in ai) return { error: ai.error };
 
   const rateCard = (loaded.settings.ai_estimator_rate_card ?? "").trim();
   const canPrice = rateCard.length > 0;
@@ -342,7 +343,7 @@ export async function generatePricedLines(
   ].join("\n");
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = ai.client;
     const response = await client.messages.create({
       model: loaded.settings.ai_estimator_model || "claude-opus-5",
       max_tokens: 4000,

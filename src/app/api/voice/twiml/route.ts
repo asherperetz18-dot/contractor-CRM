@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { validateTwilioSignature } from "@/lib/twilio-env";
 import { companyForAccountSid, getTwilioForCompany } from "@/lib/twilio-company";
+import { isCompanyLocked } from "@/lib/billing/company-lock";
 import { toE164 } from "@/lib/data/types";
 import { resolveCorrelationId } from "@/lib/observability/context";
 import { logInfo } from "@/lib/observability/logger";
@@ -64,6 +65,16 @@ export async function POST(req: NextRequest) {
       service: "twilio",
     });
     return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+  }
+
+  // Calling is paused while the company's subscription is locked
+  // (DECISIONS #131) -- checked here as well as when the dialer's token
+  // is issued, because a token already issued lasts an hour.
+  if (await isCompanyLocked(companyId)) {
+    return new NextResponse(
+      `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Calling is paused because this company's subscription has ended.</Say></Response>`,
+      { status: 200, headers: { "Content-Type": "text/xml" } }
+    );
   }
 
   // Normalised before validating. Contacts are stored however they were

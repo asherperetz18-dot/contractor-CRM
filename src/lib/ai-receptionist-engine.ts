@@ -1,9 +1,11 @@
 import "server-only";
 
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiForCompany } from "@/lib/ai/company-ai";
+import { isCompanyLocked } from "@/lib/billing/company-lock";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForSending } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { TIMEZONE_IANA, toE164, type PipelineStage } from "@/lib/data/types";
 import { loadTaggedStages } from "@/lib/pipeline/company-stages";
@@ -201,6 +203,9 @@ export async function maybeStartReceptionist(
   args: { companyId: string; callSid: string; from: string; to: string; origin: string }
 ): Promise<string | null> {
   if (!args.callSid) return null;
+  // A locked company's calls ring through as before, but the AI doesn't
+  // pick up (DECISIONS #131): the AI is the platform's cost.
+  if (await isCompanyLocked(args.companyId)) return null;
   const state = await receptionistState(admin, args.companyId);
   if (!state.enabled) return null;
 
@@ -298,12 +303,14 @@ export async function runReceptionistTurn(
   // budget allows, the model is told to say goodbye in it.
   const wrapUp = forceWrapUp(assistantCount + 1);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // A call already under way when the company locks gets no more AI
+  // replies; it ends the way a model failure does (DECISIONS #131).
+  const ai = await aiForCompany(row.company_id);
 
   let reply: TurnReply | null = null;
-  if (apiKey) {
+  if ("client" in ai) {
     try {
-      const client = new Anthropic({ apiKey });
+      const client = ai.client;
       const response = await client.messages.create({
         model: TURN_MODEL,
         max_tokens: 300,
@@ -497,12 +504,14 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
 
   const state = await receptionistState(admin, claimed.company_id);
   const turns = normalizeTurns(claimed.turns);
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // Locked or not, the caller still becomes a lead; only the AI summary
+  // of the call is skipped for a locked company (DECISIONS #131).
+  const ai = await aiForCompany(claimed.company_id);
 
   let extraction: ExtractedLead | null = null;
-  if (turns.some((t) => t.role === "caller") && apiKey) {
+  if (turns.some((t) => t.role === "caller") && "client" in ai) {
     try {
-      const client = new Anthropic({ apiKey });
+      const client = ai.client;
       const response = await client.messages.create({
         model: EXTRACT_MODEL,
         max_tokens: 400,
@@ -612,7 +621,7 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
   const smsTo = toE164(claimed.from_number);
   if (smsTo && (booked || shouldSendConfirmationSms(extraction, smsTo))) {
     try {
-      const twilioEnv = await getTwilioForCompany(claimed.company_id);
+      const twilioEnv = await getTwilioForSending(claimed.company_id);
       if (twilioEnv) {
         await sendTwilioSms(smsTo, confirmationSms(state.facts.companyName, booked, state.facts.words), twilioEnv);
       }

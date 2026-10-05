@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { eachCompany, fairOrder, runSummary } from "./each-company.ts";
+import { eachCompany, fairOrder, runSummary, withoutLocked } from "./each-company.ts";
 
 /**
  * Scheduled jobs run each company in its own safety net (DECISIONS #126):
@@ -87,10 +87,27 @@ test("every scheduled job that works company by company uses the safety net", ()
 
 test("the run's summary never overwrites a job's own counts", () => {
   const summary = runSummary({ done: [], failed: [{ companyId: "c1", error: "boom" }], deferred: ["c2", "c3"] });
-  assert.deepEqual(summary, { failures: [{ companyId: "c1", error: "boom" }], deferred: 2 });
+  assert.deepEqual(summary, { failures: [{ companyId: "c1", error: "boom" }], deferred: 2, paused: 0 });
   // Google Calendar sync reports how many calendars failed as `failed`;
   // the summary spread after it must not replace that number.
   const source = readFileSync(new URL("../../app/api/cron/google-calendar-sync/route.ts", import.meta.url), "utf8");
   assert.match(source, /failed: 0/);
   assert.ok(!("failed" in summary));
+});
+
+test("a locked company is paused: its reminders, alerts and syncs don't run", () => {
+  const items = [{ id: "conn-1", company_id: "a" }, { id: "conn-2", company_id: "b" }, { id: "conn-3", company_id: "a" }];
+  const { kept, paused } = withoutLocked(items, (c) => c.company_id, new Set(["a"]));
+  assert.deepEqual(kept.map((c) => c.id), ["conn-2"]);
+  assert.deepEqual(paused, ["a", "a"]);
+  assert.equal(runSummary({ done: [], failed: [], deferred: [], paused }).paused, 2);
+  assert.deepEqual(withoutLocked(items, (c) => c.company_id, new Set()).kept.length, 3);
+});
+
+test("every scheduled job runs through the runner that pauses locked companies", () => {
+  const runner = readFileSync(new URL("./run-companies.ts", import.meta.url), "utf8");
+  assert.match(runner, /withoutLocked\(items, opts\.companyOf \?\? idOf, await lockedCompanyIds\(\)\)/);
+  // The calendar job's items are connections, so it names their company.
+  const gcal = readFileSync(new URL("../../app/api/cron/google-calendar-sync/route.ts", import.meta.url), "utf8");
+  assert.match(gcal, /companyOf: \(c\) => c\.company_id/);
 });

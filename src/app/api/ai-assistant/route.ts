@@ -1,6 +1,7 @@
 import { addDays } from "@/lib/company-clock";
 import { companyToday } from "@/lib/data/company-today";
 import Anthropic from "@anthropic-ai/sdk";
+import { aiForCompany } from "@/lib/ai/company-ai";
 import type { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { withRouteObservability } from "@/lib/observability/observe";
@@ -442,9 +443,10 @@ async function handlePost(request: NextRequest) {
     return Response.json({ error: "Ask a question first." }, { status: 400 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return Response.json({ error: "AI assistant isn't configured yet." }, { status: 500 });
+  // Through the one AI door: no assistant for a locked company (DECISIONS #131).
+  const ai = await aiForCompany(profile.company_id, "AI assistant isn't configured yet.");
+  if ("error" in ai) {
+    return Response.json({ error: ai.error }, { status: ai.reason === "locked" ? 403 : 500 });
   }
 
   // Only roles that are allowed to approve bulk changes get the proposal
@@ -491,7 +493,7 @@ async function handlePost(request: NextRequest) {
       : "You cannot take actions (create, edit, or delete anything) — you can only answer questions. If asked to perform an action, explain that and suggest where in the app to do it.",
   ].join("\n");
 
-  const client = new Anthropic({ apiKey });
+  const client = ai.client;
   const apiMessages = history.map((m) => ({ role: m.role, content: m.content }));
 
   type StreamParams = Parameters<Anthropic["messages"]["stream"]>[0];

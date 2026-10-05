@@ -9,7 +9,8 @@ import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendTwilioSms } from "@/lib/twilio-env";
-import { getTwilioForCompany } from "@/lib/twilio-company";
+import { getTwilioForSending } from "@/lib/twilio-company";
+import { lockedServicesError } from "@/lib/billing/company-lock";
 import { getEmailForCompany } from "@/lib/email-company";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -1218,6 +1219,9 @@ export async function sendEstimateToCustomer(
 ): Promise<SendEstimateResult> {
   const guard = await requireEstimateSender(estimateId);
   if ("error" in guard) return guard;
+  // Paused while the company's subscription is locked (DECISIONS #131).
+  const locked = await lockedServicesError(guard.companyId);
+  if (locked) return { error: locked };
 
   const admin = createAdminClient();
   const { data: estimate } = await admin
@@ -1260,7 +1264,7 @@ export async function sendEstimateToCustomer(
   const wantsText = channel !== "email";
   const wantsEmail = channel !== "text";
 
-  const twilioEnv = wantsText ? await getTwilioForCompany(guard.companyId) : null;
+  const twilioEnv = wantsText ? await getTwilioForSending(guard.companyId) : null;
 
   // A single explicit channel is a hard requirement, same as before this
   // supported "both": asking to text a customer with no phone on file is
