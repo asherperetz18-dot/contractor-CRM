@@ -80,3 +80,18 @@ test("safe to paste twice", () => {
   assert.ok(updates.length >= 3);
   for (const u of updates) assert.match(u, /owner_id is null/, "a backfill never overwrites an owner");
 });
+
+test("it brings its own phone-number rule, the same one 0129 defines", () => {
+  // Production never ran 0129, so contact_phone_key wasn't there and the
+  // first paste of this migration stopped at its index. 0129 can't simply
+  // be run now either: it would put back an older create_lead_for_unknown_
+  // caller over 0150's. So this migration defines the helper itself, word
+  // for word as 0129 has it -- whichever runs last, nothing changes.
+  const definition = (src: string) =>
+    (src.match(/create or replace function public\.contact_phone_key\(p_phone text\)[\s\S]*?\$\$;/)?.[0] ?? "")
+      .replace(/\s+/g, " ");
+  const ours = definition(sql);
+  assert.ok(ours, "0192 defines contact_phone_key");
+  assert.equal(ours, definition(read("../../supabase/migrations/0129_one_contact_per_new_caller.sql")));
+  assert.ok(sql.indexOf("function public.contact_phone_key") < sql.indexOf("contact_phone_key(to_number)"), "defined before the index uses it");
+});

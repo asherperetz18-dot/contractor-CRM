@@ -21,12 +21,20 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.183.1",
+    version: "1.183.2",
     date: "2026-10-05",
     notes: [
       "Settings → Facebook Lead Ads: a saved Page token or app secret is no longer shown on the page. The box says it's saved; leave it blank to keep it, or paste a new one to replace it.",
       "Facebook keys are now stored encrypted, like the Twilio, Stripe and email keys, and only Office or Admin users can change them. Leads keep arriving as before.",
       "If saving the advanced Facebook setup fails, the page now says why instead of showing ✓ Saved.",
+    ],
+  },
+  {
+    version: "1.183.1",
+    date: "2026-10-05",
+    notes: [
+      "Fix: the database step that makes texts private now runs. It had stopped with \"contact_phone_key does not exist\".",
+      "Fix: a new caller from CallRail or the AI receptionist gets one contact even when two of their calls arrive at once. That guard was built earlier but never switched on.",
     ],
   },
   {
