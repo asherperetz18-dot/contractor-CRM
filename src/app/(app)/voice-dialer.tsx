@@ -63,7 +63,7 @@ export function VoiceDialer({ canText }: { canText: boolean }) {
   // On by default. Recording used to start off, which is why 1 call in 63
   // has audio -- an unticked box is a decision nobody makes.
   const [recordEnabled, setRecordEnabled] = useState(true);
-  // Text, next to Call (DECISIONS #112): the keypad gives way to a message
+  // Text, next to Call (DECISIONS #113): the keypad gives way to a message
   // box for the number above it.
   const [composing, setComposing] = useState(false);
   const [textBody, setTextBody] = useState("");

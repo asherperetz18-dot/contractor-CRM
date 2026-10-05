@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 /**
- * Text from the dialer (DECISIONS #112). The dialer could only call; a
+ * Text from the dialer (DECISIONS #113). The dialer could only call; a
  * number that wasn't on a contact could only be texted by building a
  * /reply-inbox?phone= link by hand. Text now sits next to Call.
  */

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 /**
- * Who sees which texts (DECISIONS #112).
+ * Who sees which texts (DECISIONS #113).
  *
  * Every member of a company used to read every text in it: the Reply
  * Inbox, a contact's Texts tab and Text Reports all showed one rep's
@@ -13,12 +13,12 @@ import { readFileSync } from "node:fs";
  * reply belongs to whoever texted that number last, and with nobody to
  * go by, to the contact's assigned rep.
  *
- * The boundary is RLS on sms_messages (migration 0191), not the screens,
+ * The boundary is RLS on sms_messages (migration 0192), not the screens,
  * so this pins the migration itself.
  */
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-const sql = read("../../supabase/migrations/0191_text_privacy.sql");
+const sql = read("../../supabase/migrations/0192_text_privacy.sql");
 
 /** The whole statement starting at `pattern` -- a function body to its closing $$. */
 function statement(pattern: RegExp): string {

@@ -1,4 +1,4 @@
--- Texts are private to the person they belong to (DECISIONS #112).
+-- Texts are private to the person they belong to (DECISIONS #113).
 --
 -- Every member of a company could read every text in it (0117's
 -- sms_messages_select checked the company and nothing else), so the Reply

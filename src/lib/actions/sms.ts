@@ -98,7 +98,7 @@ export async function sendSms(
 }
 
 /**
- * A text sent from the dialer (DECISIONS #112). A number typed into the
+ * A text sent from the dialer (DECISIONS #113). A number typed into the
  * keypad carries no contact, but it's often already in the book, so the
  * text is filed on that contact the way the dialer's calls are
  * (call-logs.ts) -- looked up as the signed-in user, so it never lands on

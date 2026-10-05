@@ -53,3 +53,18 @@ test("a company's credentials are its own or nothing", () => {
   assert.match(shared, /accountSid: env\.accountSid, phoneNumber: env\.phoneNumber/);
   assert.doesNotMatch(shared, /authToken/);
 });
+
+test("the shared account plays back only the recordings listed at the switch", () => {
+  const src = readFileSync(join(SRC, "lib/twilio-company.ts"), "utf8");
+  const fn = body(src, "legacySharedRecordingCreds");
+  const listed = fn.indexOf('from("legacy_shared_recordings")');
+  assert.ok(listed > 0, "it must look the recording up in the list made at the switch");
+  assert.match(fn, /\.eq\("call_log_id", callLogId\)/);
+  assert.match(fn, /\.eq\("recording_url", recordingUrl\)/);
+  assert.match(fn, /recordingCredentialChoice\(/, "and only for a Twilio recording on the shared account itself");
+
+  const sql = readFileSync(join(SRC, "../supabase/migrations/0191_legacy_shared_recordings.sql"), "utf8");
+  assert.match(sql, /enable row level security/i);
+  assert.match(sql, /revoke all on public\.legacy_shared_recordings from anon, authenticated/i);
+  assert.doesNotMatch(sql, /create policy/i, "no CRM user may read or write the list");
+});

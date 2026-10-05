@@ -5149,7 +5149,7 @@ a.stat-card {
 .voice-dialer-actions > button {
   margin-left: 0;
 }
-/* The message box that stands in for the keypad when texting (#112). */
+/* The message box that stands in for the keypad when texting (#113). */
 .voice-dialer-text {
   display: block;
   width: 100%;

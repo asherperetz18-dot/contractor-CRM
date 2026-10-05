@@ -1226,14 +1226,37 @@ The object is reached through its record, never its path alone: a merged duplica
 
 **Consequence:** It needs a new Play build. The iPhone app has no plugin yet, so it shows no button. The route the WebView chooses at the start of a call is left as Android sets it.
 
-## 112 — A text belongs to whoever sent it, or to whoever texted that number last; four roles see every text
+## 112 — Recordings from the borrowing days play with the shared account, only from a list made once at the switch
+
+**Date:** 2026-10-05
+
+**Context:** Before #104, a company without its own Twilio borrowed the shared account (the server's `TWILIO_*` settings, La Home Contractor's), and its calls were recorded there. Since #104 the recording player fetches with the company's own account only (`getTwilioForCompany`), and #100 refuses a recording that isn't on that account. So those older recordings stopped playing:
+- Ca Pro Builder, now on its own account, got "No recording."
+- Companies with no Twilio of their own couldn't play any of their earlier calls.
+
+The shared account can't simply be used for any recording on it. `call_logs` is writable by a company's own members, so a row edited to point at one of La Home's recordings would then be fetched with La Home's credentials.
+
+**Decision:**
+- **The list.** `0191_legacy_shared_recordings.sql` lists, once, every call whose saved Twilio recording is on an account other than the one its company has saved now. The table is not `call_logs`: RLS is on with no policies, and anon/authenticated have no rights on it. Only the migration writes it, and only the server reads it.
+- **Which account plays a recording.** The recording route picks the account with `recordingCredentialChoice` (`src/lib/recording-range.ts`, tested):
+  - the company's own account, for a recording on that account
+  - otherwise the shared account, through `legacySharedRecordingCreds` (`src/lib/twilio-company.ts`), only for a recording on the shared account itself that is on the list for that exact call and URL
+  - otherwise nothing
+- **Guard test.** `twilio-no-fallback.test.ts` pins the list lookup and the table's lockdown.
+
+**Consequence:**
+- Old recordings play again for every company, and new calls never use the shared account.
+- The list never grows: a company that borrows nothing has nothing new to add.
+- If the `TWILIO_*` settings are ever removed from the server, these old recordings stop playing again.
+
+## 113 — A text belongs to whoever sent it, or to whoever texted that number last; four roles see every text
 
 **Date:** 2026-10-05
 
 **Context:** Every member of a company could read every text in it: 0117's `sms_messages_select` checked the company and nothing else. So the Reply Inbox, a contact's Texts tab and Text Reports showed each rep every other rep's conversations. Customer replies weren't given to anyone, and `sent_by` (0054) only said who pressed send. The owner asked for texts to be private, and for a way to text a number from the dialer.
 
 **Decision:**
-- **Who sees every text:** Admin, Office, Dispatch and Call Center (the owner's choice). Everyone else sees only texts they own or sent. The boundary is RLS on `sms_messages` (migration 0191), not the screens.
+- **Who sees every text:** Admin, Office, Dispatch and Call Center (the owner's choice). Everyone else sees only texts they own or sent. The boundary is RLS on `sms_messages` (migration 0192), not the screens.
   - Every reader that goes through the signed-in user narrows on its own: the inbox, the Texts tab, Text Reports, the inbox badge's `text_alert_rollup`, and the daily brief.
   - The admin-client readers are an Admin-only activity report, the customer's own portal thread, and the AI conversation analysis (below).
 - **A text's owner** (`owner_id`) is set by a `BEFORE INSERT` trigger, so no send path has to remember it:
@@ -1247,7 +1270,7 @@ The object is reached through its record, never its path alone: a merged duplica
 - `text-privacy.test.ts` pins the four roles, the owner rule and the migration's safety; `dialer-text.test.ts` pins the Text button and its send path. The migration was also run against a copy of the tables in PGlite (an in-process Postgres), signed in as each role.
 
 **Consequence:**
-- **Nothing changes until 0191 is run**; until then everyone keeps seeing every text.
+- **Nothing changes until 0192 is run**; until then everyone keeps seeing every text.
 - A Field, Bookkeeping or Production user sees no texts they didn't send, which includes office texts to crew about a job.
 - The AI conversation analysis still reads the contact's whole conversation through the admin client. It shows signals, not the texts themselves.
 - Reassigning a contact doesn't move texts already owned; a reply still goes to whoever texted last.
