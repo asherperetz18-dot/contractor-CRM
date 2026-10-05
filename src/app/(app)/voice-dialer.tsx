@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Capacitor } from "@capacitor/core";
 import { getVoiceAccessToken } from "@/lib/actions/voice";
 import { logCall } from "@/lib/actions/call-logs";
@@ -17,6 +17,7 @@ import {
 } from "@/lib/call-attempt";
 import { maskPhone, safeTwilioError } from "@/lib/observability/redact";
 import { callFailureMessage, shouldRebuildDevice, type DeviceError } from "@/lib/dialer-errors";
+import { isSpeakerOn, setSpeaker, speakerSwitchAvailable } from "@/lib/call-audio";
 import { addBreadcrumb, captureError } from "@/lib/observability/sentry";
 
 // Kept in sync with the @twilio/voice-sdk version in package.json --
@@ -42,11 +43,20 @@ function tokenStillFresh(mintedAt: number) {
   return clockNow() - mintedAt < 50 * 60 * 1000;
 }
 
+// Whether this app build can switch the speaker never changes after load,
+// so there is nothing to subscribe to; the server can't know, hence false.
+const emptySubscribe = () => () => {};
+
 export function VoiceDialer() {
   const [expanded, setExpanded] = useState(false);
   const [phone, setPhone] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
   const [muted, setMuted] = useState(false);
+  // The loudspeaker, phone app only (DECISIONS #111). Read back from the
+  // phone rather than assumed: the WebView picks the route when the call
+  // opens the microphone, and the button must show the one that's live.
+  const canSwitchSpeaker = useSyncExternalStore(emptySubscribe, speakerSwitchAvailable, () => false);
+  const [speakerOn, setSpeakerOn] = useState(false);
   const [duration, setDuration] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
   // On by default. Recording used to start off, which is why 1 call in 63
@@ -264,6 +274,7 @@ export function VoiceDialer() {
       call.on("ringing", () => {
         markRinging(attempt);
         setStatus("ringing");
+        refreshSpeaker();
         addBreadcrumb({ category: "voice", message: "ringing", correlationId });
       });
       call.on("accept", () => {
@@ -271,6 +282,7 @@ export function VoiceDialer() {
         callSidRef.current = call.parameters.CallSid ?? null;
         addBreadcrumb({ category: "voice", message: "connected", correlationId, data: { callSid: callSidRef.current } });
         startTimer();
+        refreshSpeaker();
       });
       call.on("disconnect", () => {
         if (!settleAttempt(attempt)) return;
@@ -375,6 +387,19 @@ export function VoiceDialer() {
     callRef.current?.disconnect();
     setStatus("ended");
     stopTimer();
+  }
+
+  function refreshSpeaker() {
+    if (!speakerSwitchAvailable()) return;
+    isSpeakerOn().then(setSpeakerOn, () => {});
+  }
+
+  async function toggleSpeaker() {
+    try {
+      setSpeakerOn(await setSpeaker(!speakerOn));
+    } catch {
+      setErrorMsg("Couldn't switch the speaker. Try again.");
+    }
   }
 
   function toggleMute() {
@@ -486,6 +511,17 @@ export function VoiceDialer() {
                 <button className="btn-ghost" onClick={toggleMute}>
                   {muted ? "Unmute" : "Mute"}
                 </button>
+                {canSwitchSpeaker && (
+                  <button
+                    type="button"
+                    className={"btn-ghost" + (speakerOn ? " voice-dialer-on" : "")}
+                    aria-pressed={speakerOn}
+                    title={speakerOn ? "On the loudspeaker. Tap for the earpiece." : "Tap to put the call on the loudspeaker."}
+                    onClick={toggleSpeaker}
+                  >
+                    🔊 Speaker
+                  </button>
+                )}
                 <button className="btn-danger-ghost" onClick={handleHangup}>
                   Hang Up
                 </button>

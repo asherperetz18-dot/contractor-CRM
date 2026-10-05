@@ -5140,8 +5140,20 @@ a.stat-card {
 }
 .voice-dialer-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
+}
+/* The row's gap spaces the buttons; .btn-ghost's own left margin pushed
+   Mute off-centre. */
+.voice-dialer-actions > button {
+  margin-left: 0;
+}
+/* Speaker while the call is on the loudspeaker (DECISIONS #111). */
+.voice-dialer-actions .voice-dialer-on {
+  background: var(--blueprint);
+  border-color: var(--blueprint);
+  color: #fff;
 }
 
 /* The call recording player (src/components/recording-player.tsx):
