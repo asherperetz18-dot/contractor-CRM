@@ -73,8 +73,8 @@ export async function createChangeOrder(
       tax_rate_bp: parent.tax_rate_bp,
       // The extra work happens at the same site the contract names.
       job_address: parent.job_address ?? null,
-      // No deposit. The CSLB cap applies to the contract, and asking for
-      // one again on every extra is how a job quietly exceeds it.
+      // No deposit. The deposit cap applies to the contract, and asking
+      // for one again on every extra is how a job quietly exceeds it.
       deposit_percent_bp: 0,
       deposit_cap_cents: 0,
       deposit_cents: 0,

@@ -187,7 +187,7 @@ export function VendorsView({ vendors, canEdit }: { vendors: Vendor[]; canEdit: 
             <label className="field">
               <span className="field-label">Licence number</span>
               <input
-                placeholder="CSLB number, for subs"
+                placeholder="Licence number, for subs"
                 value={fields.licenseNumber}
                 onChange={(e) => set({ licenseNumber: e.target.value })}
               />

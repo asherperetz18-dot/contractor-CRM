@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/types";
 import { manualClearUpdate } from "@/lib/data/manual-clear";
 import { manualEditUpdate, type ManualEditInput } from "@/lib/data/manual-edit";
+import { depositRuleSentence } from "@/lib/deposit-rule";
 
 export type ManualPaymentInput = {
   estimateId: string;
@@ -122,9 +123,9 @@ export async function recordManualPayment(
     );
   }
   if (!input.phaseId) {
-    // California caps a home-improvement down payment at $1,000 or 10%,
-    // whichever is less -- and the cap does not care that the customer
-    // paid in cash.
+    // The deposit rule copied onto the estimate (the company's own; for a
+    // California company, the legal limit of $1,000 or 10%) -- and the cap
+    // does not care that the customer paid in cash.
     const legalCap = depositCents(
       estimate.total_cents,
       estimate.deposit_percent_bp,
@@ -132,7 +133,10 @@ export async function recordManualPayment(
     );
     if (legalCap > 0 && amountCents > legalCap) {
       warnings.push(
-        `The deposit limit on this contract is ${moneyCents(legalCap)} (10% or $1,000, whichever is less).`
+        `The deposit limit on this contract is ${moneyCents(legalCap)} (${depositRuleSentence({
+          percentBp: estimate.deposit_percent_bp,
+          capCents: estimate.deposit_cap_cents,
+        })}).`
       );
     }
   }

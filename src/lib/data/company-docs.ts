@@ -9,7 +9,7 @@
 export type CompanyDocKind = "license" | "insurance" | "bond" | "other";
 
 export const COMPANY_DOC_KINDS: { value: CompanyDocKind; label: string; hint: string }[] = [
-  { value: "license", label: "Contractor licence", hint: "CSLB licence or state certification" },
+  { value: "license", label: "Contractor licence", hint: "State contractor licence or certification" },
   { value: "insurance", label: "Insurance certificate", hint: "General liability or workers' comp" },
   { value: "bond", label: "Bond", hint: "Contractor's bond certificate" },
   { value: "other", label: "Other", hint: "Anything else worth showing a customer" },

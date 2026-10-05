@@ -1,9 +1,12 @@
 import { AdminGate } from "@/components/admin-gate";
+import { getDepositRule } from "@/lib/actions/settings";
 import { ContractsView } from "./contracts-view";
+import { DepositRuleCard } from "./deposit-rule-card";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContractsPage() {
+  const deposit = await getDepositRule();
   return (
     <AdminGate>
       <div className="module-toolbar">
@@ -15,6 +18,7 @@ export default async function ContractsPage() {
           </p>
         </div>
       </div>
+      {deposit && <DepositRuleCard initial={deposit} />}
       <ContractsView />
     </AdminGate>
   );
