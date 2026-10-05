@@ -5,15 +5,19 @@ import { moneyCents } from "@/lib/data/types";
 import { startDepositCheckout } from "@/lib/actions/portal-payments";
 import type { DepositState } from "@/lib/actions/portal-payments";
 import { STANDARD_WORDS, word, type CompanyWords } from "@/lib/company-words";
+import { depositDueLine } from "@/lib/document-words";
 
 export function DepositPayment({
   estimateId,
   state,
   justPaid,
   companyName,
+  kind,
   words = STANDARD_WORDS,
 }: {
   estimateId: string;
+  /** A change order's deposit is due on signing it, not to schedule the job. */
+  kind: string | null;
   state: DepositState;
   justPaid: boolean;
   /** Who the customer is paying, by name -- not "your contractor". */
@@ -82,8 +86,7 @@ export function DepositPayment({
     <div className="portal-card estdoc-sign">
       <h2 className="portal-card-title">Pay your {word(words, "deposit", { lower: true })}</h2>
       <p className="estdoc-muted">
-        {moneyCents(state.amountCents)} is due to schedule your {project}. You can pay by card or by
-        bank transfer.
+        {depositDueLine(kind, state.amountCents, words)} You can pay by card or by bank transfer.
       </p>
       {error && <p className="error-note">{error}</p>}
       <div className="estdoc-sign-actions">
