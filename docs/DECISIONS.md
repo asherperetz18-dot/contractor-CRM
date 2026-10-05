@@ -1630,3 +1630,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a new company sees what's left to set up and where; the platform sees which companies haven't. No database step.
 
+## 137 — A change order shows the customer its own payment schedule
+
+**Date:** 2026-10-05
+
+**Context:** The customer's copy of a change order (portal page and PDF) never printed a payment schedule. The rule dated from when a change order was billed as one lump on its contract, and a second schedule would have been terms that governed nothing. That stopped being true: its money is collected stage by stage on its own schedule (#015), so a customer signed an $8,500 change order with no idea when any of it was due. Separately, the portal looked up the parent contract with the staff client; a customer has no CRM login, so row-level security returned nothing and the change order lost "To contract EST-1112", the original total and the revised total.
+
+**Decision:**
+- **The change order's own schedule prints, headed as its own** ("Payment schedule for this change order"), its deposit "Due when you sign this change order", and under it: these payments don't change the ones already scheduled on the contract. Percentages are of the change order's total.
+- **No stages of its own → one line**, billed as one payment added to the contract's schedule (a credit: taken off it). Nothing when there is no contract to name or nothing owed.
+- **Web and PDF pick the section through one pure, tested helper** (`documentPaymentSection`, `src/lib/document-words.ts`), with the wording beside the other document labels in the company's words. A source test fails if either renderer stops using it.
+- **Each stage's share prints as a percent on both copies** (`paymentPercentLabel`). The PDF printed the raw number — "(33.333333333333336)" — on every contract.
+- **The portal reads the parent with the service role, scoped to the viewer's lead** (`portalParentContract`) — the same boundary the page already applies to the document itself. The staff preview keeps `getParentContract`.
+
+**Consequence:** the customer sees what they're agreeing to pay and when, and what the change order adds up to. Pay buttons are unchanged: they still appear only once a stage is billed, and not at all for a customer invoiced separately. No database step.

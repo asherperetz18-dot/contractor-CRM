@@ -10,7 +10,6 @@ import {
   discountPercentLabel,
   isPricelessKind,
   moneyCents,
-  paymentPercentOfTotal,
   quantityIsMeaningful,
   signatureProgress,
   type Estimate,
@@ -19,7 +18,13 @@ import {
   type EstimatePayment,
   type EstimateSigner,
 } from "@/lib/data/types";
-import { documentLabels } from "@/lib/document-words";
+import {
+  changeOrderOnePaymentLine,
+  changeOrderScheduleNote,
+  documentLabels,
+  documentPaymentSection,
+  paymentPercentLabel,
+} from "@/lib/document-words";
 import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
 /**
@@ -417,23 +422,47 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
     });
   }
 
-  // 8. Payment schedule
-  // Never on a change order or an invoice, as on the web copy.
-  if (!isChangeOrder && !isInvoice && (estimate.deposit_cents || payments.length > 0)) {
-    w.heading("Payment schedule");
+  // 8. Payment schedule -- the same section the web copy picks, so the
+  // signed copy keeps the stages the customer read when they signed.
+  const paymentSection = documentPaymentSection({
+    kind: estimate.kind,
+    depositCents: estimate.deposit_cents,
+    phaseCount: payments.length,
+    totalCents: estimate.total_cents,
+    hasParent: !!parent,
+  });
+  if (paymentSection === "one-payment" && parent) {
+    w.heading("Payment");
+    w.text(changeOrderOnePaymentLine(estimate.total_cents, parent.doc_number, bundle.words ?? STANDARD_WORDS), {
+      size: 9.5,
+    });
+  }
+  if (paymentSection === "schedule") {
+    // " (50.00%)", or nothing on a document with no total to share.
+    const share = (cents: number) => {
+      const label = paymentPercentLabel(cents, estimate.total_cents);
+      return label ? ` (${label})` : "";
+    };
+    w.heading(L.scheduleHeading);
     if (estimate.deposit_cents) {
       w.row(
-        `${L.deposit} - ${L.depositDue.charAt(0).toLowerCase()}${L.depositDue.slice(1)} (${paymentPercentOfTotal(estimate.deposit_cents, estimate.total_cents)})`,
+        `${L.deposit} - ${L.depositDue.charAt(0).toLowerCase()}${L.depositDue.slice(1)}${share(estimate.deposit_cents)}`,
         moneyCents(estimate.deposit_cents),
         { size: 10 }
       );
     }
     for (const p of payments) {
       w.row(
-        `${p.name}${p.description ? ` - ${p.description}` : ""} (${paymentPercentOfTotal(p.amount_cents, estimate.total_cents)})`,
+        `${p.name}${p.description ? ` - ${p.description}` : ""}${share(p.amount_cents)}`,
         moneyCents(p.amount_cents),
         { size: 10 }
       );
+    }
+    if (isChangeOrder && parent) {
+      w.text(changeOrderScheduleNote(parent.doc_number, bundle.words ?? STANDARD_WORDS), {
+        size: 9,
+        color: MUTED,
+      });
     }
   }
 

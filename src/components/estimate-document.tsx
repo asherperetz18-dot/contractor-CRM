@@ -3,7 +3,6 @@ import { Fragment } from "react";
 import {
   discountPercentLabel,
   moneyCents,
-  paymentPercentOfTotal,
   quantityIsMeaningful,
   depositPayment,
   paymentMethodLabel,
@@ -26,7 +25,13 @@ import { fillContract, lateContractValues, parseContract } from "@/lib/contracts
 import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
 import { OptionalItemCheckbox } from "@/components/optional-item-checkbox";
 import { clientCompanyName, clientName, clientContactName } from "@/lib/data/client-name";
-import { documentLabels } from "@/lib/document-words";
+import {
+  changeOrderOnePaymentLine,
+  changeOrderScheduleNote,
+  documentLabels,
+  documentPaymentSection,
+  paymentPercentLabel,
+} from "@/lib/document-words";
 import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
 export type DocumentCompany = {
@@ -110,8 +115,7 @@ export function groupIncludedItems(items: EstimateItem[]): {
 }
 
 function pct(amountCents: number, totalCents: number): string {
-  const p = paymentPercentOfTotal(amountCents, totalCents);
-  return p === null ? "—" : `${p.toFixed(2)}%`;
+  return paymentPercentLabel(amountCents, totalCents) ?? "—";
 }
 
 /**
@@ -206,6 +210,13 @@ export function EstimateDocument({
   const priceless = isPricelessKind(estimate.kind);
   // Every label in the company's words; the PDF reads the same ones.
   const L = documentLabels(estimate.kind, words);
+  const paymentSection = documentPaymentSection({
+    kind: estimate.kind,
+    depositCents: estimate.deposit_cents,
+    phaseCount: payments.length,
+    totalCents: estimate.total_cents,
+    hasParent: !!parent,
+  });
 
   // Drop the Qty and Price columns entirely when no line has a real
   // measurement: every cell would be blank, and Price would only repeat
@@ -534,14 +545,20 @@ export function EstimateDocument({
 
       {/* The payment schedule is the part a homeowner reads hardest -- it
           is what they are committing to pay and when. Percentages are of
-          the contract total, matching what the rep saw when building it. */}
-      {/* Never on a change order. Its amount is added as one phase to the
-          contract's existing schedule, so printing a second schedule here
-          would offer the customer payment terms that do not govern
-          anything -- two schedules for one job, disagreeing. */}
-      {!isChangeOrder && !isInvoice && (estimate.deposit_cents || payments.length > 0) && (
+          this document's total, matching what the rep saw when building it.
+          A change order's own stages are what its money is collected on
+          (DECISIONS #015), so it prints them too, headed as its own. */}
+      {paymentSection === "one-payment" && parent && (
         <section className="estdoc-schedule">
-          <div className="estdoc-label">Payment schedule</div>
+          <div className="estdoc-label">Payment</div>
+          <p className="estdoc-muted">
+            {changeOrderOnePaymentLine(estimate.total_cents, parent.doc_number, words)}
+          </p>
+        </section>
+      )}
+      {paymentSection === "schedule" && (
+        <section className="estdoc-schedule">
+          <div className="estdoc-label">{L.scheduleHeading}</div>
           <table className="estdoc-items estdoc-schedule-table">
             <tbody>
               {estimate.deposit_cents ? (
@@ -588,6 +605,9 @@ export function EstimateDocument({
               ))}
             </tbody>
           </table>
+          {isChangeOrder && parent && (
+            <p className="estdoc-muted">{changeOrderScheduleNote(parent.doc_number, words)}</p>
+          )}
         </section>
       )}
 
