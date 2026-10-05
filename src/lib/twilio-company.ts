@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { getTwilioEnv } from "@/lib/twilio-env";
 import type { CompanyTwilioRow, SharedTwilio } from "@/lib/twilio-source";
+import { recordingCredentialChoice } from "@/lib/recording-range";
 
 export type CompanyTwilio = {
   accountSid: string;
@@ -166,6 +167,31 @@ export async function companyForAccountSid(accountSid: string): Promise<string |
 export function sharedTwilio(): SharedTwilio | null {
   const env = getTwilioEnv();
   return env ? { accountSid: env.accountSid, phoneNumber: env.phoneNumber } : null;
+}
+
+/**
+ * The shared account's credentials for one purpose only: playing back a
+ * recording a company made on it while it borrowed that account, before
+ * every company had its own (DECISIONS #104, #111). Only a recording
+ * listed at the switch in legacy_shared_recordings (0191) -- a table no
+ * CRM user can read or write -- and only one on the shared account
+ * itself. Never for texting, calling or anything new.
+ */
+export async function legacySharedRecordingCreds(
+  callLogId: string,
+  recordingUrl: string
+): Promise<{ accountSid: string; authToken: string } | null> {
+  const env = getTwilioEnv();
+  if (!env) return null;
+  if (recordingCredentialChoice(recordingUrl, null, env, true) !== "shared") return null;
+  const { data } = await createAdminClient()
+    .from("legacy_shared_recordings")
+    .select("call_log_id")
+    .eq("call_log_id", callLogId)
+    .eq("recording_url", recordingUrl)
+    .maybeSingle();
+  if (!data) return null;
+  return { accountSid: env.accountSid, authToken: env.authToken };
 }
 
 /**

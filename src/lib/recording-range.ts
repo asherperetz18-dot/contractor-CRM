@@ -66,3 +66,25 @@ export function twilioRecordingUrlAllowed(url: string, accountSid: string): bool
   if (!twilioApi) return false;
   return new RegExp(`^/2010-04-01/Accounts/${accountSid}/Recordings/RE[0-9a-f]{32}(\\.(mp3|wav))?$`, "i").test(u.pathname);
 }
+
+/**
+ * Which account's credentials may fetch a Twilio recording (DECISIONS #111).
+ *
+ * The company's own account, for a recording on that account. Otherwise
+ * the shared account -- the server's TWILIO_* settings, La Home's -- but
+ * only for a recording on that same account AND listed once, at the
+ * switch, as one a company made while it borrowed the shared account
+ * (`listedAtSwitch`). call_logs is writable by a company's own members,
+ * so a URL alone never decides: an edited row pointing at La Home's
+ * recording isn't on the list. Null: fetch nothing.
+ */
+export function recordingCredentialChoice(
+  url: string,
+  own: { accountSid: string } | null,
+  shared: { accountSid: string } | null,
+  listedAtSwitch: boolean
+): "own" | "shared" | null {
+  if (own && twilioRecordingUrlAllowed(url, own.accountSid)) return "own";
+  if (shared && listedAtSwitch && twilioRecordingUrlAllowed(url, shared.accountSid)) return "shared";
+  return null;
+}

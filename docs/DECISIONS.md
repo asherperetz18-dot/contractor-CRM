@@ -1211,3 +1211,26 @@ The object is reached through its record, never its path alone: a merged duplica
   - **La Home:** add a Resend API key from the account where `lahomecontractor.com` is verified, in La Home → Settings → Email.
   - **The shared sender:** verify `aibuildpros.com` in Resend, then change `EMAIL_FROM` in Vercel to an AI Build Pros address.
 
+## 111 — Recordings from the borrowing days play with the shared account, only from a list made once at the switch
+
+**Date:** 2026-10-05
+
+**Context:** Before #104, a company without its own Twilio borrowed the shared account (the server's `TWILIO_*` settings, La Home Contractor's), and its calls were recorded there. Since #104 the recording player fetches with the company's own account only (`getTwilioForCompany`), and #100 refuses a recording that isn't on that account. So those older recordings stopped playing:
+- Ca Pro Builder, now on its own account, got "No recording."
+- Companies with no Twilio of their own couldn't play any of their earlier calls.
+
+The shared account can't simply be used for any recording on it. `call_logs` is writable by a company's own members, so a row edited to point at one of La Home's recordings would then be fetched with La Home's credentials.
+
+**Decision:**
+- **The list.** `0191_legacy_shared_recordings.sql` lists, once, every call whose saved Twilio recording is on an account other than the one its company has saved now. The table is not `call_logs`: RLS is on with no policies, and anon/authenticated have no rights on it. Only the migration writes it, and only the server reads it.
+- **Which account plays a recording.** The recording route picks the account with `recordingCredentialChoice` (`src/lib/recording-range.ts`, tested):
+  - the company's own account, for a recording on that account
+  - otherwise the shared account, through `legacySharedRecordingCreds` (`src/lib/twilio-company.ts`), only for a recording on the shared account itself that is on the list for that exact call and URL
+  - otherwise nothing
+- **Guard test.** `twilio-no-fallback.test.ts` pins the list lookup and the table's lockdown.
+
+**Consequence:**
+- Old recordings play again for every company, and new calls never use the shared account.
+- The list never grows: a company that borrows nothing has nothing new to add.
+- If the `TWILIO_*` settings are ever removed from the server, these old recordings stop playing again.
+
