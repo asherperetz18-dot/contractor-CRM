@@ -7,6 +7,7 @@
 import { isBillingLocked } from "./billing/subscription.ts";
 import { usageFromRow, type MonthUsage, type UsageRow } from "./usage/usage.ts";
 import { limitsFromRow, type CompanyLimits, type LimitsRow } from "./usage/limits.ts";
+import type { SetupSummary } from "./setup-checklist.ts";
 
 export type DirectoryCompany = { id: string; name: string; created_at: string };
 
@@ -72,6 +73,8 @@ export type CompanyDirectoryRow = {
   limits: CompanyLimits;
   /** Closed by a platform admin, and why (DECISIONS #135); null when open. */
   closed: { closedAt: string; reason: string | null } | null;
+  /** How much of the setup checklist it has done (DECISIONS #136); added after the directory is built. */
+  setup?: SetupSummary;
 };
 
 function person(p: DirectoryMember["profiles"]): Person | null {

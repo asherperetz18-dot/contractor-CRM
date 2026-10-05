@@ -61,14 +61,19 @@ const getServerRecents = () => NO_RECENTS;
 export function SettingsGrid({
   logoUrl,
   isAdmin,
+  startCard = null,
 }: {
   logoUrl: string | null;
   isAdmin: boolean;
+  /** A card to open on arrival, e.g. the Logo card from the setup checklist. */
+  startCard?: "logo" | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [query, setQuery] = useState("");
-  const [activeCard, setActiveCard] = useState<SettingsCardDef | null>(null);
+  const [activeCard, setActiveCard] = useState<SettingsCardDef | null>(() =>
+    startCard ? (SETTINGS_SECTIONS.flatMap((sec) => sec.cards).find((c) => c.key === startCard) ?? null) : null
+  );
   const [logo, setLogo] = useState(logoUrl);
   const [logoPreview, setLogoPreview] = useState<string | null>(logoUrl);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -266,16 +271,17 @@ export function SettingsGrid({
                   // to open one and be told it does nothing. On a screen
                   // being shown to other contractors that reads as a
                   // product two thirds finished rather than one with a
-                  // roadmap.
+                  // roadmap. The Logo card (`key`) opens its own panel
+                  // here instead of a page, and works: no SOON on it.
                   <div
                     key={c.title}
-                    className="settings-card settings-card-soon"
+                    className={c.key ? "settings-card" : "settings-card settings-card-soon"}
                     onClick={() => openCard(c)}
                   >
                     <span className="settings-card-icon">{c.icon}</span>
                     <div>
                       <div className="settings-card-title">
-                        {c.title} <span className="settings-soon-tag">SOON</span>
+                        {c.title} {!c.key && <span className="settings-soon-tag">SOON</span>}
                       </div>
                       <div className="settings-card-desc">{c.desc}</div>
                     </div>

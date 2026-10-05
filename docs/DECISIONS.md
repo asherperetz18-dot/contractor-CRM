@@ -1614,3 +1614,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a company can be closed and reopened in one click without losing anything. **Database step: run `supabase/migrations/0201_company_closures.sql`.**
 
+## 136 — A setup checklist for new companies
+
+**Date:** 2026-10-05
+
+**Context:** A new company starts with its lists filled in, but nothing that is its own: no business phone, email or address on its documents, no logo, no texting number (it can't text or call until it connects its own Twilio — #104), no way to take payments online, no contract on its estimates, and nobody else on the team. Nothing told a new Admin any of that, and the platform couldn't see which companies were stuck.
+
+**Decision:**
+- **Six steps, each with a done signal the CRM already has:** business phone + email + address (`company_profile`), logo (`logo_url`), its own Twilio account, token and number (`twilioSource`'s "own" test), its own Stripe key, a default contract template, and at least one more active person besides the owner (platform admins looking in aren't counted). Pure rules in `src/lib/setup-checklist.ts`.
+- **Time zone isn't a step:** a company that never chose one can't be told apart from one that chose the default (Pacific). The details step names the current zone so it gets checked while the profile is open.
+- **On the Dashboard for Office and Admin people only** — the ones who can open those settings pages. Each step links to its page (`/settings?card=logo` now opens the Logo card). It goes away by itself once every step is done; **Hide** puts it away on that browser (a cookie per company), with nothing stored in the database.
+- **Read on the server only:** the encrypted Twilio and Stripe values are read through the service-role client for the signed-in company and reduced to "saved / not saved"; they never reach the page.
+- **On Platform Admin › Companies**, under each company's name: "Setup 4 of 6", with what's missing on hover (written out on a phone), or "Setup done". Two paged reads for every company, not a query each.
+- The Logo card in Settings no longer carries a SOON tag: it opens a working panel, unlike the cards that have no page yet.
+
+**Consequence:** a new company sees what's left to set up and where; the platform sees which companies haven't. No database step.
+

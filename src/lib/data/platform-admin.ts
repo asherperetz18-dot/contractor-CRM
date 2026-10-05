@@ -11,6 +11,7 @@ import {
 } from "@/lib/company-directory";
 import { usageMonth, type UsageRow } from "@/lib/usage/usage";
 import type { LimitsRow } from "@/lib/usage/limits";
+import { listSetupSummaries } from "@/lib/data/setup-checklist";
 
 export type PlatformAdminRow = {
   id: string;
@@ -144,5 +145,8 @@ export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
   const closures = await selectAll<{ company_id: string; closed_at: string; reason: string | null }>((from, to) =>
     admin.from("company_closures").select("*").order("company_id").range(from, to)
   );
-  return buildCompanyDirectory(companies, members, billing, usage, limits, closures);
+  const rows = buildCompanyDirectory(companies, members, billing, usage, limits, closures);
+  // The setup checklist's count (DECISIONS #136), with the directory's own team count.
+  const setup = await listSetupSummaries(new Map(rows.map((r) => [r.id, r.team])));
+  return rows.map((r) => ({ ...r, setup: setup.get(r.id) }));
 }

@@ -12576,6 +12576,26 @@ textarea.est-item-desc:disabled {
   gap: 6px;
 }
 
+/* Platform Admin › Companies: how much of the setup checklist is done, under the name. */
+.company-setup {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.company-setup.done {
+  color: var(--success);
+}
+/* Desktop: the count, with what's missing on hover -- the table has no
+   room for the list. A phone shows the list itself (below). */
+.company-setup-count {
+  border-bottom: 1px dotted var(--ink-soft);
+  cursor: help;
+}
+.company-setup-missing {
+  display: none;
+}
+
 /* Platform Admin › Companies: this month's AI / texts / emails. */
 .company-usage-cell {
   font-size: 12px;
@@ -12676,6 +12696,16 @@ textarea.est-item-desc:disabled {
     content: attr(data-label) ": ";
     color: var(--ink-soft);
     font-size: 12px;
+  }
+  .company-directory-table .company-setup {
+    font-size: 12px;
+    white-space: normal;
+  }
+  .company-directory-table .company-setup-missing {
+    display: inline;
+  }
+  .company-directory-table .company-setup-count {
+    border-bottom: 0;
   }
   .company-directory-table td[data-label="Owner"] .invite-email {
     display: inline;
@@ -13276,5 +13306,114 @@ textarea.est-item-desc:disabled {
   }
   .legal-card {
     padding: 20px 18px;
+  }
+}
+
+/* Dashboard: the setup checklist a new company sees until it's done (DECISIONS #136). */
+.setup-checklist {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  max-width: 860px;
+}
+.setup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.setup-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+.setup-sub {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin: 2px 0 0;
+}
+.setup-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--paper);
+  margin: 12px 0 6px;
+  overflow: hidden;
+}
+.setup-bar span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  border-radius: 3px;
+}
+.setup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.setup-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.setup-item:first-child {
+  border-top: none;
+}
+.setup-mark {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.setup-item.done .setup-mark {
+  background: var(--success);
+  border-color: var(--success);
+}
+.setup-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.setup-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.setup-item.done .setup-item-title {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.setup-item-detail {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+.setup-done {
+  flex: none;
+  font-size: 12px;
+  color: var(--success);
+  font-weight: 600;
+}
+.setup-item .btn-primary.small {
+  flex: none;
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .setup-checklist {
+    margin: 0 0 14px;
+    padding: 14px;
+  }
+  .setup-item {
+    align-items: flex-start;
   }
 }

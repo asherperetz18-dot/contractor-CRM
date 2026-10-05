@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { companyNow } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
@@ -12,6 +13,10 @@ import { DashboardView } from "./dashboard-view";
 import { PhoneToday } from "./phone-today";
 import { navHrefs } from "@/lib/mobile-tabs";
 import { quickActions, upcomingCards, type UpcomingLead } from "@/lib/phone-today";
+import { isAdminRole } from "@/lib/data/types";
+import { getSetupFacts } from "@/lib/data/setup-checklist";
+import { setupHiddenCookie, setupItems } from "@/lib/setup-checklist";
+import { SetupChecklist } from "./setup-checklist";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -25,11 +30,16 @@ export default async function DashboardPage() {
   const now = await companyNow();
   const todayISO = isoDay(now);
 
+  // The setup checklist (DECISIONS #136): for the people who can do its
+  // steps, until they're all done or it's hidden on this browser.
+  const wantsSetup =
+    !!profile && isAdminRole(profile) && !(await cookies()).has(setupHiddenCookie(companyId));
+
   // One reduced call (dashboard_rollup, 0162, with a tested fallback)
   // serves the dashboard on every screen size -- the phone widgets that
   // used to need their own task/call/week/month queries are gone, since
   // the dashboard itself now renders on phones and shows all of that.
-  const [rollup, recentLeads, nextEvents, stagesRes, members, visibilityRows] =
+  const [rollup, recentLeads, nextEvents, stagesRes, members, visibilityRows, setupFacts] =
     await Promise.all([
       getDashboardRollup(presetWindow("month", now)),
       supabase
@@ -56,7 +66,9 @@ export default async function DashboardPage() {
         .from("role_page_visibility")
         .select("id, role, page_key, visible")
         .eq("company_id", companyId),
+      wantsSetup ? getSetupFacts(companyId) : Promise.resolve(null),
     ]);
+  const setup = setupFacts ? setupItems(setupFacts) : null;
 
   // The phone's Today names each upcoming appointment's client and where
   // to drive: only the (at most five) contacts those events point at.
@@ -92,37 +104,40 @@ export default async function DashboardPage() {
   const canMoney = canViewFinancials(profile);
 
   return (
-    <PhoneToday
-      todayISO={todayISO}
-      attention={rollup.attention}
-      canMoney={canMoney}
-      month={{
-        leads: rollup.window.leads,
-        prevLeads: rollup.prev.leads,
-        appts: rollup.window.appts,
-        prevAppts: rollup.prev.appts,
-      }}
-      cards={upcomingCards(events, (eventLeads as UpcomingLead[] | null) ?? [], todayISO)}
-      actions={quickActions(navHrefs(filteredNav))}
-    >
-      <div className="module-toolbar">
-        <div>
-          <h1 className="module-title">Dashboard</h1>
-          <p className="module-sub">Overview of your business</p>
-        </div>
-      </div>
-
-      <DashboardView
-        initialRollup={rollup}
-        savedPanelOrder={profile?.dashboard_panel_order ?? null}
+    <>
+      {setup?.some((i) => !i.done) && <SetupChecklist companyId={companyId} items={setup} />}
+      <PhoneToday
+        todayISO={todayISO}
+        attention={rollup.attention}
         canMoney={canMoney}
-        stages={(stagesRes.data as PipelineStageRow[]) ?? []}
-        repNames={repNames}
-        recentLeads={(recentLeads.data as Lead[] | null) ?? []}
-        nextEvents={events}
-      />
+        month={{
+          leads: rollup.window.leads,
+          prevLeads: rollup.prev.leads,
+          appts: rollup.window.appts,
+          prevAppts: rollup.prev.appts,
+        }}
+        cards={upcomingCards(events, (eventLeads as UpcomingLead[] | null) ?? [], todayISO)}
+        actions={quickActions(navHrefs(filteredNav))}
+      >
+        <div className="module-toolbar">
+          <div>
+            <h1 className="module-title">Dashboard</h1>
+            <p className="module-sub">Overview of your business</p>
+          </div>
+        </div>
 
-      <MobileDashboard modules={modules} />
-    </PhoneToday>
+        <DashboardView
+          initialRollup={rollup}
+          savedPanelOrder={profile?.dashboard_panel_order ?? null}
+          canMoney={canMoney}
+          stages={(stagesRes.data as PipelineStageRow[]) ?? []}
+          repNames={repNames}
+          recentLeads={(recentLeads.data as Lead[] | null) ?? []}
+          nextEvents={events}
+        />
+
+        <MobileDashboard modules={modules} />
+      </PhoneToday>
+    </>
   );
 }
