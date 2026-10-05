@@ -4,6 +4,7 @@ import { isAdminRole, isPlatformAdmin } from "@/lib/data/types";
 import { readCompanyBilling } from "@/lib/billing/company-billing";
 import { isBillingLocked } from "@/lib/billing/subscription";
 import { lockReason } from "@/lib/billing/trial";
+import { readCompanyClosure } from "@/lib/billing/company-closure";
 import { BillingLockActions } from "./billing-lock-actions";
 
 export const metadata = { title: "Subscription ended" };
@@ -26,8 +27,12 @@ export default async function BillingLockedPage({
 
   // Read fresh, not from the layout's cache, so the moment a renewal
   // lands this page lets them straight back in.
-  const billing = await readCompanyBilling(profile.company_id);
-  if (!isBillingLocked(billing?.status) || isPlatformAdmin(profile)) redirect("/");
+  const [billing, closure] = await Promise.all([
+    readCompanyBilling(profile.company_id),
+    // Closed by a platform admin (DECISIONS #135): locked the same way.
+    readCompanyClosure(profile.company_id),
+  ]);
+  if (!(isBillingLocked(billing?.status) || closure) || isPlatformAdmin(profile)) redirect("/");
 
   const { renewed } = await searchParams;
   const companies = await getCurrentUserCompanies();
@@ -39,7 +44,15 @@ export default async function BillingLockedPage({
   return (
     <div className="auth-shell">
       <div className="auth-card">
-        {trialEnded ? (
+        {closure ? (
+          <>
+            <h1 className="auth-title">{companyName} is closed</h1>
+            <p className="auth-sub">
+              The AI Build Pro account for {companyName} has been closed, so the CRM is locked.
+              Nothing has been deleted. To reopen it, get in touch with AI Build Pros.
+            </p>
+          </>
+        ) : trialEnded ? (
           <>
             <h1 className="auth-title">{companyName}&apos;s free trial has ended</h1>
             <p className="auth-sub">
@@ -61,6 +74,7 @@ export default async function BillingLockedPage({
           canManage={isAdminRole(profile)}
           renewed={renewed === "1"}
           trialEnded={trialEnded}
+          closed={closure !== null}
           otherCompanies={others}
         />
       </div>

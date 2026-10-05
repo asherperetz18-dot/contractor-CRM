@@ -70,6 +70,8 @@ export type CompanyDirectoryRow = {
   usage: MonthUsage;
   /** Its monthly limits; null each where none is set (DECISIONS #133). */
   limits: CompanyLimits;
+  /** Closed by a platform admin, and why (DECISIONS #135); null when open. */
+  closed: { closedAt: string; reason: string | null } | null;
 };
 
 function person(p: DirectoryMember["profiles"]): Person | null {
@@ -84,8 +86,11 @@ export function buildCompanyDirectory(
   /** This month's company_usage rows (0199); none before it has run. */
   usage: UsageRow[] = [],
   /** company_limits rows (0200); none before it has run. */
-  limits: LimitsRow[] = []
+  limits: LimitsRow[] = [],
+  /** company_closures rows (0201); none before it has run. */
+  closures: { company_id: string; closed_at: string; reason: string | null }[] = []
 ): CompanyDirectoryRow[] {
+  const closedByCompany = new Map(closures.map((c) => [c.company_id, c]));
   const usageByCompany = new Map(usage.map((u) => [u.company_id, u]));
   const limitsByCompany = new Map(limits.map((l) => [l.company_id, l]));
   const own = new Map<string, DirectoryMember[]>();
@@ -114,6 +119,9 @@ export function buildCompanyDirectory(
         trialEndsAt: billingByCompany.get(c.id)?.trial_ends_at ?? null,
         usage: usageFromRow(usageByCompany.get(c.id)),
         limits: limitsFromRow(limitsByCompany.get(c.id)),
+        closed: closedByCompany.has(c.id)
+          ? { closedAt: closedByCompany.get(c.id)!.closed_at, reason: closedByCompany.get(c.id)!.reason }
+          : null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));

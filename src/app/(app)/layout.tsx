@@ -42,6 +42,7 @@ import { mobileTabs, moreSections, navHrefs } from "@/lib/mobile-tabs";
 import { TimeFormatProvider } from "@/components/time-format-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { getCompanyBilling } from "@/lib/billing/company-billing";
+import { getCompanyClosure } from "@/lib/billing/company-closure";
 import { isBillingLocked } from "@/lib/billing/subscription";
 import { billingNotice } from "@/lib/billing/trial";
 import { version } from "../../../package.json";
@@ -84,7 +85,7 @@ export default async function AppLayout({
   // saved. Both used to be fresh database reads on every navigation --
   // four queries between them -- for values that change when somebody
   // edits a settings page and not otherwise.
-  const [company, overrides, companies, liveUsers, billing, words] = await Promise.all([
+  const [company, overrides, companies, liveUsers, billing, words, closure] = await Promise.all([
     getCompanyChrome(profile.company_id),
     getRoleVisibility(profile.company_id),
     getCurrentUserCompanies(),
@@ -98,12 +99,15 @@ export default async function AppLayout({
     getCompanyBilling(profile.company_id),
     // The company's own words for the menus (DECISIONS #125).
     getCompanyWordsCached(profile.company_id),
+    // Closed by a platform admin (DECISIONS #135); cached the same way.
+    getCompanyClosure(profile.company_id),
   ]);
 
   // A lapsed AI Build Pro subscription. Row-level security already hides
   // the company's data (0175); this is the part that tells them why.
   // Platform admins are exempt there too, so they can still look in.
-  if (isBillingLocked(billing?.status) && !isPlatformAdmin(profile)) redirect("/billing-locked");
+  // A closed company is locked the same way (DECISIONS #135).
+  if ((isBillingLocked(billing?.status) || closure) && !isPlatformAdmin(profile)) redirect("/billing-locked");
   // A failed payment, or a free trial counting down with no card yet
   // (DECISIONS #129). Days are whole, so a server clock is plenty.
   const billingWarning = billingNotice(billing, new Date().getTime());

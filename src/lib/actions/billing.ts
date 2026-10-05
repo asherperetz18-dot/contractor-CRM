@@ -7,6 +7,7 @@ import { signupConfig } from "@/lib/signup/provision";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { readCompanyBilling, syncCustomerBilling } from "@/lib/billing/company-billing";
 import { isBillingLocked } from "@/lib/billing/subscription";
+import { readCompanyClosure } from "@/lib/billing/company-closure";
 
 /**
  * The AI Build Pro subscription controls: Stripe's Customer Portal for
@@ -85,6 +86,8 @@ export async function renewSubscription(): Promise<UrlResult> {
 export async function recheckBilling(): Promise<{ locked: boolean; error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { locked: true, error: "Sign in first." };
+  // A closed company stays locked whatever Stripe says (DECISIONS #135).
+  if (await readCompanyClosure(profile.company_id)) return { locked: true };
   const env = getStripeEnv();
   const billing = await readCompanyBilling(profile.company_id);
   if (!env || !billing) return { locked: false };

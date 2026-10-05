@@ -12543,6 +12543,39 @@ textarea.est-item-desc:disabled {
   margin-left: 8px;
 }
 
+/* Platform Admin › Companies: Close / Reopen, and the Closed chip. */
+.data-table .company-close {
+  margin-left: 8px;
+}
+.company-closed-chip {
+  margin-left: 8px;
+}
+.company-close-confirm {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+  width: 200px;
+  white-space: normal;
+  text-align: left;
+}
+.company-close-confirm .hint-note {
+  margin: 0;
+}
+.company-close-confirm input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+.company-close-actions {
+  display: flex;
+  gap: 6px;
+}
+
 /* Platform Admin › Companies: this month's AI / texts / emails. */
 .company-usage-cell {
   font-size: 12px;

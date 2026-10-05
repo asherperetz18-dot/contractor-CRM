@@ -60,3 +60,42 @@ test("calls placed with a token issued before the lock are refused, and auto-rep
   const start = engine.slice(engine.indexOf("export async function maybeStartReceptionist"));
   assert.ok(start.indexOf("isCompanyLocked(") < start.indexOf("ai_receptionist_calls"));
 });
+
+test("a closed company is locked everywhere a lapsed one is (DECISIONS #135)", () => {
+  const lock = files.find((f) => f.path === "lib/billing/company-lock.ts")!.text;
+  const fn = lock.slice(lock.indexOf("export async function isCompanyLocked"));
+  assert.match(fn.slice(0, 600), /getCompanyClosure\(companyId\)/);
+  assert.match(fn.slice(0, 600), /\|\| closure !== null/);
+  const layout = files.find((f) => f.path === "app/(app)/layout.tsx")!.text;
+  assert.match(layout, /\(isBillingLocked\(billing\?\.status\) \|\| closure\) && !isPlatformAdmin\(profile\)\) redirect\("\/billing-locked"\)/);
+  const runner = files.find((f) => f.path === "lib/cron/run-companies.ts")!.text;
+  assert.match(runner, /closedCompanyIds\(\)/);
+  const recheck = files.find((f) => f.path === "lib/actions/billing.ts")!.text;
+  const rc = recheck.slice(recheck.indexOf("export async function recheckBilling"));
+  assert.ok(rc.indexOf("readCompanyClosure(") < rc.indexOf("return { locked: false }"), "closed before the not-billed exit");
+});
+
+test("only a platform admin closes or reopens a company", () => {
+  const action = files.find((f) => f.path === "lib/actions/company-closure.ts")!.text;
+  for (const name of ["closeCompany", "reopenCompany"]) {
+    const fn = action.slice(action.indexOf(`export async function ${name}`));
+    const guard = fn.indexOf("requirePlatformAdmin()");
+    const write = fn.search(/\.(upsert|delete)\(/);
+    assert.ok(guard > 0 && guard < write, name);
+  }
+  assert.match(action, /if \(!isPlatformAdmin\(profile\)\)/);
+});
+
+test("the database lock counts closed companies and keeps the same lapsed statuses", () => {
+  const dir = new URL("../../../supabase/migrations/", import.meta.url);
+  const defining = (readdirSync(dir) as string[])
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort()
+    .filter((f) => /create or replace function public\.billing_locked_company_ids/.test(readFileSync(new URL(f, dir), "utf8")));
+  const latest = readFileSync(new URL(defining[defining.length - 1], dir), "utf8");
+  assert.match(latest, /from public\.company_closures/);
+  assert.match(latest, /billing_status in \('canceled', 'unpaid', 'incomplete_expired', 'paused'\)/);
+  assert.match(latest, /p\.is_platform_admin/);
+  // Nobody signed in removes a company row any more.
+  assert.match(latest, /drop policy if exists companies_delete on public\.companies;/);
+});
