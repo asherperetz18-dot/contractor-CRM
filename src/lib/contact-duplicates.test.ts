@@ -27,14 +27,14 @@ function c(id: string, phone: string | null, email: string | null): DupContact {
 
 test("contacts sharing a phone's last ten digits group together, however formatted", () => {
   const groups = buildDuplicateGroups([
-    c("a", "(310) 697-6137", null),
-    c("b", "+1 310-697-6137", null),
-    c("c", "3106976137", null),
+    c("a", "(310) 555-0137", null),
+    c("b", "+1 310-555-0137", null),
+    c("c", "3105550137", null),
     c("d", "555-000-1111", null),
   ]);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].kind, "phone");
-  assert.equal(groups[0].key, "3106976137");
+  assert.equal(groups[0].key, "3105550137");
   assert.deepEqual(groups[0].members.map((m) => m.id).sort(), ["a", "b", "c"]);
 });
 
@@ -47,25 +47,25 @@ test("an email group only counts when it names somebody new", () => {
   const groups = buildDuplicateGroups([
     // Same phone AND same email: one phone group; the email group would
     // just repeat it, so it is dropped.
-    c("a", "3106976137", "Sam@Home.com"),
-    c("b", "3106976137", "sam@home.com "),
+    c("a", "3105550137", "Sam@Home.com"),
+    c("b", "3105550137", "sam@home.com "),
     // A separate email-only pair still reports.
     c("x", null, "pat@work.com"),
     c("y", null, "PAT@work.com"),
   ]);
   assert.deepEqual(
     groups.map((g) => g.kind + ":" + g.key).sort(),
-    ["email:pat@work.com", "phone:3106976137"]
+    ["email:pat@work.com", "phone:3105550137"]
   );
 });
 
 test("biggest groups list first", () => {
   const groups = buildDuplicateGroups([
-    c("a", "3106976137", null),
-    c("b", "3106976137", null),
+    c("a", "3105550137", null),
+    c("b", "3105550137", null),
     c("p", "5550001111", null),
     c("q", "5550001111", null),
     c("r", "5550001111", null),
   ]);
-  assert.deepEqual(groups.map((g) => g.key), ["5550001111", "3106976137"]);
+  assert.deepEqual(groups.map((g) => g.key), ["5550001111", "3105550137"]);
 });

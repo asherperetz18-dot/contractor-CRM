@@ -184,7 +184,7 @@ export function buildSearchGroups(
 
   // Phone numbers are stored with whatever formatting was typed in, so a
   // plain substring match on the raw text misses e.g. searching digits
-  // only ("6263254475") against a stored "(626) 325-4475". Compare
+  // only ("6265550175") against a stored "(626) 555-0175". Compare
   // normalized digits too, alongside the free-text match.
   const qDigits = q.replace(/\D/g, "");
 
