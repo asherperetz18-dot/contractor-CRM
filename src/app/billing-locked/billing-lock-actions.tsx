@@ -13,12 +13,15 @@ export function BillingLockActions({
   canManage,
   renewed,
   trialEnded = false,
+  closed = false,
   otherCompanies,
 }: {
   canManage: boolean;
   renewed: boolean;
   /** The free trial ran out with no card (DECISIONS #129): the first payment is subscribing, not renewing. */
   trialEnded?: boolean;
+  /** Closed by a platform admin (DECISIONS #135): paying doesn't reopen it, so there is nothing to buy here. */
+  closed?: boolean;
   otherCompanies: CompanyMembership[];
 }) {
   const router = useRouter();
@@ -70,7 +73,7 @@ export function BillingLockActions({
 
   return (
     <div className="auth-form">
-      {canManage ? (
+      {closed ? null : canManage ? (
         // Paying happens outside the Play Store app, and the app may not
         // point there either (DECISIONS #087).
         <WebOnly fallback={<p className="hint-note">The subscription can&apos;t be renewed in the app.</p>}>

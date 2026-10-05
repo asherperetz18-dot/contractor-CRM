@@ -141,7 +141,11 @@ export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
   const limits = await selectAll<LimitsRow>((from, to) =>
     admin.from("company_limits").select("*").order("company_id").range(from, to)
   );
-  const rows = buildCompanyDirectory(companies, members, billing, usage, limits);
+  // Closed companies (0201): none until it has run.
+  const closures = await selectAll<{ company_id: string; closed_at: string; reason: string | null }>((from, to) =>
+    admin.from("company_closures").select("*").order("company_id").range(from, to)
+  );
+  const rows = buildCompanyDirectory(companies, members, billing, usage, limits, closures);
   // The setup checklist's count (DECISIONS #136), with the directory's own team count.
   const setup = await listSetupSummaries(new Map(rows.map((r) => [r.id, r.team])));
   return rows.map((r) => ({ ...r, setup: setup.get(r.id) }));
