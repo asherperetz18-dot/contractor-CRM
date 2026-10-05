@@ -1343,3 +1343,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The default completion certificate names no state:** "Licence No." and "under the law". A company that saved its own certificate keeps it.
 
 **Consequence:** a company outside California can ask for the deposit its own state and terms allow.
+
+## 118 — A new company starts with its own state, time zone and zero commission rates
+
+**Date:** 2026-10-05
+
+**Context:** Every new company started as a copy of La Home Contractor's settings: Pacific time (the column default), La Home's commission plan as column defaults (50% rep share of profit, 15% lead cost, 5% closer, 1% dispatcher), and a Team Map that opened on Los Angeles. The setup form never asked where the company was.
+
+**Decision:**
+- **The account setup form asks for the company's state and time zone.** Choosing a state fills in its usual zone (`src/lib/data/us-states.ts`, tested); either can be changed. `completeSignup` refuses a missing or unknown value before the setup link is spent, and the company is made with them (`timezone`, `license_state`).
+- **Commission rates start at zero.** `createCompanyWithDefaults` writes 0 for all four rates, so a company sets its own plan instead of inheriting another's. The column defaults stay as they are (no database step); existing companies keep their rates.
+- **Team Map** opens on the company's own address when nobody on the clock is located yet, falling back to the whole US.
+
+**Consequence:** a company's reminders, "today" and report days run on its own clock from the first day. A company's commission statements read $0 until an admin sets its rates in Settings → Sales Commission.

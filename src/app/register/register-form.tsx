@@ -1,8 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { completeSignup } from "@/lib/actions/signup";
 import type { AuthFormState } from "@/lib/actions/auth";
+import { US_STATES, timezoneForState } from "@/lib/data/us-states";
+import { TIMEZONE_OPTIONS } from "@/lib/data/types";
 
 export function RegisterForm({
   token,
@@ -21,6 +23,10 @@ export function RegisterForm({
     completeSignup,
     undefined
   );
+  // The company's own state and time zone (DECISIONS #118). Picking a
+  // state fills in its usual zone; it can still be changed.
+  const [usState, setUsState] = useState("");
+  const [timezone, setTimezone] = useState("");
 
   return (
     <div className="auth-shell">
@@ -47,6 +53,40 @@ export function RegisterForm({
               <input type="text" name="company_name" required autoComplete="organization" />
             </label>
           )}
+          <label className="field">
+            <span className="field-label">State your company works in</span>
+            <select
+              name="state"
+              required
+              value={usState}
+              onChange={(e) => {
+                setUsState(e.target.value);
+                setTimezone(timezoneForState(e.target.value) ?? timezone);
+              }}
+            >
+              <option value="" disabled>
+                Choose a state
+              </option>
+              {US_STATES.map((s) => (
+                <option key={s.code} value={s.code}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="field-label">Time zone</span>
+            <select name="timezone" required value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+              <option value="" disabled>
+                Choose a time zone
+              </option>
+              {TIMEZONE_OPTIONS.map((z) => (
+                <option key={z.value} value={z.value}>
+                  {z.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="field">
             <span className="field-label">Your name</span>
             <input type="text" name="name" required autoComplete="name" />

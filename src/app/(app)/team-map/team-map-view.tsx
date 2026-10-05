@@ -42,6 +42,13 @@ type MapsApi = {
   Map: new (el: HTMLElement, opts: { center: LatLngLiteral; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean }) => {
     fitBounds: (b: unknown) => void;
     setCenter: (c: LatLngLiteral) => void;
+    setZoom: (z: number) => void;
+  };
+  Geocoder: new () => {
+    geocode: (
+      request: { address: string },
+      callback: (results: { geometry: { location: { lat: () => number; lng: () => number } } }[] | null, status: string) => void
+    ) => void;
   };
   Marker: new (opts: {
     position: LatLngLiteral;
@@ -54,7 +61,10 @@ type MapsApi = {
   SymbolPath: { CIRCLE: number };
 };
 
-export function TeamMapView() {
+/** The whole continental US: where the map waits while the company's address is looked up. */
+const US_CENTER: LatLngLiteral = { lat: 39.83, lng: -98.58 };
+
+export function TeamMapView({ companyAddress }: { companyAddress: string | null }) {
   const [people, setPeople] = useState<TeamLocation[] | null>(null);
   const [error, setError] = useState("");
   const [mapFailed, setMapFailed] = useState(false);
@@ -93,11 +103,23 @@ export function TeamMapView() {
         const located = people.filter((p) => p.lat !== null && p.lng !== null);
         if (!map.current) {
           map.current = new maps.Map(mapEl.current, {
-            center: located[0] ? { lat: located[0].lat!, lng: located[0].lng! } : { lat: 34.05, lng: -118.25 },
-            zoom: 10,
+            center: located[0] ? { lat: located[0].lat!, lng: located[0].lng! } : US_CENTER,
+            zoom: located[0] ? 10 : 4,
             mapTypeControl: false,
             streetViewControl: false,
           });
+          // Nobody located yet: open on the company's own address, not
+          // somewhere else's city (DECISIONS #118). If it can't be found,
+          // the whole country stays in view.
+          if (!located[0] && companyAddress?.trim()) {
+            const opened = map.current;
+            new maps.Geocoder().geocode({ address: companyAddress }, (results, status) => {
+              const where = status === "OK" ? results?.[0]?.geometry.location : null;
+              if (!where || cancelled) return;
+              opened.setCenter({ lat: where.lat(), lng: where.lng() });
+              opened.setZoom(10);
+            });
+          }
         }
         markers.current.forEach((m) => m.setMap(null));
         const bounds = new maps.LatLngBounds();
@@ -129,7 +151,7 @@ export function TeamMapView() {
     return () => {
       cancelled = true;
     };
-  }, [people]);
+  }, [people, companyAddress]);
 
   if (error) return <p className="error-note">{error}</p>;
   if (!people) return <p className="empty-hint">Loading…</p>;
