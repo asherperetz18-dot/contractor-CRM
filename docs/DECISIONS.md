@@ -1570,6 +1570,22 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** the platform can see what each company uses this month. **Database step: run `supabase/migrations/0199_company_usage.sql`.**
 
+## 133 — Monthly limits per company, set by a platform admin
+
+**Date:** 2026-10-05
+
+**Context:** With usage counted (#132), the platform could see a company using far more AI, texts or email than its plan was meant for, but couldn't do anything about it short of locking the whole company.
+
+**Decision:**
+- **Three limits per company, per month:** AI answers, texts, emails (`company_limits`, 0200). Blank means no limit, and every company starts with none — the owner's choice when the plan was approved.
+- **Set on Platform Admin › Companies** (**Set limits**), by platform admins only, checked inside the action (`setCompanyLimits`). Who set them last is kept.
+- **Checked before each one goes out, in the same places it is counted**, so nothing goes around it: the AI door (`aiForCompany` refuses with reason `limit`), `sendTwilioSms` and `sendSms`, and `sendEmail` for company mail. Platform mail is never limited.
+- **The refusal explains itself:** what ran out, how much, and that it starts again on the 1st ("ask AI Build Pros if you need more"). Background senders (reminders, alerts) skip, as they do for any send error.
+- **Cheap when unused:** a company's limits are read through a cache, dropped the moment they are set; a company with no limit for something never reads its counts for it.
+- Shown against usage on the Companies page ("214 of 500 AI uses") and in the company's Settings › Subscription. Guard tests hold each check before its send.
+
+**Consequence:** the platform can cap a company that uses too much without locking it. **Database step: run `supabase/migrations/0200_company_limits.sql`.**
+
 ## 134 — Export any one company, with everything it holds
 
 **Date:** 2026-10-05

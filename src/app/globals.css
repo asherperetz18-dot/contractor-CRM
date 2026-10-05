@@ -12549,6 +12549,46 @@ textarea.est-item-desc:disabled {
   color: var(--ink-soft);
 }
 
+/* Platform Admin › Companies: a company's monthly limits. */
+.company-limits-open {
+  display: block;
+  margin-top: 6px;
+}
+.company-limits-editor {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+  max-width: 220px;
+  white-space: normal;
+}
+.company-limits-editor .hint-note {
+  margin: 0;
+}
+.company-limits-field {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.company-limits-field input {
+  font-size: 13px;
+  padding: 5px 8px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+.company-limits-actions {
+  display: flex;
+  gap: 6px;
+}
+.company-limits-editor .error-note {
+  margin: 0;
+  text-align: left;
+}
+
 /* Platform Admin › Companies: a trial row's "+7 days / Extend trial". */
 .company-trial-extend {
   display: flex;

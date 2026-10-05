@@ -29,6 +29,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.202.0",
+    date: "2026-10-05",
+    notes: [
+      "Platform admins can set a monthly limit on a company's AI answers, texts and emails from the Companies page. A company sees its use against any limit in Settings › Subscription, and is told clearly when one runs out; it starts again on the 1st.",
+    ],
+  },
+  {
     version: "1.201.0",
     date: "2026-10-05",
     notes: [

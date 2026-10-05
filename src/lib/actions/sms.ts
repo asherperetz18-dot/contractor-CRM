@@ -15,6 +15,7 @@ import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { lockedServicesError } from "@/lib/billing/company-lock";
 import { recordUsage } from "@/lib/usage/record-usage";
+import { usageLimitError } from "@/lib/usage/company-limits";
 import { smsStatusCallbackUrl } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
@@ -50,9 +51,12 @@ export async function sendSms(
   if (!trimmedBody) return { error: "Message cannot be empty." };
   if (!toNumber.trim()) return { error: "No phone number to send to." };
 
-  // Paused while the company's subscription is locked (DECISIONS #131).
+  // Paused while the company's subscription is locked (DECISIONS #131),
+  // and stopped once this month's texts are used up (#133).
   const locked = await lockedServicesError(profile.company_id);
   if (locked) return { error: locked };
+  const limited = await usageLimitError(profile.company_id, "sms");
+  if (limited) return { error: limited };
 
   // The company the sender belongs to, so the text goes out on that
   // business's own number rather than a shared one.

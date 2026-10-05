@@ -7,7 +7,8 @@ import { switchCompany } from "@/lib/actions/company";
 import { exportCompanyData } from "@/lib/actions/backup";
 import { extendTrial } from "@/lib/actions/trial-admin";
 import { TRIAL_EXTENSIONS } from "@/lib/billing/trial";
-import { formatUsageLine } from "@/lib/usage/usage";
+import { formatUsageWithLimits, type CompanyLimits } from "@/lib/usage/limits";
+import { setCompanyLimits } from "@/lib/actions/limits-admin";
 import { openInCompany } from "@/lib/open-in-company";
 import {
   BILLING_STATE_LABEL,
@@ -86,6 +87,73 @@ function ExtendTrial({ companyId }: { companyId: string }) {
       <button type="button" className="btn-ghost small" onClick={extend} disabled={busy}>
         {busy ? "Extending…" : "Extend trial"}
       </button>
+      {error && <p className="error-note">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * A company's monthly limits (DECISIONS #133): AI answers, texts, emails.
+ * Blank is no limit, which is where every company starts.
+ */
+function LimitsEditor({ companyId, limits }: { companyId: string; limits: CompanyLimits }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [ai, setAi] = useState(limits.ai?.toString() ?? "");
+  const [sms, setSms] = useState(limits.sms?.toString() ?? "");
+  const [email, setEmail] = useState(limits.email?.toString() ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <button type="button" className="btn-ghost small company-limits-open" onClick={() => setOpen(true)}>
+        Set limits
+      </button>
+    );
+  }
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const res = await setCompanyLimits(companyId, { ai, sms, email });
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setOpen(false);
+    router.refresh();
+  }
+
+  const field = (label: string, value: string, set: (v: string) => void) => (
+    <label className="company-limits-field">
+      <span>{label}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => set(e.target.value)}
+        placeholder="No limit"
+        disabled={busy}
+      />
+    </label>
+  );
+
+  return (
+    <div className="company-limits-editor">
+      <p className="hint-note">Each month. Leave blank for no limit.</p>
+      {field("AI answers", ai, setAi)}
+      {field("Texts", sms, setSms)}
+      {field("Emails", email, setEmail)}
+      <div className="company-limits-actions">
+        <button type="button" className="btn-primary small" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save limits"}
+        </button>
+        <button type="button" className="btn-ghost small" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </button>
+      </div>
       {error && <p className="error-note">{error}</p>}
     </div>
   );
@@ -250,7 +318,8 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                         )}
                       </td>
                       <td data-label="This month" className="company-usage-cell">
-                        {formatUsageLine(r.usage)}
+                        {formatUsageWithLimits(r.usage, r.limits)}
+                        <LimitsEditor companyId={r.id} limits={r.limits} />
                       </td>
                       <td className="right">
                         <button type="button" className="btn-ghost small" onClick={() => open(r.id)} disabled={busy}>

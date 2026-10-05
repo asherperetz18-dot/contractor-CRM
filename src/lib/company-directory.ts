@@ -6,6 +6,7 @@
  */
 import { isBillingLocked } from "./billing/subscription.ts";
 import { usageFromRow, type MonthUsage, type UsageRow } from "./usage/usage.ts";
+import { limitsFromRow, type CompanyLimits, type LimitsRow } from "./usage/limits.ts";
 
 export type DirectoryCompany = { id: string; name: string; created_at: string };
 
@@ -67,6 +68,8 @@ export type CompanyDirectoryRow = {
   trialEndsAt: string | null;
   /** This month's AI uses, texts and emails (DECISIONS #132). */
   usage: MonthUsage;
+  /** Its monthly limits; null each where none is set (DECISIONS #133). */
+  limits: CompanyLimits;
 };
 
 function person(p: DirectoryMember["profiles"]): Person | null {
@@ -79,9 +82,12 @@ export function buildCompanyDirectory(
   members: DirectoryMember[],
   billing: DirectoryBilling[],
   /** This month's company_usage rows (0199); none before it has run. */
-  usage: UsageRow[] = []
+  usage: UsageRow[] = [],
+  /** company_limits rows (0200); none before it has run. */
+  limits: LimitsRow[] = []
 ): CompanyDirectoryRow[] {
   const usageByCompany = new Map(usage.map((u) => [u.company_id, u]));
+  const limitsByCompany = new Map(limits.map((l) => [l.company_id, l]));
   const own = new Map<string, DirectoryMember[]>();
   for (const m of members) {
     if (m.status !== "Active" || m.granted_via_platform_admin) continue;
@@ -107,6 +113,7 @@ export function buildCompanyDirectory(
         billing: billingState(billingByCompany.get(c.id)),
         trialEndsAt: billingByCompany.get(c.id)?.trial_ends_at ?? null,
         usage: usageFromRow(usageByCompany.get(c.id)),
+        limits: limitsFromRow(limitsByCompany.get(c.id)),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));

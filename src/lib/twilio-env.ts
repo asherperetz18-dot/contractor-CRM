@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "crypto";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { recordUsage } from "@/lib/usage/record-usage";
+import { usageLimitError } from "@/lib/usage/company-limits";
 
 // Vercel CLI (via `vercel env add`) has proven to intermittently prepend
 // a UTF-8 BOM to piped-in values on this machine/Windows setup -- every
@@ -64,6 +65,11 @@ export async function sendTwilioSms(
   env: NonNullable<ReturnType<typeof getTwilioEnv>> & { companyId?: string }
 ): Promise<{ sid?: string; error?: string }> {
   const basicAuth = Buffer.from(`${env.accountSid}:${env.authToken}`).toString("base64");
+  // This month's texts used up (DECISIONS #133): checked before it goes out.
+  if (env.companyId) {
+    const limited = await usageLimitError(env.companyId, "sms");
+    if (limited) return { error: limited };
+  }
   const params = new URLSearchParams({ To: to, From: env.phoneNumber, Body: body });
   const statusCallback = smsStatusCallbackUrl();
   if (statusCallback) params.set("StatusCallback", statusCallback);
