@@ -12538,6 +12538,11 @@ textarea.est-item-desc:disabled {
   }
 }
 
+/* Platform Admin › Companies: Export beside Open. */
+.data-table .btn-ghost.company-export {
+  margin-left: 8px;
+}
+
 /* Platform Admin › Companies: this month's AI / texts / emails. */
 .company-usage-cell {
   font-size: 12px;
