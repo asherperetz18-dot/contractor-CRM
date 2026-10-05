@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.197.0",
+    date: "2026-10-05",
+    notes: [
+      "Behind the scenes: the Google Calendar sync's report counts calendars that failed to sync again. Nothing changes on screen.",
+    ],
+  },
+  {
     version: "1.194.0",
     date: "2026-10-05",
     notes: [

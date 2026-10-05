@@ -3,6 +3,8 @@ import { logError, logWarn } from "@/lib/observability/logger";
 import { captureError } from "@/lib/observability/sentry";
 import { eachCompany, fairOrder, type EachCompanyResult } from "./each-company";
 
+export { runSummary } from "./each-company";
+
 /**
  * How long a scheduled job keeps starting new companies. The functions
  * run for up to 300 seconds; stopping new work at four minutes leaves the
@@ -36,12 +38,4 @@ export async function runForEachCompany<C, T>(
     logWarn({ event: `${route}.deferred`, route });
   }
   return result;
-}
-
-/** The run's outcome for the job's JSON answer: how many failed or waited. */
-export function runSummary(result: EachCompanyResult<unknown>) {
-  return {
-    failed: result.failed,
-    deferred: result.deferred.length,
-  };
 }
