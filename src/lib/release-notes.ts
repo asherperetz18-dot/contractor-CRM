@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.193.0",
+    date: "2026-10-05",
+    notes: [
+      "Your Company Words now reach your team's screens too: the menu, page titles, Quick Create and the Estimates page's cards. A company that says Quote and Job sees \"Quotes & Contracts\", \"Jobs\" and \"New Quote\". If you never changed a word, nothing looks different.",
+    ],
+  },
+  {
     version: "1.192.0",
     date: "2026-10-05",
     notes: [

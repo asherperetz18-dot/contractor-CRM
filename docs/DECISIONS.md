@@ -1444,3 +1444,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Calendars, lead sources and everything else are the same for every trade. A company made by a platform admin, or copied from another, is unchanged.
 
 **Consequence:** a new HVAC company's customers get "Service Call" texts and its board reads in its words from the first day. Everything stays editable in Settings › Company Words, Pipeline Stages and Project Types. No database step.
+
+## 125 — The staff screens speak the company's words too
+
+**Date:** 2026-10-05
+
+**Context:** #121–#124 put a company's words in front of its customers and gave new companies their trade's words. The team's own screens still said "Estimates & Contracts", "Estimate Status", "Projects", "Appointment Reports", "Salespeople", "New Estimate", "New Appointment" — so an HVAC company's customers read "Quote" and "Service Call" while its staff worked under a remodeler's menu.
+
+**Decision:**
+- **One place for staff labels** (`src/lib/staff-words.ts`, tested): the sidebar links, the page headings of Estimates & Contracts, Estimate Status, Projects, Contracts, Appointment Reports and Salespeople, the estimate list's count cards, and Quick Create.
+- **A label changes only when a word in it was changed.** A company on the standard words sees exactly what it always has — "Salespeople" does not become "Reps". An HVAC company sees "Quotes & Work Authorizations", "Jobs", "Service Call Reports", "Technicians", "New Service Call".
+- **Sidebar group names stay** (Dispatch, Production…): they are departments, not company words, and saved menu orders are keyed on them.
+- The words reach every page through the cached company chrome (`getCompanyWordsCached`), invalidated when Company Words is saved — no extra query per page load.
+
+**Consequence:** a company that changed a word sees its menus change with it, on the next page load after saving. Team role names (Sales, Dispatch…) are not words and are untouched here.

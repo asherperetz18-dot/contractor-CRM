@@ -182,6 +182,7 @@ function writeOpenLedgers(next: Record<string, LedgerFilter>) {
  * to already know which job is in trouble to find out that it is.
  */
 export function ProjectsView({
+  title = "Projects",
   projects,
   canManage,
   canAddCosts,
@@ -201,6 +202,8 @@ export function ProjectsView({
   canCheckRain,
   focusId,
 }: {
+  /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
+  title?: string;
   projects: ProjectCard[];
   canManage: boolean;
   canAddCosts: boolean;
@@ -506,7 +509,7 @@ export function ProjectsView({
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Projects</h1>
+          <h1 className="page-title">{title}</h1>
           <p className="page-sub">
             {active.length} sold job{active.length === 1 ? "" : "s"} · contract, collected
             and what is left after costs and commission paid

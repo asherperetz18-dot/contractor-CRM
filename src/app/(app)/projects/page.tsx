@@ -18,6 +18,8 @@ import {
 import { buildProjectCards, type ProjectLead } from "./project-data";
 import { ProjectsView } from "./projects-view";
 import { CrewProjectsView, type CrewJob } from "./crew-view";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +89,7 @@ export default async function ProjectsPage({
 
   return (
     <ProjectsView
+      title={staffPageLabel("/projects", "Projects", await getCompanyWordsCached(companyId))}
       projects={cards}
       canManage={isAdminRole(profile) && holdReady}
       canAddCosts={canManageCosts(profile)}

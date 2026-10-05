@@ -5,6 +5,8 @@ import { getCompanyMembers } from "@/lib/data/company";
 import { leadsLiteByIds } from "@/lib/data/lead-lite";
 import { canUseSalesCenter, type Event } from "@/lib/data/types";
 import { AppointmentReportsView } from "./appointment-reports-view";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export default async function AppointmentReportsPage() {
   const supabase = await createClient();
@@ -32,6 +34,7 @@ export default async function AppointmentReportsPage() {
 
   return (
     <AppointmentReportsView
+      title={staffPageLabel("/appointment-reports", "Appointment Reports", await getCompanyWordsCached(companyId))}
       events={events}
       leads={leads}
       reps={reps}

@@ -13,9 +13,12 @@ function initials(name: string | null, email: string | null) {
 }
 
 export function SalespeopleGrid({
+  title = "Salespeople",
   reps,
   statsByRep,
 }: {
+  /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
+  title?: string;
   reps: Profile[];
   /** Per-rep tallies, computed server-side from a slim scan. */
   statsByRep: Record<string, RepLeadStats>;
@@ -38,7 +41,7 @@ export function SalespeopleGrid({
     <div>
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Salespeople</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">{activeReps.length} with the Sales role</p>
         </div>
       </div>

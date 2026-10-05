@@ -20,7 +20,7 @@ import { GlobalSearch } from "./global-search";
 import { AdminToolsMenu } from "./admin-tools-menu";
 import { LiveUsersButton } from "./live-users-button";
 import { getLiveUsers } from "@/lib/actions/presence";
-import { getCompanyChrome, getRoleVisibility } from "@/lib/data/company-chrome";
+import { getCompanyChrome, getCompanyWordsCached, getRoleVisibility } from "@/lib/data/company-chrome";
 import { ActivityTracker } from "./activity-tracker";
 import { LocationSharer } from "./location-sharer";
 import { VoiceDialer } from "./voice-dialer";
@@ -44,6 +44,7 @@ import type { TimeFormat } from "@/lib/data/types";
 import { getCompanyBilling } from "@/lib/billing/company-billing";
 import { billingBanner, isBillingLocked } from "@/lib/billing/subscription";
 import { version } from "../../../package.json";
+import { quickCreateLabels, relabelNav } from "@/lib/staff-words";
 
 // Per-company favicon (the browser tab icon), since this app is
 // multi-tenant on a single domain -- the root layout can't resolve this
@@ -82,7 +83,7 @@ export default async function AppLayout({
   // saved. Both used to be fresh database reads on every navigation --
   // four queries between them -- for values that change when somebody
   // edits a settings page and not otherwise.
-  const [company, overrides, companies, liveUsers, billing] = await Promise.all([
+  const [company, overrides, companies, liveUsers, billing, words] = await Promise.all([
     getCompanyChrome(profile.company_id),
     getRoleVisibility(profile.company_id),
     getCurrentUserCompanies(),
@@ -94,6 +95,8 @@ export default async function AppLayout({
     // Cached like the chrome, and dropped by the Stripe webhook the moment
     // the subscription changes.
     getCompanyBilling(profile.company_id),
+    // The company's own words for the menus (DECISIONS #125).
+    getCompanyWordsCached(profile.company_id),
   ]);
 
   // A lapsed AI Build Pro subscription. Row-level security already hides
@@ -105,7 +108,7 @@ export default async function AppLayout({
   const companyName = company.name?.trim();
   const timeFormat: TimeFormat = company.time_format ?? "12h";
   const navOrder = company.nav_order;
-  const filteredNav = sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder);
+  const filteredNav = relabelNav(sortNavEntries(filterNavForProfile(NAV, profile, overrides), navOrder), words);
 
   // Dashboard ("/") is where login lands everyone -- if a role has it
   // hidden, send them straight to whatever their nav actually starts
@@ -197,7 +200,7 @@ export default async function AppLayout({
                 <span className="tool-slot" data-tool="ai">
                   <AiAssistantButton />
                 </span>
-                <QuickCreateMenu />
+                <QuickCreateMenu labels={quickCreateLabels(words)} />
                 {/* isPlatformAdmin is independent of which company is
                     selected, unlike everything else this menu holds -- so
                     the button itself has to show for that reason alone,

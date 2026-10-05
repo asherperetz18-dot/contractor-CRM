@@ -12,8 +12,8 @@ export default async function CompanyWordsPage() {
         <div>
           <h1 className="module-title">Company Words</h1>
           <p className="module-sub">
-            The words your customers read. A plumber sends a Quote for a Job, a remodeler an Estimate for a
-            Project &mdash; pick the ones your business uses.
+            The words your customers read, and your team&apos;s menus and page titles. A plumber sends a
+            Quote for a Job, a remodeler an Estimate for a Project &mdash; pick the ones your business uses.
           </p>
         </div>
       </div>

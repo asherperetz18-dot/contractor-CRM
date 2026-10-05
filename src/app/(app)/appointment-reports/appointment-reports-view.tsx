@@ -37,10 +37,13 @@ function csvCell(value: string): string {
 }
 
 export function AppointmentReportsView({
+  title = "Appointment Reports",
   events,
   leads,
   reps,
 }: {
+  /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
+  title?: string;
   events: Event[];
   leads: LeadLite[];
   reps: Profile[];
@@ -130,7 +133,7 @@ export function AppointmentReportsView({
     <div>
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Appointment Reports</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">
             {inRange.length} appointments that have already happened
           </p>

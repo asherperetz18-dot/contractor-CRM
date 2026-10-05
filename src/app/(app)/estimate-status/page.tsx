@@ -5,6 +5,8 @@ import { canViewEstimates, isStrictAdmin } from "@/lib/data/types";
 import { estimateFlowStatus } from "@/lib/estimate-flow-status";
 import { statusBoardRep1Id } from "@/lib/estimate-status-filters";
 import { EstimateStatusView, type StatusRow } from "./estimate-status-view";
+import { staffPageLabel } from "@/lib/staff-words";
+import { getCompanyWordsCached } from "@/lib/data/company-chrome";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function EstimateStatusPage() {
   const profile = await getCurrentProfile();
+  // In the company's own words (DECISIONS #125): "Quote Status".
+  const title = profile
+    ? staffPageLabel("/estimate-status", "Estimate Status", await getCompanyWordsCached(profile.company_id))
+    : "Estimate Status";
   if (!profile) return null;
 
   if (!canViewEstimates(profile)) {
@@ -32,7 +38,7 @@ export default async function EstimateStatusPage() {
     return (
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Estimate Status</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">
             You don&rsquo;t have access to estimates. Ask an Office or Admin user for View
             Estimates access in Users &amp; Roles.
@@ -190,7 +196,7 @@ export default async function EstimateStatusPage() {
     <>
       <div className="module-toolbar">
         <div>
-          <h1 className="module-title">Estimate Status</h1>
+          <h1 className="module-title">{title}</h1>
           <p className="module-sub">
             Who each document is waiting on &mdash; admin approval, the closer&rsquo;s review,
             or the customer&rsquo;s signature
