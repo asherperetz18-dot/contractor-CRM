@@ -7,6 +7,7 @@
 import { isBillingLocked } from "./billing/subscription.ts";
 import { usageFromRow, type MonthUsage, type UsageRow } from "./usage/usage.ts";
 import { limitsFromRow, type CompanyLimits, type LimitsRow } from "./usage/limits.ts";
+import type { SetupSummary } from "./setup-checklist.ts";
 
 export type DirectoryCompany = { id: string; name: string; created_at: string };
 
@@ -70,6 +71,8 @@ export type CompanyDirectoryRow = {
   usage: MonthUsage;
   /** Its monthly limits; null each where none is set (DECISIONS #133). */
   limits: CompanyLimits;
+  /** How much of the setup checklist it has done (DECISIONS #136); added after the directory is built. */
+  setup?: SetupSummary;
 };
 
 function person(p: DirectoryMember["profiles"]): Person | null {

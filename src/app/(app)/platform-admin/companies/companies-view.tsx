@@ -160,6 +160,24 @@ function LimitsEditor({ companyId, limits }: { companyId: string; limits: Compan
 }
 
 /**
+ * How much of its setup checklist a company has done (DECISIONS #136):
+ * the count, with what's missing on hover -- written out on a phone.
+ */
+function SetupLine({ setup }: { setup: CompanyDirectoryRow["setup"] }) {
+  if (!setup) return null;
+  if (setup.missing.length === 0) return <div className="company-setup done">Setup done</div>;
+  const missing = setup.missing.join(", ");
+  return (
+    <div className="company-setup">
+      <span className="company-setup-count" title={`Missing: ${missing}`}>
+        Setup {setup.done} of {setup.total}
+      </span>
+      <span className="company-setup-missing"> · missing {missing}</span>
+    </div>
+  );
+}
+
+/**
  * Downloads one company's data as a file (DECISIONS #134): the same file
  * its own Admin gets from Settings › Backup, without saved keys.
  */
@@ -240,7 +258,9 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
           Who owns each company, how many people work in it, where its AI Build Pro billing
           stands, and what it has used this month (AI, texts, emails). Not billed means it has never had a subscription (you made it, or it came before
           self-serve signup) and is never locked. Team counts the company&apos;s own active people,
-          not platform admins.
+          not platform admins. Under each name, how many of the six setup steps it has done
+          (business details, logo, phone number, online payments, contract, team); hover to see
+          what&apos;s missing.
         </p>
 
         <div className="invite-history-tools">
@@ -289,7 +309,10 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                   const busy = busyId === r.id;
                   return (
                     <tr key={r.id}>
-                      <td className="company-directory-name">{r.name}</td>
+                      <td className="company-directory-name">
+                        {r.name}
+                        <SetupLine setup={r.setup} />
+                      </td>
                       <td data-label="Owner">
                         {r.owner ? (
                           <>

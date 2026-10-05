@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.205.0",
+    date: "2026-10-05",
+    notes: [
+      "New companies get a setup checklist on the Dashboard: business details, logo, texting number, online payments, contract and team, each linking to where it's done. It goes away once everything is set up, and Hide puts it away sooner. Platform admins see each company's progress on the Companies page.",
+    ],
+  },
+  {
     version: "1.203.0",
     date: "2026-10-05",
     notes: [
