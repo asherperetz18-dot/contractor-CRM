@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/types";
 import { manualClearUpdate } from "@/lib/data/manual-clear";
 import { manualEditUpdate, type ManualEditInput } from "@/lib/data/manual-edit";
+import { depositRuleSentence } from "@/lib/deposit-rule";
 
 export type ManualPaymentInput = {
   estimateId: string;
@@ -132,7 +133,10 @@ export async function recordManualPayment(
     );
     if (legalCap > 0 && amountCents > legalCap) {
       warnings.push(
-        `The deposit limit on this contract is ${moneyCents(legalCap)} (10% or $1,000, whichever is less).`
+        `The deposit limit on this contract is ${moneyCents(legalCap)} (${depositRuleSentence({
+          percentBp: estimate.deposit_percent_bp,
+          capCents: estimate.deposit_cap_cents,
+        })}).`
       );
     }
   }

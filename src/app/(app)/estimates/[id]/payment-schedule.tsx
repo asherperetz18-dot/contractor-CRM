@@ -24,6 +24,7 @@ import {
 } from "@/lib/data/change-order-rollup";
 import { PhaseBilling } from "./phase-billing";
 import { RecordPayment } from "./record-payment";
+import { depositRuleSentence } from "@/lib/deposit-rule";
 
 type Row = {
   key: string;
@@ -270,9 +271,8 @@ export const PaymentSchedule = memo(function PaymentSchedule({
         <div>
           <h2 className="est-pay-title">Payments &amp; terms</h2>
           <p className="est-pay-sub">
-            Deposit is {(depositPercentBp / 100).toFixed(0)}% or up to{" "}
-            {moneyCents(depositCapCents)} &mdash; whichever is less. The balance bills as work
-            completes.
+            Deposit is {depositRuleSentence({ percentBp: depositPercentBp, capCents: depositCapCents })}. The
+            balance bills as work completes.
           </p>
         </div>
         {!locked && (

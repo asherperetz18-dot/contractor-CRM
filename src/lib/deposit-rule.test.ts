@@ -74,3 +74,12 @@ test("nothing a company sees assumes it is in California", () => {
   assert.doesNotMatch(read("./data/company-docs.ts"), /CSLB/);
   assert.doesNotMatch(read("../app/(app)/settings/vendors/vendors-view.tsx"), /placeholder="CSLB/);
 });
+
+test("screens describe the estimate's own rule, never a fixed 10% / $1,000", () => {
+  for (const file of ["../app/(app)/estimates/[id]/payment-schedule.tsx", "./actions/manual-payments.ts"]) {
+    const src = read(file);
+    assert.doesNotMatch(src, /10% or \$1,000/, file);
+    assert.doesNotMatch(src, /or up to\{" "\}/, file);
+    assert.match(src, /depositRuleSentence\(/, file);
+  }
+});
