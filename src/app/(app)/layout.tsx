@@ -217,7 +217,7 @@ export default async function AppLayout({
         </div>
         <ActivityTracker />
         <LocationSharer />
-        <VoiceDialer />
+        <VoiceDialer canText={canEditDispatch(profile)} />
         <ScreenShareEngine
           selfId={profile.id}
           selfName={profile.name || profile.email || "A teammate"}
