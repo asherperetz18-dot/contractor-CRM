@@ -28,6 +28,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.194.0",
+    date: "2026-10-05",
+    notes: [
+      "Reminder texts, rain alerts, no-show follow-ups and the calendar and call syncs now run each company separately. If one company's phone, calendar or call-tracking service is down, everyone else's still go out on time.",
+    ],
+  },
+  {
     version: "1.193.0",
     date: "2026-10-05",
     notes: [

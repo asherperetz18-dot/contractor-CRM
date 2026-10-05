@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCronSecret } from "@/lib/cron-env";
 import { readTimeClockSettings } from "@/lib/data/time-clock";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 /**
  * Time-clock housekeeping, hourly:
@@ -23,7 +24,8 @@ async function handlePost(req: NextRequest) {
   const admin = createAdminClient();
   const { data: companies } = await admin.from("companies").select("id");
   let closed = 0;
-  for (const { id: companyId } of (companies as { id: string }[] | null) ?? []) {
+  // Each company in its own safety net (DECISIONS #126).
+  const run = await runForEachCompany("api.cron.time-clock", (companies as { id: string }[] | null) ?? [], (c) => c.id, async ({ id: companyId }) => {
     const settings = await readTimeClockSettings(admin, companyId);
     const limitMs = settings.auto_clock_out_hours * 60 * 60 * 1000;
 
@@ -47,8 +49,12 @@ async function handlePost(req: NextRequest) {
 
     const cutoff = new Date(Date.now() - settings.trail_retention_days * 86_400_000).toISOString();
     await admin.from("location_pings").delete().eq("company_id", companyId).lt("recorded_at", cutoff);
-  }
-  return NextResponse.json({ companies: companies?.length ?? 0, autoClosed: closed });
+  });
+  return NextResponse.json({ companies: companies?.length ?? 0, autoClosed: closed, ...runSummary(run) });
 }
+
+// Room for every company's turn (runForEachCompany stops starting new
+// ones at CRON_BUDGET_MS, before this limit).
+export const maxDuration = 300;
 
 export const POST = withRouteObservability("api.cron.time-clock", handlePost);

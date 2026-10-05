@@ -13,6 +13,7 @@ import {
   type CompanyProfile,
   type EventStatus,
 } from "@/lib/data/types";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 // Local hour at which an appointment nobody logged a result for gives up
 // waiting and moves the lead itself. Late enough that a rep who finishes
@@ -237,7 +238,8 @@ async function handlePost(req: NextRequest) {
   let flagged = 0;
   let texted = 0;
   let moved = 0;
-  for (const company of companyRows) {
+  // Each company in its own safety net (DECISIONS #126).
+  const run = await runForEachCompany("api.cron.no-show-followups", companyRows, (c) => c.company_id, async (company) => {
     // Per company, so each texts from its own number. Texting stays
     // best-effort: a company without Twilio still gets its tasks created
     // and its stages moved, which is the part that must not be skipped.
@@ -247,10 +249,14 @@ async function handlePost(req: NextRequest) {
     flagged += result.flagged;
     texted += result.texted;
     moved += result.moved;
-  }
+  });
 
-  return NextResponse.json({ companies: companyRows.length, checked, flagged, texted, moved });
+  return NextResponse.json({ companies: companyRows.length, checked, flagged, texted, moved, ...runSummary(run) });
 }
+
+// Room for every company's turn (runForEachCompany stops starting new
+// ones at CRON_BUDGET_MS, before this limit).
+export const maxDuration = 300;
 
 // Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
 // id, and Sentry capture for every run, same wrapper as the dialer path.

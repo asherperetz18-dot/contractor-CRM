@@ -5,6 +5,7 @@ import { getWeatherUserAgent } from "@/lib/weather-env";
 import { processCompany } from "@/lib/rain-alerts-core";
 import { type CompanyProfile } from "@/lib/data/types";
 import { withRouteObservability } from "@/lib/observability/observe";
+import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 
 // Thin scheduled wrapper: the actual appointment + project rain passes
 // live in rain-alerts-core, shared with the Projects page's "Check rain
@@ -33,13 +34,15 @@ async function handlePost(req: NextRequest) {
   let updated = 0;
   let projectsChecked = 0;
   let projectsUpdated = 0;
-  for (const company of companyRows) {
+  // Each company in its own safety net (DECISIONS #126): the weather
+  // service failing for one company's area doesn't stop the rest.
+  const run = await runForEachCompany("api.cron.rain-alerts", companyRows, (c) => c.company_id, async (company) => {
     const result = await processCompany(admin, userAgent, company);
     checked += result.events.checked;
     updated += result.events.updated;
     projectsChecked += result.projects.checked;
     projectsUpdated += result.projects.updated;
-  }
+  });
 
   return NextResponse.json({
     companies: companyRows.length,
@@ -47,8 +50,13 @@ async function handlePost(req: NextRequest) {
     updated,
     projectsChecked,
     projectsUpdated,
+    ...runSummary(run),
   });
 }
+
+// Room for every company's turn (runForEachCompany stops starting new
+// ones at CRON_BUDGET_MS, before this limit).
+export const maxDuration = 300;
 
 // Observability rollout (TECH_DEBT -> DECISIONS #031): timing, correlation
 // id, and Sentry capture for every run, same wrapper as the dialer path.

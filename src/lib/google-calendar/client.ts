@@ -50,6 +50,8 @@ export async function accessTokenFor(admin: Admin, conn: ConnectionRow): Promise
 
   const creds = calendarOAuthCredentials();
   if (!creds) return null;
+  // Google not answering reads as "no token this run", not a thrown error
+  // that stops every other company's sync (DECISIONS #126).
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -59,9 +61,11 @@ export async function accessTokenFor(admin: Admin, conn: ConnectionRow): Promise
       refresh_token: conn.refresh_token,
       grant_type: "refresh_token",
     }),
-  });
-  if (!res.ok) return null;
-  const json = (await res.json()) as { access_token: string; expires_in: number };
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!res?.ok) return null;
+  const json = (await res.json().catch(() => null)) as { access_token: string; expires_in: number } | null;
+  if (!json?.access_token) return null;
   const token_expires_at = new Date(Date.now() + json.expires_in * 1000).toISOString();
   await admin
     .from("google_calendar_connections")
@@ -83,6 +87,8 @@ async function call(
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
+    // A hung request would stall every other company's sync (DECISIONS #126).
+    signal: AbortSignal.timeout(20_000),
   });
   const text = await res.text();
   let json: unknown = null;

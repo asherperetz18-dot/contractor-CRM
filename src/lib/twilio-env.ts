@@ -55,6 +55,8 @@ export function smsStatusCallbackUrl(): string | null {
   return base.startsWith("https://") ? `${base}/api/sms/status` : null;
 }
 
+const SMS_TIMEOUT_MS = 15_000;
+
 export async function sendTwilioSms(
   to: string,
   body: string,
@@ -64,17 +66,23 @@ export async function sendTwilioSms(
   const params = new URLSearchParams({ To: to, From: env.phoneNumber, Body: body });
   const statusCallback = smsStatusCallbackUrl();
   if (statusCallback) params.set("StatusCallback", statusCallback);
-  const res = await fetch(
-    `https://api.twilio.com/2010-04-01/Accounts/${env.accountSid}/Messages.json`,
-    {
+  // A time limit, and an answer rather than a throw when Twilio can't be
+  // reached: every caller already handles { error }, and a scheduled job
+  // must not stall or stop on one company's text (DECISIONS #126).
+  let res: Response;
+  try {
+    res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.accountSid}/Messages.json`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params,
-    }
-  );
+      signal: AbortSignal.timeout(SMS_TIMEOUT_MS),
+    });
+  } catch {
+    return { error: "Twilio didn't answer. The text may not have gone out, so check the conversation before sending it again." };
+  }
   const json = (await res.json().catch(() => null)) as { sid?: string; message?: string } | null;
   if (!res.ok) return { error: json?.message || "Failed to send message." };
   return { sid: json?.sid };

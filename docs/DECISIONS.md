@@ -1459,6 +1459,22 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a company that changed a word sees its menus change with it, on the next page load after saving. Team role names (Sales, Dispatch…) are not words and are untouched here.
 
+## 126 — Scheduled jobs run each company in its own safety net
+
+**Date:** 2026-10-05
+
+**Context:** Eight of the ten scheduled jobs (appointment and task reminders, no-show follow-ups, rain alerts, CallRail and PrimeCall syncs, the time clock, Google Calendar) looped over every company in one pass, with no safety net around each company. One company's failure — a Twilio account that answers with an error, a calendar token that throws — ended the run for every company after it, and a slow outside service could hold the whole run until the function was cut off. With a handful of companies that was rare; with hundreds it would be a daily event that silently skips reminders.
+
+**Decision:**
+- **One company at a time, each in its own try/catch** (`src/lib/cron/each-company.ts`, pure and tested; `runForEachCompany` in `src/lib/cron/run-companies.ts`). A company that fails is logged and sent to Sentry tagged with its company id and `service: "cron"`, and the next company runs.
+- **The order turns every minute**, so the same company is never always last.
+- **A time budget:** a run stops starting new companies after four minutes (`CRON_BUDGET_MS`); the ones it didn't reach are counted as "deferred" and simply go first on a later run. Every one of these jobs gets `maxDuration = 300` so the budget, not the platform, decides where a run stops.
+- **Calls to outside services have a time limit and never throw:** sending a text (15 s), the weather service (10 s), CallRail (20 s), Google sign-in and calendar requests (15 s / 20 s). A timeout reads as an ordinary failure for that one company.
+- The job still answers 200 and adds `failed` (company id + message) and `deferred` (count) to its JSON, so the scheduler doesn't retry everyone because one company failed.
+- Unchanged: the nightly backup exports whole tables at once (and reports a partial export as a failure), and the AI receptionist finalizer already works call by call, each in its own try/catch.
+
+**Consequence:** one company's broken setting or a slow outside service can no longer stop everyone else's reminders and syncs, and the failure shows up in Sentry with the company it belongs to. No database step.
+
 ## 127 — A Companies page for whoever runs the platform
 
 **Date:** 2026-10-05
