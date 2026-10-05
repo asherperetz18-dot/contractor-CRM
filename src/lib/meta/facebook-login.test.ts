@@ -84,30 +84,30 @@ test("an unexpected accounts answer is no Pages, not a crash", () => {
 
 test("a Page connected with Facebook is checked with the CRM's own app secret", () => {
   assert.deepEqual(
-    webhookSignatureCheck({ meta_connected_via: "facebook_login", meta_app_secret: null }, "platform"),
+    webhookSignatureCheck({ meta_connected_via: "facebook_login", appSecret: null }, "platform"),
     { kind: "verify", secret: "platform" }
   );
   // A leftover manual secret never replaces the platform one: Meta signs
   // with the app the Page is subscribed to, which is the CRM's.
   assert.deepEqual(
-    webhookSignatureCheck({ meta_connected_via: "facebook_login", meta_app_secret: "old" }, "platform"),
+    webhookSignatureCheck({ meta_connected_via: "facebook_login", appSecret: "old" }, "platform"),
     { kind: "verify", secret: "platform" }
   );
 });
 
 test("a Facebook-connected Page with no secret on the deployment is refused, never waved through", () => {
   assert.deepEqual(
-    webhookSignatureCheck({ meta_connected_via: "facebook_login", meta_app_secret: null }, undefined),
+    webhookSignatureCheck({ meta_connected_via: "facebook_login", appSecret: null }, undefined),
     { kind: "reject" }
   );
 });
 
 test("a manually set-up Page keeps its own secret, and stays unchecked without one as before", () => {
-  assert.deepEqual(webhookSignatureCheck({ meta_connected_via: null, meta_app_secret: "own" }, "platform"), {
+  assert.deepEqual(webhookSignatureCheck({ meta_connected_via: null, appSecret: "own" }, "platform"), {
     kind: "verify",
     secret: "own",
   });
-  assert.deepEqual(webhookSignatureCheck({ meta_connected_via: null, meta_app_secret: null }, "platform"), {
+  assert.deepEqual(webhookSignatureCheck({ meta_connected_via: null, appSecret: null }, "platform"), {
     kind: "skip",
   });
 });

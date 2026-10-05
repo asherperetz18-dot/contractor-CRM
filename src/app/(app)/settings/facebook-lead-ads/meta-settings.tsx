@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
 import { saveMetaConfig, type MetaConfigInput } from "@/lib/actions/settings";
+import type { MetaManualSetup } from "@/lib/actions/facebook-lead-ads";
 
 function randomToken() {
   return crypto.randomUUID().replace(/-/g, "");
@@ -14,6 +15,10 @@ function randomToken() {
  * hand. Kept behind "Advanced" for companies already running on it and
  * for deployments without the CRM's own app; Connect with Facebook
  * (facebook-connect.tsx) is the way in for everyone else.
+ *
+ * A saved Page token or app secret is never sent back here: the boxes
+ * start empty, say whether one is saved, and a blank box keeps it
+ * (DECISIONS #114).
  */
 export function MetaSettings({
   config,
@@ -21,7 +26,7 @@ export function MetaSettings({
   open,
   problem,
 }: {
-  config: MetaConfigInput;
+  config: MetaManualSetup;
   origin: string;
   /** Unfolded when this setup is the one in use, or the only one available. */
   open: boolean;
@@ -30,20 +35,32 @@ export function MetaSettings({
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const [form, setForm] = useState(config);
+  const [form, setForm] = useState<MetaConfigInput>({
+    meta_page_id: config.meta_page_id,
+    meta_verify_token: config.meta_verify_token,
+    newPageToken: "",
+    newAppSecret: "",
+  });
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const set = <K extends keyof MetaConfigInput>(k: K, v: MetaConfigInput[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setSaved(false);
+    setSaveError(null);
   };
 
   async function handleSave() {
     setPending(true);
-    await saveMetaConfig(form);
+    const res = await saveMetaConfig(form);
     setPending(false);
+    if (res.error) {
+      setSaveError(res.error);
+      return;
+    }
     setSaved(true);
+    setForm((f) => ({ ...f, newPageToken: "", newAppSecret: "" }));
     startTransition(() => router.refresh());
   }
 
@@ -121,15 +138,19 @@ export function MetaSettings({
         <Field label="Page Access Token">
           <input
             type="password"
-            value={form.meta_page_access_token}
-            onChange={(e) => set("meta_page_access_token", e.target.value)}
+            autoComplete="off"
+            value={form.newPageToken}
+            onChange={(e) => set("newPageToken", e.target.value)}
+            placeholder={config.hasPageAccessToken ? "Saved — leave blank to keep it" : "Not saved yet"}
           />
         </Field>
         <Field label="App Secret">
           <input
             type="password"
-            value={form.meta_app_secret}
-            onChange={(e) => set("meta_app_secret", e.target.value)}
+            autoComplete="off"
+            value={form.newAppSecret}
+            onChange={(e) => set("newAppSecret", e.target.value)}
+            placeholder={config.hasAppSecret ? "Saved — leave blank to keep it" : "Not saved yet"}
           />
         </Field>
         <p className="cp-hint">
@@ -138,7 +159,10 @@ export function MetaSettings({
         </p>
 
         <div className="modal-actions">
-          <div>{saved && <span className="cp-saved">✓ Saved</span>}</div>
+          <div>
+            {saved && <span className="cp-saved">✓ Saved</span>}
+            {saveError && <span className="error-note">{saveError}</span>}
+          </div>
           <div>
             <button className="btn-primary" onClick={handleSave} disabled={pending}>
               {pending ? "Saving…" : "Save"}

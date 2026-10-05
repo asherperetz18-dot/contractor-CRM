@@ -101,13 +101,13 @@ export type WebhookSignatureCheck = { kind: "verify"; secret: string } | { kind:
  * no check without one, as it always has.
  */
 export function webhookSignatureCheck(
-  config: { meta_connected_via: string | null; meta_app_secret: string | null },
+  config: { meta_connected_via: string | null; appSecret: string | null },
   platformAppSecret: string | undefined
 ): WebhookSignatureCheck {
   if (config.meta_connected_via === "facebook_login") {
     return platformAppSecret ? { kind: "verify", secret: platformAppSecret } : { kind: "reject" };
   }
-  return config.meta_app_secret ? { kind: "verify", secret: config.meta_app_secret } : { kind: "skip" };
+  return config.appSecret ? { kind: "verify", secret: config.appSecret } : { kind: "skip" };
 }
 
 export function verifyMetaSignature(rawBody: string, signatureHeader: string | null, appSecret: string) {

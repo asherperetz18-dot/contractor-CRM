@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMetaMigrationMissing, parsePendingSignIn, type MetaPage } from "./facebook-login";
 import { listPages, subscribePageToLeads, unsubscribePage } from "./graph";
+import { loadMetaSecrets, saveMetaSecrets } from "./page-secrets";
 
 /**
  * Saving a Page picked through "Connect with Facebook". Shared by the
@@ -55,26 +56,32 @@ export async function connectPageForCompany(companyId: string, page: MetaPage): 
 
   const { data: before } = await admin
     .from("company_profile")
-    .select("meta_page_id, meta_page_access_token, meta_connected_via")
+    .select("meta_page_id, meta_connected_via")
     .eq("company_id", companyId)
     .maybeSingle();
+  const old = before as { meta_page_id: string | null; meta_connected_via: string | null } | null;
+  const oldToken =
+    old?.meta_connected_via === "facebook_login" && old.meta_page_id && old.meta_page_id !== page.id
+      ? (await loadMetaSecrets(companyId, admin)).pageAccessToken
+      : null;
 
-  const { error } = await admin
-    .from("company_profile")
-    .update({
+  // The Page token is stored encrypted (DECISIONS #114).
+  const { error } = await saveMetaSecrets(
+    companyId,
+    { pageAccessToken: page.accessToken },
+    {
       meta_page_id: page.id,
       meta_page_name: page.name,
-      meta_page_access_token: page.accessToken,
       meta_connected_via: "facebook_login",
       meta_connected_at: new Date().toISOString(),
-    })
-    .eq("company_id", companyId);
-  if (error) return isMetaMigrationMissing(error.message) ? MIGRATION_MISSING_MESSAGE : error.message;
+    },
+    admin
+  );
+  if (error) return isMetaMigrationMissing(error) ? MIGRATION_MISSING_MESSAGE : error;
 
   // Switching Pages: the old one stops sending leads to the CRM's app.
-  const old = before as { meta_page_id: string | null; meta_page_access_token: string | null; meta_connected_via: string | null } | null;
-  if (old?.meta_connected_via === "facebook_login" && old.meta_page_id && old.meta_page_id !== page.id && old.meta_page_access_token) {
-    await unsubscribePage(old.meta_page_id, old.meta_page_access_token);
+  if (old?.meta_page_id && oldToken) {
+    await unsubscribePage(old.meta_page_id, oldToken);
   }
   return null;
 }

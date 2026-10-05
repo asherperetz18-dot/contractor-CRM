@@ -8,6 +8,7 @@ import { isAdminRole } from "@/lib/data/types";
 import { isMetaMigrationMissing, metaLoginCredentials, parsePendingSignIn } from "@/lib/meta/facebook-login";
 import { checkPageHealth, listPages, unsubscribePage, type PageHealth } from "@/lib/meta/graph";
 import { MIGRATION_MISSING_MESSAGE, PICK_COOKIE, connectPageForCompany, pendingPagesFor } from "@/lib/meta/connect";
+import { loadMetaSecrets, saveMetaSecrets } from "@/lib/meta/page-secrets";
 
 /**
  * Settings -> Facebook Lead Ads: which Page is connected, whether
@@ -35,7 +36,6 @@ export type FacebookLeadAdsStatus = {
 
 type ProfileRow = {
   meta_page_id: string | null;
-  meta_page_access_token: string | null;
   meta_page_name?: string | null;
   meta_connected_via?: string | null;
   meta_connected_at?: string | null;
@@ -51,14 +51,14 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
   let row: ProfileRow | null = null;
   const full = await admin
     .from("company_profile")
-    .select("meta_page_id, meta_page_access_token, meta_page_name, meta_connected_via, meta_connected_at")
+    .select("meta_page_id, meta_page_name, meta_connected_via, meta_connected_at")
     .eq("company_id", profile.company_id)
     .maybeSingle();
   if (full.error && isMetaMigrationMissing(full.error.message)) {
     migrationMissing = true;
     const legacy = await admin
       .from("company_profile")
-      .select("meta_page_id, meta_page_access_token")
+      .select("meta_page_id")
       .eq("company_id", profile.company_id)
       .maybeSingle();
     row = legacy.data as ProfileRow | null;
@@ -66,8 +66,10 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
     row = full.data as ProfileRow | null;
   }
 
+  // The token is kept encrypted, apart from the row (DECISIONS #114).
+  const token = row?.meta_page_id ? (await loadMetaSecrets(profile.company_id, admin)).pageAccessToken : null;
   let connection: FacebookConnection | null = null;
-  if (row?.meta_page_id && row.meta_page_access_token) {
+  if (row?.meta_page_id && token) {
     const via = row.meta_connected_via === "facebook_login" ? "facebook_login" : "manual";
     connection = {
       pageId: row.meta_page_id,
@@ -76,7 +78,7 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
       connectedAt: row.meta_connected_at ?? null,
       health: await checkPageHealth(
         row.meta_page_id,
-        row.meta_page_access_token,
+        token,
         via === "facebook_login" ? (creds?.appId ?? null) : null
       ),
     };
@@ -88,6 +90,34 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
     migrationMissing,
     connection,
     pickable: pending ? pending.map((p) => ({ id: p.id, name: p.name })) : null,
+  };
+}
+
+/** The advanced (own Meta app) setup as the settings form shows it. */
+export type MetaManualSetup = {
+  meta_page_id: string;
+  meta_verify_token: string;
+  /** Whether one is saved -- the key itself never leaves the server (DECISIONS #114). */
+  hasPageAccessToken: boolean;
+  hasAppSecret: boolean;
+};
+
+export async function getMetaManualSetup(): Promise<MetaManualSetup | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("company_profile")
+    .select("meta_page_id, meta_verify_token")
+    .eq("company_id", profile.company_id)
+    .maybeSingle();
+  const row = data as { meta_page_id: string | null; meta_verify_token: string | null } | null;
+  const keys = await loadMetaSecrets(profile.company_id, admin);
+  return {
+    meta_page_id: row?.meta_page_id ?? "",
+    meta_verify_token: row?.meta_verify_token ?? "",
+    hasPageAccessToken: Boolean(keys.pageAccessToken),
+    hasAppSecret: Boolean(keys.appSecret),
   };
 }
 
@@ -130,25 +160,27 @@ export async function disconnectFacebookPage(): Promise<{ error?: string }> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("company_profile")
-    .select("meta_page_id, meta_page_access_token")
+    .select("meta_page_id")
     .eq("company_id", profile.company_id)
     .maybeSingle();
   const row = data as ProfileRow | null;
-  if (row?.meta_page_id && row.meta_page_access_token) {
-    await unsubscribePage(row.meta_page_id, row.meta_page_access_token);
+  const token = row?.meta_page_id ? (await loadMetaSecrets(profile.company_id, admin)).pageAccessToken : null;
+  if (row?.meta_page_id && token) {
+    await unsubscribePage(row.meta_page_id, token);
   }
 
-  const { error } = await admin
-    .from("company_profile")
-    .update({
+  const { error } = await saveMetaSecrets(
+    profile.company_id,
+    { pageAccessToken: null },
+    {
       meta_page_id: null,
-      meta_page_access_token: null,
       meta_page_name: null,
       meta_connected_via: null,
       meta_connected_at: null,
-    })
-    .eq("company_id", profile.company_id);
-  if (error) return { error: isMetaMigrationMissing(error.message) ? MIGRATION_MISSING_MESSAGE : error.message };
+    },
+    admin
+  );
+  if (error) return { error: isMetaMigrationMissing(error) ? MIGRATION_MISSING_MESSAGE : error };
   revalidatePath("/settings/facebook-lead-ads");
   return {};
 }

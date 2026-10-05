@@ -3,13 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyNewLead } from "@/lib/notify-new-lead";
 import { withRouteObservability } from "@/lib/observability/observe";
 import { GRAPH_VERSION, verifyMetaSignature, webhookSignatureCheck } from "@/lib/meta/facebook-login";
+import { loadMetaSecrets } from "@/lib/meta/page-secrets";
 
 type MetaConfig = {
   company_id: string;
-  meta_page_id: string | null;
-  meta_page_access_token: string | null;
-  meta_verify_token: string | null;
-  meta_app_secret: string | null;
   /** 'facebook_login' when connected through the CRM's own app (0178). */
   meta_connected_via: string | null;
 };
@@ -22,14 +19,11 @@ type MetaConfig = {
 // second company existed that failed with PGRST116 and returned null, so
 // the route reported "not configured" and dropped every lead on the
 // floor, and the verification handshake answered 403.
-const CONFIG_COLUMNS =
-  "company_id, meta_page_id, meta_page_access_token, meta_verify_token, meta_app_secret";
-
 async function getMetaConfigByPage(pageId: string) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("company_profile")
-    .select(`${CONFIG_COLUMNS}, meta_connected_via`)
+    .select("company_id, meta_connected_via")
     .eq("meta_page_id", pageId)
     .maybeSingle();
   if (!error) return data as MetaConfig | null;
@@ -37,7 +31,7 @@ async function getMetaConfigByPage(pageId: string) {
   // missing column must never drop the lead.
   const { data: legacy } = await admin
     .from("company_profile")
-    .select(CONFIG_COLUMNS)
+    .select("company_id")
     .eq("meta_page_id", pageId)
     .maybeSingle();
   return legacy ? ({ ...legacy, meta_connected_via: null } as MetaConfig) : null;
@@ -119,13 +113,19 @@ async function handlePost(req: NextRequest) {
     if (!pageId) continue;
 
     const config = await getMetaConfigByPage(String(pageId));
-    if (!config?.meta_page_access_token) {
+    // The Page's keys are kept encrypted, apart from the row (DECISIONS #114).
+    const keys = config ? await loadMetaSecrets(config.company_id, admin) : null;
+    const pageAccessToken = keys?.pageAccessToken;
+    if (!config || !pageAccessToken) {
       // Unknown or unconfigured Page. Acknowledged rather than errored so
       // Meta doesn't retry forever or disable the subscription.
       continue;
     }
 
-    const check = webhookSignatureCheck(config, process.env.META_APP_SECRET);
+    const check = webhookSignatureCheck(
+      { meta_connected_via: config.meta_connected_via, appSecret: keys?.appSecret ?? null },
+      process.env.META_APP_SECRET
+    );
     if (
       check.kind === "reject" ||
       (check.kind === "verify" &&
@@ -139,7 +139,7 @@ async function handlePost(req: NextRequest) {
       const leadgenId = change.value?.leadgen_id;
       if (!leadgenId) continue;
 
-      const fields = await fetchLeadFields(leadgenId, config.meta_page_access_token);
+      const fields = await fetchLeadFields(leadgenId, pageAccessToken);
       if (!fields) continue;
 
       const fullName = fields.full_name || fields.name || "";

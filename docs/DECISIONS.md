@@ -1275,3 +1275,21 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The AI conversation analysis still reads the contact's whole conversation through the admin client. It shows signals, not the texts themselves.
 - Reassigning a contact doesn't move texts already owned; a reply still goes to whoever texted last.
 - 0192 defines `contact_phone_key` itself, word for word as 0129 has it. Production never ran 0129, so the first paste stopped at "function contact_phone_key(text) does not exist". 0129 can't be run now: it would put back an older `create_lead_for_unknown_caller` over 0150's. With the helper in place, 0150's one-contact-per-new-caller guard, which calls it, starts working; until now CallRail and the AI receptionist had been taking their unguarded fallback.
+
+## 114 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
+
+**Date:** 2026-10-05
+
+**Context:** A company's Facebook Page token and its own Meta app secret (the advanced setup) were kept unencrypted in `company_profile`, unlike the Twilio, Stripe, CallRail, Primecall and Resend keys, which are stored encrypted (`*_enc`, `APP_ENCRYPTION_KEY`). The settings page also sent the saved values to the browser to fill its form, and the advanced form's save did not check the person's role.
+
+**Decision:**
+- **One module owns the keys.** `src/lib/meta/page-secrets.ts` (server-only, service role) is the only code that reads or writes them; the rules are in `page-secrets-rules.ts` (tested). A test fails if any other file names the plain columns.
+- **Stored encrypted.** New columns `meta_page_access_token_enc` and `meta_app_secret_enc` (0193). Every save writes the encrypted copy and clears the plain one.
+- **The old plain copies are moved out of reach at once.** SQL can't encrypt (the key lives on the server), so 0193 moves them into `meta_secrets_legacy` (RLS on, no policies, no rights for signed-in users) and clears them from `company_profile`. The first time the server needs a company's keys it encrypts them and deletes that company's row there. If a key can't be encrypted, nothing is changed.
+- **Never sent to the browser.** The settings page shows whether a token or secret is saved. The boxes start empty, and a blank box keeps the saved one.
+- **Admin only.** `saveMetaConfig` checks the role (Office or Admin), like every other integration setting. A save error is shown instead of "✓ Saved".
+- **Works before 0193 is run.** Reads fall back to the plain columns and a save stores the old way, so no lead is dropped in between; 0193 then moves what was saved.
+
+**Consequence:**
+- **Owner step:** run `0193_meta_secrets_encrypted.sql` in Supabase after the deploy. Its last line should read `plain_left = 0`.
+- Nothing changes for a connected Page. Leads keep arriving.

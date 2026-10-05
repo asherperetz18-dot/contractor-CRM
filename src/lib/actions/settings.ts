@@ -9,6 +9,7 @@ import { isAdminRole, toE164, type TimeFormat } from "@/lib/data/types";
 import { normalizeTaxId } from "@/lib/data/tax-id";
 import { MAX_TAX_RATE_BP } from "@/lib/data/tax-rate";
 import { revalidateCompanyChrome } from "@/lib/data/company-chrome";
+import { saveMetaSecrets } from "@/lib/meta/page-secrets";
 
 export type CompanyProfileInput = {
   name: string;
@@ -354,26 +355,36 @@ export async function saveCallScript(body: string) {
 
 export type MetaConfigInput = {
   meta_page_id: string;
-  meta_page_access_token: string;
   meta_verify_token: string;
-  meta_app_secret: string;
+  /** A new Page token or app secret; blank keeps the saved one. */
+  newPageToken: string;
+  newAppSecret: string;
 };
 
-export async function saveMetaConfig(input: MetaConfigInput) {
-  const companyId = await getCurrentCompanyId();
-  if (!companyId) return { error: "Not signed in." };
+/**
+ * The advanced Facebook setup (the company's own Meta app). Admin-only,
+ * and the Page token and app secret are stored encrypted, never in plain
+ * text where every member of the company could read them (DECISIONS #114).
+ */
+export async function saveMetaConfig(input: MetaConfigInput): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change the Facebook setup." };
 
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("company_profile")
-    .update({
-      meta_page_id: input.meta_page_id || null,
-      meta_page_access_token: input.meta_page_access_token || null,
-      meta_verify_token: input.meta_verify_token || null,
-      meta_app_secret: input.meta_app_secret || null,
-    })
-    .eq("company_id", companyId);
-  if (error) return { error: error.message };
+  const pageToken = input.newPageToken.trim();
+  const appSecret = input.newAppSecret.trim();
+  const { error } = await saveMetaSecrets(
+    profile.company_id,
+    { pageAccessToken: pageToken || undefined, appSecret: appSecret || undefined },
+    { meta_page_id: input.meta_page_id.trim() || null, meta_verify_token: input.meta_verify_token.trim() || null }
+  );
+  if (error) {
+    return {
+      error: /company_profile_meta_page_id_key|duplicate key/i.test(error)
+        ? "That Page is already connected to another company in the CRM. A Page can send its leads to one company only."
+        : error,
+    };
+  }
   revalidatePath("/settings/facebook-lead-ads");
   return {};
 }
