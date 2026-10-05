@@ -105,7 +105,7 @@ export function CertificatesView() {
           </label>
           <label className="field">
             <span className="field-label">Name *</span>
-            <input name="title" placeholder="e.g. CSLB Licence 1027193" disabled={pending} />
+            <input name="title" placeholder="e.g. Contractor licence 123456" disabled={pending} />
           </label>
           <label className="field">
             <span className="field-label">Expires</span>

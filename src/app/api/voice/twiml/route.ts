@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Normalised before validating. Contacts are stored however they were
-  // typed or imported -- "+1 714-403-5570", "714-403-5570" and
-  // "1714-403-5570" are one person -- and the old check rejected anything
+  // typed or imported -- "+1 714-555-0170", "714-555-0170" and
+  // "1714-555-0170" are one person -- and the old check rejected anything
   // containing a bracket, dash or space. Those calls ended after two
   // seconds on "Invalid destination number", so only bare ten-digit
   // numbers ever connected.

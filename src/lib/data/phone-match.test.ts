@@ -23,9 +23,9 @@ import { normalizePhone } from "./types.ts";
 
 const bare = { phone2: null, phone3: null, second_contact_phone: null };
 const rows: LeadPhoneRow[] = [
-  { id: "thelma", phone: "+1 323-806-7609", ...bare },
-  { id: "jeremy", phone: "(818) 268-7398", ...bare },
-  { id: "sandra", phone: "818-268-7398", ...bare },
+  { id: "thelma", phone: "+1 323-555-0109", ...bare },
+  { id: "jeremy", phone: "(818) 555-0198", ...bare },
+  { id: "sandra", phone: "818-555-0198", ...bare },
   { id: "carlos", phone: "760 790 4576", ...bare, second_contact_phone: "13237778888" },
   { id: "blank", phone: null, ...bare },
   { id: "short", phone: "555-1234", ...bare },
@@ -38,15 +38,15 @@ test("a number nobody has is 'none' -- the only case that may create a contact",
 });
 
 test("a number exactly one contact has is that contact", () => {
-  assert.deepEqual(phoneMatchIn(rows, "+13238067609"), { kind: "one", leadId: "thelma" });
+  assert.deepEqual(phoneMatchIn(rows, "+13235550109"), { kind: "one", leadId: "thelma" });
   // Same number, any way it was typed or imported.
-  assert.deepEqual(phoneMatchIn(rows, "323-806-7609"), { kind: "one", leadId: "thelma" });
-  assert.deepEqual(phoneMatchIn(rows, "3238067609"), { kind: "one", leadId: "thelma" });
-  assert.deepEqual(phoneMatchIn(rows, "1 (323) 806 7609"), { kind: "one", leadId: "thelma" });
+  assert.deepEqual(phoneMatchIn(rows, "323-555-0109"), { kind: "one", leadId: "thelma" });
+  assert.deepEqual(phoneMatchIn(rows, "3235550109"), { kind: "one", leadId: "thelma" });
+  assert.deepEqual(phoneMatchIn(rows, "1 (323) 555 0109"), { kind: "one", leadId: "thelma" });
 });
 
 test("a number two contacts share is 'many', not 'none'", () => {
-  const match = phoneMatchIn(rows, "8182687398");
+  const match = phoneMatchIn(rows, "8185550198");
   assert.equal(match.kind, "many");
   assert.deepEqual(match.kind === "many" ? [...match.leadIds].sort() : [], ["jeremy", "sandra"]);
 });
@@ -80,7 +80,7 @@ test("a blank or too-short number matches nobody instead of everybody", () => {
 
 test("the prebuilt index gives the same answers as a straight scan", () => {
   const index = phoneIndex(rows);
-  for (const phone of ["3238067609", "8182687398", "3237778888", "310-555-0199", ""]) {
+  for (const phone of ["3235550109", "8185550198", "3237778888", "310-555-0199", ""]) {
     assert.deepEqual(phoneMatchInIndex(index, phone), phoneMatchIn(rows, phone));
   }
 });
@@ -100,10 +100,10 @@ test("phoneKey stays in step with normalizePhone in types.ts", () => {
   // imports; if types.ts ever changes, this fails instead of silently
   // splitting contact matching in two.
   for (const input of [
-    "+1 323-806-7609",
-    "323-806-7609",
-    "13238067609",
-    "(818) 268-7398",
+    "+1 323-555-0109",
+    "323-555-0109",
+    "13235550109",
+    "(818) 555-0198",
     "760 790 4576",
     "555-1234",
     "",
@@ -114,8 +114,8 @@ test("phoneKey stays in step with normalizePhone in types.ts", () => {
 });
 
 test("soleLeadId keeps the old one-or-nothing behaviour", () => {
-  assert.equal(soleLeadId(phoneMatchIn(rows, "3238067609")), "thelma");
-  assert.equal(soleLeadId(phoneMatchIn(rows, "8182687398")), null);
+  assert.equal(soleLeadId(phoneMatchIn(rows, "3235550109")), "thelma");
+  assert.equal(soleLeadId(phoneMatchIn(rows, "8185550198")), null);
   assert.equal(soleLeadId(phoneMatchIn(rows, "310-555-0199")), null);
 });
 
