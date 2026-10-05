@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.196.0",
+    date: "2026-10-05",
+    notes: [
+      "Every time a platform admin opens a company they aren't a member of, it goes on a record that can't be edited or deleted: who, which company and when. Platform Admin shows it, newest first.",
+    ],
+  },
+  {
     version: "1.194.0",
     date: "2026-10-05",
     notes: [

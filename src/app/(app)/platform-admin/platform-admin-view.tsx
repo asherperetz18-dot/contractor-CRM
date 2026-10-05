@@ -8,6 +8,7 @@ import { switchCompany } from "@/lib/actions/company";
 import { openInCompany } from "@/lib/open-in-company";
 import { grantPlatformAdmin, revokePlatformAdmin } from "@/lib/actions/platform-admin";
 import type { PlatformAdminRow } from "@/lib/data/platform-admin";
+import { filterAccessLog, type AccessLogRow } from "@/lib/platform-access";
 import type { CompanyTwilioView } from "@/lib/twilio-source";
 import {
   canResendInvite,
@@ -481,16 +482,95 @@ function TwilioByCompanyCard({ rows }: { rows: CompanyTwilioView[] }) {
   );
 }
 
+/**
+ * The platform access record (DECISIONS #128): every time a platform
+ * admin opened a company they don't belong to, newest first. Read-only
+ * here and in the database -- lines can't be edited or removed.
+ */
+function AccessRecordCard({ rows, zone }: { rows: AccessLogRow[]; zone: string }) {
+  const [search, setSearch] = useState("");
+  const shown = useMemo(() => filterAccessLog(rows, search), [rows, search]);
+
+  return (
+    <div className="cp-card invite-history-card">
+      <div className="cp-card-head">🔎 Company access record</div>
+      <p className="cp-card-sub">
+        Every time a platform admin opened a company they aren&apos;t a member of, newest first.
+        Opening one of your own companies isn&apos;t listed. Nobody can edit or remove a line.
+      </p>
+      {rows.length > 0 && (
+        <div className="invite-history-tools">
+          <input
+            type="search"
+            className="invite-history-search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search company or person"
+            aria-label="Search the access record"
+          />
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <p className="hint-note">No companies opened yet.</p>
+      ) : shown.length === 0 ? (
+        <p className="hint-note">Nothing matches.</p>
+      ) : (
+        <div className="ur-table-scroll">
+          <table className="data-table ur-table invite-history-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>When</th>
+                <th>Who</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.company_name ?? "—"}</td>
+                  <td title={r.opened_at}>{fmtWhen(r.opened_at, zone)}</td>
+                  <td>
+                    {r.actor_name || r.actor_email || "—"}
+                    {r.actor_name && r.actor_email && <div className="hint-note invite-email">{r.actor_email}</div>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function fmtWhen(iso: string, zone: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    timeZone: zone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 export function PlatformAdminView({
   admins,
   invites,
   twilio,
+  access,
+  zone,
   now,
   selfId,
 }: {
   admins: PlatformAdminRow[];
   invites: InviteHistoryRow[];
   twilio: CompanyTwilioView[];
+  access: AccessLogRow[];
+  zone: string;
   now: number;
   selfId: string;
 }) {
@@ -506,6 +586,7 @@ export function PlatformAdminView({
       <InviteBusinessCard />
       <InviteHistoryCard invites={invites} now={now} />
       <TwilioByCompanyCard rows={twilio} />
+      <AccessRecordCard rows={access} zone={zone} />
       <PlatformAdminsCard admins={admins} selfId={selfId} />
     </div>
   );

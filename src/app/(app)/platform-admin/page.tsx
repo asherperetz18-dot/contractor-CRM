@@ -2,6 +2,8 @@ import { PlatformAdminGate } from "@/components/platform-admin-gate";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isPlatformAdmin } from "@/lib/data/types";
 import { listInviteHistory, listPlatformAdmins } from "@/lib/data/platform-admin";
+import { listPlatformAccess } from "@/lib/data/platform-access";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { loadAllCompanyTwilio } from "@/lib/twilio-company";
 import { twilioOverview } from "@/lib/twilio-source";
 import { PlatformAdminView } from "./platform-admin-view";
@@ -22,15 +24,18 @@ export default async function PlatformAdminPage() {
   // pays for that query -- and, until migration 0132 has run, never hits
   // the column-does-not-exist error it would raise, since nobody can
   // pass this check before the migration exists to make it true.
-  const [admins, invites, twilioRows] = isPlatformAdmin(profile)
-    ? await Promise.all([listPlatformAdmins(), listInviteHistory(), loadAllCompanyTwilio()])
-    : [[], [], []];
+  const [admins, invites, twilioRows, access] = isPlatformAdmin(profile)
+    ? await Promise.all([listPlatformAdmins(), listInviteHistory(), loadAllCompanyTwilio(), listPlatformAccess()])
+    : [[], [], [], []];
   const twilio = twilioOverview(twilioRows);
 
   // Read once here so every history row is judged against the same
   // instant (the view is a client component and may not read the clock
   // in render).
   const now = new Date().getTime();
+  // The access record's times, in the zone of the company the admin is in
+  // now, named on screen -- the same text on the server and in the browser.
+  const zone = await getCompanyZone();
 
   return (
     <PlatformAdminGate>
@@ -38,6 +43,8 @@ export default async function PlatformAdminPage() {
         admins={admins}
         invites={invites}
         twilio={twilio}
+        access={access}
+        zone={zone}
         now={now}
         selfId={profile?.id ?? ""}
       />

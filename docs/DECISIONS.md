@@ -1474,3 +1474,21 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Unchanged: the nightly backup exports whole tables at once (and reports a partial export as a failure), and the AI receptionist finalizer already works call by call, each in its own try/catch.
 
 **Consequence:** one company's broken setting or a slow outside service can no longer stop everyone else's reminders and syncs, and the failure shows up in Sentry with the company it belongs to. No database step.
+
+## 128 — A record whenever a platform admin opens a company
+
+**Date:** 2026-10-05
+
+**Context:** Platform admins hold a seat in every company so they can open it and help (0132). Nothing recorded when they did. With hundreds of companies trusting the platform with their customers, "who from AI Build Pros looked at our account, and when" needs an answer.
+
+**Decision:**
+- **New table `platform_access_log`** (migration 0197): company, person (name and email copied in, so a line still reads after the account is gone), time. Row-level security on with no policies: only the server writes and reads it.
+- **Append-only in the database itself:** a trigger refuses any edit, delete or truncation. A line goes only when its company is deleted (the cascade is let through).
+- **Written in `switchCompany`**, which every Open button and the company switcher use, only when the seat used is a look-in seat (`granted_via_platform_admin`). Opening a company the admin genuinely belongs to isn't recorded.
+- **No record, no entry:** if the line can't be written the company stays closed ("Couldn't record this visit…"). The one exception is the table not existing yet: until 0197 is run, opening works as before, with a warning in the logs. The schema check in Settings names 0197 until it has run.
+- **No backdoor through the default company:** with no company chosen yet (a new device, cleared cookies) a person lands in a company of their own before any look-in seat (`defaultCompanyId`), so a platform admin can't end up inside a customer's company without opening it. Someone with only look-in seats still lands in one, as before.
+- **Shown on Platform Admin** ("Company access record"): the newest 300 lines, searchable by company or person, times in the current company's zone.
+- Customers don't see it yet; a company's own Admin view can be added on top of the same table.
+
+**Consequence:** every look into a customer's company leaves a line that can't be changed. **Database step: run `supabase/migrations/0197_platform_access_log.sql`.**
+
