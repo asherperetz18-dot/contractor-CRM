@@ -22,8 +22,8 @@ import { trialCheckoutOptions } from "@/lib/billing/trial";
 
 /**
  * Starts a signup: company name and email in, a Stripe Checkout URL out.
- * A monthly plan starts as a 30-day free trial with no card asked for
- * (DECISIONS #129); a one-off price is paid up front as before. Nothing
+ * A monthly plan starts as a 60-day free trial with no card asked for
+ * (DECISIONS #129, #139); a one-off price is paid up front as before. Nothing
  * is written to our database here -- an abandoned checkout should leave
  * no trace, and the company only exists once checkout is complete.
  */
