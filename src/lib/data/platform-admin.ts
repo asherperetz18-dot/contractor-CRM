@@ -1,6 +1,14 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { InviteHistoryRow } from "@/lib/signup/invite-history";
+import { selectAll } from "@/lib/data/select-all";
+import {
+  buildCompanyDirectory,
+  type CompanyDirectoryRow,
+  type DirectoryBilling,
+  type DirectoryCompany,
+  type DirectoryMember,
+} from "@/lib/company-directory";
 
 export type PlatformAdminRow = {
   id: string;
@@ -94,4 +102,31 @@ export async function listInviteHistory(): Promise<InviteHistoryRow[]> {
       sent_by_name: r.sent_by ? (names.get(r.sent_by) ?? null) : null,
     };
   });
+}
+
+/**
+ * Every company on the platform, for the Companies page (DECISIONS #127).
+ * Three reads, each paged past the 1,000-row cap (selectAll), instead of
+ * a query per company: the list is meant to stay quick at hundreds of
+ * companies. Behind PlatformAdminGate like the rest of this file.
+ */
+export async function listCompanyDirectory(): Promise<CompanyDirectoryRow[]> {
+  const admin = createAdminClient();
+  const [companies, members, billing] = await Promise.all([
+    selectAll<DirectoryCompany>((from, to) =>
+      admin.from("companies").select("id, name, created_at").order("id").range(from, to)
+    ),
+    selectAll<DirectoryMember>((from, to) =>
+      admin
+        .from("company_members")
+        .select("company_id, roles, status, granted_via_platform_admin, created_at, profiles(name, email)")
+        .eq("status", "Active")
+        .order("id")
+        .range(from, to)
+    ),
+    selectAll<DirectoryBilling>((from, to) =>
+      admin.from("company_billing").select("company_id, billing_status").order("company_id").range(from, to)
+    ),
+  ]);
+  return buildCompanyDirectory(companies, members, billing);
 }

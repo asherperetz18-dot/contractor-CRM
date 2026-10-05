@@ -1458,3 +1458,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The words reach every page through the cached company chrome (`getCompanyWordsCached`), invalidated when Company Words is saved — no extra query per page load.
 
 **Consequence:** a company that changed a word sees its menus change with it, on the next page load after saving. Team role names (Sales, Dispatch…) are not words and are untouched here.
+
+## 127 — A Companies page for whoever runs the platform
+
+**Date:** 2026-10-05
+
+**Context:** A platform admin could see companies only piecemeal: the invite history (companies that came from a setup link), the Twilio card, and the company switcher. Nothing answered "how many companies are there, who owns each one, and which are paying" — the first thing to know when running hundreds of them.
+
+**Decision:**
+- **Platform Admin › Companies** (`/platform-admin/companies`, behind `PlatformAdminGate`, also in the Admin Tools menu) lists every company: name, owner, team size, start date, billing, and Open (the same switch the other Open buttons use).
+- **Owner** is the company's earliest active Office or Admin of its own. Platform admins hold a seat in every company (0132, `granted_via_platform_admin`); those seats never count as the owner or in the team size.
+- **Billing** reads `company_billing`: Paying (active), Free trial (trialing), Payment failed (past due or incomplete, still has access), Locked (the statuses that lock, `isBillingLocked`), Waiting on Stripe (a customer whose status hasn't come in, or a status we don't know — never shown as paying), Not billed (no subscription: made by a platform admin or before self-serve signup, never locked).
+- **Built for hundreds:** three reads (companies, members with their names, billing), each paged past the 1,000-row cap, joined in a pure tested function (`src/lib/company-directory.ts`) — not one query per company.
+- A setup-progress column waits for the setup checklist, so the two read the same rules.
+
+**Consequence:** one page shows every company and where its billing stands. No database step.
+

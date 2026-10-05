@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Field } from "@/components/ui/field";
@@ -499,7 +500,10 @@ export function PlatformAdminView({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Platform Admin</h1>
-          <p className="module-sub">Operating the platform, not a single company</p>
+          <p className="module-sub">
+            Operating the platform, not a single company ·{" "}
+            <Link href="/platform-admin/companies">All companies</Link>
+          </p>
         </div>
       </div>
 
