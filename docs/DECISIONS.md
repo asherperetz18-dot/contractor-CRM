@@ -1570,3 +1570,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** the platform can see what each company uses this month. **Database step: run `supabase/migrations/0199_company_usage.sql`.**
 
+## 135 — A platform admin can close a company, and reopen it
+
+**Date:** 2026-10-05
+
+**Context:** There was no way to close a company — a customer who left, a test account, a sign-up that was never real — short of cancelling a subscription it might not have, or deleting it, which nothing supported and which would destroy its records. Separately, the database allowed more than it should around removing a company row; no screen ever did it, but the permission was there.
+
+**Decision:**
+- **Closed is a lock, not a delete.** `company_closures` (0201) holds the closed companies, with who closed it and why; only the server reads or writes it.
+- **Locked exactly like a lapsed subscription, through the same checks:** the database lock (`billing_locked_company_ids()` now returns closed companies too, still empty for platform admins so they can look in), the app shell's redirect, `isCompanyLocked` (texts, calls, AI — #131), the scheduled jobs' pause, and the lock screen's re-check. The lock screen says the company is closed and offers nothing to buy, since paying doesn't reopen it.
+- **Close and Reopen on Platform Admin › Companies** (`closeCompany`, `reopenCompany`): platform admins only, checked inside the actions; closing asks for an optional reason; both are logged. A Closed chip marks closed companies.
+- **Stripe is left alone:** closing doesn't cancel a subscription. A paying company being closed should have its subscription cancelled in Stripe as a separate, deliberate step.
+- **Only the server can remove a company row now** (the companies table's delete permission is gone). No screen used it.
+
+**Consequence:** a company can be closed and reopened in one click without losing anything. **Database step: run `supabase/migrations/0201_company_closures.sql`.**
+

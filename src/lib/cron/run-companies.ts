@@ -3,6 +3,7 @@ import { logError, logWarn } from "@/lib/observability/logger";
 import { captureError } from "@/lib/observability/sentry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { LOCKED_STATUSES } from "@/lib/billing/subscription";
+import { closedCompanyIds } from "@/lib/billing/company-closure";
 import { eachCompany, fairOrder, withoutLocked, type EachCompanyResult } from "./each-company";
 
 export { runSummary } from "./each-company";
@@ -50,14 +51,16 @@ export async function runForEachCompany<C, T>(
 }
 
 /**
- * Companies whose AI Build Pro subscription is locked. An unreadable
+ * Companies whose AI Build Pro subscription is locked, or that a platform
+ * admin closed (DECISIONS #135). An unreadable
  * table (0175 not run) locks nobody, exactly as the app shell treats it.
  */
 async function lockedCompanyIds(): Promise<Set<string>> {
-  const { data, error } = await createAdminClient()
-    .from("company_billing")
-    .select("company_id")
-    .in("billing_status", [...LOCKED_STATUSES]);
-  if (error || !data) return new Set();
-  return new Set((data as { company_id: string }[]).map((r) => r.company_id));
+  const [{ data, error }, closed] = await Promise.all([
+    createAdminClient().from("company_billing").select("company_id").in("billing_status", [...LOCKED_STATUSES]),
+    // Closed companies are paused too (DECISIONS #135).
+    closedCompanyIds(),
+  ]);
+  const lapsed = error || !data ? [] : (data as { company_id: string }[]).map((r) => r.company_id);
+  return new Set([...lapsed, ...closed]);
 }

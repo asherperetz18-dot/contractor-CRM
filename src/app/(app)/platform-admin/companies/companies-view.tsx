@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { switchCompany } from "@/lib/actions/company";
+import { closeCompany, reopenCompany } from "@/lib/actions/company-closure";
 import { extendTrial } from "@/lib/actions/trial-admin";
 import { TRIAL_EXTENSIONS } from "@/lib/billing/trial";
 import { formatUsageLine } from "@/lib/usage/usage";
@@ -85,6 +86,87 @@ function ExtendTrial({ companyId }: { companyId: string }) {
       <button type="button" className="btn-ghost small" onClick={extend} disabled={busy}>
         {busy ? "Extending…" : "Extend trial"}
       </button>
+      {error && <p className="error-note">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * Close or reopen one company (DECISIONS #135). Closing locks it like a
+ * lapsed subscription and deletes nothing; it asks for a reason first.
+ */
+function CloseCompany({ companyId, name, closed }: { companyId: string; name: string; closed: boolean }) {
+  const router = useRouter();
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(action: () => Promise<{ error?: string }>) {
+    setBusy(true);
+    setError(null);
+    const res = await action();
+    setBusy(false);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    setAsking(false);
+    router.refresh();
+  }
+
+  if (closed) {
+    return (
+      <>
+        <button
+          type="button"
+          className="btn-ghost small company-close"
+          onClick={() => run(() => reopenCompany(companyId))}
+          disabled={busy}
+        >
+          {busy ? "Reopening…" : "Reopen"}
+        </button>
+        {error && <p className="error-note">{error}</p>}
+      </>
+    );
+  }
+
+  if (!asking) {
+    return (
+      <button type="button" className="btn-danger-ghost small company-close" onClick={() => setAsking(true)}>
+        Close
+      </button>
+    );
+  }
+
+  return (
+    <div className="company-close-confirm">
+      <p className="hint-note">
+        Close {name}? Its people are locked out and its texts, calls and AI stop. Nothing is deleted, and
+        you can reopen it any time.
+      </p>
+      <input
+        type="text"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Why (optional)"
+        maxLength={500}
+        disabled={busy}
+        aria-label="Reason for closing"
+      />
+      <div className="company-close-actions">
+        <button
+          type="button"
+          className="btn-danger-ghost small"
+          onClick={() => run(() => closeCompany(companyId, reason))}
+          disabled={busy}
+        >
+          {busy ? "Closing…" : "Close company"}
+        </button>
+        <button type="button" className="btn-ghost small" onClick={() => setAsking(false)} disabled={busy}>
+          Cancel
+        </button>
+      </div>
       {error && <p className="error-note">{error}</p>}
     </div>
   );
@@ -177,7 +259,14 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                   const busy = busyId === r.id;
                   return (
                     <tr key={r.id}>
-                      <td className="company-directory-name">{r.name}</td>
+                      <td className="company-directory-name">
+                        {r.name}
+                        {r.closed && (
+                          <span className="chip invite-status chip-c-dead company-closed-chip" title={r.closed.reason ?? undefined}>
+                            Closed
+                          </span>
+                        )}
+                      </td>
                       <td data-label="Owner">
                         {r.owner ? (
                           <>
@@ -212,6 +301,7 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                         <button type="button" className="btn-ghost small" onClick={() => open(r.id)} disabled={busy}>
                           {busy ? "Opening…" : "Open"}
                         </button>
+                        <CloseCompany companyId={r.id} name={r.name} closed={r.closed !== null} />
                         {rowError?.id === r.id && <p className="error-note">{rowError.message}</p>}
                       </td>
                     </tr>

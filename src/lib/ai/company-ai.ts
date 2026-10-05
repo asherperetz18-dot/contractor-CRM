@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { isCompanyLocked, LOCKED_SERVICES_ERROR } from "@/lib/billing/company-lock";
+import { isCompanyLocked, LOCKED_SERVICES_ERROR, lockedServicesError } from "@/lib/billing/company-lock";
 import { recordUsage } from "@/lib/usage/record-usage";
 import { aiUsageDeltas } from "@/lib/usage/usage";
 
@@ -24,7 +24,9 @@ export async function aiForCompany(
   companyId: string,
   notConfigured = "AI isn't configured yet."
 ): Promise<CompanyAi> {
-  if (await isCompanyLocked(companyId)) return { error: LOCKED_SERVICES_ERROR, reason: "locked" };
+  if (await isCompanyLocked(companyId)) {
+    return { error: (await lockedServicesError(companyId)) ?? LOCKED_SERVICES_ERROR, reason: "locked" };
+  }
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { error: notConfigured, reason: "not_configured" };
   return { client: metered(new Anthropic({ apiKey }), companyId) };

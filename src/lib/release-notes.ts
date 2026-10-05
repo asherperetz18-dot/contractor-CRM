@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.204.0",
+    date: "2026-10-05",
+    notes: [
+      "Platform admins can close a company from the Companies page, and reopen it later. A closed company is locked like an ended subscription: its people see a \"closed\" screen and its texts, calls and AI stop. Nothing is deleted.",
+    ],
+  },
+  {
     version: "1.201.0",
     date: "2026-10-05",
     notes: [
