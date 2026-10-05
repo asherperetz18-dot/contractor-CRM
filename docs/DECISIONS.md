@@ -1470,7 +1470,7 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The order turns every minute**, so the same company is never always last.
 - **A time budget:** a run stops starting new companies after four minutes (`CRON_BUDGET_MS`); the ones it didn't reach are counted as "deferred" and simply go first on a later run. Every one of these jobs gets `maxDuration = 300` so the budget, not the platform, decides where a run stops.
 - **Calls to outside services have a time limit and never throw:** sending a text (15 s), the weather service (10 s), CallRail (20 s), Google sign-in and calendar requests (15 s / 20 s). A timeout reads as an ordinary failure for that one company.
-- The job still answers 200 and adds `failed` (company id + message) and `deferred` (count) to its JSON, so the scheduler doesn't retry everyone because one company failed.
+- The job still answers 200 and adds `failures` (company id + message) and `deferred` (count) to its JSON, so the scheduler doesn't retry everyone because one company failed. (First shipped as `failed`, which overwrote Google Calendar sync's own `failed` count; renamed the same day.)
 - Unchanged: the nightly backup exports whole tables at once (and reports a partial export as a failure), and the AI receptionist finalizer already works call by call, each in its own try/catch.
 
 **Consequence:** one company's broken setting or a slow outside service can no longer stop everyone else's reminders and syncs, and the failure shows up in Sentry with the company it belongs to. No database step.

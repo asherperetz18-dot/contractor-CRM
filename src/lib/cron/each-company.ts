@@ -63,3 +63,16 @@ export async function eachCompany<C, T>(
   }
   return out;
 }
+
+/**
+ * The run's outcome for the job's JSON answer: which companies failed and
+ * why, and how many waited for the next run. Named `failures`, not
+ * `failed`: it is spread after a job's own counts, and Google Calendar
+ * sync already reports a `failed` count of its own.
+ */
+export function runSummary(result: EachCompanyResult<unknown>) {
+  return {
+    failures: result.failed,
+    deferred: result.deferred.length,
+  };
+}
