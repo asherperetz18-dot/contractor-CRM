@@ -115,8 +115,9 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   }
 
   // The deposit is computed, never typed. On a $28,500 job 10% is $2,850
-  // but the cap holds it at $1,000 -- that ceiling is California's limit
-  // for home improvement contracts, so it must not be editable per job.
+  // but the cap holds it at $1,000 -- the company's own rule (Settings →
+  // Contracts; California's legal limit for a California company), so it
+  // must not be editable per job.
   const deposit = depositCents(totalCents, depositPercentBp, depositCapCents);
   const balance = balanceAfterDepositCents(totalCents, deposit);
   const capped = Math.round((totalCents * depositPercentBp) / 10000) > deposit && totalCents > 0;
@@ -223,9 +224,9 @@ export const PaymentSchedule = memo(function PaymentSchedule({
    * instead of flattening into equal parts.
    *
    * The deposit is not in `rows` and cannot move. It is computed from the
-   * company's percentage and held under California's $1,000 home
-   * improvement cap -- adjusting it to make a phase fit would be the one
-   * change nobody is allowed to make.
+   * company's percentage and held under the company's cap (California's
+   * $1,000 for a California company) -- adjusting it to make a phase fit
+   * would be the one change nobody is allowed to make.
    */
   function autoAdjust() {
     if (rows.length < 2) return;

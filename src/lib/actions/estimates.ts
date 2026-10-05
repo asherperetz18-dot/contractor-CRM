@@ -31,6 +31,8 @@ import {
   canViewEstimates,
   leadAfterContractVoid,
   isStrictAdmin,
+  DEFAULT_DEPOSIT_CAP_CENTS,
+  DEFAULT_DEPOSIT_PERCENT_BP,
   depositCents,
   editWillRecallEstimate,
   estimateLocked,
@@ -60,6 +62,9 @@ type SettingsRow = {
   tax_rate_bp: number;
   estimate_expiry_days: number;
   estimate_terms: string | null;
+  /** The company's deposit rule (Settings → Contracts, DECISIONS #117). */
+  deposit_percent_bp: number | null;
+  deposit_cap_cents: number | null;
 };
 
 type ItemsEstimateRow = {
@@ -510,7 +515,7 @@ export async function createEstimate(
   const { data: settings } = await supabase
     .from("company_profile")
     .select(
-      "tax_rate_bp, estimate_expiry_days, estimate_terms, name, address, phone, email, license_number"
+      "tax_rate_bp, estimate_expiry_days, estimate_terms, deposit_percent_bp, deposit_cap_cents, name, address, phone, email, license_number"
     )
     .eq("company_id", guard.companyId)
     .maybeSingle<
@@ -587,6 +592,10 @@ export async function createEstimate(
       terms: contractBody,
       contract_template_id: template?.id ?? null,
       expires_at: expiresAt,
+      // Copied, like the contract: changing the company's rule later
+      // never changes the deposit on this estimate.
+      deposit_percent_bp: settings?.deposit_percent_bp ?? DEFAULT_DEPOSIT_PERCENT_BP,
+      deposit_cap_cents: settings?.deposit_cap_cents ?? DEFAULT_DEPOSIT_CAP_CENTS,
       created_by: guard.userId,
     })
     .select("id")

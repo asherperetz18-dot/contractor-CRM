@@ -2876,10 +2876,12 @@ export const DEFAULT_DEPOSIT_CAP_CENTS = 100000; // $1,000
  * prefers. On a $28,500 job 10% is $2,850, so the deposit is $1,000; on a
  * $5,000 job 10% is $500, so the deposit is $500.
  *
- * This is California's limit for home improvement contracts (CSLB, B&P
- * 7159) -- a down payment may not exceed $1,000 or 10% of the contract
- * price, whichever is less. Enforced as a ceiling rather than a default
- * so a large job cannot quietly collect an illegal deposit.
+ * The percent and cap are the company's own rule (Settings → Contracts),
+ * copied onto each estimate when it is created (DECISIONS #117). The
+ * defaults below are California's limit for home improvement contracts
+ * (B&P 7159.5), which a California company cannot exceed. Enforced as a
+ * ceiling rather than a default so a large job cannot quietly collect
+ * more than the rule allows.
  */
 export function depositCents(
   totalCents: number,

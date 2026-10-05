@@ -122,9 +122,9 @@ export async function recordManualPayment(
     );
   }
   if (!input.phaseId) {
-    // California caps a home-improvement down payment at $1,000 or 10%,
-    // whichever is less -- and the cap does not care that the customer
-    // paid in cash.
+    // The deposit rule copied onto the estimate (the company's own; for a
+    // California company, the legal limit of $1,000 or 10%) -- and the cap
+    // does not care that the customer paid in cash.
     const legalCap = depositCents(
       estimate.total_cents,
       estimate.deposit_percent_bp,
