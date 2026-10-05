@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.184.0",
+    date: "2026-10-05",
+    notes: [
+      "Call Center: correcting a contact's details and adding call notes from the Power Dialer now saves, instead of showing a permission error. (Needs the database update in this release.)",
+      "AI call notes, the dispatch dashboard's summary, and the record of deleted files now have the database pieces they were missing. (Same database update.)",
+      "Settings → Database Health now also checks for these, so a skipped database update is named instead of a feature quietly not working.",
+    ],
+  },
+  {
     version: "1.183.3",
     date: "2026-10-05",
     notes: [

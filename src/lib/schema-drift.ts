@@ -33,6 +33,14 @@ export type SchemaProbe = {
  * and provably everywhere.
  */
 export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
+  // Added by hand in production and only written down later (DECISIONS #115).
+  { table: "leads", column: "dispatcher_id", migration: "0067_recorded_from_production.sql" },
+  { table: "company_profile", column: "twilio_account_sid", migration: "0067_recorded_from_production.sql" },
+  { table: "lead_files", column: "event_id", migration: "0067_recorded_from_production.sql" },
+  { table: "company_profile", column: "ai_call_notes_enabled", migration: "0138_ai_call_notes.sql" },
+  { table: "company_profile", column: "twilio_vi_service_sid", migration: "0138_ai_call_notes.sql" },
+  { table: "call_logs", column: "transcript_sid", migration: "0138_ai_call_notes.sql" },
+  { table: "call_logs", column: "ai_note_at", migration: "0138_ai_call_notes.sql" },
   { table: "profiles", column: "estimate_funnel_order", migration: "0145_estimate_funnel_order.sql" },
   { table: "screen_shares", column: "kind", migration: "0149_cobrowse_share_kind.sql" },
   { table: "leads", column: "phone2", migration: "0150_lead_phone2_phone3.sql" },
@@ -53,9 +61,13 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "company_profile", column: "primecall_domain", migration: "0177_primecall.sql" },
   { table: "call_logs", column: "primecall_call_id", migration: "0177_primecall.sql" },
   { table: "company_members", column: "can_send_without_approval", migration: "0179_send_without_approval.sql" },
+  { table: "lead_file_deletions", column: "file_id", migration: "0182_lead_file_deletions.sql" },
   { table: "time_clock_settings", column: "clock_in_check", migration: "0185_clock_in_check.sql" },
   { table: "time_punches", column: "in_check", migration: "0185_clock_in_check.sql" },
   { table: "site_visits", column: "job_id", migration: "0185_clock_in_check.sql" },
+  { table: "legacy_shared_recordings", column: "recording_url", migration: "0191_legacy_shared_recordings.sql" },
+  { table: "sms_messages", column: "owner_id", migration: "0192_text_privacy.sql" },
+  { table: "company_profile", column: "meta_page_access_token_enc", migration: "0193_meta_secrets_encrypted.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import {
   EXPECTED_COLUMNS,
   buildDriftReport,
@@ -117,5 +118,31 @@ test("the manifest names real migration files, newest window only", () => {
     assert.match(probe.migration, /^\d{4}_[a-z0-9_]+\.sql$/);
     assert.ok(probe.table.length > 0);
     assert.ok(probe.column.length > 0);
+  }
+});
+
+/**
+ * A full comparison with production on 2026-10-05 found 0137, 0138, 0171
+ * and 0182 had never been run, and objects added by hand that no file
+ * recorded (now 0067). The column-backed ones are probed from here on,
+ * so Settings shows a skipped file instead of a feature quietly failing
+ * (DECISIONS #115). 0137 (a policy) and 0171 (a function) can't be seen
+ * by a column probe.
+ */
+test("the manifest covers the files production was found to have skipped", () => {
+  const migrationsDir = new URL("../../supabase/migrations/", import.meta.url);
+  for (const probe of EXPECTED_COLUMNS) {
+    assert.ok(existsSync(new URL(probe.migration, migrationsDir)), `${probe.migration} exists`);
+  }
+  const files = new Set(EXPECTED_COLUMNS.map((p) => p.migration));
+  for (const f of [
+    "0067_recorded_from_production.sql",
+    "0138_ai_call_notes.sql",
+    "0182_lead_file_deletions.sql",
+    "0191_legacy_shared_recordings.sql",
+    "0192_text_privacy.sql",
+    "0193_meta_secrets_encrypted.sql",
+  ]) {
+    assert.ok(files.has(f), f);
   }
 });
