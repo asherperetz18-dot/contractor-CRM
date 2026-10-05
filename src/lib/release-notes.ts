@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.209.0",
+    date: "2026-10-05",
+    notes: [
+      "Behind the scenes: appointment and task reminders, no-show follow-ups, rain alerts and the calendar and phone syncs now start from the CRM's own database, on the minute. They used to wait on GitHub, which could run them late when it was busy.",
+    ],
+  },
+  {
     version: "1.207.0",
     date: "2026-10-05",
     notes: [

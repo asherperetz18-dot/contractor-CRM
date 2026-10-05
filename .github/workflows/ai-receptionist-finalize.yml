@@ -1,8 +1,8 @@
 name: AI Receptionist Finalize
 
 on:
-  schedule:
-    - cron: "13 */2 * * *"
+  # The timer (13 */2 * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch: {}
 
 jobs:

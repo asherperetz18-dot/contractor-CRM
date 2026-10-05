@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCronSecret } from "@/lib/cron-env";
+import { refuseCronCaller } from "@/lib/cron-auth";
 import { withRouteObservability } from "@/lib/observability/observe";
 import { listConnections, syncConnection } from "@/lib/google-calendar/sync";
 import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
@@ -11,13 +11,9 @@ import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
  * hiccup) is recorded on its own row and never stops the others.
  */
 async function handlePost(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  if (req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // The database's scheduler or a CRON_SECRET holder (DECISIONS #140).
+  const refused = await refuseCronCaller(req);
+  if (refused) return refused;
 
   const admin = createAdminClient();
   const connections = await listConnections(admin);

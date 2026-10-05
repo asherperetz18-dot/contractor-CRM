@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCronSecret } from "@/lib/cron-env";
+import { refuseCronCaller } from "@/lib/cron-auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { syncPrimeCall } from "@/lib/primecall-sync";
 import { withRouteObservability } from "@/lib/observability/observe";
@@ -14,13 +14,9 @@ import { runForEachCompany, runSummary } from "@/lib/cron/run-companies";
 export const maxDuration = 300;
 
 async function handlePost(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  if (req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // The database's scheduler or a CRON_SECRET holder (DECISIONS #140).
+  const refused = await refuseCronCaller(req);
+  if (refused) return refused;
 
   // The scheduled sweep re-reads 3 hours; a manual dispatch can ask for
   // days of history, which is imported without new-lead texts.

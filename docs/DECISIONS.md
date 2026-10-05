@@ -1661,3 +1661,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a company sees its own role names on the screens that list roles, with no change to who can do what. **Database step: run `supabase/migrations/0202_company_role_names.sql`.**
 
+## 140 — Scheduled jobs run from the database, not GitHub
+
+**Date:** 2026-10-05
+
+**Context:** GitHub Actions timers started every scheduled job: appointment and task reminders and no-show follow-ups every 15 minutes, the phone and calendar syncs, the time clock, rain alerts. GitHub's timers are best-effort. On 2026-10-05 it cancelled runs for over an hour without starting them, so every company's reminders would have been late at once. The jobs also send a text before marking it sent, so two runs of the same job at the same moment can text twice: whatever starts them should start each one once, on time.
+
+**Decision:**
+- **Supabase Cron starts them** (`pg_cron` + `pg_net`, migration 0203), on the minute, at the same UTC times GitHub used. The routes and what they do are unchanged; the database calls them the way GitHub did. `crm_jobs.run(path)` only calls `/api/cron/…` on `crm.aibuildpros.com`, and lives in a schema the app's API doesn't expose.
+- **No secret to copy.** The migration makes a random token and keeps it in Supabase Vault; it's sent with each call, and the routes ask the database whether a token is that one (`crm_job_token_ok`, service role only). `CRON_SECRET` still works for the "Run workflow" buttons. One check for all nine routes: `refuseCronCaller` (`src/lib/cron-auth.ts`).
+- **The GitHub timers are removed** from those nine workflows, so a job is never started by both. Their "Run workflow" buttons stay.
+- **The nightly backup stays on GitHub**, on `CRON_SECRET` only: its encrypted file is kept there, and the export of every company shouldn't be something the database can ask for.
+- `cron-token.test.ts` holds every job route to exactly one scheduler and the times above.
+
+**Consequence:** reminders and syncs run on time whatever GitHub is doing. **Database step: run `supabase/migrations/0203_scheduled_jobs.sql` right after merging** — until then nothing starts the nine jobs on a timer.
+
