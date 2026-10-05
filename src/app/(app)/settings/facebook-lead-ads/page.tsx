@@ -11,7 +11,7 @@ export default async function FacebookLeadAdsPage({
 }) {
   const { error, connected } = await searchParams;
   // Admins only, and only whether a Page token or app secret is saved:
-  // the keys themselves never reach the browser (DECISIONS #113).
+  // the keys themselves never reach the browser (DECISIONS #114).
   const setup = await getMetaManualSetup();
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;

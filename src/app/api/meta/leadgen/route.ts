@@ -113,7 +113,7 @@ async function handlePost(req: NextRequest) {
     if (!pageId) continue;
 
     const config = await getMetaConfigByPage(String(pageId));
-    // The Page's keys are kept encrypted, apart from the row (DECISIONS #113).
+    // The Page's keys are kept encrypted, apart from the row (DECISIONS #114).
     const keys = config ? await loadMetaSecrets(config.company_id, admin) : null;
     const pageAccessToken = keys?.pageAccessToken;
     if (!config || !pageAccessToken) {

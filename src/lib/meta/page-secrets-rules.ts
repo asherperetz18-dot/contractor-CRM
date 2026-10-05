@@ -1,13 +1,13 @@
 /**
  * Which stored copy of a company's Facebook Page token and app secret to
- * use, and what a save writes (DECISIONS #113).
+ * use, and what a save writes (DECISIONS #114).
  *
  * They used to sit in plain text in company_profile, which every member
  * of the company can read. Now:
  *   - the encrypted copy (meta_*_enc) is the one used;
  *   - a plain copy left in company_profile from before is still used,
  *     and flagged so the reader encrypts it and clears the plain one;
- *   - a plain copy migration 0192 moved into meta_secrets_legacy (a table
+ *   - a plain copy migration 0193 moved into meta_secrets_legacy (a table
  *     no CRM user can read) is found the same way, and healed the same way.
  *
  * Pure -- the decrypt/encrypt functions are handed in -- so it is tested

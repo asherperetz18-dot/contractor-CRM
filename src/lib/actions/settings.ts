@@ -364,7 +364,7 @@ export type MetaConfigInput = {
 /**
  * The advanced Facebook setup (the company's own Meta app). Admin-only,
  * and the Page token and app secret are stored encrypted, never in plain
- * text where every member of the company could read them (DECISIONS #113).
+ * text where every member of the company could read them (DECISIONS #114).
  */
 export async function saveMetaConfig(input: MetaConfigInput): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();

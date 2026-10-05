@@ -1226,7 +1226,7 @@ The object is reached through its record, never its path alone: a merged duplica
 
 **Consequence:** It needs a new Play build. The iPhone app has no plugin yet, so it shows no button. The route the WebView chooses at the start of a call is left as Android sets it.
 
-## 113 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
+## 114 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
 
 **Date:** 2026-10-05
 
@@ -1234,12 +1234,12 @@ The object is reached through its record, never its path alone: a merged duplica
 
 **Decision:**
 - **One module owns the keys.** `src/lib/meta/page-secrets.ts` (server-only, service role) is the only code that reads or writes them; the rules are in `page-secrets-rules.ts` (tested). A test fails if any other file names the plain columns.
-- **Stored encrypted.** New columns `meta_page_access_token_enc` and `meta_app_secret_enc` (0192). Every save writes the encrypted copy and clears the plain one.
-- **The old plain copies are moved out of reach at once.** SQL can't encrypt (the key lives on the server), so 0192 moves them into `meta_secrets_legacy` (RLS on, no policies, no rights for signed-in users) and clears them from `company_profile`. The first time the server needs a company's keys it encrypts them and deletes that company's row there. If a key can't be encrypted, nothing is changed.
+- **Stored encrypted.** New columns `meta_page_access_token_enc` and `meta_app_secret_enc` (0193). Every save writes the encrypted copy and clears the plain one.
+- **The old plain copies are moved out of reach at once.** SQL can't encrypt (the key lives on the server), so 0193 moves them into `meta_secrets_legacy` (RLS on, no policies, no rights for signed-in users) and clears them from `company_profile`. The first time the server needs a company's keys it encrypts them and deletes that company's row there. If a key can't be encrypted, nothing is changed.
 - **Never sent to the browser.** The settings page shows whether a token or secret is saved. The boxes start empty, and a blank box keeps the saved one.
 - **Admin only.** `saveMetaConfig` checks the role (Office or Admin), like every other integration setting. A save error is shown instead of "✓ Saved".
-- **Works before 0192 is run.** Reads fall back to the plain columns and a save stores the old way, so no lead is dropped in between; 0192 then moves what was saved.
+- **Works before 0193 is run.** Reads fall back to the plain columns and a save stores the old way, so no lead is dropped in between; 0193 then moves what was saved.
 
 **Consequence:**
-- **Owner step:** run `0192_meta_secrets_encrypted.sql` in Supabase after the deploy. Its last line should read `plain_left = 0`.
+- **Owner step:** run `0193_meta_secrets_encrypted.sql` in Supabase after the deploy. Its last line should read `plain_left = 0`.
 - Nothing changes for a connected Page. Leads keep arriving.

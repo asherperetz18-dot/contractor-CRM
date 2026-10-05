@@ -18,7 +18,7 @@ function randomToken() {
  *
  * A saved Page token or app secret is never sent back here: the boxes
  * start empty, say whether one is saved, and a blank box keeps it
- * (DECISIONS #113).
+ * (DECISIONS #114).
  */
 export function MetaSettings({
   config,

@@ -10,7 +10,7 @@ import { metaSecretWrite, pickMetaSecrets } from "./page-secrets-rules.ts";
  * text in company_profile, which every member of the company can read --
  * a field rep could read the token that downloads the company's Facebook
  * leads. They are now encrypted like every other saved key, and the plain
- * copies are moved out of reach (DECISIONS #113).
+ * copies are moved out of reach (DECISIONS #114).
  */
 
 const decrypt = (v: string | null | undefined) => (v ? v.replace(/^enc:/, "") : null);
@@ -92,7 +92,7 @@ test("the settings page never sends a saved key to the browser", () => {
 });
 
 test("the migration moves the plain keys out of reach", () => {
-  const sql = readFileSync(join(SRC, "../supabase/migrations/0192_meta_secrets_encrypted.sql"), "utf8");
+  const sql = readFileSync(join(SRC, "../supabase/migrations/0193_meta_secrets_encrypted.sql"), "utf8");
   assert.match(sql, /add column if not exists meta_page_access_token_enc text/);
   assert.match(sql, /add column if not exists meta_app_secret_enc text/);
   assert.match(sql, /revoke all on public\.meta_secrets_legacy from anon, authenticated/);

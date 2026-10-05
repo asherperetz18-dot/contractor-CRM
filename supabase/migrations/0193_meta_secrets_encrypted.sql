@@ -1,4 +1,4 @@
--- Facebook Page token and app secret stored encrypted (DECISIONS #113).
+-- Facebook Page token and app secret stored encrypted (DECISIONS #114).
 --
 -- They were kept in plain text in company_profile, a table every member
 -- of the company can read. From this release the CRM stores them

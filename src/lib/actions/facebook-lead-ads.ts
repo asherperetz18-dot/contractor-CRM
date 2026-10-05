@@ -66,7 +66,7 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
     row = full.data as ProfileRow | null;
   }
 
-  // The token is kept encrypted, apart from the row (DECISIONS #113).
+  // The token is kept encrypted, apart from the row (DECISIONS #114).
   const token = row?.meta_page_id ? (await loadMetaSecrets(profile.company_id, admin)).pageAccessToken : null;
   let connection: FacebookConnection | null = null;
   if (row?.meta_page_id && token) {
@@ -97,7 +97,7 @@ export async function getFacebookLeadAdsStatus(): Promise<FacebookLeadAdsStatus 
 export type MetaManualSetup = {
   meta_page_id: string;
   meta_verify_token: string;
-  /** Whether one is saved -- the key itself never leaves the server (DECISIONS #113). */
+  /** Whether one is saved -- the key itself never leaves the server (DECISIONS #114). */
   hasPageAccessToken: boolean;
   hasAppSecret: boolean;
 };

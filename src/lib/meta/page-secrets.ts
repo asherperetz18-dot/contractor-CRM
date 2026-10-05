@@ -5,7 +5,7 @@ import { metaSecretWrite, pickMetaSecrets, type MetaSecretColumns, type MetaSecr
 
 /**
  * The one place that reads and writes a company's Facebook Page token and
- * app secret (DECISIONS #113). Server-only, with the service role: the
+ * app secret (DECISIONS #114). Server-only, with the service role: the
  * values never reach a browser, and company members can't read them.
  */
 
@@ -15,7 +15,7 @@ type MetaKeys = { pageAccessToken?: string | null; appSecret?: string | null };
 const ENC_COLUMNS = "meta_page_access_token, meta_app_secret, meta_page_access_token_enc, meta_app_secret_enc";
 const PLAIN_COLUMNS = "meta_page_access_token, meta_app_secret";
 
-/** Migration 0192 hasn't run yet: the encrypted columns aren't there. */
+/** Migration 0193 hasn't run yet: the encrypted columns aren't there. */
 function encColumnsMissing(message: string | undefined): boolean {
   return /meta_page_access_token_enc|meta_app_secret_enc/.test(message ?? "");
 }
@@ -28,8 +28,8 @@ function encryptedAll(keys: MetaKeys, write: Record<string, string | null>): boo
 }
 
 /**
- * A key saved or forgotten replaces the copy 0192 moved aside, so an old
- * token never comes back from there. Best effort: before 0192 the table
+ * A key saved or forgotten replaces the copy 0193 moved aside, so an old
+ * token never comes back from there. Best effort: before 0193 the table
  * doesn't exist, and that is fine.
  */
 async function clearLegacy(admin: Admin, companyId: string, keys: MetaKeys) {
@@ -41,9 +41,9 @@ async function clearLegacy(admin: Admin, companyId: string, keys: MetaKeys) {
 
 /**
  * The company's Page token and app secret, decrypted. A plain copy left
- * from before 0192 -- in company_profile, or moved by 0192 into the
+ * from before 0193 -- in company_profile, or moved by 0193 into the
  * locked meta_secrets_legacy table -- is used and then encrypted in place.
- * Works before 0192 has run too, so a lead is never dropped for it.
+ * Works before 0193 has run too, so a lead is never dropped for it.
  */
 export async function loadMetaSecrets(companyId: string, admin: Admin = createAdminClient()): Promise<MetaSecrets> {
   let row: MetaSecretColumns;
@@ -66,7 +66,7 @@ export async function loadMetaSecrets(companyId: string, admin: Admin = createAd
 
   const secrets = pickMetaSecrets(row, legacy, decryptSecret);
 
-  // Encrypt what is used and clear every plain copy -- only once 0192 has
+  // Encrypt what is used and clear every plain copy -- only once 0193 has
   // run (the encrypted columns exist), and never at the cost of a key: if
   // either can't be encrypted, both stay as they are.
   if (secrets.needsHealing && !full.error) {
@@ -113,7 +113,7 @@ export async function saveMetaSecrets(
   const patch: Record<string, unknown> = { ...extra, ...write };
   let res = await admin.from("company_profile").update(patch).eq("company_id", companyId).select("company_id");
   if (res.error && encColumnsMissing(res.error.message)) {
-    // Deployed before 0192 was run: store it the way it always was. 0192
+    // Deployed before 0193 was run: store it the way it always was. 0193
     // then moves it out of reach and the next read encrypts it.
     const plain: Record<string, unknown> = { ...extra };
     if (keys.pageAccessToken !== undefined) plain.meta_page_access_token = keys.pageAccessToken;
