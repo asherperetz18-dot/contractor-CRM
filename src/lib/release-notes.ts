@@ -30,6 +30,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.182.1",
+    date: "2026-10-05",
+    notes: [
+      "Fix: call recordings made before a company had its own Twilio account play again. They had shown \"No recording\" since the switch to each company's own account.",
+    ],
+  },
+  {
     version: "1.182.0",
     date: "2026-10-05",
     notes: [
