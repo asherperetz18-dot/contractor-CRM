@@ -77,17 +77,9 @@ export const WORD_CHOICES: Record<WordKey, WordForm[]> = {
 
 /**
  * The words customers already see, and where -- the settings page shows
- * only these, so no setting does nothing. The rest join as the portal and
- * documents learn them.
+ * only these, so no setting does nothing. All eight since DECISIONS #123.
  */
-export const LIVE_WORD_KEYS: readonly WordKey[] = [
-  "estimate",
-  "project",
-  "contract",
-  "customer",
-  "change_order",
-  "deposit",
-];
+export const LIVE_WORD_KEYS: readonly WordKey[] = WORD_KEYS;
 
 export const WORD_WHERE: Partial<Record<WordKey, string>> = {
   estimate:
@@ -99,6 +91,9 @@ export const WORD_WHERE: Partial<Record<WordKey, string>> = {
   customer: "Who signs, on documents and their PDFs.",
   change_order: "The text and email when you send one, the banner on the document, and its sign buttons in the portal.",
   deposit: "The payment schedule on documents, the portal's deposit card, and the card payment page.",
+  appointment:
+    "Quick texts (confirm, reschedule, on my way, running late), the AI receptionist's offer and text, and the portal's appointment cards and progress steps.",
+  rep: "Quick texts, when nobody is assigned yet (\"this is your rep\").",
 };
 
 /** The settings page's label for each word. */

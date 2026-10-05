@@ -90,7 +90,7 @@ type Tab = "Overview" | "Photos" | "Messages" | "Notes";
 function journeyLabels(words: CompanyWords): string[] {
   return [
     "Request received",
-    "Appointment scheduled",
+    `${word(words, "appointment")} scheduled`,
     `${word(words, "estimate")} in progress`,
     `${word(words, "estimate")} sent`,
     `${word(words, "project")} confirmed`,
@@ -592,13 +592,13 @@ export function PortalHome({
 
             <section className="portal-card">
               <CardHead icon="calendar" tone="violet">
-                Upcoming appointments
+                Upcoming {word(words, "appointment", { lower: true, many: true })}
               </CardHead>
               {upcoming.length === 0 ? (
                 <div className="portal-appt-empty">
                   <p>
                     <strong>Nothing scheduled right now</strong>
-                    {companyPhone && "Want to book a visit? Give us a call."}
+                    {companyPhone && `Want to book ${word(words, "appointment", { lower: true, a: true })}? Give us a call.`}
                   </p>
                   {companyPhone && (
                     <a className="portal-call-btn" href={`tel:${companyPhone.replace(/[^\d+]/g, "")}`}>
@@ -625,7 +625,7 @@ export function PortalHome({
                     )}
 
                     {ev.customer_confirmed ? (
-                      <p className="portal-confirmed">✓ You confirmed this appointment</p>
+                      <p className="portal-confirmed">✓ You confirmed this {word(words, "appointment", { lower: true })}</p>
                     ) : (
                       <div className="portal-appt-actions">
                         <button
@@ -675,7 +675,7 @@ export function PortalHome({
             {past.length > 0 && (
               <section className="portal-card">
                 <CardHead icon="calendar" tone="slate">
-                  Past appointments
+                  Past {word(words, "appointment", { lower: true, many: true })}
                 </CardHead>
                 {past.map((ev) => (
                   <div key={ev.id} className="portal-appt portal-appt-past">

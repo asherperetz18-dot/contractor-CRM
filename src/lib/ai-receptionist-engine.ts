@@ -7,6 +7,7 @@ import { getTwilioForCompany } from "@/lib/twilio-company";
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { TIMEZONE_IANA, toE164, type PipelineStage } from "@/lib/data/types";
 import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { loadCompanyWords } from "@/lib/load-company-words";
 import { isPreAppointmentStage } from "@/lib/pipeline/stage-keys";
 import { nowInZone } from "@/lib/timezone";
 import {
@@ -184,6 +185,7 @@ async function receptionistState(
       transferNumber: transferRes.error
         ? null
         : toE164(transferRes.data?.ai_receptionist_transfer_number) || null,
+      words: await loadCompanyWords(admin, companyId),
     },
   };
 }
@@ -612,7 +614,7 @@ export async function finalizeReceptionistCall(admin: Admin, sessionId: string):
     try {
       const twilioEnv = await getTwilioForCompany(claimed.company_id);
       if (twilioEnv) {
-        await sendTwilioSms(smsTo, confirmationSms(state.facts.companyName, booked), twilioEnv);
+        await sendTwilioSms(smsTo, confirmationSms(state.facts.companyName, booked, state.facts.words), twilioEnv);
       }
     } catch {
       // The lead and the note are the record; the text is a courtesy.

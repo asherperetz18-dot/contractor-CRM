@@ -226,6 +226,8 @@ export function EventForm({
     website: string | null;
     facebookUrl: string | null;
     instagramUrl: string | null;
+    appointmentWord: string;
+    repWord: string;
   } | null>(null);
   const [repTextStatus, setRepTextStatus] = useState<"idle" | "pending" | "sent" | "error">(
     "idle"
@@ -610,6 +612,8 @@ export function EventForm({
       website: quickTextOptions.website,
       facebookUrl: quickTextOptions.facebookUrl,
       instagramUrl: quickTextOptions.instagramUrl,
+      appointmentWord: quickTextOptions.appointmentWord,
+      repWord: quickTextOptions.repWord,
     });
     setShowQuickText(false);
     textPhone(lead.phone, filled);

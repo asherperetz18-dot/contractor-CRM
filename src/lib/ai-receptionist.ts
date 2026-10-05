@@ -1,6 +1,7 @@
 // Relative with extension: this module is under node:test, which
 // resolves no @/ aliases (see DECISIONS #036).
 import { xmlEscape } from "./voice-notice.ts";
+import { STANDARD_WORDS, word, type CompanyWords } from "./company-words.ts";
 
 /**
  * The AI receptionist's conversation policy — everything decidable
@@ -25,6 +26,9 @@ export type ReceptionistFacts = {
   /** Where "let me talk to a person" rings; null means the feature is
    *  off and the prompt never mentions it. */
   transferNumber: string | null;
+  /** The company's own words (DECISIONS #123): a roofer's receptionist
+   *  pencils in an inspection, a remodeler's an appointment. */
+  words?: CompanyWords;
 };
 
 export type TurnReply = { say: string; done: boolean; transfer: boolean };
@@ -115,6 +119,7 @@ export function aiGreetingText(facts: ReceptionistFacts): string {
 
 export function receptionistSystemPrompt(facts: ReceptionistFacts): string {
   const script = facts.callScript?.trim();
+  const words = facts.words ?? STANDARD_WORDS;
   return [
     `You are the phone receptionist for ${facts.companyName}, a contracting company. A caller reached you because nobody could pick up. Your one job: make them feel heard and collect what the team needs to call them back.`,
     "",
@@ -127,7 +132,7 @@ export function receptionistSystemPrompt(facts: ReceptionistFacts): string {
     "",
     `Today is ${facts.todayLabel} (${facts.todayISO}). Resolve every relative day the caller says — "tomorrow", "Tuesday", "next week" — from that date.`,
     "",
-    "What to collect, in order, skipping what they already said: their name; what the project or problem is; the property address; then offer to pencil in a visit — a day within the next two months plus a morning (10:00) or afternoon (14:00) slot, or the exact time they ask for, between 7 AM and 7 PM. Their phone number is already on file from caller ID — confirm it only if they offer a different one.",
+    `What to collect, in order, skipping what they already said: their name; what the ${word(words, "project", { lower: true })} or problem is; the property address; then offer to pencil in ${word(words, "appointment", { lower: true, a: true })} — a day within the next two months plus a morning (10:00) or afternoon (14:00) slot, or the exact time they ask for, between 7 AM and 7 PM. Their phone number is already on file from caller ID — confirm it only if they offer a different one.`,
     "",
     "Hard rules:",
     "- Never give a price, a quote, a discount, or any dollar figure — pricing is always for the team to discuss.",
@@ -311,12 +316,14 @@ export function receptionistNote(
 
 export function confirmationSms(
   companyName: string,
-  appointment?: PenciledAppointment | null
+  appointment?: PenciledAppointment | null,
+  words: CompanyWords = STANDARD_WORDS
 ): string {
   if (appointment) {
     // "Reply YES" is a real promise: the SMS webhook matches a YES from
     // the lead's number to their appointment and confirms it.
-    return `Thanks for calling ${companyName}! We've penciled you in for ${friendlyApptLine(appointment.date, appointment.time)}. Reply YES to confirm, or call us to change it.`;
+    const what = word(words, "appointment", { lower: true });
+    return `Thanks for calling ${companyName}! We've penciled in your ${what} for ${friendlyApptLine(appointment.date, appointment.time)}. Reply YES to confirm, or call us to change it.`;
   }
   return `Thanks for calling ${companyName}! We got your details and someone from our team will call you back shortly.`;
 }
