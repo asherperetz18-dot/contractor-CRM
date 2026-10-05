@@ -24,6 +24,7 @@ import {
   documentLabels,
   documentPaymentSection,
   paymentPercentLabel,
+  scheduledPhases,
 } from "@/lib/document-words";
 import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
@@ -424,10 +425,11 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
 
   // 8. Payment schedule -- the same section the web copy picks, so the
   // signed copy keeps the stages the customer read when they signed.
+  const phases = scheduledPhases(payments);
   const paymentSection = documentPaymentSection({
     kind: estimate.kind,
     depositCents: estimate.deposit_cents,
-    phaseCount: payments.length,
+    phaseCount: phases.length,
     totalCents: estimate.total_cents,
     hasParent: !!parent,
   });
@@ -451,7 +453,7 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
         { size: 10 }
       );
     }
-    for (const p of payments) {
+    for (const p of phases) {
       w.row(
         `${p.name}${p.description ? ` - ${p.description}` : ""}${share(p.amount_cents)}`,
         moneyCents(p.amount_cents),
