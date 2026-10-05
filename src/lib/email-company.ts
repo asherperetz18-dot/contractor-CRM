@@ -10,6 +10,8 @@ export type CompanyEmail = {
   source: "company" | "platform";
   /** Where the customer's reply goes; pass it to sendEmail as replyTo. */
   replyTo: string | null;
+  /** The company it sends for, so sendEmail can count it (DECISIONS #132). */
+  companyId: string;
 };
 
 type EmailColumns = CompanyEmailInputs & { resend_api_key_enc: string | null };
@@ -55,8 +57,8 @@ export async function getEmailForCompany(companyId: string): Promise<CompanyEmai
   );
   if (!plan) return null;
   if (plan.key === "company" && ownKey) {
-    return { apiKey: ownKey, from: plan.from, source: "company", replyTo: plan.replyTo };
+    return { apiKey: ownKey, from: plan.from, source: "company", replyTo: plan.replyTo, companyId };
   }
   if (!platform) return null;
-  return { apiKey: platform.apiKey, from: plan.from, source: "platform", replyTo: plan.replyTo };
+  return { apiKey: platform.apiKey, from: plan.from, source: "platform", replyTo: plan.replyTo, companyId };
 }

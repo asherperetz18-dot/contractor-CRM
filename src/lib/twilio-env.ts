@@ -1,6 +1,7 @@
 import "server-only";
 import crypto from "crypto";
 import { portalBaseUrl } from "@/lib/portal/session";
+import { recordUsage } from "@/lib/usage/record-usage";
 
 // Vercel CLI (via `vercel env add`) has proven to intermittently prepend
 // a UTF-8 BOM to piped-in values on this machine/Windows setup -- every
@@ -60,7 +61,7 @@ const SMS_TIMEOUT_MS = 15_000;
 export async function sendTwilioSms(
   to: string,
   body: string,
-  env: NonNullable<ReturnType<typeof getTwilioEnv>>
+  env: NonNullable<ReturnType<typeof getTwilioEnv>> & { companyId?: string }
 ): Promise<{ sid?: string; error?: string }> {
   const basicAuth = Buffer.from(`${env.accountSid}:${env.authToken}`).toString("base64");
   const params = new URLSearchParams({ To: to, From: env.phoneNumber, Body: body });
@@ -85,6 +86,8 @@ export async function sendTwilioSms(
   }
   const json = (await res.json().catch(() => null)) as { sid?: string; message?: string } | null;
   if (!res.ok) return { error: json?.message || "Failed to send message." };
+  // Counted for the company it went out for (DECISIONS #132).
+  if (env.companyId) await recordUsage(env.companyId, { smsSent: 1 });
   return { sid: json?.sid };
 }
 

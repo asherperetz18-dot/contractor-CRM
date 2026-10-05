@@ -14,6 +14,7 @@ import {
 import { leadForPhoneNumber } from "@/lib/data/lead-for-number";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { lockedServicesError } from "@/lib/billing/company-lock";
+import { recordUsage } from "@/lib/usage/record-usage";
 import { smsStatusCallbackUrl } from "@/lib/twilio-env";
 
 async function requireCanSendSms(): Promise<{ error?: string }> {
@@ -81,6 +82,8 @@ export async function sendSms(
   if (!res.ok) {
     return { error: json?.message || "Failed to send message." };
   }
+  // Counted for the company (DECISIONS #132).
+  await recordUsage(profile.company_id, { smsSent: 1 });
 
   const supabase = await createClient();
   const { error } = await supabase.from("sms_messages").insert({

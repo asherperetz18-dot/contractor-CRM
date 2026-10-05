@@ -1,6 +1,7 @@
 import "server-only";
 import { withLegalFooter } from "./email-footer";
 import { logError } from "@/lib/observability/logger";
+import { recordUsage } from "@/lib/usage/record-usage";
 import { captureError } from "@/lib/observability/sentry";
 
 // Same BOM defense as twilio-env.ts -- `vercel env add` has intermittently
@@ -59,7 +60,7 @@ export type SendEmailOptions = {
   // A company's own sender, from getEmailForCompany -- falls back to the
   // platform env below when the caller has no company context (e.g. the
   // pre-login password-reset email, which isn't scoped to one company).
-  env?: { apiKey: string; from: string };
+  env?: { apiKey: string; from: string; companyId?: string };
   // Real, visible Cc/Bcc on the one message Resend sends -- everyone in
   // `to`/`cc` sees each other's address, same as any other mail client;
   // `bcc` stays invisible to all of them. Omit either for a plain send.
@@ -123,6 +124,9 @@ export async function sendEmail(
       captureError(new Error(error), { service: "email" });
       return { error };
     }
+    // Counted for the company it went out for (DECISIONS #132); platform
+    // mail (setup links, password resets) belongs to no company.
+    if (options.env?.companyId) await recordUsage(options.env.companyId, { emailsSent: 1 });
     return { id: json?.id };
   } catch (e) {
     logError({ event: "email.send.failed", service: "email" });

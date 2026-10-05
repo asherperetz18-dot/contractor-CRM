@@ -126,3 +126,19 @@ test("search finds a company by its name or its owner, and the filter by billing
   assert.equal(counts.not_billed, 1);
   assert.equal(counts.paying, 0);
 });
+
+test("each company carries this month's AI uses, texts and emails, zero when it has none", () => {
+  const rows = buildCompanyDirectory(
+    [
+      { id: "c1", name: "Apex HVAC", created_at: "2026-09-01T00:00:00Z" },
+      { id: "c2", name: "Summit Builders Co", created_at: "2026-09-02T00:00:00Z" },
+    ],
+    [],
+    [],
+    [{ company_id: "c2", month: "2026-10-01", ai_requests: 12, ai_input_tokens: 9000, ai_output_tokens: 800, sms_sent: 340, emails_sent: 25 }]
+  );
+  assert.deepEqual(rows.map((r) => [r.name, r.usage.aiRequests, r.usage.smsSent, r.usage.emailsSent]), [
+    ["Apex HVAC", 0, 0, 0],
+    ["Summit Builders Co", 12, 340, 25],
+  ]);
+});

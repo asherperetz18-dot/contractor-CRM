@@ -1552,3 +1552,21 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a locked company costs the platform nothing and sends nothing until it renews; nothing is deleted, and incoming texts and leads are still captured. Platform admins looking in are paused there too. No database step.
 
+## 132 — What each company uses, counted per month
+
+**Date:** 2026-10-05
+
+**Context:** The platform pays for every company's AI, and every company's texts and emails carry the platform's name. With hundreds of companies there was no way to see who uses how much — no basis for a fair limit, and no early sign of a trial account sending a thousand texts.
+
+**Decision:**
+- **One row per company per calendar month** (`company_usage`, 0199; months in UTC): AI uses, the words the AI read and wrote (tokens), texts sent and emails sent. Added only through `record_company_usage`, which only the server may call; the company's own people can read their rows, nobody signed in can write them.
+- **Counted where each thing actually happens**, so nothing goes around it:
+  - **AI:** the one AI door (`aiForCompany`, #131) hands out a client that counts every complete answer, whole or streamed. A failed request isn't counted.
+  - **Texts:** `sendTwilioSms` counts after Twilio accepts the text; its account comes from `getTwilioForSending`, now tagged with the company. `sendSms` (its own send) counts the same way. The YES/NO auto-reply is Twilio's own reply and isn't counted.
+  - **Emails:** `sendEmail` counts mail sent with a company's email details (`getEmailForCompany`, now tagged with the company). Setup links and password resets are the platform's own mail and aren't counted.
+- **Counting never fails the thing counted:** a text that went out never reports an error because its tally didn't; until 0199 has run, nothing is counted, quietly.
+- **Shown** on Platform Admin › Companies ("This month") and in each company's Settings › Subscription ("This month so far").
+- **Limits come next**, on top of these counts. Guard tests hold the three senders and the AI door to counting.
+
+**Consequence:** the platform can see what each company uses this month. **Database step: run `supabase/migrations/0199_company_usage.sql`.**
+

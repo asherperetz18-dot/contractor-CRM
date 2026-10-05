@@ -5,6 +5,8 @@ import { ManageBillingButton } from "./manage-billing-button";
 import { TrialCardCheck } from "./trial-card-check";
 import { trialDaysLeft } from "@/lib/billing/trial";
 import { getCompanyZone } from "@/lib/data/company-today";
+import { createClient } from "@/lib/supabase/server";
+import { formatUsageLine, usageFromRow, usageMonth, type UsageRow } from "@/lib/usage/usage";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,15 @@ export default async function BillingSettingsPage() {
   if (!profile) return null;
   const billing = await readCompanyBilling(profile.company_id);
   const zone = await getCompanyZone();
+  // This month's counts (DECISIONS #132), read as the signed-in person:
+  // their own company's row only. Zeros before 0199 has run.
+  const { data: usageRow } = await (await createClient())
+    .from("company_usage")
+    .select("*")
+    .eq("company_id", profile.company_id)
+    .eq("month", usageMonth(new Date()))
+    .maybeSingle<UsageRow>();
+  const usage = usageFromRow(usageRow);
   const now = new Date().getTime();
   const trialing = billing?.status === "trialing";
   const daysLeft = trialing ? trialDaysLeft(billing?.trialEndsAt, now) : null;
@@ -78,6 +89,15 @@ export default async function BillingSettingsPage() {
             </p>
           </>
         )}
+      </div>
+
+      <div className="est-pay">
+        <h2 className="est-pay-title">This month so far</h2>
+        <p className="est-pay-sub">{formatUsageLine(usage)}</p>
+        <p className="hint-note">
+          Counted from the 1st of the month: answers from the AI (assistant, lead analysis, scope
+          writer, call notes, AI receptionist), texts sent, and emails sent to customers.
+        </p>
       </div>
     </AdminGate>
   );

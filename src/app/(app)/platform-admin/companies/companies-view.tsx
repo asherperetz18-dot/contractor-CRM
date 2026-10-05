@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { switchCompany } from "@/lib/actions/company";
 import { extendTrial } from "@/lib/actions/trial-admin";
 import { TRIAL_EXTENSIONS } from "@/lib/billing/trial";
+import { formatUsageLine } from "@/lib/usage/usage";
 import { openInCompany } from "@/lib/open-in-company";
 import {
   BILLING_STATE_LABEL,
@@ -124,8 +125,8 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
       <div className="cp-card invite-history-card">
         <div className="cp-card-head">🏢 All companies</div>
         <p className="cp-card-sub">
-          Who owns each company, how many people work in it, and where its AI Build Pro billing
-          stands. Not billed means it has never had a subscription (you made it, or it came before
+          Who owns each company, how many people work in it, where its AI Build Pro billing
+          stands, and what it has used this month (AI, texts, emails). Not billed means it has never had a subscription (you made it, or it came before
           self-serve signup) and is never locked. Team counts the company&apos;s own active people,
           not platform admins.
         </p>
@@ -167,6 +168,7 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                   <th>Team</th>
                   <th>Started</th>
                   <th>Billing</th>
+                  <th>This month</th>
                   <th className="right">&nbsp;</th>
                 </tr>
               </thead>
@@ -202,6 +204,9 @@ export function CompaniesView({ companies, zone }: { companies: CompanyDirectory
                             <ExtendTrial companyId={r.id} />
                           </>
                         )}
+                      </td>
+                      <td data-label="This month" className="company-usage-cell">
+                        {formatUsageLine(r.usage)}
                       </td>
                       <td className="right">
                         <button type="button" className="btn-ghost small" onClick={() => open(r.id)} disabled={busy}>
