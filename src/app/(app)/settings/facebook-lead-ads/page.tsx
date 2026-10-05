@@ -1,8 +1,5 @@
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
-import { getCurrentCompanyId } from "@/lib/data/profile";
-import type { MetaConfigInput } from "@/lib/actions/settings";
-import { getFacebookLeadAdsStatus } from "@/lib/actions/facebook-lead-ads";
+import { getFacebookLeadAdsStatus, getMetaManualSetup } from "@/lib/actions/facebook-lead-ads";
 import { AdminGate } from "@/components/admin-gate";
 import { FacebookConnect } from "./facebook-connect";
 import { MetaSettings } from "./meta-settings";
@@ -13,15 +10,9 @@ export default async function FacebookLeadAdsPage({
   searchParams: Promise<{ error?: string; connected?: string }>;
 }) {
   const { error, connected } = await searchParams;
-  const supabase = await createClient();
-  const companyId = await getCurrentCompanyId();
-  const { data } = await supabase
-    .from("company_profile")
-    .select("meta_page_id, meta_page_access_token, meta_verify_token, meta_app_secret")
-    .eq("company_id", companyId ?? "")
-    .single();
-
-  const config = data as Partial<MetaConfigInput> | null;
+  // Admins only, and only whether a Page token or app secret is saved:
+  // the keys themselves never reach the browser (DECISIONS #112).
+  const setup = await getMetaManualSetup();
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
   const status = await getFacebookLeadAdsStatus();
@@ -60,16 +51,16 @@ export default async function FacebookLeadAdsPage({
 
         {/* A Page connected with Facebook is managed above; the manual form
             would only overwrite its token. */}
-        {!viaLogin && (
+        {!viaLogin && setup && (
           <MetaSettings
             origin={origin}
             open={Boolean(connection) || !status?.configured}
             problem={connection && !connection.health.ok ? connection.health.problem : null}
             config={{
-              meta_page_id: config?.meta_page_id ?? "",
-              meta_page_access_token: config?.meta_page_access_token ?? "",
-              meta_verify_token: config?.meta_verify_token ?? "",
-              meta_app_secret: config?.meta_app_secret ?? "",
+              meta_page_id: setup.meta_page_id,
+              meta_verify_token: setup.meta_verify_token,
+              hasPageAccessToken: setup.hasPageAccessToken,
+              hasAppSecret: setup.hasAppSecret,
             }}
           />
         )}

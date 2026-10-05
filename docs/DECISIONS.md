@@ -1211,3 +1211,20 @@ The object is reached through its record, never its path alone: a merged duplica
   - **La Home:** add a Resend API key from the account where `lahomecontractor.com` is verified, in La Home → Settings → Email.
   - **The shared sender:** verify `aibuildpros.com` in Resend, then change `EMAIL_FROM` in Vercel to an AI Build Pros address.
 
+## 112 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
+
+**Date:** 2026-10-05
+
+**Context:** A company's Facebook Page token and its own Meta app secret (the advanced setup) were kept unencrypted in `company_profile`, unlike the Twilio, Stripe, CallRail, Primecall and Resend keys, which are stored encrypted (`*_enc`, `APP_ENCRYPTION_KEY`). The settings page also sent the saved values to the browser to fill its form, and the advanced form's save did not check the person's role.
+
+**Decision:**
+- **One module owns the keys.** `src/lib/meta/page-secrets.ts` (server-only, service role) is the only code that reads or writes them; the rules are in `page-secrets-rules.ts` (tested). A test fails if any other file names the plain columns.
+- **Stored encrypted.** New columns `meta_page_access_token_enc` and `meta_app_secret_enc` (0192). Every save writes the encrypted copy and clears the plain one.
+- **The old plain copies are moved out of reach at once.** SQL can't encrypt (the key lives on the server), so 0192 moves them into `meta_secrets_legacy` (RLS on, no policies, no rights for signed-in users) and clears them from `company_profile`. The first time the server needs a company's keys it encrypts them and deletes that company's row there. If a key can't be encrypted, nothing is changed.
+- **Never sent to the browser.** The settings page shows whether a token or secret is saved. The boxes start empty, and a blank box keeps the saved one.
+- **Admin only.** `saveMetaConfig` checks the role (Office or Admin), like every other integration setting. A save error is shown instead of "✓ Saved".
+- **Works before 0192 is run.** Reads fall back to the plain columns and a save stores the old way, so no lead is dropped in between; 0192 then moves what was saved.
+
+**Consequence:**
+- **Owner step:** run `0192_meta_secrets_encrypted.sql` in Supabase after the deploy. Its last line should read `plain_left = 0`.
+- Nothing changes for a connected Page. Leads keep arriving.
