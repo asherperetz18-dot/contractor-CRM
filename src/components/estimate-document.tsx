@@ -26,6 +26,8 @@ import { fillContract, lateContractValues, parseContract } from "@/lib/contracts
 import { signatureEvidenceLine, signedOnLabel } from "@/lib/portal/signature-evidence";
 import { OptionalItemCheckbox } from "@/components/optional-item-checkbox";
 import { clientCompanyName, clientName, clientContactName } from "@/lib/data/client-name";
+import { documentLabels } from "@/lib/document-words";
+import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
 export type DocumentCompany = {
   name: string | null;
@@ -168,6 +170,7 @@ export function EstimateDocument({
   customer,
   team,
   parent,
+  words = STANDARD_WORDS,
   optionalsInteractive = false,
 }: {
   estimate: Estimate;
@@ -185,6 +188,9 @@ export function EstimateDocument({
   team?: DocumentTeam | null;
   /** The contract this amends, when the document is a change order. */
   parent?: { doc_number: string; total_cents: number; signed_at: string | null } | null;
+  /** The company's own words (DECISIONS #121): what the document, the
+   *  project, the contract, the deposit and the customer are called. */
+  words?: CompanyWords;
   /** True only in the portal, on a document the customer can still act
    *  on. Everywhere else the optional tick boxes render read-only. */
   optionalsInteractive?: boolean;
@@ -198,6 +204,8 @@ export function EstimateDocument({
   // items and totals are all zero, and printing "$0.00" beside a document
   // about a $5,400 job invites exactly the wrong conclusion.
   const priceless = isPricelessKind(estimate.kind);
+  // Every label in the company's words; the PDF reads the same ones.
+  const L = documentLabels(estimate.kind, words);
 
   // Drop the Qty and Price columns entirely when no line has a real
   // measurement: every cell would be blank, and Price would only repeat
@@ -230,7 +238,7 @@ export function EstimateDocument({
   // Photos with no line of their own: site context rather than the
   // justification for one charge.
   const documentPhotos = byItem.get(null) ?? [];
-  const customerName = clientName(customer) || "Customer";
+  const customerName = clientName(customer) || L.customerParty;
   const customerContact = clientContactName(customer);
   // A company cannot sign; its person signs for it, and the line says so.
   const signsFor = clientCompanyName(customer);
@@ -255,7 +263,7 @@ export function EstimateDocument({
             <img src={company.logo_url} alt="" className="estdoc-logo" />
           )}
           <div>
-            <h1 className="estdoc-company-name">{company?.name || "Estimate"}</h1>
+            <h1 className="estdoc-company-name">{company?.name || L.untitled}</h1>
             {company?.address && <div className="estdoc-muted">{company.address}</div>}
             <div className="estdoc-muted">
               {[company?.phone, company?.email, company?.website].filter(Boolean).join(" · ")}
@@ -273,14 +281,12 @@ export function EstimateDocument({
               this a change order reads as a fresh $400 estimate rather
               than an amendment to a $5,400 contract, and the customer
               signing it has no way to tell the difference. */}
-          {isChangeOrder && <div className="estdoc-doctype">CHANGE ORDER</div>}
-          {priceless && <div className="estdoc-doctype">CERTIFICATE OF COMPLETION</div>}
-          {isInvoice && <div className="estdoc-doctype">INVOICE</div>}
+          {L.banner && <div className="estdoc-doctype">{L.banner}</div>}
           <div className="estdoc-docnum">{estimate.doc_number}</div>
           <div className="estdoc-muted">Issued {longDate(estimate.issued_at ?? estimate.created_at)}</div>
           {(isChangeOrder || priceless || isInvoice) && parent && (
             <div className="estdoc-muted">
-              {isInvoice ? "For contract" : "To contract"} {parent.doc_number}
+              {L.parentLink} {parent.doc_number}
               {parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}
             </div>
           )}
@@ -304,7 +310,7 @@ export function EstimateDocument({
 
       <section className="estdoc-parties">
         <div>
-          <div className="estdoc-label">{isInvoice ? "Bill to" : "Prepared for"}</div>
+          <div className="estdoc-label">{L.preparedFor}</div>
           <div className="estdoc-strong">{customerName}</div>
           {customerContact && <div className="estdoc-muted">Attn: {customerContact}</div>}
           {customer?.address && <div className="estdoc-muted">{customer.address}</div>}
@@ -313,8 +319,8 @@ export function EstimateDocument({
           </div>
         </div>
         <div>
-          <div className="estdoc-label">{isInvoice ? "For" : "Project"}</div>
-          <div className="estdoc-strong">{estimate.title || (isInvoice ? "Invoice" : "Estimate")}</div>
+          <div className="estdoc-label">{L.forLabel}</div>
+          <div className="estdoc-strong">{estimate.title || L.untitled}</div>
         </div>
         {/* Only when it differs from the client's address above --
             repeating the same address twice reads as filler, but a
@@ -322,7 +328,7 @@ export function EstimateDocument({
             the work is for. */}
         {estimate.job_address && (
           <div>
-            <div className="estdoc-label">Job location</div>
+            <div className="estdoc-label">{L.locationLabel}</div>
             <div className="estdoc-strong">{estimate.job_address}</div>
           </div>
         )}
@@ -502,7 +508,7 @@ export function EstimateDocument({
           </div>
         )}
         <div className="estdoc-total-row estdoc-grand">
-          <span>{isChangeOrder ? "This change order" : isInvoice ? "Amount due" : "Total"}</span>
+          <span>{L.totalLabel}</span>
           <span>{moneyCents(estimate.total_cents)}</span>
         </div>
         {/* What the contract becomes. A customer asked to approve $400
@@ -512,11 +518,13 @@ export function EstimateDocument({
         {(isChangeOrder || priceless) && parent && (
           <>
             <div className="estdoc-total-row">
-              <span>Original contract {parent.doc_number}</span>
+              <span>
+                {L.originalParent} {parent.doc_number}
+              </span>
               <span>{moneyCents(parent.total_cents)}</span>
             </div>
             <div className="estdoc-total-row estdoc-grand">
-              <span>Revised contract total</span>
+              <span>{L.revisedTotal}</span>
               <span>{moneyCents(parent.total_cents + estimate.total_cents)}</span>
             </div>
           </>
@@ -539,8 +547,8 @@ export function EstimateDocument({
               {estimate.deposit_cents ? (
                 <tr>
                   <td>
-                    <div className="estdoc-strong">Deposit</div>
-                    <div className="estdoc-muted">Due upon contract signing</div>
+                    <div className="estdoc-strong">{L.deposit}</div>
+                    <div className="estdoc-muted">{L.depositDue}</div>
                   </td>
                   <td className="estdoc-num" data-label="Of total">
                     {pct(estimate.deposit_cents, estimate.total_cents)}
@@ -689,10 +697,10 @@ export function EstimateDocument({
                 <div className="estdoc-strong">{s.name}</div>
                 <div className="estdoc-muted">
                   {s.party === "company"
-                    ? "Contractor"
+                    ? L.contractorParty
                     : signsFor
-                      ? `Customer, on behalf of ${signsFor}`
-                      : "Customer"}
+                      ? `${L.customerParty}, on behalf of ${signsFor}`
+                      : L.customerParty}
                   {s.signed_at ? ` · signed ${signedOnLabel(s.signed_at, zone)}` : ""}
                 </div>
                 {evidence && <div className="estdoc-muted">{evidence}</div>}

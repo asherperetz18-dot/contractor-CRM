@@ -16,6 +16,7 @@ import {
 } from "@/components/estimate-document";
 import { AutoPrint, PrintButton } from "@/components/print-button";
 import { documentTitle } from "@/lib/tab-title";
+import { loadCompanyWords } from "@/lib/load-company-words";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,7 @@ export default async function EstimatePreviewPage({
           customer={lead ?? null}
           team={await getEstimateTeam(id, estimate.lead_id, estimate.assigned_to, estimate.status)}
           parent={await getParentContract(estimate.parent_estimate_id)}
+          words={await loadCompanyWords(supabase, profile.company_id)}
         />
       </div>
     </div>

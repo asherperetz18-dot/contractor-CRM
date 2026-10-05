@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { declineEstimateAsCustomer, signEstimateAsCustomer } from "@/lib/actions/portal-estimates";
 import { SignaturePad } from "@/components/signature-pad";
 import type { EstimateStatus } from "@/lib/data/types";
+import { STANDARD_WORDS, formText, word, type CompanyWords } from "@/lib/company-words";
+import { documentWord } from "@/lib/document-words";
 
 export function PortalEstimateActions({
   estimateId,
@@ -14,6 +16,8 @@ export function PortalEstimateActions({
   signerName,
   parentContract,
   kind,
+  companyName,
+  words = STANDARD_WORDS,
 }: {
   estimateId: string;
   status: EstimateStatus;
@@ -23,8 +27,15 @@ export function PortalEstimateActions({
   /** Set only on a change order: the contract it was added to. */
   parentContract?: { id: string; doc_number: string } | null;
   kind?: string | null;
+  /** Who the customer is dealing with, by name -- not "your contractor". */
+  companyName: string;
+  /** The company's own words (DECISIONS #121). */
+  words?: CompanyWords;
 }) {
   const router = useRouter();
+  // "estimate", "proposal", "change order"... -- what this document is.
+  const noun = formText(documentWord(kind, words), { lower: true });
+  const contract = word(words, "contract", { lower: true });
   const [typed, setTyped] = useState("");
   const [mode, setMode] = useState<"type" | "draw">("type");
   const [drawnImage, setDrawnImage] = useState<string | null>(null);
@@ -44,8 +55,8 @@ export function PortalEstimateActions({
       <div className="portal-card estdoc-result estdoc-result-ok">
         <strong>Signed.</strong>{" "}
         {isCompletion
-          ? "Thank you — your contractor has been notified. Anything you listed is recorded on this certificate and remains their responsibility."
-          : "Thank you — your contractor has been notified and will be in touch about scheduling."}
+          ? `Thank you — ${companyName} has been notified. Anything you listed is recorded on this certificate and remains their responsibility.`
+          : `Thank you — ${companyName} has been notified and will be in touch about scheduling.`}
         {/* A signed change order has no Pay button of its own, and left at
             that the customer is told nothing about how they pay for what
             they just approved. Its amount is a phase on the contract's
@@ -62,13 +73,13 @@ export function PortalEstimateActions({
                 none. */}
             {isCompletion ? (
               <>
-                Any remaining balance on your contract{" "}
+                Any remaining balance on your {contract}{" "}
                 <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>{" "}
                 is now due, and can be paid there.
               </>
             ) : (
               <>
-                This has been added to the payment schedule on your contract{" "}
+                This has been added to the payment schedule on your {contract}{" "}
                 <a href={`/portal/estimates/${parentContract.id}`}>{parentContract.doc_number}</a>,
                 where you can pay it when it becomes due.
               </>
@@ -82,8 +93,8 @@ export function PortalEstimateActions({
   if (status === "Declined") {
     return (
       <div className="portal-card estdoc-result">
-        You declined this estimate. If that was a mistake, contact your contractor and they can
-        send an updated one.
+        You declined this {noun}. If that was a mistake, contact {companyName} and they can send an
+        updated one.
       </div>
     );
   }
@@ -94,8 +105,8 @@ export function PortalEstimateActions({
   if (status === "Void") {
     return (
       <div className="portal-card estdoc-result">
-        This {isCompletion ? "certificate" : "document"} has been cancelled by your contractor
-        and can no longer be signed. Contact them if you were expecting an updated one.
+        This {isCompletion ? "certificate" : noun} has been cancelled by {companyName} and can no
+        longer be signed. Contact them if you were expecting an updated one.
       </div>
     );
   }
@@ -103,8 +114,8 @@ export function PortalEstimateActions({
   if (expired) {
     return (
       <div className="portal-card estdoc-result">
-        This estimate has expired. Contact your contractor for an updated price — costs can move
-        after the quoted date.
+        This {noun} has expired. Contact {companyName} for an updated price — costs can move after
+        the quoted date.
       </div>
     );
   }
@@ -112,7 +123,7 @@ export function PortalEstimateActions({
   if (!canSign) {
     return (
       <div className="portal-card estdoc-result">
-        This estimate is waiting on another signer.
+        This {noun} is waiting on another signer.
       </div>
     );
   }
@@ -155,12 +166,12 @@ export function PortalEstimateActions({
       {declining ? (
         <>
           <h2 className="portal-card-title">
-            {isCompletion ? "The work isn't finished" : "Decline this estimate"}
+            {isCompletion ? "The work isn't finished" : `Decline this ${noun}`}
           </h2>
           <p className="estdoc-muted">
             {isCompletion
-              ? "Tell your contractor what is still outstanding and they'll come back to finish it. Use this rather than signing if the job is not done."
-              : "A short reason helps your contractor come back with something that works. Optional."}
+              ? `Tell ${companyName} what is still outstanding and they'll come back to finish it. Use this rather than signing if the work is not done.`
+              : `A short reason helps ${companyName} come back with something that works. Optional.`}
           </p>
           <textarea
             className="est-textarea"
@@ -179,7 +190,7 @@ export function PortalEstimateActions({
               Back
             </button>
             <button className="btn-primary" onClick={decline} disabled={pending}>
-              {pending ? "Sending…" : isCompletion ? "Send to contractor" : "Decline estimate"}
+              {pending ? "Sending…" : isCompletion ? `Send to ${companyName}` : `Decline ${noun}`}
             </button>
           </div>
         </>
@@ -214,8 +225,8 @@ export function PortalEstimateActions({
                 placeholder={"One per line, e.g.\nPaint touch-up needed in the hallway\nKitchen tap drips"}
               />
               <span className="estdoc-muted">
-                These are recorded on this certificate and stay your contractor&apos;s
-                responsibility. Leave empty if you&apos;re happy with everything.
+                These are recorded on this certificate and stay {companyName}&apos;s responsibility.
+                Leave empty if you&apos;re happy with everything.
               </span>
             </label>
           )}
@@ -269,7 +280,7 @@ export function PortalEstimateActions({
               onClick={sign}
               disabled={pending || (mode === "type" ? !typed.trim() : !drawnImage)}
             >
-              {pending ? "Signing…" : isCompletion ? "Sign certificate" : "Sign estimate"}
+              {pending ? "Signing…" : isCompletion ? "Sign certificate" : `Sign ${noun}`}
             </button>
           </div>
         </>

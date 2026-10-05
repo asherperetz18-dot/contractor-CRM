@@ -15,6 +15,7 @@ import {
   type WordKey,
 } from "@/lib/company-words";
 import { documentSendSms } from "@/lib/estimate-email-copy";
+import { documentLabels } from "@/lib/document-words";
 
 const OWN = "own";
 
@@ -143,6 +144,13 @@ export function CompanyWordsForm({ initial }: { initial: CompanyWordsSettings })
             words: preview,
             link: "(link)",
           }).split("\n")[0]}
+        </p>
+        <div className="words-example-label">And on the document:</div>
+        <p>
+          {(() => {
+            const l = documentLabels("contract", preview);
+            return `${l.forLabel}: Kitchen Remodel · ${l.deposit}, ${l.depositDue.toLowerCase()} · signed by the ${l.customerParty.toLowerCase()}`;
+          })()}
         </p>
       </div>
 

@@ -33,7 +33,7 @@ export function PortalLoginForm({ notice }: { notice?: LoginNotice | null }) {
   return (
     <div className="portal-auth-wrap">
       <div className="portal-auth-card">
-        <h1 className="portal-auth-title">Your Project Portal</h1>
+        <h1 className="portal-auth-title">Your Customer Portal</h1>
 
         {notice && !sent && (
           <p className="error-note">
@@ -44,7 +44,7 @@ export function PortalLoginForm({ notice }: { notice?: LoginNotice | null }) {
         {sent ? (
           <>
             <p className="portal-auth-sub">
-              If <strong>{email}</strong> matches a project with us, a sign-in link is on its way.
+              If <strong>{email}</strong> matches our records, a sign-in link is on its way.
               It works once and expires in 7 days.
             </p>
             <button

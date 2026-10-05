@@ -4,7 +4,7 @@ import { portalLoginNotice } from "@/lib/portal/login-notice";
 import { PortalLoginForm } from "./portal-login-form";
 
 export const metadata = {
-  title: "Project Portal",
+  title: "Customer Portal",
 };
 
 export default async function PortalLoginPage({

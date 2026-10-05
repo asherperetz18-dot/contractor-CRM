@@ -23,8 +23,11 @@ function dueLabel(due: string | null) {
 export function PhasePayments({
   phases,
   invoicedSeparately,
+  companyName,
 }: {
   phases: PortalPhase[];
+  /** Who the customer is paying, by name -- not "your contractor". */
+  companyName: string;
   /** This client is billed outside the CRM: amounts and paid receipts
    *  stay, Pay buttons don't. The one explanatory line lives on the
    *  deposit card above, so it is said once, not per phase. */
@@ -120,7 +123,7 @@ export function PhasePayments({
       {owing.length > 0 && !invoicedSeparately && (
         <p className="est-tax-note">
           Payment is handled by Stripe on their secure page. Your card details are never seen or
-          stored by {`your contractor's`} system.
+          stored by {companyName}&apos;s system.
         </p>
       )}
     </div>

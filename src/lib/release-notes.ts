@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.190.0",
+    date: "2026-10-05",
+    notes: [
+      "Settings › Company Words now also covers contract, customer and deposit. Your words appear on your documents (on screen and in the PDF) and in the customer portal, not just in what you send.",
+      "The customer portal names your company instead of saying \"your contractor\", and its progress steps use one word for your estimates (it said \"Estimate in progress\" and then \"Proposal sent\").",
+      "Invoice PDFs now say INVOICE at the top, and completion certificate PDFs say CERTIFICATE OF COMPLETION, like the on-screen copy.",
+    ],
+  },
+  {
     version: "1.189.0",
     date: "2026-10-05",
     notes: [

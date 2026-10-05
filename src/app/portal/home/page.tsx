@@ -15,6 +15,7 @@ import { billedPhaseDueCents } from "@/lib/portal/portal-display";
 import { portalStaffIds, toPortalStaff } from "@/lib/portal/portal-staff";
 import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
+import { loadCompanyWords } from "@/lib/load-company-words";
 
 type EstimateRow = {
   id: string;
@@ -27,7 +28,7 @@ type EstimateRow = {
 };
 
 export const metadata = {
-  title: "Your Project",
+  title: "Your Portal",
 };
 
 type PortalFile = {
@@ -237,6 +238,7 @@ export default async function PortalHomePage() {
       // null until migration 0183 has run: the Notes tab stays hidden
       // rather than offering a box that can't save.
       sharedNotes={sharedNotesError ? null : (sharedNoteRows ?? [])}
+      words={await loadCompanyWords(admin, viewer.companyId)}
     />
   );
 }

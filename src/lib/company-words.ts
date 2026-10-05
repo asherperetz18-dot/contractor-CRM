@@ -80,12 +80,25 @@ export const WORD_CHOICES: Record<WordKey, WordForm[]> = {
  * only these, so no setting does nothing. The rest join as the portal and
  * documents learn them.
  */
-export const LIVE_WORD_KEYS: readonly WordKey[] = ["estimate", "project", "change_order"];
+export const LIVE_WORD_KEYS: readonly WordKey[] = [
+  "estimate",
+  "project",
+  "contract",
+  "customer",
+  "change_order",
+  "deposit",
+];
 
 export const WORD_WHERE: Partial<Record<WordKey, string>> = {
-  estimate: "The text and email a customer gets when you send an estimate.",
-  project: "The email a customer gets with an estimate, change order, completion certificate or invoice (\"for your project\").",
-  change_order: "The text and email a customer gets when you send a change order.",
+  estimate:
+    "The text and email when you send one, its title on the document, and the customer portal (your list, the progress steps, the sign and decline buttons).",
+  project:
+    "Emails, documents (\"Project\", \"Project location\"), the customer portal (status, notes, payments) and the card payment page.",
+  contract:
+    "Documents (\"Original contract\", \"Due upon contract signing\") and the customer portal after a change order or certificate is signed.",
+  customer: "Who signs, on documents and their PDFs.",
+  change_order: "The text and email when you send one, the banner on the document, and its sign buttons in the portal.",
+  deposit: "The payment schedule on documents, the portal's deposit card, and the card payment page.",
 };
 
 /** The settings page's label for each word. */

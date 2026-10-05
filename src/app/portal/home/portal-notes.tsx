@@ -37,12 +37,15 @@ export function PortalNotes({
   notes,
   clientName,
   companyName,
+  projectWord = "Project",
   repName,
 }: {
   notes: SharedNote[];
   clientName: string;
   companyName: string;
   repName: (id: string | null) => string | null;
+  /** The company's word for a project (DECISIONS #121). */
+  projectWord?: string;
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<SharedNoteKind | "all">("all");
@@ -85,10 +88,11 @@ export function PortalNotes({
             <path d="M14 3v5h5M9 13h6M9 17h4" />
           </svg>
         </span>
-        <h2 className="portal-card-title">Project notes</h2>
+        <h2 className="portal-card-title">{projectWord} notes</h2>
       </div>
       <p className="shared-notes-sub">
-        Shared between you and our team. Everything here is part of your project record.
+        Shared between you and our team. Everything here is part of your {projectWord.toLowerCase()}{" "}
+        record.
       </p>
 
       {notes.length > 0 && (

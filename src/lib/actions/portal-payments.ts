@@ -15,6 +15,8 @@ import {
   type PhaseState,
   type PortalPayment,
 } from "@/lib/data/types";
+import { loadCompanyWords } from "@/lib/load-company-words";
+import { word } from "@/lib/company-words";
 
 type PayableEstimate = {
   id: string;
@@ -47,12 +49,26 @@ export type DepositState = {
  * whole row, so on a database where the column doesn't exist yet this
  * reads undefined, and undefined means payments stay ON.
  */
+/**
+ * The line under the amount on the card payment page, in the company's
+ * own words (DECISIONS #121): "Kitchen Remodel with Summit Builders Co",
+ * or "Job with ..." for an untitled document of a company that says Job.
+ */
+async function checkoutDescription(
+  admin: ReturnType<typeof createAdminClient>,
+  estimate: { company_id: string; title: string | null },
+  companyName: string | null | undefined
+): Promise<string> {
+  const what = estimate.title || word(await loadCompanyWords(admin, estimate.company_id), "project");
+  return companyName ? `${what} with ${companyName}` : what;
+}
+
 function paysOutsidePortal(lead: { portal_payments_disabled?: boolean }): boolean {
   return lead.portal_payments_disabled === true;
 }
 
 const INVOICED_SEPARATELY_ERROR =
-  "Payments for this project are invoiced separately — please use the invoice your contractor sent you.";
+  "Payments are invoiced separately — please use the invoice you were sent.";
 
 /**
  * What the portal should show for the deposit.
@@ -320,7 +336,7 @@ export async function startPhaseCheckout(
             unit_amount: phase.amount_cents,
             product_data: {
               name: `${phase.name || "Progress payment"} — ${estimate.doc_number}`,
-              description: `${estimate.title || "Project"} with ${company?.name ?? "your contractor"}`,
+              description: await checkoutDescription(admin, estimate, company?.name),
             },
           },
         },
@@ -435,8 +451,8 @@ export async function startDepositCheckout(
             currency: "usd",
             unit_amount: amountCents,
             product_data: {
-              name: `Deposit — ${estimate.doc_number}`,
-              description: `${estimate.title || "Project"} with ${company?.name ?? "your contractor"}`,
+              name: `${word(await loadCompanyWords(admin, estimate.company_id), "deposit")} — ${estimate.doc_number}`,
+              description: await checkoutDescription(admin, estimate, company?.name),
             },
           },
         },

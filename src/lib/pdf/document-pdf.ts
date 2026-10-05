@@ -19,6 +19,8 @@ import {
   type EstimatePayment,
   type EstimateSigner,
 } from "@/lib/data/types";
+import { documentLabels } from "@/lib/document-words";
+import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
 
 /**
  * The estimate/contract document as a PDF, for the Drive backup.
@@ -62,6 +64,8 @@ export type DocumentPdfBundle = {
     email: string | null;
   } | null;
   parent: { doc_number: string; total_cents: number; signed_at: string | null } | null;
+  /** The company's own words (DECISIONS #121); standard when absent. */
+  words?: CompanyWords;
 };
 
 const PAGE_W = 612;
@@ -235,6 +239,8 @@ async function embedDataUrlPng(doc: PDFDocument, dataUrl: string) {
 
 export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint8Array> {
   const { estimate, items, signers, payments, sections, company, customer, parent } = bundle;
+  // The same labels as the web copy (components/estimate-document.tsx).
+  const L = documentLabels(estimate.kind, bundle.words ?? STANDARD_WORDS);
   // Every date on the sheet is on the company's own calendar, labelled
   // where a clock time is printed: an evening signature is that day.
   const zone = companyIanaZone(company?.timezone);
@@ -242,6 +248,7 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   const w = await Writer.create();
 
   const isChangeOrder = estimate.kind === "change_order";
+  const isInvoice = estimate.kind === "invoice";
   const priceless = isPricelessKind(estimate.kind);
 
   // 1. Company header
@@ -255,7 +262,7 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
     }
   }
   const metaTop = w.y;
-  w.text(company?.name || "Estimate", { font: w.bold, size: 16 });
+  w.text(company?.name || L.untitled, { font: w.bold, size: 16 });
   if (company?.address) w.text(company.address, { size: 9, color: MUTED });
   const contact = [company?.phone, company?.email, company?.website].filter(Boolean).join(" - ");
   if (contact) w.text(contact, { size: 9, color: MUTED });
@@ -269,13 +276,13 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
 
   // Right-side meta, aligned to the top of the header block
   const metaLines: { text: string; bold?: boolean; danger?: boolean }[] = [];
-  if (isChangeOrder) metaLines.push({ text: "CHANGE ORDER", bold: true });
-  if (priceless) metaLines.push({ text: "CERTIFICATE OF COMPLETION", bold: true });
+  // An invoice and a certificate say what they are too, as on the web copy.
+  if (L.banner) metaLines.push({ text: L.banner, bold: true });
   metaLines.push({ text: estimate.doc_number, bold: true });
   metaLines.push({ text: `Issued ${longDate(estimate.issued_at ?? estimate.created_at)}` });
-  if ((isChangeOrder || priceless) && parent) {
+  if ((isChangeOrder || priceless || isInvoice) && parent) {
     metaLines.push({
-      text: `To contract ${parent.doc_number}${parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}`,
+      text: `${L.parentLink} ${parent.doc_number}${parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}`,
     });
   }
   if (estimate.expires_at && estimate.status !== "Signed") {
@@ -307,20 +314,20 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   }
 
   // 3. Parties
-  const customerName = clientName(customer) || "Customer";
+  const customerName = clientName(customer) || L.customerParty;
   const customerAttn = clientContactName(customer);
   const signsFor = clientCompanyName(customer);
-  w.text("PREPARED FOR", { size: 8, color: MUTED });
+  w.text(L.preparedFor.toUpperCase(), { size: 8, color: MUTED });
   w.text(customerName, { font: w.bold, size: 11 });
   if (customerAttn) w.text(`Attn: ${customerAttn}`, { size: 9, color: MUTED });
   if (customer?.address) w.text(customer.address, { size: 9, color: MUTED });
   const custContact = [customer?.phone, customer?.email].filter(Boolean).join(" - ");
   if (custContact) w.text(custContact, { size: 9, color: MUTED });
   w.y -= 6;
-  w.text("PROJECT", { size: 8, color: MUTED });
-  w.text(estimate.title || "Estimate", { font: w.bold, size: 11, gapAfter: 6 });
+  w.text(L.forLabel.toUpperCase(), { size: 8, color: MUTED });
+  w.text(estimate.title || L.untitled, { font: w.bold, size: 11, gapAfter: 6 });
   if (estimate.job_address) {
-    w.text("JOB LOCATION", { size: 8, color: MUTED });
+    w.text(L.locationLabel.toUpperCase(), { size: 8, color: MUTED });
     w.text(estimate.job_address, { font: w.bold, size: 10, gapAfter: 6 });
   }
 
@@ -397,25 +404,26 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
       );
     }
     if (estimate.tax_cents > 0) w.row("Sales tax", moneyCents(estimate.tax_cents), { size: 10 });
-    w.row(isChangeOrder ? "This change order" : "Total", moneyCents(estimate.total_cents), {
+    w.row(L.totalLabel, moneyCents(estimate.total_cents), {
       font: w.bold,
       size: 12,
     });
   }
   if ((isChangeOrder || priceless) && parent) {
-    w.row(`Original contract ${parent.doc_number}`, moneyCents(parent.total_cents), { size: 10 });
-    w.row("Revised contract total", moneyCents(parent.total_cents + estimate.total_cents), {
+    w.row(`${L.originalParent} ${parent.doc_number}`, moneyCents(parent.total_cents), { size: 10 });
+    w.row(L.revisedTotal, moneyCents(parent.total_cents + estimate.total_cents), {
       font: w.bold,
       size: 10,
     });
   }
 
   // 8. Payment schedule
-  if (!isChangeOrder && (estimate.deposit_cents || payments.length > 0)) {
+  // Never on a change order or an invoice, as on the web copy.
+  if (!isChangeOrder && !isInvoice && (estimate.deposit_cents || payments.length > 0)) {
     w.heading("Payment schedule");
     if (estimate.deposit_cents) {
       w.row(
-        `Deposit - due upon contract signing (${paymentPercentOfTotal(estimate.deposit_cents, estimate.total_cents)})`,
+        `${L.deposit} - ${L.depositDue.charAt(0).toLowerCase()}${L.depositDue.slice(1)} (${paymentPercentOfTotal(estimate.deposit_cents, estimate.total_cents)})`,
         moneyCents(estimate.deposit_cents),
         { size: 10 }
       );
@@ -502,7 +510,7 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
       w.y -= 8;
       const evidence = signatureEvidenceLine(s, zone);
       w.text(
-        `${s.name} - ${s.party === "company" ? "Contractor" : signsFor ? `Customer, on behalf of ${signsFor}` : "Customer"}${
+        `${s.name} - ${s.party === "company" ? L.contractorParty : signsFor ? `${L.customerParty}, on behalf of ${signsFor}` : L.customerParty}${
           s.signed_at ? ` - signed ${signedOnLabel(s.signed_at, zone)}` : ""
         }`,
         { size: 9, color: MUTED, gapAfter: evidence ? 2 : 8 }
