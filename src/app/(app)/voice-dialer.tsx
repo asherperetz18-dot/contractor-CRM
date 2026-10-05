@@ -18,6 +18,7 @@ import {
 import { maskPhone, safeTwilioError } from "@/lib/observability/redact";
 import { callFailureMessage, shouldRebuildDevice, type DeviceError } from "@/lib/dialer-errors";
 import { isSpeakerOn, setSpeaker, speakerSwitchAvailable } from "@/lib/call-audio";
+import { sendDialerText } from "@/lib/actions/sms";
 import { addBreadcrumb, captureError } from "@/lib/observability/sentry";
 
 // Kept in sync with the @twilio/voice-sdk version in package.json --
@@ -47,7 +48,7 @@ function tokenStillFresh(mintedAt: number) {
 // so there is nothing to subscribe to; the server can't know, hence false.
 const emptySubscribe = () => () => {};
 
-export function VoiceDialer() {
+export function VoiceDialer({ canText }: { canText: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [phone, setPhone] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
@@ -62,6 +63,12 @@ export function VoiceDialer() {
   // On by default. Recording used to start off, which is why 1 call in 63
   // has audio -- an unticked box is a decision nobody makes.
   const [recordEnabled, setRecordEnabled] = useState(true);
+  // Text, next to Call (DECISIONS #113): the keypad gives way to a message
+  // box for the number above it.
+  const [composing, setComposing] = useState(false);
+  const [textBody, setTextBody] = useState("");
+  const [textSending, setTextSending] = useState(false);
+  const [textNote, setTextNote] = useState("");
   const [numbers, setNumbers] = useState<CompanyPhoneNumber[]>([]);
   const [callerId, setCallerId] = useState("");
 
@@ -230,6 +237,7 @@ export function VoiceDialer() {
       return;
     }
     setErrorMsg("");
+    setTextNote("");
     setStatus("connecting");
     leadIdRef.current = leadId ?? null;
     callSidRef.current = null;
@@ -383,6 +391,35 @@ export function VoiceDialer() {
   }, []);
 
 
+  function startText() {
+    if (!phone.trim()) {
+      setErrorMsg("Enter a phone number to text.");
+      return;
+    }
+    setErrorMsg("");
+    setTextNote("");
+    setComposing(true);
+  }
+
+  function cancelText() {
+    setComposing(false);
+    setTextBody("");
+  }
+
+  async function handleSendText() {
+    setTextSending(true);
+    setErrorMsg("");
+    const result = await sendDialerText(phone, textBody);
+    setTextSending(false);
+    if (result.error) {
+      setErrorMsg(result.error);
+      return;
+    }
+    setComposing(false);
+    setTextBody("");
+    setTextNote(`Text sent to ${phone.trim()}.`);
+  }
+
   function handleHangup() {
     callRef.current?.disconnect();
     setStatus("ended");
@@ -453,18 +490,31 @@ export function VoiceDialer() {
             disabled={busy}
           />
 
-          <div className="voice-dialer-keypad">
-            {DIAL_KEYS.map((k) => (
-              <button key={k} className="voice-dialer-key" onClick={() => pressKey(k)}>
-                {k}
-              </button>
-            ))}
-          </div>
+          {composing ? (
+            <textarea
+              className="voice-dialer-text"
+              value={textBody}
+              onChange={(e) => setTextBody(e.target.value)}
+              placeholder="Message"
+              aria-label="Text message"
+              rows={4}
+              autoFocus
+              disabled={textSending}
+            />
+          ) : (
+            <div className="voice-dialer-keypad">
+              {DIAL_KEYS.map((k) => (
+                <button key={k} className="voice-dialer-key" onClick={() => pressKey(k)}>
+                  {k}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Only when there is a choice to make -- one number needs no
               switch, and an empty list means the company has not set up
               Twilio numbers at all. */}
-          {numbers.length > 1 && (
+          {numbers.length > 1 && !composing && (
             <label className="voice-dialer-from">
               Calling from
               <select
@@ -486,7 +536,7 @@ export function VoiceDialer() {
               notice together -- they are one decision, so a rep can never
               record a homeowner in silence, nor tell them a call is
               recorded when it is not. */}
-          {!busy && (
+          {!busy && !composing && (
             <label className="voice-dialer-record">
               <input
                 type="checkbox"
@@ -502,7 +552,7 @@ export function VoiceDialer() {
             </label>
           )}
 
-          <div className="voice-dialer-status">{statusLabel[status]}</div>
+          {!composing && <div className="voice-dialer-status">{textNote || statusLabel[status]}</div>}
           {errorMsg && <p className="error-note">{errorMsg}</p>}
 
           <div className="voice-dialer-actions">
@@ -526,10 +576,31 @@ export function VoiceDialer() {
                   Hang Up
                 </button>
               </>
+            ) : composing ? (
+              <>
+                <button type="button" className="btn-ghost" onClick={cancelText} disabled={textSending}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSendText}
+                  disabled={textSending || !textBody.trim()}
+                >
+                  {textSending ? "Sending…" : "Send text"}
+                </button>
+              </>
             ) : (
-              <button className="btn-primary" onClick={() => handleCall()}>
-                Call
-              </button>
+              <>
+                <button className="btn-primary" onClick={() => handleCall()}>
+                  Call
+                </button>
+                {canText && (
+                  <button type="button" className="btn-ghost" onClick={startText}>
+                    Text
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>

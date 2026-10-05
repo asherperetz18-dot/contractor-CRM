@@ -1249,6 +1249,32 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The list never grows: a company that borrows nothing has nothing new to add.
 - If the `TWILIO_*` settings are ever removed from the server, these old recordings stop playing again.
 
+## 113 — A text belongs to whoever sent it, or to whoever texted that number last; four roles see every text
+
+**Date:** 2026-10-05
+
+**Context:** Every member of a company could read every text in it: 0117's `sms_messages_select` checked the company and nothing else. So the Reply Inbox, a contact's Texts tab and Text Reports showed each rep every other rep's conversations. Customer replies weren't given to anyone, and `sent_by` (0054) only said who pressed send. The owner asked for texts to be private, and for a way to text a number from the dialer.
+
+**Decision:**
+- **Who sees every text:** Admin, Office, Dispatch and Call Center (the owner's choice). Everyone else sees only texts they own or sent. The boundary is RLS on `sms_messages` (migration 0192), not the screens.
+  - Every reader that goes through the signed-in user narrows on its own: the inbox, the Texts tab, Text Reports, the inbox badge's `text_alert_rollup`, and the daily brief.
+  - The admin-client readers are an Admin-only activity report, the customer's own portal thread, and the AI conversation analysis (below).
+- **A text's owner** (`owner_id`) is set by a `BEFORE INSERT` trigger, so no send path has to remember it:
+  - A text someone sent is theirs.
+  - A customer's reply belongs to whoever texted that number last. Numbers are compared on their last ten digits (`contact_phone_key`), because outbound numbers are saved as typed and replies arrive as `+1…`.
+  - With nobody to go by (an automatic reminder, a number nobody texted), the owner is the contact's assigned rep.
+  - Otherwise there is no owner, and only the four roles see it.
+  - The migration gives texts already saved an owner by the same rule; a reply goes to whoever texted before it arrived.
+- **Ownership is per text, not per thread.** If two reps text the same customer, each sees their own texts and the replies that followed them.
+- **Text in the dialer:** a Text button next to Call, for people who may send texts (`canEditDispatch`, the same check `sendSms` makes). `sendDialerText` turns the typed number into `+1…` and files the text on the contact who owns that number. It uses the lookup the dialer's calls use (`leadForPhoneNumber`), as the signed-in user, so it never lands on a contact they can't see.
+- `text-privacy.test.ts` pins the four roles, the owner rule and the migration's safety; `dialer-text.test.ts` pins the Text button and its send path. The migration was also run against a copy of the tables in PGlite (an in-process Postgres), signed in as each role.
+
+**Consequence:**
+- **Nothing changes until 0192 is run**; until then everyone keeps seeing every text.
+- A Field, Bookkeeping or Production user sees no texts they didn't send, which includes office texts to crew about a job.
+- The AI conversation analysis still reads the contact's whole conversation through the admin client. It shows signals, not the texts themselves.
+- Reassigning a contact doesn't move texts already owned; a reply still goes to whoever texted last.
+
 ## 114 — Facebook Page tokens and app secrets are stored encrypted, and only an admin can change them
 
 **Date:** 2026-10-05
