@@ -134,7 +134,7 @@ export default async function AppLayout({
     <CompanySwitcher
       companies={companies}
       currentCompanyId={profile.company_id}
-      canCreate={isAdminRole(profile)}
+      canCreate={isPlatformAdmin(profile)}
     />
   );
 
