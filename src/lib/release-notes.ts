@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.195.0",
+    date: "2026-10-05",
+    notes: [
+      "Platform admins have a new Companies page (Admin Tools › Companies): every company with its owner, team size, start date and whether it's paying, on a free trial, locked or not billed, with search and an Open button.",
+    ],
+  },
+  {
     version: "1.194.0",
     date: "2026-10-05",
     notes: [

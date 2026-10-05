@@ -12538,6 +12538,57 @@ textarea.est-item-desc:disabled {
   }
 }
 
+/* Platform Admin › Companies: on a phone each company is a short stack
+   (name, owner, team, started, billing, Open) instead of a table that
+   scrolls sideways past its Open button. */
+@media (max-width: 700px) {
+  .company-directory-table {
+    border: 0;
+  }
+  .company-directory-table thead {
+    display: none;
+  }
+  .company-directory-table tbody,
+  .company-directory-table tr,
+  .company-directory-table td {
+    display: block;
+    width: 100%;
+  }
+  .company-directory-table tr {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .company-directory-table td,
+  .company-directory-table td:last-child {
+    border: 0;
+    padding: 2px 0;
+    white-space: normal;
+    text-align: left;
+  }
+  .company-directory-table tr:hover td {
+    background: none;
+  }
+  .company-directory-table td.company-directory-name {
+    font-weight: 600;
+    font-size: 15px;
+  }
+  .company-directory-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  .company-directory-table td[data-label="Owner"] .invite-email {
+    display: inline;
+    margin-left: 4px;
+  }
+  .company-directory-table td.right {
+    padding-top: 8px;
+  }
+  .company-directory-table .error-note {
+    text-align: left;
+  }
+}
+
 /* ── Settings › Google Calendar ──────────────────────────────────── */
 .gcal-grid {
   display: grid;

@@ -12,6 +12,7 @@ const ITEMS = [
   // and independent of Admin Settings above. See isPlatformAdmin in
   // lib/data/types and migration 0132.
   { label: "Platform Admin", icon: "🛡️", href: "/platform-admin", platformAdminOnly: true },
+  { label: "Companies", icon: "🏢", href: "/platform-admin/companies", platformAdminOnly: true },
 ];
 
 export function AdminToolsMenu({

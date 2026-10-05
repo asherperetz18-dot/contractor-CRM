@@ -1474,3 +1474,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Unchanged: the nightly backup exports whole tables at once (and reports a partial export as a failure), and the AI receptionist finalizer already works call by call, each in its own try/catch.
 
 **Consequence:** one company's broken setting or a slow outside service can no longer stop everyone else's reminders and syncs, and the failure shows up in Sentry with the company it belongs to. No database step.
+
+## 127 — A Companies page for whoever runs the platform
+
+**Date:** 2026-10-05
+
+**Context:** A platform admin could see companies only piecemeal: the invite history (companies that came from a setup link), the Twilio card, and the company switcher. Nothing answered "how many companies are there, who owns each one, and which are paying" — the first thing to know when running hundreds of them.
+
+**Decision:**
+- **Platform Admin › Companies** (`/platform-admin/companies`, behind `PlatformAdminGate`, also in the Admin Tools menu) lists every company: name, owner, team size, start date, billing, and Open (the same switch the other Open buttons use).
+- **Owner** is the company's earliest active Office or Admin of its own. Platform admins hold a seat in every company (0132, `granted_via_platform_admin`); those seats never count as the owner or in the team size.
+- **Billing** reads `company_billing`: Paying (active), Free trial (trialing), Payment failed (past due or incomplete, still has access), Locked (the statuses that lock, `isBillingLocked`), Waiting on Stripe (a customer whose status hasn't come in, or a status we don't know — never shown as paying), Not billed (no subscription: made by a platform admin or before self-serve signup, never locked).
+- **Built for hundreds:** three reads (companies, members with their names, billing), each paged past the 1,000-row cap, joined in a pure tested function (`src/lib/company-directory.ts`) — not one query per company.
+- A setup-progress column waits for the setup checklist, so the two read the same rules.
+
+**Consequence:** one page shows every company and where its billing stands. No database step.
+
