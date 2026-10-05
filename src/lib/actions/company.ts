@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { CURRENT_COMPANY_COOKIE, getCurrentProfile } from "@/lib/data/profile";
 import { createCompanyWithDefaults } from "@/lib/signup/provision";
 import { isPlatformAdmin } from "@/lib/data/types";
+import { recordPlatformAccess } from "@/lib/data/platform-access";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
@@ -29,12 +30,23 @@ export async function switchCompany(companyId: string): Promise<{ error?: string
 
   const { data: member } = await supabase
     .from("company_members")
-    .select("company_id")
+    .select("company_id, granted_via_platform_admin")
     .eq("profile_id", user.id)
     .eq("company_id", companyId)
     .eq("status", "Active")
-    .maybeSingle();
+    .maybeSingle<{ company_id: string; granted_via_platform_admin: boolean | null }>();
   if (!member) return { error: "You're not a member of that company." };
+
+  // A platform admin looking into a company they don't belong to: the
+  // visit goes on the record first, and without the record the company
+  // stays closed (DECISIONS #128). Every Open button and the switcher
+  // come through here.
+  if (member.granted_via_platform_admin) {
+    const recorded = await recordPlatformAccess(companyId, user.id);
+    if (recorded === "failed") {
+      return { error: "Couldn't record this visit, so the company wasn't opened. Try again in a minute." };
+    }
+  }
 
   await setCurrentCompanyCookie(companyId);
   revalidatePath("/", "layout");

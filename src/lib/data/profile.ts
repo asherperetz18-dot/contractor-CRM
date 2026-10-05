@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSigningKeys } from "@/lib/supabase/jwks";
 import type { AppRole } from "@/lib/data/types";
+import { defaultCompanyId } from "@/lib/platform-access";
 
 export type Profile = {
   id: string;
@@ -48,6 +49,8 @@ export const CURRENT_COMPANY_COOKIE = "current_company_id";
 export type CompanyMembership = {
   company_id: string;
   company_name: string | null;
+  /** A platform admin's seat for looking in (0132), not a company they belong to. */
+  look_in: boolean;
 };
 
 /**
@@ -91,19 +94,29 @@ export const getCurrentUserCompanies = cache(async (): Promise<CompanyMembership
 
   const { data } = await supabase
     .from("company_members")
-    .select("company_id, companies(name)")
+    .select("company_id, granted_via_platform_admin, companies(name)")
     .eq("profile_id", userId)
     .eq("status", "Active");
 
-  return ((data ?? []) as unknown as { company_id: string; companies: { name: string | null } | null }[]).map(
-    (row) => ({ company_id: row.company_id, company_name: row.companies?.name ?? null })
-  );
+  return (
+    (data ?? []) as unknown as {
+      company_id: string;
+      granted_via_platform_admin: boolean | null;
+      companies: { name: string | null } | null;
+    }[]
+  ).map((row) => ({
+    company_id: row.company_id,
+    company_name: row.companies?.name ?? null,
+    look_in: row.granted_via_platform_admin === true,
+  }));
 });
 
 // Resolves which company is "current" for this request: the
 // current_company_id cookie if it's set and the user is still a member,
-// otherwise their first company. Returns null if the user belongs to no
-// company at all.
+// otherwise their first company of their own -- a platform admin never
+// lands inside a customer's company without opening it, which is what
+// puts the visit on the record (defaultCompanyId, DECISIONS #128).
+// Returns null if the user belongs to no company at all.
 export const getCurrentCompanyId = cache(async (): Promise<string | null> => {
   const memberships = await getCurrentUserCompanies();
   if (memberships.length === 0) return null;
@@ -113,7 +126,7 @@ export const getCurrentCompanyId = cache(async (): Promise<string | null> => {
   if (cookieCompanyId && memberships.some((m) => m.company_id === cookieCompanyId)) {
     return cookieCompanyId;
   }
-  return memberships[0].company_id;
+  return defaultCompanyId(memberships);
 });
 
 // company_members is the source of truth for roles/status/can_delete_leads
