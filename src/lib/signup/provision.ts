@@ -193,7 +193,13 @@ async function seedRowsFor(sourceCompanyId?: string): Promise<SeedRows> {
 export async function createCompanyWithDefaults(
   name: string,
   ownerProfileId: string,
-  options: { sourceCompanyId?: string; onNameClash?: "suffix" | "fail" } = {}
+  options: {
+    sourceCompanyId?: string;
+    onNameClash?: "suffix" | "fail";
+    /** The company's own, from the setup form (DECISIONS #118). */
+    timezone?: string;
+    licenseState?: string;
+  } = {}
 ): Promise<{ companyId?: string; error?: string }> {
   const admin = createAdminClient();
   const seed = await seedRowsFor(options.sourceCompanyId);
@@ -234,9 +240,17 @@ export async function createCompanyWithDefaults(
       company_id: companyId,
       name,
       // Omitted rather than defaulted to null: both columns are NOT NULL
-      // with defaults of their own ('Pacific', '12h').
-      ...(seed.timezone ? { timezone: seed.timezone } : {}),
+      // with defaults of their own ('Pacific', '12h'). The company's own
+      // answer from the setup form wins (DECISIONS #118).
+      ...(options.timezone ? { timezone: options.timezone } : seed.timezone ? { timezone: seed.timezone } : {}),
       ...(seed.timeFormat ? { time_format: seed.timeFormat } : {}),
+      ...(options.licenseState ? { license_state: options.licenseState } : {}),
+      // Commission rates start at zero for the company to set: the column
+      // defaults are La Home Contractor's own plan (DECISIONS #118).
+      sales_commission_bp: 0,
+      sales_lead_cost_bp: 0,
+      default_closer_bp: 0,
+      dispatcher_commission_bp: 0,
     }),
     admin.from("pipeline_stages").insert(withCompany(seed.stages)),
     admin.from("calendars").insert(withCompany(seed.calendars)),

@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.186.0",
+    date: "2026-10-05",
+    notes: [
+      "New companies now give their state and time zone when they set up their account, instead of starting on Pacific time.",
+      "New companies' commission rates start at zero, ready to set to their own plan, instead of starting with another company's rates. Existing companies keep theirs.",
+      "Team Map opens on your company's address when nobody on the clock has a location yet, instead of Los Angeles.",
+    ],
+  },
+  {
     version: "1.184.0",
     date: "2026-10-05",
     notes: [

@@ -6,21 +6,10 @@ import { Field } from "@/components/ui/field";
 import { saveCompanyProfile, type CompanyProfileInput } from "@/lib/actions/settings";
 import { TIMEZONE_OPTIONS, type CompanyProfile, type TimeFormat } from "@/lib/data/types";
 import { taxRateBpToInput, taxRateInputToBp, taxRateLabel } from "@/lib/data/tax-rate";
+import { US_STATES as STATE_LIST, timezoneForState } from "@/lib/data/us-states";
 
-const US_STATES = [
-  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
-  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
-  "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
-  "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY",
-];
-
-const STATE_TZ: Record<string, string> = {
-  CA: "Pacific", OR: "Pacific", WA: "Pacific", NV: "Pacific",
-  AZ: "Arizona", CO: "Mountain", UT: "Mountain", NM: "Mountain", MT: "Mountain", WY: "Mountain", ID: "Mountain",
-  TX: "Central", IL: "Central", MO: "Central", MN: "Central", WI: "Central", LA: "Central", OK: "Central", KS: "Central", NE: "Central", IA: "Central", AR: "Central", MS: "Central", AL: "Central", TN: "Central", SD: "Central", ND: "Central",
-  NY: "Eastern", FL: "Eastern", GA: "Eastern", NC: "Eastern", SC: "Eastern", VA: "Eastern", PA: "Eastern", OH: "Eastern", MI: "Eastern", NJ: "Eastern", MA: "Eastern", MD: "Eastern", CT: "Eastern", ME: "Eastern", NH: "Eastern", VT: "Eastern", RI: "Eastern", DE: "Eastern", WV: "Eastern", KY: "Eastern", IN: "Eastern",
-  AK: "Alaska", HI: "Hawaii",
-};
+const US_STATES = STATE_LIST.filter((s) => s.code !== "DC").map((s) => s.code);
+const STATE_TZ: Record<string, string> = Object.fromEntries(US_STATES.map((c) => [c, timezoneForState(c) ?? ""]));
 
 function guessStateFromAddress(address: string) {
   if (!address) return null;
