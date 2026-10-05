@@ -24,6 +24,7 @@ import {
   type ExtractedLead,
   type ReceptionistTurn,
 } from "./ai-receptionist.ts";
+import { readCompanyWords } from "./company-words.ts";
 
 /**
  * This module is the whole conversation policy for the AI receptionist:
@@ -356,4 +357,27 @@ test("confirmation text names the company and only sends when there is something
   // Nothing captured means nothing to confirm -- a text would be spam.
   assert.equal(shouldSendConfirmationSms(extraction(), "+18185550142"), false);
   assert.equal(shouldSendConfirmationSms(good, ""), false);
+});
+
+// ── The company's own words (DECISIONS #123) ─────────────────────────
+
+const ROOFER = readCompanyWords({
+  appointment: { one: "Inspection", many: "Inspections" },
+  project: { one: "Job", many: "Jobs" },
+});
+
+test("the receptionist offers the company's own kind of appointment", () => {
+  const prompt = receptionistSystemPrompt({ ...FACTS, words: ROOFER });
+  assert.match(prompt, /offer to pencil in an inspection/);
+  assert.match(prompt, /what the job or problem is/);
+  // Standard words: an appointment, a project.
+  const standard = receptionistSystemPrompt(FACTS);
+  assert.match(standard, /offer to pencil in an appointment/);
+  assert.match(standard, /what the project or problem is/);
+});
+
+test("the confirmation text names it in the company's word", () => {
+  const sms = confirmationSms("Ace Roofing", { date: "2026-09-23", time: "14:00" }, ROOFER);
+  assert.match(sms, /penciled in your inspection for Wed, Sep 23 at 2:00 PM/);
+  assert.match(confirmationSms("Ace Roofing", { date: "2026-09-23", time: "14:00" }), /your appointment for/);
 });

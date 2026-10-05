@@ -1415,3 +1415,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The completion certificate's legal text (Settings › Certificates, "the Owner", "Contractor") is the company's own template and is not reworded.
 
 **Consequence:** with the standard words the portal's step three reads "Estimate sent" (was "Proposal sent"), a document's work address reads "Project location" (was "Job location"), and the portal is titled "Your portal" / "Customer Portal". No database step.
+
+## 123 — Appointment and rep in the company's words: quick texts, AI receptionist, portal
+
+**Date:** 2026-10-05
+
+**Context:** After #121 and #122, two of the eight words were still fixed: a roofer's customers were told about their "appointment" (an inspection, to them) by the quick texts, the portal and the AI receptionist — which said "visit" — and a text sent before anyone was assigned read "this is your rep".
+
+**Decision:**
+- **Quick texts** gain an `{appointment}` placeholder, filled with the company's word; the three defaults that said "appointment" use it, so a company that never edited them gets its own word. `{rep_name}` with nobody assigned reads "your" + the company's rep word. A company's own edited texts are left as written (they can use `{appointment}` too — Settings › Appointment Notifications lists it).
+- **AI receptionist:** offers to pencil in the company's kind of appointment ("an inspection"), asks what the job or problem is in its project word, and its confirmation text names it ("We've penciled in your inspection for …").
+- **Portal:** the appointment cards, the progress step and the sign-in text use the company's word.
+- Settings › Company Words now offers all eight words, with a quick-text example.
+
+**Consequence:** with the standard words the receptionist now says "appointment" where it said "visit", and its confirmation reads "We've penciled in your appointment for …". No database step.

@@ -984,11 +984,11 @@ export const QUICK_TEXT_DEFAULTS: Record<SmsQuickTextKey, string> = {
   confirm:
     "Hi {first_name}, this is {rep_name} with {company_name}. Just confirming we're still on for {when} - reply YES to confirm or NO to reschedule.\n{links}",
   reschedule:
-    "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} appointment - what time works better for you?",
+    "Hi {first_name}, this is {rep_name} with {company_name}. We need to reschedule your {when} {appointment} - what time works better for you?",
   on_my_way:
-    "Hi {first_name}, this is {rep_name} with {company_name} - on my way to your {when} appointment now!",
+    "Hi {first_name}, this is {rep_name} with {company_name} - on my way to your {when} {appointment} now!",
   running_late:
-    "Hi {first_name}, this is {rep_name} with {company_name}. Running a little behind for our {when} appointment, I'll be there shortly - sorry for the delay!",
+    "Hi {first_name}, this is {rep_name} with {company_name}. Running a little behind for our {when} {appointment}, I'll be there shortly - sorry for the delay!",
 };
 
 /**
@@ -1038,6 +1038,10 @@ export function fillQuickTextVariables(
     website?: string | null;
     facebookUrl?: string | null;
     instagramUrl?: string | null;
+    /** The company's words for an appointment and a rep, in a sentence
+     *  ("inspection", "technician") -- DECISIONS #123. */
+    appointmentWord?: string;
+    repWord?: string;
   }
 ): string {
   const website = smsLink(vars.website ?? "");
@@ -1051,7 +1055,8 @@ export function fillQuickTextVariables(
   const filled = template
     .replace(/\{first_name\}/g, vars.firstName || "there")
     .replace(/\{when\}/g, vars.when)
-    .replace(/\{rep_name\}/g, vars.repName || "your rep")
+    .replace(/\{rep_name\}/g, vars.repName || `your ${vars.repWord || "rep"}`)
+    .replace(/\{appointment\}/g, vars.appointmentWord || "appointment")
     .replace(/\{company_name\}/g, vars.companyName)
     .replace(/\{links\}/g, links || REP_TEMPLATE_EMPTY)
     .replace(/\{website\}/g, website || REP_TEMPLATE_EMPTY)

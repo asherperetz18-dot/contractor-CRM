@@ -273,6 +273,7 @@ export function AppointmentNotificationsForm({
         <p className="hint-note">
           Available variables: <code className="mono">{"{first_name}"}</code>,{" "}
           <code className="mono">{"{when}"}</code>, <code className="mono">{"{rep_name}"}</code>,{" "}
+          <code className="mono">{"{appointment}"}</code> (your word for it, from Company Words),{" "}
           <code className="mono">{"{company_name}"}</code>,{" "}
           <code className="mono">{"{links}"}</code>,{" "}
           <code className="mono">{"{website}"}</code>,{" "}

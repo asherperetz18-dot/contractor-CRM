@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.191.0",
+    date: "2026-10-05",
+    notes: [
+      "Settings › Company Words now covers all eight words: appointment and rep joined. Quick texts say your word (\"on my way to your 10am inspection\"), and \"your technician\" when nobody is assigned yet.",
+      "The AI receptionist offers your kind of appointment and names it in its confirmation text. The customer portal's appointment cards use your word too.",
+      "Quick texts can use {appointment} for your word for it (Settings › Appointment Notifications).",
+    ],
+  },
+  {
     version: "1.190.0",
     date: "2026-10-05",
     notes: [

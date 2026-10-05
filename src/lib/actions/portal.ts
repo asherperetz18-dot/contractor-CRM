@@ -26,6 +26,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { canEditDispatch, canManageBills, isAdminRole } from "@/lib/data/types";
 import { leadDisplayName, type Lead } from "@/lib/data/types";
 import { normalizeSharedNote } from "@/lib/data/shared-notes";
+import { loadCompanyWords } from "@/lib/load-company-words";
+import { word } from "@/lib/company-words";
 
 const MAX_PORTAL_UPLOAD_BYTES = 10 * 1024 * 1024;
 const BUCKET = "lead-files";
@@ -237,7 +239,8 @@ export async function sendPortalLink(
       // "Your portal", not "project portal": a plumber's customer has a
       // job, not a project (DECISIONS #121). A plain hyphen: an em dash
       // re-encodes the whole text and cuts each segment from 160 to 70.
-      const body = `${companyName}: here's your portal - see your appointments, photos and messages.\n${link}\n\nLink expires in 7 days.`;
+      const appointments = word(await loadCompanyWords(admin, lead.company_id), "appointment", { lower: true, many: true });
+      const body = `${companyName}: here's your portal - see your ${appointments}, photos and messages.\n${link}\n\nLink expires in 7 days.`;
       const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
       if (sent.error) {
         problems.push(`text failed (${sent.error})`);

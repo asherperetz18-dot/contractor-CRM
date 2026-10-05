@@ -10,12 +10,14 @@ import {
   WORD_LABELS,
   WORD_WHERE,
   readCompanyWords,
+  word,
   wordProblem,
   type WordForm,
   type WordKey,
 } from "@/lib/company-words";
 import { documentSendSms } from "@/lib/estimate-email-copy";
 import { documentLabels } from "@/lib/document-words";
+import { QUICK_TEXT_DEFAULTS, fillQuickTextVariables } from "@/lib/data/types";
 
 const OWN = "own";
 
@@ -144,6 +146,16 @@ export function CompanyWordsForm({ initial }: { initial: CompanyWordsSettings })
             words: preview,
             link: "(link)",
           }).split("\n")[0]}
+        </p>
+        <p>
+          {fillQuickTextVariables(QUICK_TEXT_DEFAULTS.on_my_way, {
+            firstName: "Jordan",
+            when: "Tue 10am",
+            repName: "",
+            companyName: initial.companyName,
+            appointmentWord: word(preview, "appointment", { lower: true }),
+            repWord: word(preview, "rep", { lower: true }),
+          })}
         </p>
         <div className="words-example-label">And on the document:</div>
         <p>

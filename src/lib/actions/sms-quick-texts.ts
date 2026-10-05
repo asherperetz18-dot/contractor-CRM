@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { isAdminRole } from "@/lib/data/types";
 import type { SmsQuickText, SmsQuickTextKey } from "@/lib/data/types";
+import { loadCompanyWords } from "@/lib/load-company-words";
+import { word } from "@/lib/company-words";
 
 export async function getQuickTextOptions(): Promise<{
   companyName: string;
@@ -13,6 +15,9 @@ export async function getQuickTextOptions(): Promise<{
   website: string | null;
   facebookUrl: string | null;
   instagramUrl: string | null;
+  /** In a sentence: "appointment" / "inspection", "rep" / "technician". */
+  appointmentWord: string;
+  repWord: string;
 }> {
   const profile = await getCurrentProfile();
   if (!profile) {
@@ -23,6 +28,8 @@ export async function getQuickTextOptions(): Promise<{
       website: null,
       facebookUrl: null,
       instagramUrl: null,
+      appointmentWord: "appointment",
+      repWord: "rep",
     };
   }
 
@@ -49,6 +56,13 @@ export async function getQuickTextOptions(): Promise<{
     website: companyRow?.website ?? null,
     facebookUrl: companyRow?.facebook_url ?? null,
     instagramUrl: companyRow?.instagram_url ?? null,
+    ...(await (async () => {
+      const words = await loadCompanyWords(supabase, profile.company_id);
+      return {
+        appointmentWord: word(words, "appointment", { lower: true }),
+        repWord: word(words, "rep", { lower: true }),
+      };
+    })()),
   };
 }
 
