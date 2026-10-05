@@ -6,6 +6,7 @@ import {
   changeOrderScheduleNote,
   documentLabels,
   documentPaymentSection,
+  depositDueLine,
   documentWord,
   paymentPercentLabel,
 } from "./document-words.ts";
@@ -108,6 +109,15 @@ test("a stage's share of the total prints as a percent", () => {
   assert.equal(paymentPercentLabel(100000, 0), null);
 });
 
+test("the Pay card says why a deposit is due", () => {
+  assert.equal(depositDueLine("contract", 425000, WORDS), "$4,250.00 is due to schedule your job.");
+  // A change order's job is already on the calendar.
+  assert.equal(
+    depositDueLine("change_order", 425000, WORDS),
+    "$4,250.00 is due now that you've signed this amendment."
+  );
+});
+
 test("a certificate and an invoice keep their own names", () => {
   assert.equal(documentLabels("completion", WORDS).banner, "CERTIFICATE OF COMPLETION");
   const inv = documentLabels("invoice", WORDS);
@@ -159,4 +169,10 @@ test("the web copy and the PDF pick the same payment section", () => {
     assert.match(source, /changeOrderOnePaymentLine\(/, file);
     assert.match(source, /paymentPercentLabel\(/, file);
   }
+});
+
+test("the Pay card reads its reason from the shared wording", () => {
+  const source = readFileSync(new URL("../app/portal/estimates/[id]/deposit-payment.tsx", import.meta.url), "utf8");
+  assert.match(source, /depositDueLine\(/);
+  assert.doesNotMatch(source, /is due to schedule your/);
 });
