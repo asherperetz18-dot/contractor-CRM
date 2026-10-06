@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.211.1",
+    date: "2026-10-06",
+    notes: [
+      "The Calendar's Week view heading now reads properly, like \"Oct 4 – 10, 2026\". It was showing \"Oct 4 – 2026 (day: 10)\".",
+    ],
+  },
+  {
     version: "1.211.0",
     date: "2026-10-06",
     notes: [
