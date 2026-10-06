@@ -22,6 +22,7 @@ import { RecordPayment } from "./record-payment";
 import { clearInvoiceNote, peekInvoiceNote } from "./invoice-note";
 import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/invoices/send-channel-select";
 import { sentViaLabel, type BillChannel } from "@/lib/bill-email";
+import { RemindersSent, RemindersToggle } from "@/components/invoices/reminders-toggle";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -152,6 +153,7 @@ export function InvoiceView({
                 {fmtDay(lastSent.sent_at)} {sentViaLabel(lastSent.sent_via)}
               </>
             )}
+            {phase && !cancelled && <RemindersSent phaseId={phase.id} prefix=" · " />}
           </p>
         </div>
         <div className="est-header-actions">
@@ -306,6 +308,8 @@ export function InvoiceView({
               <button type="button" className="btn-primary" disabled={pending} onClick={resend}>
                 {pending ? "Sending…" : sendLabel(channel).replace("Send", "Send again")}
               </button>
+              {/* Automatic reminders on this invoice (DECISIONS #152). */}
+              <RemindersToggle phaseId={phase.id} paused={(phase as { reminders_paused?: boolean }).reminders_paused} />
             </>
           )}
           {canRecord && owed > 0 && (

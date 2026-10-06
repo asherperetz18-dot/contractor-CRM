@@ -18,6 +18,7 @@ import {
   markProgressPaymentBilled,
   cancelProgressRequest,
 } from "@/lib/actions/progress-billing";
+import { RemindersSent, RemindersToggle } from "@/components/invoices/reminders-toggle";
 import { SendChannelSelect, sendLabel } from "@/components/invoices/send-channel-select";
 import type { BillChannel } from "@/lib/bill-email";
 
@@ -194,6 +195,14 @@ export function PhaseBilling({
           <button className="btn-ghost" onClick={unbill} disabled={pending}>
             {pending ? "…" : "Un-bill"}
           </button>
+        </>
+      )}
+
+      {/* Automatic reminders on a billed stage still owed (DECISIONS #152). */}
+      {(state === "billed" || state === "overdue" || state === "partial") && (
+        <>
+          <RemindersSent phaseId={phase.id} />
+          <RemindersToggle phaseId={phase.id} paused={(phase as { reminders_paused?: boolean }).reminders_paused} />
         </>
       )}
 

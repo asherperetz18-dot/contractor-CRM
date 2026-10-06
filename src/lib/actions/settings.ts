@@ -644,3 +644,50 @@ export async function savePaymentReceiptSettings(enabled: boolean): Promise<{ er
   revalidatePath("/settings/portal-payments");
   return {};
 }
+
+export type BillReminderSettings = { enabled: boolean; channel: "email" | "text" | "both"; ready: boolean };
+
+/** The company's automatic payment reminders (DECISIONS #152). Off unless switched on. */
+export async function getBillReminderSettings(): Promise<BillReminderSettings | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .select("bill_reminders_enabled, bill_reminder_channel")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ bill_reminders_enabled: boolean | null; bill_reminder_channel: string | null }>();
+  const channel = data?.bill_reminder_channel;
+  return {
+    enabled: !error && data?.bill_reminders_enabled === true,
+    channel: channel === "text" || channel === "both" ? channel : "email",
+    ready: !error,
+  };
+}
+
+export async function saveBillReminderSettings(input: {
+  enabled: boolean;
+  channel: string;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+  if (!["email", "text", "both"].includes(input.channel)) return { error: "Pick how reminders go." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ bill_reminders_enabled: input.enabled === true, bill_reminder_channel: input.channel })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) {
+    if (/bill_remind/.test(error.message)) {
+      return { error: "Reminders need a database update first: run 0208_bill_reminders.sql in Supabase." };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/payment-reminders");
+  return {};
+}

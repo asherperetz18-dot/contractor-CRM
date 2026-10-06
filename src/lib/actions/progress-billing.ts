@@ -281,6 +281,32 @@ export async function requestProgressPayment(
 }
 
 /**
+ * Stops (or restarts) the automatic payment reminders on one bill
+ * (DECISIONS #152): a payment plan agreed, a bill in dispute. Gated like
+ * billing it.
+ */
+export async function setBillRemindersPaused(phaseId: string, paused: boolean): Promise<{ error?: string }> {
+  const guard = await requireBiller();
+  if ("error" in guard) return guard;
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("estimate_payments")
+    .update({ reminders_paused: paused === true })
+    .eq("id", phaseId)
+    .eq("company_id", guard.companyId)
+    .select("estimate_id");
+  if (error) {
+    if (/reminders_paused/.test(error.message)) {
+      return { error: "Reminders need a database update first: run 0208_bill_reminders.sql in Supabase." };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That bill no longer exists." };
+  revalidatePath(`/estimates/${(data[0] as { estimate_id: string }).estimate_id}`);
+  return {};
+}
+
+/**
  * Un-bills a phase billed by mistake.
  *
  * Does not un-send the text -- nothing can -- so this only clears the

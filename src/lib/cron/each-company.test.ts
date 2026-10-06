@@ -72,6 +72,7 @@ test("every scheduled job that works company by company uses the safety net", ()
     "primecall-sync",
     "time-clock",
     "google-calendar-sync",
+    "bill-reminders",
   ]) {
     const source = readFileSync(new URL(`../../app/api/cron/${route}/route.ts`, import.meta.url), "utf8");
     assert.match(source, /runForEachCompany\(/, route);
