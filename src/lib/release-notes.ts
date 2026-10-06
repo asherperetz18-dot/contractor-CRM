@@ -21,6 +21,19 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.226.0",
+    date: "2026-10-06",
+    notes: [
+      "Lead numbers count real leads only. Contacts from a source ticked as a bought list in Settings › Lead Sources, or with no source, no longer count in New leads, the sales funnel, Win rate, Leads by source, the dispatch dashboard, the daily brief or the rep report. The New leads tile shows how many other contacts were added beside it. Sales, revenue and commissions are unchanged.",
+      "The bell and pop-ups only announce real leads, so a big list import no longer fills everyone's bell.",
+      "Pipeline cards and the Contacts list show a real lead's source in orange as \"Lead · Google\"; a bought list's source is grey. Both pages have a new Leads only filter.",
+      "Importing a spreadsheet has a \"These are bought-list contacts, not leads\" box, ticked by default. It ticks the file's sources as bought lists. \"CSV Import\" is now ticked as a bought list.",
+      "A contact from a bought list costs $0 as lead cost instead of the $375 default, and contacts already imported from bought lists had the $375 taken off. Enter what a list cost as that month's spend for its source.",
+      "Marketing Analytics opens with bought lists excluded. Switch Exclude bought lists off to see what each list produced.",
+      "The contact window says under Source whether that contact counts as a lead.",
+    ],
+  },
+  {
     version: "1.225.0",
     date: "2026-10-06",
     notes: [
