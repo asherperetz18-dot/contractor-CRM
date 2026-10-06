@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { monthOf, monthRange, parseMonthParam, rangeCovers } from "./calendar-range.ts";
+import { monthOf, monthRange, parseMonthParam, rangeCovers, weekRangeLabel } from "./calendar-range.ts";
 
 /**
  * The Calendar used to load every appointment the company ever booked,
@@ -56,6 +56,14 @@ test("whatever the view shows for a day in the month, the range already has it",
   assert.equal(rangeCovers(monthRange("2026-10"), "2026-11-08"), false);
 });
 
+test("the week heading names both ends, written out rather than left to the browser", () => {
+  // Asked for only a day and a year, browsers print "2026 (day: 10)":
+  // the heading read "Oct 4 – 2026 (day: 10)".
+  assert.equal(weekRangeLabel("2026-10-04", "2026-10-10"), "Oct 4 – 10, 2026");
+  assert.equal(weekRangeLabel("2026-09-27", "2026-10-03"), "Sep 27 – Oct 3, 2026");
+  assert.equal(weekRangeLabel("2026-12-27", "2027-01-02"), "Dec 27, 2026 – Jan 2, 2027");
+});
+
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("the page reads one month of appointments, and only what stands behind them", () => {
@@ -94,4 +102,10 @@ test("moving to another month loads it in place, and keeps the view, filters and
   // month they have nothing in, so the tick can be undone.
   assert.match(board, /repDropdownOptions\(reps, \[\.\.\.onCalendar, \.\.\.repFilter\]\)/);
   assert.match(board, /new Set\(\[\.\.\.dispatcherByLead\.values\(\), \.\.\.dispatcherFilter\]\)/);
+});
+
+test("the board's week heading comes from weekRangeLabel", () => {
+  const board = source("../app/(app)/calendar/calendar-board.tsx");
+  assert.match(board, /weekRangeLabel\(ymdFromDate\(weekStart\), ymdFromDate\(end\)\)/);
+  assert.doesNotMatch(board, /month: sameMonth \? undefined/);
 });

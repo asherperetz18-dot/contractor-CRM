@@ -52,3 +52,20 @@ export function parseRange(value: unknown): CalendarRange | null {
   if (typeof from !== "string" || typeof to !== "string" || !day.test(from) || !day.test(to) || from > to) return null;
   return { from, to };
 }
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The Week view's heading: "Oct 4 – 10, 2026", "Sep 27 – Oct 3, 2026",
+ * "Dec 27, 2026 – Jan 2, 2027". Written out here rather than asked of
+ * toLocaleDateString, which -- given only a day and a year for the end
+ * of a week inside one month -- prints "2026 (day: 10)".
+ */
+export function weekRangeLabel(startIso: string, endIso: string): string {
+  const [sy, sm, sd] = startIso.split("-").map(Number);
+  const [ey, em, ed] = endIso.split("-").map(Number);
+  const start = `${SHORT_MONTHS[sm - 1]} ${sd}`;
+  if (sy !== ey) return `${start}, ${sy} – ${SHORT_MONTHS[em - 1]} ${ed}, ${ey}`;
+  if (sm !== em) return `${start} – ${SHORT_MONTHS[em - 1]} ${ed}, ${ey}`;
+  return `${start} – ${ed}, ${ey}`;
+}

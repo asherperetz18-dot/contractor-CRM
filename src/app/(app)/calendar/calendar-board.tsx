@@ -31,7 +31,7 @@ import { EventForm } from "./event-form";
 import { AppointmentWizard } from "../schedule/appointment-wizard";
 import { FilterSelect } from "@/components/filter-select";
 import { repDropdownOptions } from "@/lib/data/rep-options";
-import { monthOf } from "@/lib/calendar-range";
+import { monthOf, weekRangeLabel } from "@/lib/calendar-range";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -451,17 +451,7 @@ export function CalendarBoard({
         ? (() => {
             const end = new Date(weekStart);
             end.setDate(weekStart.getDate() + 6);
-            const sameMonth = weekStart.getMonth() === end.getMonth();
-            const startLabel = weekStart.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            });
-            const endLabel = end.toLocaleDateString("en-US", {
-              month: sameMonth ? undefined : "short",
-              day: "numeric",
-              year: "numeric",
-            });
-            return `${startLabel} – ${endLabel}`;
+            return weekRangeLabel(ymdFromDate(weekStart), ymdFromDate(end));
           })()
         : `${MONTH_NAMES[month]} ${year}`;
 
