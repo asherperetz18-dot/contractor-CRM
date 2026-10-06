@@ -32,6 +32,7 @@ import { AttentionDigest } from "./attention-digest";
 import { CsvImportPanel } from "./csv-import-panel";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
 import { useQuickCreate } from "../use-quick-create";
+import { quickCreateContactKind } from "@/lib/data/quick-create";
 import { PhoneLeadList } from "./phone-lead-list";
 import { isClosedStageKey, isEndingStageKey } from "@/lib/pipeline/stage-keys";
 
@@ -305,9 +306,17 @@ export function PipelineBoard({
   );
   const scrollElRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
-  // Quick Create's New Lead (and the phone's Today button) land here as
-  // /pipeline?new=1 and the form opens by itself.
-  const [showNew, setShowNew] = useQuickCreate("/pipeline", canCreateLeads);
+  // Quick Create's New Contact (and the phone's Today button) land here
+  // as /pipeline?new=1 and the form opens by itself; its New Lead sends
+  // ?new=lead, which opens it wanting a real lead source.
+  const [newKind, setNewKind] = useState<"lead" | "contact">("contact");
+  const [showNew, setShowNew] = useQuickCreate("/pipeline", canCreateLeads, (param) =>
+    setNewKind(quickCreateContactKind(param))
+  );
+  const openNewContact = () => {
+    setNewKind("contact");
+    setShowNew(true);
+  };
   const [showValueBreakdown, setShowValueBreakdown] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
   /** The expanded stage's biggest deals, fetched when its row is
@@ -661,7 +670,7 @@ export function PipelineBoard({
         <div>
           <h1 className="module-title">Pipeline</h1>
           <p className="module-sub">
-            {(board?.totalLeads ?? 0).toLocaleString()} opps · {statusFilter.toLowerCase()}
+            {(board?.totalLeads ?? 0).toLocaleString()} contacts · {statusFilter.toLowerCase()}
             {loadingBoard ? " · updating…" : ""}
           </p>
         </div>
@@ -670,8 +679,8 @@ export function PipelineBoard({
             <button className="btn-ghost" onClick={() => setShowImport(true)}>
               Import CSV
             </button>
-            <button className="btn-primary" onClick={() => setShowNew(true)}>
-              + New Lead
+            <button className="btn-primary" onClick={openNewContact}>
+              + New Contact
             </button>
           </div>
         )}
@@ -716,7 +725,7 @@ export function PipelineBoard({
         <div
           className={"stat-card" + (ageFilter === "Stale" ? " stat-card-active" : "")}
           onClick={() => setAgeFilter((a) => (a === "Stale" ? "All" : "Stale"))}
-          title="Toggle: show only leads older than 14 days"
+          title="Toggle: show only contacts older than 14 days"
         >
           <div className="stat-value mono">{staleCount}</div>
           <div className="stat-label">Stale (&gt;14d)</div>
@@ -724,7 +733,7 @@ export function PipelineBoard({
         <div
           className={"stat-card" + (noApptOnly ? " stat-card-active" : "")}
           onClick={() => setNoApptOnly((v) => !v)}
-          title="Toggle: show only leads with no appointment yet"
+          title="Toggle: show only contacts with no appointment yet"
         >
           <div className="stat-value mono">{noApptCount}</div>
           <div className="stat-label">No Appt Yet</div>
@@ -744,13 +753,13 @@ export function PipelineBoard({
             </button>
           </div>
           {valueByStage.length === 0 ? (
-            <p className="empty-hint">No open leads to break down.</p>
+            <p className="empty-hint">No open contacts to break down.</p>
           ) : (
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Stage</th>
-                  <th className="right">Leads</th>
+                  <th className="right">Contacts</th>
                   <th className="right">Value</th>
                   <th className="right">Avg</th>
                 </tr>
@@ -780,7 +789,7 @@ export function PipelineBoard({
                             50
                           ).then((r) => setExpandedStageLeads(r.cards));
                         }}
-                        title={open ? "Hide these leads" : `Show the ${row.count} leads here`}
+                        title={open ? "Hide these contacts" : `Show the ${row.count} contacts here`}
                       >
                         <td>
                           <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
@@ -821,7 +830,7 @@ export function PipelineBoard({
             </table>
           )}
           <p className="hint-note">
-            {leadsWithNoValue.toLocaleString()} of {openCount.toLocaleString()} open leads have
+            {leadsWithNoValue.toLocaleString()} of {openCount.toLocaleString()} open contacts have
             no value recorded, so they add nothing to these totals.
           </p>
         </div>
@@ -1008,9 +1017,9 @@ export function PipelineBoard({
           <div className="empty-mark" aria-hidden="true">
             ＋
           </div>
-          <p className="empty-label">No leads yet</p>
+          <p className="empty-label">No contacts yet</p>
           <p className="empty-hint">
-            Add your first lead to start filling the pipeline.
+            Add your first contact to start filling the pipeline.
           </p>
         </div>
       ) : (
@@ -1051,7 +1060,7 @@ export function PipelineBoard({
           repById={repById}
           onOpenLead={openLead}
           onLoadMore={onLoadMore}
-          onNewLead={canCreateLeads ? () => setShowNew(true) : null}
+          onNewContact={canCreateLeads ? openNewContact : null}
         />
         <div className="pipeline-board" ref={setScrollContainer}>
           {displayGroups.map(({ stage, items, count }) => (
@@ -1096,12 +1105,14 @@ export function PipelineBoard({
 
       {showNew && canCreateLeads && (
         <LeadForm
+          key={newKind}
           reps={reps}
           allMembers={allMembers}
           stages={stages}
           calendars={calendars}
           projectTypes={projectTypes}
           sources={sources}
+          asLead={newKind === "lead"}
           onCancel={() => setShowNew(false)}
           onSaved={() => {
             setShowNew(false);

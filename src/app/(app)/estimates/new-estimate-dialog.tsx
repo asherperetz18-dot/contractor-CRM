@@ -58,7 +58,7 @@ export function NewEstimateDialog({
   }
 
   function submit() {
-    if (!selected) return setError("Pick a lead first.");
+    if (!selected) return setError("Pick a contact first.");
     if (!title.trim()) return setError("Give the estimate a title.");
     setError(null);
     startTransition(async () => {
@@ -72,7 +72,7 @@ export function NewEstimateDialog({
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal est-modal" onClick={(e) => e.stopPropagation()}>
         <h2 className="modal-title">Create New Estimate</h2>
-        <p className="modal-sub">Link this estimate to an existing lead.</p>
+        <p className="modal-sub">Link this estimate to an existing contact.</p>
 
         {selected ? (
           <div className="est-selected-lead">
@@ -89,12 +89,12 @@ export function NewEstimateDialog({
             <input
               className="est-search"
               autoFocus
-              placeholder="Search leads by name, contact, or address…"
+              placeholder="Search contacts by name, email, or address…"
               value={query}
               onChange={(e) => handleQuery(e.target.value)}
             />
             {query.trim().length >= 2 && !searching && matches.length === 0 && (
-              <p className="modal-sub">No leads match that.</p>
+              <p className="modal-sub">No contacts match that.</p>
             )}
             <div className="est-lead-results">
               {matches.map((l) => (

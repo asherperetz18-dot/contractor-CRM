@@ -90,6 +90,6 @@ test("Next up names the customer and knows where to drive, three at most", () =>
 
 test("quick buttons only offer pages the person can open", () => {
   const all = ["/pipeline", "/schedule", "/estimates", "/time-clock"];
-  assert.deepEqual(quickActions(all).map((a) => a.label), ["New lead", "Appointment", "Estimate", "Clock in"]);
+  assert.deepEqual(quickActions(all).map((a) => a.label), ["New contact", "Appointment", "Estimate", "Clock in"]);
   assert.deepEqual(quickActions(["/schedule", "/time-clock"]).map((a) => a.href), ["/schedule?new=1", "/time-clock"]);
 });

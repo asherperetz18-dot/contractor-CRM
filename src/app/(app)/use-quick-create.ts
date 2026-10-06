@@ -15,8 +15,15 @@ import { shouldOpenQuickCreate } from "@/lib/data/quick-create";
  * the param so a refresh or a copied link doesn't reopen the form. With
  * the param gone the guard resets, so the next Quick Create click (which
  * puts ?new=1 back) opens it again.
+ *
+ * `onOpen` hears the param that opened the form, for a page whose form
+ * opens more than one way (the pipeline: ?new=lead is a New Lead).
  */
-export function useQuickCreate(path: string, canCreate: boolean) {
+export function useQuickCreate(
+  path: string,
+  canCreate: boolean,
+  onOpen?: (newParam: string) => void
+) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -24,7 +31,10 @@ export function useQuickCreate(path: string, canCreate: boolean) {
   const newParam = searchParams.get("new");
   if (newParam && !consumed) {
     setConsumed(true);
-    if (shouldOpenQuickCreate(newParam, canCreate)) setOpen(true);
+    if (shouldOpenQuickCreate(newParam, canCreate)) {
+      setOpen(true);
+      onOpen?.(newParam);
+    }
   } else if (!newParam && consumed) {
     setConsumed(false);
   }

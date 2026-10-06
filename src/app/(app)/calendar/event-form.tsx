@@ -751,7 +751,7 @@ export function EventForm({
                 }
                 onClick={() => setTab(t)}
               >
-                {t}
+                {t === "Lead" ? "Contact" : t}
                 {t === "Result" && resultOverdue ? " •" : ""}
                 {t === "Tasks" && openTaskCount > 0 ? ` (${openTaskCount})` : ""}
                 {t === "Estimates" && linkedEstimates.length > 0
@@ -1125,7 +1125,7 @@ export function EventForm({
           )}
 
           <div className="form-grid">
-            <Field label="Move Lead to Stage">
+            <Field label="Move Contact to Stage">
               <select
                 value={resultStage || lead.stage}
                 onChange={(e) => setResultStage(e.target.value)}
@@ -1172,7 +1172,7 @@ export function EventForm({
             </Field>
           </div>
           {lead.notes && (
-            <Field label="Lead Notes">
+            <Field label="Contact Notes">
               <div className="hint-note">{lead.notes}</div>
             </Field>
           )}
@@ -1180,7 +1180,7 @@ export function EventForm({
             <div />
             <div>
               <button type="button" className="btn-primary" onClick={openFullLead}>
-                Open Full Lead
+                Open Full Contact
               </button>
             </div>
           </div>
@@ -1212,7 +1212,7 @@ export function EventForm({
           </div>
           {estimateError && <p className="error-note">{estimateError}</p>}
           {linkedEstimates.length === 0 ? (
-            <p className="empty-hint">No estimates yet for this lead.</p>
+            <p className="empty-hint">No estimates yet for this contact.</p>
           ) : (
             <table className="data-table">
               <thead>

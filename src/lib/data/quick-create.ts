@@ -9,6 +9,13 @@ export function shouldOpenQuickCreate(newParam: string | null, canCreate: boolea
   return canCreate && !!newParam;
 }
 
+/** How the pipeline's window opens: Quick Create's New Lead sends
+ *  ?new=lead (source required, real lead sources only); New Contact,
+ *  the phone's buttons and anything else open it as a New Contact. */
+export function quickCreateContactKind(newParam: string | null): "lead" | "contact" {
+  return newParam === "lead" ? "lead" : "contact";
+}
+
 /** Which window Quick Create's ?new= opens on /estimates: New Invoice
  *  sends ?new=invoice, New Estimate ?new=1. Same permission gate. */
 export function quickCreateDialog(

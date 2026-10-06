@@ -376,7 +376,7 @@ export function CsvImportPanel({
   ];
 
   return (
-    <Modal title="Import Leads from CSV" onClose={onCancel} wide>
+    <Modal title="Import Contacts from CSV" onClose={onCancel} wide>
       <p className="hint-note" style={{ marginTop: 0 }}>
         Upload a .csv or Excel export — we&apos;ll map the columns and add
         everyone to the pipeline stage you choose below.

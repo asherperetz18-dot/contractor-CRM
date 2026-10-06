@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { quickCreateDialog, shouldOpenQuickCreate } from "./quick-create.ts";
+import { quickCreateContactKind, quickCreateDialog, shouldOpenQuickCreate } from "./quick-create.ts";
 
 /**
  * Quick Create's items land on their page with ?new=... and the page
- * opens its own "new" form by itself: New Lead on /pipeline, New
+ * opens its own "new" form by itself: New Contact / New Lead on /pipeline, New
  * Appointment on /schedule, New Job on /production, New Contract on
  * /contracts, New Estimate / New Invoice on /estimates. The rule worth
  * pinning: the param opens it, but never for someone the page's own
@@ -24,6 +24,13 @@ test("without the param the page opens normally", () => {
 test("no create permission means no form, param or not", () => {
   assert.equal(shouldOpenQuickCreate("1", false), false);
   assert.equal(shouldOpenQuickCreate(null, false), false);
+});
+
+test("?new=lead opens the pipeline's window as a New Lead, anything else as a New Contact", () => {
+  assert.equal(quickCreateContactKind("lead"), "lead");
+  assert.equal(quickCreateContactKind("1"), "contact");
+  assert.equal(quickCreateContactKind("contact"), "contact");
+  assert.equal(quickCreateContactKind(null), "contact");
 });
 
 test("?new=invoice opens the New invoice window instead of a new estimate", () => {

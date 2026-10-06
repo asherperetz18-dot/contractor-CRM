@@ -99,7 +99,7 @@ export function pageIcon(href: string): MobileIconName {
 // a Field user's whole app is the job list and the clock.
 const OFFICE_TABS: MobileTab[] = [
   { href: "/", label: "Home", icon: "home", tone: "home" },
-  { href: "/pipeline", label: "Leads", icon: "leads", tone: "dispatch" },
+  { href: "/pipeline", label: "Pipeline", icon: "leads", tone: "dispatch" },
   { href: "/schedule", label: "Schedule", icon: "schedule", tone: "schedule" },
   { href: "/production", label: "Jobs", icon: "board", tone: "production" },
   { href: "/estimates", label: "Estimates", icon: "file", tone: "accounting" },

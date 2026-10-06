@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.225.0",
+    date: "2026-10-06",
+    notes: [
+      "Quick Create has New Contact next to New Lead. New Contact is for anyone, such as a name from a bought list. New Lead asks where the person came from and only offers real lead sources, not the ones ticked as a bought list in Settings › Lead Sources.",
+      "Everyone on the Pipeline is now called a contact. The sidebar and the phone's tab say Pipeline, the button says + New Contact, and the import window, the appointment window, the dial queue (its By Lead tab is now By Stage) and the Salespeople page say contact. Lead sources, lead cost, lead refunds and the lead numbers keep the word lead.",
+    ],
+  },
+  {
     version: "1.224.0",
     date: "2026-10-06",
     notes: [

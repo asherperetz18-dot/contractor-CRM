@@ -38,12 +38,12 @@ function registryNav(): NavEntry[] {
 const NAV = registryNav();
 const EVERYTHING = navHrefs(NAV);
 
-test("office and sales get Home, Leads, Schedule and Jobs, in that order", () => {
+test("office and sales get Home, Pipeline, Schedule and Jobs, in that order", () => {
   assert.deepEqual(
     mobileTabs(EVERYTHING, false).map((t) => [t.label, t.href]),
     [
       ["Home", "/"],
-      ["Leads", "/pipeline"],
+      ["Pipeline", "/pipeline"],
       ["Schedule", "/schedule"],
       ["Jobs", "/production"],
     ]

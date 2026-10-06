@@ -44,11 +44,11 @@ const LIBRARY: Category[] = [
         id: "get-around",
         title: "Get around the CRM",
         kicker: "Guided tour · 8 screens · 2 min",
-        desc: "The whole system in two minutes: where leads live, where the money shows, and what each page is for.",
+        desc: "The whole system in two minutes: where contacts live, where the money shows, and what each page is for.",
         steps: [
           { img: T("dashboard"), caption: "The Dashboard is the day before it happens — open tasks, this week's appointments, and call activity." },
-          { img: T("pipeline"), caption: "The Leads Pipeline holds every open lead on one board. Drag cards through your stages; the totals update live." },
-          { img: T("lead-card"), caption: "Open any lead and the Lead Card holds the whole customer — calls, texts, notes, files, appointments and estimates, in tabs." },
+          { img: T("pipeline"), caption: "The Pipeline holds every contact on one board, bought-list names and real leads alike. Drag cards through your stages; the totals update live." },
+          { img: T("lead-card"), caption: "Open any contact and its card holds the whole customer — calls, texts, notes, files, appointments and estimates, in tabs." },
           { img: T("calendar"), caption: "The Calendar shows the week by rep, in the rep's color. REP and CUST badges show who has confirmed." },
           { img: T("estimates"), caption: "Estimates & Contracts lists every document and its status — draft, sent, signed." },
           { img: T("projects"), caption: "Projects is sold work with the money on top: contract, collected, owed, spent and net cash per job." },
@@ -63,13 +63,13 @@ const LIBRARY: Category[] = [
     tutorials: [
       {
         id: "create-lead",
-        title: "Create a lead",
+        title: "Create a contact or lead",
         kicker: "Quick how-to · 3 steps · 1 min",
-        desc: "From phone call to lead card in under a minute.",
+        desc: "From phone call to contact card in under a minute.",
         steps: [
-          { img: T("pipeline"), caption: "Open Leads Pipeline and tap + New Lead, top right." },
-          { img: T("t-new-lead-form"), caption: "Fill in the name, phone, email and where the lead came from — the source is what makes your marketing numbers true. A spouse or co-owner gets their own second-contact block, email included. Save." },
-          { img: T("lead-card"), caption: "The lead card opens, ready to work: call or text from the card, add notes, book the first appointment." },
+          { img: T("pipeline"), caption: "Open the Pipeline and tap + New Contact, top right. Someone who came from an ad, your website or a referral? Use Quick Create › New Lead instead." },
+          { img: T("t-new-lead-form"), caption: "Fill in the name, phone, email and where they came from. A contact counts as a lead only when its source is a real lead source, not a bought list, so the source is what makes your lead numbers true. A spouse or co-owner gets their own second-contact block, email included. Save." },
+          { img: T("lead-card"), caption: "The contact card opens, ready to work: call or text from the card, add notes, book the first appointment." },
         ],
       },
       {
@@ -114,7 +114,7 @@ const LIBRARY: Category[] = [
         steps: [
           { img: T("call-reports"), caption: "Call Reports keeps every call — duration, recording, outcome, and the marketing source that produced it. Set the disposition right from the row." },
           { img: T("tut-call-dates"), caption: "Pick the window first — today, last week, last month, or an exact custom range. The totals, talk time and connect rate all speak for the dates you chose, and the page only loads what it shows." },
-          { img: T("t-lead-calls"), caption: "The same history lives on each lead's Calls tab, so before you dial you can hear how the last conversation went." },
+          { img: T("t-lead-calls"), caption: "The same history lives on each contact's Calls tab, so before you dial you can hear how the last conversation went." },
         ],
       },
       {
@@ -169,7 +169,7 @@ const LIBRARY: Category[] = [
         desc: "Signed at the kitchen table with a pen? Load it in without sending the customer anything.",
         steps: [
           { img: T("tut-paper-sign"), caption: "Build the contract with its payment stages exactly as usual, then hit Signed on paper. Name who signed, pick the real signing date — it's backdatable, and the stage due dates and checklist run from it — and attach the scan of the signed pages." },
-          { img: T("t-estimate-payments"), caption: "One click and the document behaves exactly like a portal signature: the job appears in Projects, the value lands on the lead, the auto-checklist dates itself off the paper date — and the customer is never emailed or texted. Works the same for change orders and completion forms." },
+          { img: T("t-estimate-payments"), caption: "One click and the document behaves exactly like a portal signature: the job appears in Projects, the value lands on the contact, the auto-checklist dates itself off the paper date — and the customer is never emailed or texted. Works the same for change orders and completion forms." },
         ],
       },
       {
@@ -178,7 +178,7 @@ const LIBRARY: Category[] = [
         kicker: "Deep dive · 3 steps · 2 min",
         desc: "Build it, send it, watch it get signed from a phone.",
         steps: [
-          { img: T("estimates"), caption: "Estimates & Contracts lists every document. Open one, or start fresh from a lead's card." },
+          { img: T("estimates"), caption: "Estimates & Contracts lists every document. Open one, or start fresh from a contact's card." },
           { img: T("t-estimate-builder"), caption: "The builder holds the scope, line items, photos and discounts. The customer-facing document builds itself as you type." },
           { img: T("t-estimate-payments"), caption: "Set the payment schedule by phases, then send — the co-owner on the client card gets the email too. Each owner signs from their phone, and with joint owners the document stays pending until every signature is in. Then the estimate becomes the contract. Billing this customer from QuickBooks instead? Flip Online payments off on their client card — their portal keeps documents and signing, but shows 'invoiced separately' where the Pay buttons were." },
         ],

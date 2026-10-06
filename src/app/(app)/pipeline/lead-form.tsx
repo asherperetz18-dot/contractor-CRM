@@ -74,6 +74,7 @@ import {
 import { LeadFilesPanel } from "./lead-files-panel";
 import { CallsPanel } from "./calls-panel";
 import { stageKeyOf, stageLabel, stageNameFor, type StageKey } from "@/lib/pipeline/stage-keys";
+import { contactFormComplete, realLeadSources } from "@/lib/lead-or-contact";
 
 type Tab = "Overview" | "Appointments" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
@@ -127,6 +128,7 @@ export function LeadForm({
   estimateIndex,
   dispatcherPicker,
   initialTab,
+  asLead,
   onCancel,
   onSaved,
   onDeleted,
@@ -158,6 +160,9 @@ export function LeadForm({
   /** Open on this tab instead of Overview: a phone lead card's Text
    *  button lands on the Texts thread. */
   initialTab?: "Texts";
+  /** Quick Create's New Lead: a new contact that must carry a real lead
+   *  source (bought lists aren't offered), so it counts as a lead. */
+  asLead?: boolean;
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
@@ -191,7 +196,10 @@ export function LeadForm({
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
   );
-  const [sourceOptions, setSourceOptions] = useState<{ id: string; name: string }[]>(sources);
+  const newLead = !lead && !!asLead;
+  const [sourceOptions, setSourceOptions] = useState<{ id: string; name: string }[]>(() =>
+    newLead ? realLeadSources(sources) : sources
+  );
   const skipNextAutosave = useRef(true);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
@@ -429,10 +437,7 @@ export function LeadForm({
   }
 
   const autosaveDirty = form !== lastSaved;
-  const formValid =
-    form.contact_type === "Company"
-      ? !!(form.company_name.trim() && form.phone.trim())
-      : !!(form.first_name.trim() && form.last_name.trim() && form.phone.trim());
+  const formValid = contactFormComplete(form, { asLead: newLead });
 
   useEffect(() => {
     if (!lead || readOnly) return;
@@ -550,7 +555,7 @@ export function LeadForm({
 
   return (
     <Modal
-      title={lead ? leadDisplayName(lead) : "New Contact"}
+      title={lead ? leadDisplayName(lead) : newLead ? "New Lead" : "New Contact"}
       onClose={handleClose}
       xwide
       className="lead-sheet"
@@ -1022,7 +1027,7 @@ export function LeadForm({
               disabled={readOnly || pending}
             />
           </Field>
-          <Field label="Source">
+          <Field label={newLead ? "Source *" : "Source"}>
             <PicklistSelect
               table="lead_sources"
               value={form.source}
@@ -1031,6 +1036,11 @@ export function LeadForm({
               onOptionAdded={(o) => setSourceOptions((prev) => [...prev, o])}
               disabled={readOnly || pending}
             />
+            {newLead && (
+              <span className="hint-note">
+                Bought lists aren&apos;t offered here. Add those with New Contact.
+              </span>
+            )}
           </Field>
           <Field label="Date Received">
             <input

@@ -163,7 +163,7 @@ export function upcomingCards(
 export type QuickAction = { label: string; href: string; page: string };
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: "New lead", href: "/pipeline?new=1", page: "/pipeline" },
+  { label: "New contact", href: "/pipeline?new=1", page: "/pipeline" },
   { label: "Appointment", href: "/schedule?new=1", page: "/schedule" },
   { label: "Estimate", href: "/estimates?new=1", page: "/estimates" },
   { label: "Clock in", href: "/time-clock", page: "/time-clock" },

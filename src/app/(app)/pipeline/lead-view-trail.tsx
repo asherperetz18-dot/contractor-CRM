@@ -47,7 +47,7 @@ export function LeadViewTrail({ leadId, isAdmin }: { leadId: string; isAdmin: bo
     return <p className="lead-trail lead-trail-loading">👁 &nbsp;</p>;
   }
   if (views.length === 0) {
-    return <p className="lead-trail">👁 No one has opened this lead yet.</p>;
+    return <p className="lead-trail">👁 No one has opened this contact yet.</p>;
   }
 
   const [latest, ...rest] = views;

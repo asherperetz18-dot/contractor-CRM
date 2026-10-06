@@ -366,7 +366,7 @@ export function DialQueueView({
           className={"chip" + (tab === "lead" ? " chip-active" : "")}
           onClick={() => setTabAndReset("lead")}
         >
-          By Lead
+          By Stage
         </button>
       </div>
 
@@ -538,10 +538,10 @@ export function DialQueueView({
             {tab === "lead" && (calledFilter !== "All" || leadDispositionFilter !== "All") && (
               <p className="hint-note" style={{ margin: 0 }}>
                 {calledFilter === "Never"
-                  ? "Showing leads no one has dialed yet — combine with a stage to build a fresh call list."
+                  ? "Showing contacts no one has dialed yet — combine with a stage to build a fresh call list."
                   : leadDispositionFilter !== "All"
-                    ? `Showing leads whose latest call outcome matches "${leadDispositionFilter}".`
-                    : "Showing leads that have been dialed at least once."}
+                    ? `Showing contacts whose latest call outcome matches "${leadDispositionFilter}".`
+                    : "Showing contacts that have been dialed at least once."}
               </p>
             )}
           </div>
@@ -566,7 +566,7 @@ export function DialQueueView({
                     </>
                   ) : (
                     <>
-                      <th>Lead</th>
+                      <th>Name &amp; project</th>
                       <th>Contact</th>
                       <th>Phone</th>
                       <th>Status</th>

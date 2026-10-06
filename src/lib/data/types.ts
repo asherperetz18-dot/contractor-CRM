@@ -531,7 +531,7 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // carried wrapped the header to two lines beside the unread badge, and
   // the pages inside already say leads. Labels stay at 21 characters or
   // fewer so none wraps (nav-groups.test.ts).
-  { key: "pipeline", label: "Leads Pipeline", href: "/pipeline", group: "Dispatch" },
+  { key: "pipeline", label: "Pipeline", href: "/pipeline", group: "Dispatch" },
   // Every open lead task in one place, overdue first -- the page the
   // dashboard's "Overdue tasks" card opens. The pipeline's Follow-ups
   // strip keeps its 1,000-newest-leads scope; this page is the complete
