@@ -1,8 +1,8 @@
 name: Rain Alerts Check
 
 on:
-  schedule:
-    - cron: "0 6,14,22 * * *"
+  # The timer (0 6,14,22 * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch: {}
 
 jobs:

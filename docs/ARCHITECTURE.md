@@ -8,7 +8,7 @@ System map for the contractor CRM. For what exists feature-by-feature, see `docs
 - **Database/auth**: Supabase (Postgres + Auth). Schema lives in `supabase/schema.sql`; every change since is a numbered migration in `supabase/migrations/` (140+ as of this writing) — read the migration, not just the schema file, when you need to know *when* or *why* a column exists.
 - **Hosting**: Vercel, deployed from `main`.
 - **Third-party integrations**: Stripe (payments), Twilio (SMS/voice, incl. Voice Intelligence transcription), CallRail (call tracking), Meta/Facebook Lead Ads, Google Drive (document backup), Anthropic Claude (AI call notes, lead-conversation analysis, AI scope-to-estimate line items).
-- **Scheduled jobs**: not Vercel Cron — GitHub Actions workflows (`.github/workflows/*.yml`) hit `/api/cron/*` routes on a schedule, authenticated with a shared `CRON_SECRET` bearer token (`src/lib/cron-env.ts`). See the Cron section below for the full list.
+- **Scheduled jobs**: Supabase Cron (`pg_cron` + `pg_net`, migration 0203) calls the `/api/cron/*` routes on a schedule with a token the database makes and keeps in its vault; the routes check it with the database (`refuseCronCaller`, `src/lib/cron-auth.ts`). `CRON_SECRET` (`src/lib/cron-env.ts`) still works, for the GitHub Actions "Run workflow" buttons and the nightly backup, which stays on GitHub (DECISIONS #140). See the Cron section below for the full list.
 
 ## Multi-tenancy & roles
 
@@ -24,7 +24,9 @@ Every tenant-scoped table carries `company_id`; there is no query pattern anywhe
 - **Encrypted per-company secrets**: Stripe/Twilio/CallRail credentials a contractor brings themselves are stored encrypted at rest (`src/lib/crypto/secrets.ts`) and are write-only in the UI — a saved key is never round-tripped back to the browser, only its last 4 characters.
 - **Portal auth is separate from staff auth**: customers authenticate via single-use magic links plus a street-number passcode challenge (`src/lib/portal/session.ts`), with office-revocable access independent of the link itself. Do not assume `getCurrentProfile()`-style staff auth applies inside `src/app/portal/*`.
 
-## Cron jobs (GitHub Actions → `/api/cron/*`)
+## Cron jobs (Supabase Cron → `/api/cron/*`)
+
+Started by the database on the minute (UTC), not by GitHub, whose timers ran late or not at all when it was busy (DECISIONS #140). The times live in `supabase/migrations/0203_scheduled_jobs.sql`; `cron-token.test.ts` holds each job to exactly one scheduler. Each GitHub workflow keeps its "Run workflow" button for a run by hand. To see the schedule or recent runs, in the Supabase SQL editor: `select jobname, schedule, active from cron.job;` and `select status_code, created from net._http_response order by created desc limit 20;`.
 
 | Job | Schedule | Purpose |
 |---|---|---|
@@ -33,7 +35,7 @@ Every tenant-scoped table carries `company_id`; there is no query pattern anywhe
 | `task-reminders` | — | Texts the assigned rep ~2h before a lead task is due. |
 | `appointment-reminders` | — | Texts leads 2–20h ahead of their appointment. |
 | `callrail-backfill` | — | Syncs/backfills CallRail call data into leads. |
-| `backup` (nightly) | nightly | Full data export, same logic the manual Backup settings page uses. Locked with the `BACKUP_PASSPHRASE` secret (gpg, AES-256) before it is stored as an Actions artifact; the job refuses to run without the secret (DECISIONS #098). |
+| `backup` (nightly, GitHub Actions) | nightly | Full data export, same logic the manual Backup settings page uses. Locked with the `BACKUP_PASSPHRASE` secret (gpg, AES-256) before it is stored as an Actions artifact; the job refuses to run without the secret (DECISIONS #098). |
 | `google-calendar-sync` | every 15 min | Pull then push for every connected Google Calendar (per-rep and company-wide). |
 
 Jobs that work company by company go through `runForEachCompany` (`src/lib/cron/run-companies.ts`, DECISIONS #126): each company in its own try/catch, a turning order, and a four-minute budget, so one company's failure or a slow outside service never stops the rest. A new per-company job should use it too; `src/lib/cron/each-company.test.ts` lists the jobs that must.

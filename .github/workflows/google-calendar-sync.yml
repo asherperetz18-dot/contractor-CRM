@@ -1,8 +1,8 @@
 name: Google Calendar Sync
 
 on:
-  schedule:
-    - cron: "7,22,37,52 * * * *"
+  # The timer (7,22,37,52 * * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch: {}
 
 jobs:

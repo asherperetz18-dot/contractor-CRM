@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCronSecret } from "@/lib/cron-env";
+import { refuseCronCaller } from "@/lib/cron-auth";
 import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForSending, type CompanyTwilio } from "@/lib/twilio-company";
 import { nowInZone, parseNaiveDateTime } from "@/lib/timezone";
@@ -173,14 +173,9 @@ async function processCompany(
 }
 
 async function handlePost(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // The database's scheduler or a CRON_SECRET holder (DECISIONS #140).
+  const refused = await refuseCronCaller(req);
+  if (refused) return refused;
 
   // No session here (cron) -- loop every company so each uses its own
   // timezone and only ever sees its own events/leads.

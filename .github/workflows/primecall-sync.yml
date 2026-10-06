@@ -1,10 +1,8 @@
 name: PrimeCall Sync
 
 on:
-  schedule:
-    # Every 15 minutes -- the live feed carries calls within seconds;
-    # this re-reads the last 3 hours to fill anything it missed.
-    - cron: "*/15 * * * *"
+  # The timer (*/15 * * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch:
     inputs:
       days:

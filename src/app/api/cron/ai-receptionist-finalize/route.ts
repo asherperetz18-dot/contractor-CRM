@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCronSecret } from "@/lib/cron-env";
+import { refuseCronCaller } from "@/lib/cron-auth";
 import { sweepReceptionistCalls } from "@/lib/ai-receptionist-engine";
 import { withRouteObservability } from "@/lib/observability/observe";
 
@@ -12,13 +12,9 @@ import { withRouteObservability } from "@/lib/observability/observe";
  * a couple of hours, not never.
  */
 async function handlePost(req: NextRequest) {
-  const cronSecret = getCronSecret();
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  if (req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // The database's scheduler or a CRON_SECRET holder (DECISIONS #140).
+  const refused = await refuseCronCaller(req);
+  if (refused) return refused;
 
   const finalized = await sweepReceptionistCalls(createAdminClient());
   return NextResponse.json({ finalized });

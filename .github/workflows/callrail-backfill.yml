@@ -1,10 +1,8 @@
 name: CallRail Backfill
 
 on:
-  schedule:
-    # Every 6 hours -- webhooks carry the live traffic; this sweep only
-    # re-pulls the last 2 days to fill any delivery CallRail dropped.
-    - cron: "40 */6 * * *"
+  # The timer (40 */6 * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch:
     inputs:
       days:

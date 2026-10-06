@@ -1,8 +1,8 @@
 name: Task Due Reminder Check
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  # The timer (*/15 * * * * UTC) runs from the database now: Supabase Cron,
+  # migration 0203 (DECISIONS #140). This button runs it by hand.
   workflow_dispatch: {}
 
 jobs:
