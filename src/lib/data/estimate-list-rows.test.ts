@@ -5,7 +5,7 @@ import { ESTIMATE_LIST_COLUMNS, ESTIMATE_LIST_SIGNER_COLUMNS } from "./estimate-
 
 /**
  * The Estimates list read every column of every document and every
- * signer (DECISIONS #144): each contract's full terms, its notes and
+ * signer (DECISIONS #145): each contract's full terms, its notes and
  * messages, and every hand-drawn signature as a picture -- none of which
  * the list shows. It now reads only the columns it uses. Every document
  * still comes, so the cards' totals and the search stay exact.

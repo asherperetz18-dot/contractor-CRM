@@ -143,7 +143,7 @@ export function EstimatesView({
   title?: string;
   /** The company's words, for the count cards (DECISIONS #125). */
   words?: CompanyWords;
-  /** Every document, but only the columns the list draws (DECISIONS #144). */
+  /** Every document, but only the columns the list draws (DECISIONS #145). */
   estimates: EstimateListRow[];
   signers: EstimateListSigner[];
   /** Only the leads these documents reference, not the whole book --

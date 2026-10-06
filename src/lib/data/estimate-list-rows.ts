@@ -2,7 +2,7 @@ import type { Estimate, EstimateSigner } from "./types.ts";
 
 /**
  * What the Estimates list reads of each document and signer (DECISIONS
- * #144) -- one list per table, the select and the type made from it, so
+ * #145) -- one list per table, the select and the type made from it, so
  * they can't drift apart.
  *
  * The list used to read every column: each contract's full terms, its

@@ -1733,7 +1733,7 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a visit reads one window of appointments and what stands behind them, whatever the history; an old appointment is a range change and a "Show more" away. Jobs are still read whole (TECH_DEBT). No database step.
 
-## 144 — The Estimates list reads only the columns it draws
+## 145 — The Estimates list reads only the columns it draws
 
 **Date:** 2026-10-06
 
