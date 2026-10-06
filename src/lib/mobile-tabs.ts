@@ -32,6 +32,7 @@ export type MobileIconName =
   | "contract"
   | "bill"
   | "collect"
+  | "invoice"
   | "payment"
   | "percent"
   | "ledger"
@@ -74,6 +75,7 @@ const PAGE_ICONS: Record<string, MobileIconName> = {
   "/projects": "jobs",
   "/contracts": "contract",
   "/bills": "bill",
+  "/invoices": "invoice",
   "/collect": "collect",
   "/payments": "payment",
   "/commissions": "percent",

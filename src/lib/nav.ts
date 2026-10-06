@@ -60,7 +60,7 @@ export function filterNavForProfile(
     // it themselves either way -- this only keeps the menu from showing
     // a link that would land on "you don't have access", and keeps
     // postLoginPath from picking a blocked page as someone's landing.
-    if (href === "/bills" || href === "/collect" || href === "/payments") {
+    if (href === "/bills" || href === "/collect" || href === "/invoices" || href === "/payments") {
       if (!profile || !canViewFinancials(profile)) return false;
     }
     if (href === "/profit-loss") {

@@ -465,6 +465,7 @@ export type PageKey =
   | "payments"
   | "bills"
   | "collect"
+  | "invoices"
   | "profit-loss"
   | "commissions"
   | "sales-commission"
@@ -596,6 +597,10 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // sortNavEntries seats the new group where /payments sat in a menu
   // somebody already arranged.
   { key: "bills", label: "Bills to Pay", href: "/bills", group: "Accounting" },
+  // Everything billed to a customer -- invoices and contract stages --
+  // with where each one stands (DECISIONS #148). Money to Collect is the
+  // open part of the same list, aged.
+  { key: "invoices", label: "Invoices", href: "/invoices", group: "Accounting" },
   { key: "collect", label: "Money to Collect", href: "/collect", group: "Accounting" },
   { key: "payments", label: "Payments", href: "/payments", group: "Accounting" },
   // Commission is money the company owes out, so both screens sit here
@@ -617,7 +622,8 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   // Key stays "documents" so existing role_page_visibility overrides keep
   // pointing at it; only the label and route move. Named "Contracts"
   // rather than "Invoices" because a signed estimate becomes a contract --
-  // invoicing is a separate lifecycle and is not built yet.
+  // bills to customers have their own page (Accounting › Invoices,
+  // DECISIONS #148).
   { key: "documents", label: "Estimates & Contracts", href: "/estimates", group: "General" },
   // The rep-side mirror of the admin's Approvals screen: where each of
   // my documents stands, and who it is waiting on. Sits beside the
@@ -695,6 +701,7 @@ const BOOKKEEPING_DEFAULT_PAGES: PageKey[] = [
   "documents",
   "payments",
   "bills",
+  "invoices",
   "collect",
   // Visible to the ROLE so that the View Profit & Loss switch is the
   // only thing standing between a bookkeeper and the report -- the
@@ -743,8 +750,9 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   if (pageKey === "payments" && (role === "Field" || role === "Sales")) return false;
   // Bills to Pay is the company checkbook -- same footing as Payments.
   if (pageKey === "bills" && (role === "Field" || role === "Sales")) return false;
-  // Money to Collect is company-wide receivables -- same footing.
-  if (pageKey === "collect" && (role === "Field" || role === "Sales")) return false;
+  // Money to Collect is company-wide receivables -- same footing, and
+  // Invoices is the same money listed bill by bill.
+  if ((pageKey === "collect" || pageKey === "invoices") && (role === "Field" || role === "Sales")) return false;
   // The P&L is the most sensitive page of the four: what the company
   // actually earns. Same default as its siblings; the real permission is
   // the View Profit & Loss switch, checked by the page itself.

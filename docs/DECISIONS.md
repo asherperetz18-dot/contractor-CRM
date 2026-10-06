@@ -1787,3 +1787,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The picker still lists every job.** Narrowing it (open jobs first, or type-to-search) changes what people can pick, so it is left for when a company's list is long enough to need it (TECH_DEBT).
 
 **Consequence:** a visit to either page no longer grows with the company's job history; an editor opening an appointment pays for the job list once per open. No database step.
+
+## 148 — Invoices get their own page, and Money to Collect ages by due date
+
+**Date:** 2026-10-06
+
+**Context:** First step of the full invoicing plan the owner approved. Bills to customers were spread out: invoices sat in the Estimates list (left out of its counts), billed contract stages were visible on Payments and Money to Collect, and nothing listed every bill with where it stood. Money to Collect aged its rows from the day each was billed, so a bill sent last week on 30-day terms counted as "current" and one billed 40 days ago on 60-day terms as needing follow-up, whatever their due dates said. It also left out the billed stages of change orders, which Payments counts.
+
+**Decision:**
+- **One set of rows for everything billed** (`buildInvoiceRows`, pure and tested): an invoice, or a billed stage of a signed contract or change order. Each row has its amount, what has been paid (settled money only), what is still owed, and a status: Billed; Viewed when the customer opened the document in the portal after it was billed (`estimate_views`, written only by the portal); Part paid; Overdue past the due date on the company's own clock; Payment clearing; Paid; Void for a cancelled invoice (listed once, from the document, since cancelling un-bills its stage) or a stage billed on a contract later voided; Credit for a billed negative amount. The status comes from `phaseState`, the same rule as Payments and the portal.
+- **Accounting › Invoices** (`/invoices`) lists them, with filters (Open, Overdue, Paid, Void, All) and the billed-date period in the address, cards counted over every row, search, 200 rows at a time and **+ New invoice**. It is company-wide money, so it has Money to Collect's access: View Financials, off by default for Field and Sales, on for Bookkeeping.
+- **Money to Collect reads the same rows** through the same loader (`loadInvoiceRows`), so its outstanding total is the Invoices page's. It now includes billed change-order stages and ages by due date: Not due yet, 1–30, 31–90 and 90+ days late, most overdue first. Billable Now is unchanged.
+- **Only the columns the rows need**, in a stable order: both pages used `select("*")` on every estimate (terms included) before.
+- **There is no "Sent"**: nothing records whether a bill was texted or only marked billed, so both read "Billed". Recording the send belongs to the sending steps of the plan.
+- On phones, stat tiles step their amounts down to fit two across; five-figure amounts were running off the screen.
+
+**Consequence:** one place to see every bill and its state, and an ageing that matches the terms each bill was sent on. Totals on Money to Collect can rise where change-order stages were billed, because those were missing before. No database step.

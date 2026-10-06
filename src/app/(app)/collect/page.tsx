@@ -4,33 +4,22 @@ import { collectsOnDocument } from "@/lib/data/invoices";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { companyToday } from "@/lib/data/company-today";
 import { roleName } from "@/lib/role-names";
 import { canViewFinancials } from "@/lib/data/accounting-access";
-import {
-  paidTotalCents,
-  type Estimate,
-  type EstimatePayment,
-  type PortalPayment,
-} from "@/lib/data/types";
+import { inStatusGroup } from "@/lib/data/invoice-rows";
+import { loadInvoiceLeads, loadInvoiceRows } from "@/lib/data/load-invoice-rows";
+import type { EstimatePayment } from "@/lib/data/types";
 import { CollectView, type ReceivableRow, type BillableRow } from "./collect-view";
 
 export const dynamic = "force-dynamic";
 
-type SlimLead = {
-  id: string;
-  contact_type: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  company_name: string | null;
-  address: string | null;
-  assigned_to: string | null;
-};
-
 /**
  * Money to Collect: outstanding receivables and the quiet gold beneath
- * them -- phases on signed contracts nobody has invoiced yet. Every
- * number is computed from the tables Projects and Payments already
- * read, so this page can never disagree with them.
+ * them -- phases on signed contracts nobody has invoiced yet. The
+ * outstanding side is the open part of the Invoices page's rows
+ * (DECISIONS #148), read by the same loader, so the two pages can never
+ * disagree; it is aged by due date.
  */
 export default async function CollectPage() {
   const profile = await getCurrentProfile();
@@ -55,23 +44,19 @@ export default async function CollectPage() {
 
   const supabase = await createClient();
   const companyId = profile.company_id;
+  const today = await companyToday();
 
-  const [estimates, phases, paid, members] = await Promise.all([
-    selectAll<Estimate>((f, t) =>
-      supabase.from("estimates").select("*").eq("company_id", companyId).range(f, t)
-    ),
-    selectAll<EstimatePayment>((f, t) =>
+  const [{ rows, docs, leadById }, unbilled, members] = await Promise.all([
+    loadInvoiceRows(supabase, companyId, today),
+    // Stages nobody has billed yet, for Billable Now.
+    selectAll<Pick<EstimatePayment, "id" | "estimate_id" | "sort_order" | "name" | "amount_cents">>((f, t) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+        .select("id, estimate_id, sort_order, name, amount_cents")
         .eq("company_id", companyId)
-        .range(f, t)
-    ),
-    selectAll<PortalPayment>((f, t) =>
-      supabase
-        .from("portal_payments")
-        .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at")
-        .eq("company_id", companyId)
+        .is("requested_at", null)
+        .is("cancelled_at", null)
+        .order("id")
         .range(f, t)
     ),
     supabase
@@ -86,38 +71,19 @@ export default async function CollectPage() {
       }),
   ]);
 
-  // Only the leads these documents actually name -- not the company's
-  // whole 79k contact book, which is a multi-second fetch for a page
-  // that labels a few dozen rows (same cure as Estimates, #019/#020).
-  const leadIds = [...new Set(estimates.map((e) => e.lead_id).filter(Boolean))];
-  const leads = leadIds.length
-    ? await selectAll<SlimLead>((f, t) =>
-        supabase
-          .from("leads")
-          .select("id, contact_type, first_name, last_name, company_name, address, assigned_to")
-          .eq("company_id", companyId)
-          .in("id", leadIds)
-          .range(f, t)
-      )
-    : ([] as SlimLead[]);
+  // Billable Now is unbilled stages on signed contracts and issued
+  // invoices -- not a change order's own, whose amount the contract
+  // already carries as one line.
+  const contractById = new Map(docs.filter((e) => collectsOnDocument(e)).map((e) => [e.id, e]));
+  const billableStages = unbilled.filter((ph) => contractById.has(ph.estimate_id));
+  // Only the customers these rows name -- not the company's whole
+  // contact book (same cure as Estimates, #019/#020).
+  const missing = billableStages
+    .map((ph) => contractById.get(ph.estimate_id)!.lead_id)
+    .filter((id) => !leadById.has(id));
+  for (const l of await loadInvoiceLeads(supabase, companyId, missing)) leadById.set(l.id, l);
 
-  const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(members.map((m) => [m.id, m.name]));
-  // Phases live on contracts; a signed change order appends its phase to
-  // the parent. Signed, un-voided contracts are the live book -- and
-  // issued invoices (a permit fee billed back), each one billed phase.
-  const liveContracts = estimates.filter((e) => collectsOnDocument(e));
-  const contractById = new Map(liveContracts.map((e) => [e.id, e]));
-
-  const paidByPhase = new Map<string, number>();
-  for (const p of paid) {
-    if (!p.estimate_payment_id) continue;
-    paidByPhase.set(
-      p.estimate_payment_id,
-      (paidByPhase.get(p.estimate_payment_id) ?? 0) + paidTotalCents([p])
-    );
-  }
-
   const label = (leadId: string) => {
     const l = leadById.get(leadId);
     return {
@@ -127,41 +93,41 @@ export default async function CollectPage() {
     };
   };
 
-  const unpaid: ReceivableRow[] = [];
-  const billable: BillableRow[] = [];
-  for (const ph of phases) {
-    const contract = contractById.get(ph.estimate_id);
-    if (!contract) continue;
-    const who = label(contract.lead_id);
-    if (ph.requested_at) {
-      const remaining = ph.amount_cents - (paidByPhase.get(ph.id) ?? 0);
-      if (remaining <= 0) continue;
-      unpaid.push({
-        phaseId: ph.id,
-        estimateId: contract.id,
-        leadId: contract.lead_id,
-        title: contract.title || contract.doc_number,
-        phase: ph.name || `Phase ${ph.sort_order + 1}`,
-        requestedAt: ph.requested_at,
-        dueDate: ph.due_date ?? null,
-        remainingCents: remaining,
-        ...who,
-      });
-    } else {
-      billable.push({
-        phaseId: ph.id,
-        estimateId: contract.id,
-        leadId: contract.lead_id,
-        title: contract.title || contract.doc_number,
-        phase: ph.name || `Phase ${ph.sort_order + 1}`,
-        amountCents: ph.amount_cents,
-        ...who,
-      });
-    }
-  }
+  // Still owed: everything open with money left on it -- a contract's
+  // stage, a change order's or an invoice.
+  const unpaid: ReceivableRow[] = rows
+    .filter((r) => inStatusGroup(r.status, "open") && r.owedCents > 0)
+    .map((r) => ({
+      phaseId: r.id,
+      estimateId: r.docId,
+      leadId: r.leadId,
+      title: r.title,
+      phase: r.stage ?? "Invoice",
+      requestedAt: r.billedAt,
+      dueDate: r.dueDate,
+      remainingCents: r.owedCents,
+      ...label(r.leadId),
+    }));
 
-  unpaid.sort((a, b) => a.requestedAt.localeCompare(b.requestedAt));
+  const billable: BillableRow[] = billableStages.map((ph) => {
+    const contract = contractById.get(ph.estimate_id)!;
+    return {
+      phaseId: ph.id,
+      estimateId: contract.id,
+      leadId: contract.lead_id,
+      title: contract.title || contract.doc_number,
+      phase: ph.name || `Phase ${ph.sort_order + 1}`,
+      amountCents: ph.amount_cents,
+      ...label(contract.lead_id),
+    };
+  });
+
+  // Most overdue first: by due date, a bill with none after those with one.
+  unpaid.sort(
+    (a, b) =>
+      (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.requestedAt.localeCompare(b.requestedAt)
+  );
   billable.sort((a, b) => a.customer.localeCompare(b.customer));
 
-  return <CollectView unpaid={unpaid} billable={billable} />;
+  return <CollectView unpaid={unpaid} billable={billable} today={today} />;
 }
