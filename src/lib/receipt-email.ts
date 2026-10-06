@@ -140,3 +140,92 @@ export function receiptEmail(p: ReceiptEmailInput): { subject: string; text: str
 
   return { subject, text, html };
 }
+
+export type RefundEmailInput = {
+  companyName: string;
+  customerName: string | null;
+  /** What went back, as a positive amount. */
+  amountCents: number;
+  /** The day it went back, YYYY-MM-DD on the company's clock. */
+  refundedOn: string;
+  method: string | null;
+  reference: string | null;
+  /** Why, as the office wrote it on the refund. */
+  reason: string | null;
+  isInvoice: boolean;
+  isDeposit: boolean;
+  docNumber: string;
+  title: string | null;
+  stageName: string | null;
+  /** Still owed on the bill the refunded payment was for, after it; null for a deposit. */
+  stageOwedCents: number | null;
+  paidToDateCents: number;
+  totalCents: number;
+};
+
+/**
+ * What a refund notice emailed to the customer says (DECISIONS #158):
+ * how much went back, for what, why and how, and where the bill stands
+ * now -- nothing more owed (a credit went with it), or what is owed
+ * again. Never says "payment received".
+ */
+export function refundEmail(p: RefundEmailInput): { subject: string; text: string; html: string } {
+  const amount = moneyCents(p.amountCents);
+  const what = p.isInvoice
+    ? `invoice ${p.docNumber}`
+    : p.isDeposit
+      ? `the deposit on ${p.docNumber}`
+      : `${p.stageName || "Progress payment"} on ${p.docNumber}`;
+  const subject = `${p.companyName}: refund of ${amount} for ${what}`;
+  const opening = `We've refunded ${amount} to you for ${what}${p.title ? ` (${p.title})` : ""}.`;
+
+  const method = receiptMethodLabel(p.method);
+  const reference = p.reference?.trim() || null;
+  const reason = p.reason?.trim() || null;
+  const details = [
+    `Amount: ${amount}`,
+    `Date: ${longDay(p.refundedOn)}`,
+    ...(method ? [`Refunded by: ${method}`] : []),
+    ...(reference ? [`Reference: ${reference}`] : []),
+    ...(reason ? [`Why: ${reason}`] : []),
+  ];
+
+  const balance: string[] = [];
+  const bill = p.isInvoice ? `invoice ${p.docNumber}` : p.stageName || "this payment";
+  if (p.stageOwedCents !== null) {
+    balance.push(p.stageOwedCents ? `Still owed on ${bill}: ${moneyCents(p.stageOwedCents)}.` : `Nothing more is owed on ${bill}.`);
+  }
+  if (!p.isInvoice) balance.push(`Paid so far on ${p.docNumber}: ${moneyCents(p.paidToDateCents)} of ${moneyCents(p.totalCents)}.`);
+
+  const greeting = p.customerName?.trim() || "there";
+  const closing =
+    "Depending on how it was sent, it can take a few days to reach you. Keep this email for your records, and if anything looks wrong, just reply.";
+
+  const text = [
+    `Hi ${greeting},`,
+    ``,
+    opening,
+    ``,
+    ...details,
+    ``,
+    ...(balance.length ? [...balance, ``] : []),
+    closing,
+    ``,
+    `Thank you,`,
+    p.companyName,
+  ].join("\n");
+
+  const html = [
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#222;max-width:560px">`,
+    `<p>Hi ${escapeHtml(greeting)},</p>`,
+    `<p>${escapeHtml(opening)}</p>`,
+    `<p style="margin:0"><strong>${escapeHtml(details[0])}</strong></p>`,
+    ...details.slice(1).map((line) => `<p style="margin:0">${escapeHtml(line)}</p>`),
+    ...(balance.length ? [`<p style="margin:18px 0">${balance.map(escapeHtml).join("<br>")}</p>`] : []),
+    `<p style="font-size:13px;color:#666">${escapeHtml(closing)}</p>`,
+    `<p>Thank you,<br>${escapeHtml(p.companyName)}</p>`,
+    `</div>`,
+  ].join("");
+
+  return { subject, text, html };
+}

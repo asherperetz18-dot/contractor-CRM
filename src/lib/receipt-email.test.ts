@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { receiptEmail, receiptFigures, receiptMethodLabel, type ReceiptEmailInput } from "./receipt-email.ts";
+import { receiptEmail, receiptFigures, receiptMethodLabel, refundEmail, type ReceiptEmailInput } from "./receipt-email.ts";
 
 /**
  * Step 3b of full invoicing (DECISIONS #151): when money arrives -- paid
@@ -169,4 +169,64 @@ test("a hand-recorded payment emails a receipt when asked, and any paid one can 
   // The company's switch is an admin's to change.
   const settings = source("./actions/settings.ts");
   assert.match(settings, /export async function savePaymentReceiptSettings\(enabled: boolean\)/);
+});
+
+// ── Refund notices (DECISIONS #158) ────────────────────────────────────
+
+const refund = {
+  companyName: "Summit Builders Co",
+  customerName: "Jordan Ellis",
+  amountCents: 50_000,
+  refundedOn: "2026-10-06",
+  method: "check",
+  reference: "2210",
+  reason: "Paid for tile we didn't use",
+  isInvoice: false,
+  isDeposit: false,
+  docNumber: "EST-1047",
+  title: "Kitchen remodel",
+  stageName: "Rough-in complete",
+  stageOwedCents: 0,
+  paidToDateCents: 950_000,
+  totalCents: 2_500_000,
+};
+
+test("a refund notice: how much went back, for what, why, and how it was sent", () => {
+  const mail = refundEmail(refund);
+  assert.equal(mail.subject, "Summit Builders Co: refund of $500.00 for Rough-in complete on EST-1047");
+  assert.match(mail.text, /^Hi Jordan Ellis,/);
+  assert.match(mail.text, /We've refunded \$500\.00 to you for Rough-in complete on EST-1047 \(Kitchen remodel\)\./);
+  assert.match(mail.text, /Amount: \$500\.00\nDate: Oct 6, 2026\nRefunded by: Check\nReference: 2210\nWhy: Paid for tile we didn't use\n/);
+  // Nothing owed on the stage after it (a credit went with it).
+  assert.match(mail.text, /Nothing more is owed on Rough-in complete\./);
+  assert.match(mail.text, /Paid so far on EST-1047: \$9,500\.00 of \$25,000\.00\./);
+  assert.doesNotMatch(mail.text, /payment received/i);
+  // Names and reasons come from people: escaped in the HTML.
+  assert.match(mail.html, /didn&#39;t use/);
+});
+
+test("a refund the customer still owes says so; a deposit and an invoice read as themselves", () => {
+  const owed = refundEmail({ ...refund, stageOwedCents: 50_000 });
+  assert.match(owed.text, /Still owed on Rough-in complete: \$500\.00\./);
+  const deposit = refundEmail({ ...refund, isDeposit: true, stageName: null, stageOwedCents: null, reason: null, reference: null, method: "card" });
+  assert.equal(deposit.subject, "Summit Builders Co: refund of $500.00 for the deposit on EST-1047");
+  assert.match(deposit.text, /Refunded by: Card\n/);
+  assert.doesNotMatch(deposit.text, /Why:|Reference:/);
+  const invoice = refundEmail({ ...refund, isInvoice: true, docNumber: "INV-1004", stageName: null, stageOwedCents: 0 });
+  assert.equal(invoice.subject, "Summit Builders Co: refund of $500.00 for invoice INV-1004");
+  assert.match(invoice.text, /Nothing more is owed on invoice INV-1004\./);
+});
+
+test("a refund notice goes when the office asks, never by itself, and never before 'Still owed?' is answered", () => {
+  const send = source("./send-receipt.ts");
+  assert.match(send, /if \(payment\.amount_cents < 0\) \{/);
+  assert.match(send, /if \(opts\.automatic\) return \{ skipped: "Refund notices go only when asked\." \};/);
+  assert.match(send, /Answer "Still owed\?" on this refund first/);
+  assert.match(send, /\[Refund notice emailed\]/);
+  const manual = source("./actions/manual-payments.ts");
+  assert.match(manual, /emailCustomer\?: boolean;/);
+  assert.match(manual, /if \(input\.emailCustomer\)/);
+  const view = source("../app/(app)/payments/payments-view.tsx");
+  assert.match(view, /<ReceiptButton paymentId=\{r\.id\} sentAt=\{r\.receiptSentAt\} refund=\{r\.isRefund\} \/>/);
+  assert.match(source("../app/(app)/payments/refund-payment.tsx"), /Email the customer that the money is coming back/);
 });

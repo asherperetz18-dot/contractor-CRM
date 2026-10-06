@@ -57,6 +57,7 @@ export function RefundPayment({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [stillOwed, setStillOwed] = useState<"no" | "yes" | null>(null);
+  const [emailCustomer, setEmailCustomer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -74,8 +75,14 @@ export function RefundPayment({
         reference: ref,
         refundedOn,
         stillOwed: !onBill || stillOwed === "yes",
+        emailCustomer,
       });
       if (res.error) return setError(res.error);
+      // Recorded either way; a notice that didn't go is said, and can be
+      // sent again from the refund's row.
+      if (res.emailError) {
+        window.alert(`The refund is recorded, but the notice wasn't emailed: ${res.emailError}`);
+      }
       onClose();
       router.refresh();
     });
@@ -176,6 +183,16 @@ export function RefundPayment({
           This is a deposit. If all of it goes back, the deposit is due again on the contract.
         </p>
       )}
+
+      <label className="est-record-check">
+        <input
+          type="checkbox"
+          checked={emailCustomer}
+          onChange={(e) => setEmailCustomer(e.target.checked)}
+          disabled={pending}
+        />
+        <span>Email the customer that the money is coming back</span>
+      </label>
 
       {error && <p className="error-note">{error}</p>}
 

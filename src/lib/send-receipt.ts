@@ -7,7 +7,7 @@ import { billRecipients } from "@/lib/bill-email";
 import { personName } from "@/lib/data/client-name";
 import { zoneForCompany } from "@/lib/data/company-today";
 import { isoDateInZone } from "@/lib/company-clock";
-import { receiptEmail, receiptFigures } from "@/lib/receipt-email";
+import { receiptEmail, receiptFigures, refundEmail } from "@/lib/receipt-email";
 import type { PortalPayment } from "@/lib/data/types";
 
 /**
@@ -21,6 +21,12 @@ import type { PortalPayment } from "@/lib/data/types";
  * the email goes and released if it doesn't. By hand, someone on the
  * team asked for it (recording a payment, or Email receipt on Payments),
  * so it goes whenever asked: a receipt the customer lost is sent again.
+ *
+ * A refund (#155) gets a refund notice instead (#158): how much went
+ * back, why, and where the bill stands now. Only when someone asks --
+ * never by itself -- and only once the refund has gone through and the
+ * office has said whether the customer still owes it, so the notice
+ * says the right thing.
  */
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -29,6 +35,7 @@ type ReceiptPayment = Pick<PortalPayment, "id" | "estimate_id" | "kind" | "amoun
   estimate_payment_id: string | null;
   lead_id: string | null;
   reference: string | null;
+  note: string | null;
 };
 
 export type ReceiptResult = { sentTo?: string; error?: string; skipped?: string };
@@ -41,16 +48,33 @@ export async function sendPaymentReceipt(
 ): Promise<ReceiptResult> {
   const { data: payment } = await admin
     .from("portal_payments")
-    .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, reference, paid_at, created_at")
+    .select("id, estimate_id, estimate_payment_id, lead_id, kind, amount_cents, status, method, reference, note, paid_at, created_at")
     .eq("id", paymentId)
     .eq("company_id", companyId)
     .maybeSingle<ReceiptPayment>();
   if (!payment) return { error: "Payment not found." };
   // A receipt says the money arrived. A cheque not yet banked, or a bank
   // transfer still clearing, hasn't.
-  if (payment.status !== "succeeded") return { error: "Only a payment that has arrived gets a receipt." };
-  // A refund is money going back, not a payment received (#155).
-  if (payment.amount_cents <= 0) return { error: "A refund doesn't get a payment receipt." };
+  const refund = payment.amount_cents < 0;
+  if (payment.status !== "succeeded") {
+    return { error: refund ? "Only a refund that has gone through gets a notice." : "Only a payment that has arrived gets a receipt." };
+  }
+  // A refund is money going back, not a payment received (#155): its own
+  // notice, only when asked (#158).
+  if (payment.amount_cents < 0) {
+    if (opts.automatic) return { skipped: "Refund notices go only when asked." };
+    if (payment.estimate_payment_id) {
+      const { data: decision } = await admin
+        .from("portal_payments")
+        .select("refund_still_owed")
+        .eq("id", payment.id)
+        .eq("company_id", companyId)
+        .maybeSingle<{ refund_still_owed: boolean | null }>();
+      if (decision?.refund_still_owed == null) {
+        return { error: 'Answer "Still owed?" on this refund first, so the notice says what is owed now.' };
+      }
+    }
+  }
 
   // Paused while the company's subscription is locked (DECISIONS #131).
   const locked = await lockedServicesError(companyId);
@@ -118,18 +142,38 @@ export async function sendPaymentReceipt(
   const companyName = company?.name || "Your contractor";
   const isInvoice = doc.kind === "invoice";
   const figures = receiptFigures(stage ?? null, docPayments ?? []);
-  const mail = receiptEmail({
+  const stageName = stage ? stage.name || `Phase ${stage.sort_order + 1}` : null;
+  const day = isoDateInZone(new Date(payment.paid_at ?? payment.created_at), zone);
+  const mail = refund
+    ? refundEmail({
+        companyName,
+        customerName: personName(lead) || null,
+        amountCents: -payment.amount_cents,
+        refundedOn: day,
+        method: payment.method,
+        reference: payment.reference,
+        reason: payment.note,
+        isInvoice,
+        isDeposit: !payment.estimate_payment_id,
+        docNumber: doc.doc_number,
+        title: doc.title,
+        stageName,
+        stageOwedCents: figures.stageOwedCents,
+        paidToDateCents: figures.paidToDateCents,
+        totalCents: doc.total_cents,
+      })
+    : receiptEmail({
     companyName,
     customerName: personName(lead) || null,
     amountCents: payment.amount_cents,
-    paidOn: isoDateInZone(new Date(payment.paid_at ?? payment.created_at), zone),
+    paidOn: day,
     method: payment.method,
     reference: payment.reference,
     isInvoice,
     isDeposit: !payment.estimate_payment_id,
     docNumber: doc.doc_number,
     title: doc.title,
-    stageName: stage ? stage.name || `Phase ${stage.sort_order + 1}` : null,
+    stageName,
     stageOwedCents: figures.stageOwedCents,
     paidToDateCents: figures.paidToDateCents,
     totalCents: doc.total_cents,
@@ -164,7 +208,7 @@ export async function sendPaymentReceipt(
         .eq("id", payment.id)
         .eq("company_id", companyId);
     }
-    return { error: `The receipt couldn't be emailed (${sent.error}).` };
+    return { error: `The ${refund ? "refund notice" : "receipt"} couldn't be emailed (${sent.error}).` };
   }
 
   // Sent by hand: recorded afterwards, its own write, so a database
@@ -186,7 +230,7 @@ export async function sendPaymentReceipt(
       direction: "outbound",
       from_number: "email",
       to_number: addr,
-      body: `[Receipt emailed] ${mail.subject}`,
+      body: `${refund ? "[Refund notice emailed]" : "[Receipt emailed]"} ${mail.subject}`,
       twilio_sid: sent.id || null,
       channel: "email",
       sent_by: opts.sentBy,
