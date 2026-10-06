@@ -1948,3 +1948,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a week that went to payroll stays as it was paid until someone reopens it, with a reason. **Database step: 0212**, any time; until it runs, Approve says to run it and the page is as before.
 
+## 158 — Refund notice: the customer is told when money goes back, when the office asks
+
+**Date:** 2026-10-06
+
+**Context:** Since #155 a refund is recorded, but the customer heard nothing from the CRM about it: they saw it on their statement, or Stripe's own email for a card refund. A payment gets a receipt (#151); money going back had no equivalent.
+
+**Decision:**
+- **A refund notice, by email:** how much went back, for what (the stage, invoice or deposit), the day, how (check, card ...), the reference, the reason the office wrote, and where the bill stands now -- "Nothing more is owed on ..." when a credit went with it, "Still owed on ...: $X" when it is owed again -- plus paid so far on a contract. Never says "payment received".
+- **Only when asked, never by itself.** The Refund form has "Email the customer that the money is coming back"; a refund's row on Payments has **Email refund notice** / **Resend refund notice** (the same button as a payment's receipt). A refund made in Stripe can be sent once it has gone through and "Still owed?" has been answered, so the notice says what is owed now. The send is recorded on the refund (`receipt_sent_at`, 0207) and logged in the contact's messages as "[Refund notice emailed]".
+- The refund is recorded whatever the email does; a notice that couldn't go is said, and can be sent again from the row.
+
+**Consequence:** the customer hears about money coming back in the company's own words. No database step.
+
