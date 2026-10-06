@@ -320,8 +320,12 @@ export async function getDispatcherCommissions(): Promise<{
     };
   }
 
+  // The headline totals are worked out on the same figure as the jobs
+  // under them: the contract less its credits (DECISIONS #154). On the
+  // full contract, a credited job paid in full showed money held back.
+  const sold = signed.map((e) => ({ ...e, total_cents: e.total_cents - (creditByEstimate.get(e.id) ?? 0) }));
   const computed = computeDispatcherCommissions({
-    signed,
+    signed: sold,
     dispatcherByLead,
     collectedByEstimate,
     commissionBp: bp,

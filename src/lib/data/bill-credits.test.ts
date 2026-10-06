@@ -135,4 +135,8 @@ test("a credit lowers the commission: the job sold for that much less (the owner
   const dispatch = source("../actions/dispatcher.ts");
   assert.match(dispatch, /const baseCents = estimate\.total_cents - \(creditByEstimate\.get\(estimate\.id\) \?\? 0\);/);
   assert.match(dispatch, /Math\.round\(\(baseCents \* bp\) \/ 10000\)/);
+  // The headline totals come from the same lowered figure as the jobs
+  // under them, so a credited job paid in full holds nothing back.
+  assert.match(dispatch, /const sold = signed\.map\(\(e\) => \(\{ \.\.\.e, total_cents: e\.total_cents - \(creditByEstimate\.get\(e\.id\) \?\? 0\) \}\)\);/);
+  assert.match(dispatch, /computeDispatcherCommissions\(\{\s*signed: sold,/);
 });
