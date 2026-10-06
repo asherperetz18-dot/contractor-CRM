@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.223.1",
+    date: "2026-10-06",
+    notes: [
+      "A credit now lowers the commission too: the job sold for that much less. Sales and dispatcher commissions are worked out on the contract minus its credits, and a job's commission statement shows the credits under the contract.",
+    ],
+  },
+  {
     version: "1.223.0",
     date: "2026-10-06",
     notes: [
