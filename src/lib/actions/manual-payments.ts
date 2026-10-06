@@ -14,6 +14,7 @@ import {
 import { manualClearUpdate } from "@/lib/data/manual-clear";
 import { manualEditUpdate, type ManualEditInput } from "@/lib/data/manual-edit";
 import { depositRuleSentence } from "@/lib/deposit-rule";
+import { sendPaymentReceipt } from "@/lib/send-receipt";
 
 export type ManualPaymentInput = {
   estimateId: string;
@@ -32,6 +33,9 @@ export type ManualPaymentInput = {
   cleared?: boolean;
   /** When it was actually taken, which is often not today. */
   receivedOn?: string;
+  /** Email the customer a receipt (DECISIONS #151). Only for money that
+   *  has arrived: a cheque not yet banked gets one from Payments later. */
+  sendReceipt?: boolean;
 };
 
 type EstimateRow = {
@@ -62,7 +66,7 @@ type EstimateRow = {
  */
 export async function recordManualPayment(
   input: ManualPaymentInput
-): Promise<{ error?: string; warning?: string; ok?: boolean }> {
+): Promise<{ error?: string; warning?: string; ok?: boolean; receiptSentTo?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   // Money entry sits with the people who chase it. Cash recorded by
@@ -171,10 +175,39 @@ export async function recordManualPayment(
     return { error: error?.message || "Could not record the payment." };
   }
 
+  // The payment stands whatever happens to the email.
+  let receiptSentTo: string | undefined;
+  if (input.sendReceipt && cleared) {
+    const receipt = await sendPaymentReceipt(admin, String(inserted[0].id), estimate.company_id, {
+      automatic: false,
+      sentBy: profile.id,
+    });
+    if (receipt.error) warnings.push(`No receipt went out: ${receipt.error}`);
+    receiptSentTo = receipt.sentTo;
+  }
+
   revalidatePath("/payments");
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath("/pipeline");
-  return { ok: true, warning: warnings.join(" ") || undefined };
+  return { ok: true, warning: warnings.join(" ") || undefined, receiptSentTo };
+}
+
+/**
+ * Email the customer a receipt for a payment that has arrived, online or
+ * by hand -- the first one, or again for a customer who lost it
+ * (DECISIONS #151). Gated like recording a payment.
+ */
+export async function emailPaymentReceipt(paymentId: string): Promise<{ error?: string; sentTo?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can send a receipt." };
+  }
+  const admin = createAdminClient();
+  const result = await sendPaymentReceipt(admin, paymentId, profile.company_id, { automatic: false, sentBy: profile.id });
+  if (result.error) return { error: result.error };
+  revalidatePath("/payments");
+  return { sentTo: result.sentTo };
 }
 
 /**

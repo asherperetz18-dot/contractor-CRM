@@ -51,9 +51,13 @@ export function RecordPayment({
   const [note, setNote] = useState("");
   const [receivedOn, setReceivedOn] = useState(new Date().toISOString().slice(0, 10));
   const [deposited, setDeposited] = useState(true);
+  const [sendReceipt, setSendReceipt] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Only money that has arrived gets a receipt (DECISIONS #151).
+  const arrived = method !== "check" || deposited;
 
   function save() {
     setError(null);
@@ -69,12 +73,14 @@ export function RecordPayment({
         // Only a cheque has a meaningful gap between taken and banked.
         cleared: method === "check" ? deposited : true,
         receivedOn,
+        sendReceipt: sendReceipt && arrived,
       });
       if (res.error) return setError(res.error);
       setOpen(false);
       setReference("");
       setNote("");
-      if (res.warning) setWarning(res.warning);
+      const said = [res.receiptSentTo ? `Receipt emailed to ${res.receiptSentTo}.` : "", res.warning ?? ""];
+      if (said.some(Boolean)) setWarning(said.filter(Boolean).join(" "));
       router.refresh();
       onDone?.();
     });
@@ -151,6 +157,20 @@ export function RecordPayment({
               — untick and it shows as clearing until it lands
             </span>
           </span>
+        </label>
+      )}
+
+      {/* A receipt says the money arrived, so a cheque still in the
+          drawer gets one from Payments once it's banked. */}
+      {arrived && (
+        <label className="est-record-check">
+          <input
+            type="checkbox"
+            checked={sendReceipt}
+            onChange={(e) => setSendReceipt(e.target.checked)}
+            disabled={pending}
+          />
+          <span>Email the customer a receipt</span>
         </label>
       )}
 

@@ -5,6 +5,8 @@ import { AdminGate } from "@/components/admin-gate";
 import { moneyCents } from "@/lib/data/types";
 import { StripeDoctor } from "./stripe-doctor";
 import { CompanyStripe } from "./company-stripe";
+import { PaymentReceipts } from "./payment-receipts";
+import { getPaymentReceiptSettings } from "@/lib/actions/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +25,7 @@ export default async function PortalPaymentsPage() {
   if (!profile) return null;
 
   const supabase = await createClient();
+  const receipts = await getPaymentReceiptSettings();
   const { data } = await supabase
     .from("portal_payments")
     .select("id, amount_cents, status, method, paid_at, created_at, estimates(doc_number, title)")
@@ -69,6 +72,7 @@ export default async function PortalPaymentsPage() {
 
       <CompanyStripe />
       <StripeDoctor />
+      {receipts && <PaymentReceipts enabled={receipts.enabled} ready={receipts.ready} />}
 
       {rows.length > 0 && (
         <>

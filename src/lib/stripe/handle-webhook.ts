@@ -7,6 +7,7 @@ import { resolvePaymentMethod } from "@/lib/stripe-method";
 import { provisionSignup } from "@/lib/signup/provision";
 import { customerIdFromEvent } from "@/lib/billing/subscription";
 import { syncCustomerBilling } from "@/lib/billing/company-billing";
+import { sendAutomaticReceipts } from "@/lib/send-receipt";
 
 /**
  * Applies a verified Stripe event to the payment record.
@@ -105,6 +106,17 @@ export async function handleStripeWebhook(
 
   const now = () => new Date().toISOString();
 
+  // The customer's receipt once the money has settled (DECISIONS #151):
+  // sent at most once per payment, however often Stripe delivers.
+  const receiptsFor = async (sessionId: string) => {
+    try {
+      await sendAutomaticReceipts(admin, sessionId, companyId);
+    } catch {
+      // A receipt never fails the payment: the money is recorded above,
+      // and an error here would only make Stripe deliver it again.
+    }
+  };
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     // Only mark paid when Stripe says the money is actually there. ACH
@@ -119,6 +131,7 @@ export async function handleStripeWebhook(
       paid_at: settled ? now() : null,
       updated_at: now(),
     });
+    if (settled) await receiptsFor(session.id);
   }
 
   if (event.type === "checkout.session.async_payment_succeeded") {
@@ -130,6 +143,7 @@ export async function handleStripeWebhook(
       paid_at: now(),
       updated_at: now(),
     });
+    await receiptsFor(session.id);
   }
 
   if (event.type === "checkout.session.async_payment_failed") {
