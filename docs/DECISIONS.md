@@ -1661,6 +1661,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a company sees its own role names on the screens that list roles, with no change to who can do what. **Database step: run `supabase/migrations/0202_company_role_names.sql`.**
 
+## 139 — The free trial is 60 days
+
+**Date:** 2026-10-05
+
+**Context:** Self-serve signup started with 30 days free (#129), matching the marketing site's "First 30 days free". The owner chose a bigger offer for the site: "First 2 months free", with every button going straight to sign-up instead of booking a demo (aibuildpros-site PR #8). The CRM has to give that before the site can say it.
+
+**Decision:**
+- **`TRIAL_DAYS` is 60.** Checkout sells a monthly plan with `trial_period_days: 60`; everything else in #129 stands — no card asked for, no card at the end means Stripe cancels and the company locks, and coming back never starts a second trial. The Get Started page reads the number, so it says "Start your 60-day free trial".
+- **Trials already running keep their end date:** Stripe fixed it at checkout. A platform admin can add time from Platform Admin › Companies (**Extend trial**, #130) if a company should get the longer offer.
+
+**Consequence:** a company that signs up from now on has 60 days to add a card. No database step.
+
 ## 140 — Scheduled jobs run from the database, not GitHub
 
 **Date:** 2026-10-05

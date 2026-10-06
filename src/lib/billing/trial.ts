@@ -1,7 +1,7 @@
 /**
- * The free trial (DECISIONS #129): the first 30 days of a self-serve
- * signup cost nothing and ask for no card, as the marketing site
- * promises ("First 30 days free", "no card up front").
+ * The free trial (DECISIONS #129, #139): the first 60 days of a
+ * self-serve signup cost nothing and ask for no card, as the marketing
+ * site promises ("First 2 months free", "no card up front").
  *
  * Stripe runs the trial itself. Checkout starts a trialing subscription
  * without collecting a card; if none has been added by the end, Stripe
@@ -12,7 +12,7 @@
  */
 import { billingBanner } from "./subscription.ts";
 
-export const TRIAL_DAYS = 30;
+export const TRIAL_DAYS = 60;
 
 /**
  * What Checkout needs to sell the plan as a trial. A one-off price can't
