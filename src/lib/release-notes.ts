@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.215.0",
+    date: "2026-10-06",
+    notes: [
+      "Text Reports opens faster: it loads only the period you pick (last 30 days to start) instead of every text ever sent, and shows 200 texts at a time with a Show more button. The totals at the top still count every text in the period. The period you pick is kept in the page address, so a refresh or a shared link opens on it.",
+    ],
+  },
+  {
     version: "1.214.1",
     date: "2026-10-06",
     notes: [
