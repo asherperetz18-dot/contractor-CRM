@@ -174,6 +174,28 @@ export default async function PortalHomePage() {
   // A deposit is only owed on a signed contract, and only until it lands.
   // Invoices (a permit fee billed back) get their own card: nothing to
   // sign, just something to pay -- and they are not a step in the job.
+  // Billed progress phases are owed too. Without them a job with the
+  // deposit paid and completion billed read "✓ Deposit paid" here, and
+  // the customer had no sign anything was due. An invoice's own bill
+  // comes along for its credit (DECISIONS #154).
+  const signedIds = (estimateRows ?? []).filter((e) => e.status === "Signed").map((e) => e.id);
+  const { data: phaseRows } = signedIds.length
+    ? await admin
+        .from("estimate_payments")
+        .select("*")
+        .in("estimate_id", signedIds)
+        .not("requested_at", "is", null)
+        .returns<
+          {
+            id: string;
+            estimate_id: string;
+            amount_cents: number;
+            requested_at: string | null;
+            due_date: string | null;
+            credit_cents?: number | null;
+          }[]
+        >()
+    : { data: [] };
   const invoices: PortalInvoice[] = (estimateRows ?? [])
     .filter((e) => e.kind === "invoice" && e.status === "Signed")
     .map((e) => ({
@@ -182,23 +204,10 @@ export default async function PortalHomePage() {
       title: e.title,
       totalCents: e.total_cents,
       paidCents: paidTotalCents((paymentRows ?? []).filter((p) => p.estimate_id === e.id)),
+      creditCents: (phaseRows ?? [])
+        .filter((p) => p.estimate_id === e.id)
+        .reduce((sum, p) => sum + Math.max(0, p.credit_cents ?? 0), 0),
     }));
-  // Billed progress phases are owed too. Without them a job with the
-  // deposit paid and completion billed read "✓ Deposit paid" here, and
-  // the customer had no sign anything was due.
-  const signedIds = (estimateRows ?? [])
-    .filter((e) => e.kind !== "invoice" && e.status === "Signed")
-    .map((e) => e.id);
-  const { data: phaseRows } = signedIds.length
-    ? await admin
-        .from("estimate_payments")
-        .select("id, estimate_id, amount_cents, requested_at, due_date")
-        .in("estimate_id", signedIds)
-        .not("requested_at", "is", null)
-        .returns<
-          { id: string; estimate_id: string; amount_cents: number; requested_at: string | null; due_date: string | null }[]
-        >()
-    : { data: [] };
   const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
     const depositPaid = (paymentRows ?? []).some(
       (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"

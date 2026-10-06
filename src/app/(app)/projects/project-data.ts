@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import {
   computeProjectRollup,
+  creditedCents,
   phaseReceivableCents,
   billRemainingCents,
   type Estimate,
@@ -52,7 +53,7 @@ export async function buildProjectCards(
     selectAll<EstimatePayment>((from, to) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+        .select("*")
         .eq("company_id", companyId)
         .range(from, to)
     ),
@@ -209,10 +210,16 @@ export async function buildProjectCards(
     const commissionCents = commissionPaidByJob.get(contract.id) ?? 0;
 
     const docPayments = paid.filter((p) => docIds.has(p.estimate_id));
+    // Less what was credited on their bills (DECISIONS #154).
     const rollup = computeProjectRollup({
-      contractTotalCents: contract.total_cents,
-      signedChangeOrderCents,
-      invoicedCents,
+      contractTotalCents: contract.total_cents - creditedCents(ownPhases, [contract.id]),
+      signedChangeOrderCents: signedChangeOrderCents - creditedCents(ownPhases, signedChangeOrders.map((e) => e.id)),
+      invoicedCents:
+        invoicedCents -
+        creditedCents(
+          ownPhases,
+          invoices.filter((e) => e.status === "Signed").map((e) => e.id)
+        ),
       payments: docPayments,
       receivableCents: phaseReceivableCents(ownPhases, docPayments),
       filedCostCents,

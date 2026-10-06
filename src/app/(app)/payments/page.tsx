@@ -101,7 +101,7 @@ export default async function PaymentsPage() {
     selectAll<EstimatePayment>((from, to) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+        .select("*")
         .eq("company_id", profile.company_id)
         .not("requested_at", "is", null)
         .order("due_date")

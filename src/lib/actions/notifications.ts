@@ -10,6 +10,7 @@ import {
   isAdminRole,
   isFieldRole,
   paidTotalCents,
+  phaseNetCents,
   type PortalPayment,
 } from "@/lib/data/types";
 import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
@@ -99,7 +100,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
       seesMoney
         ? supabase
             .from("estimate_payments")
-            .select("id, estimate_id, name, amount_cents, due_date, requested_at")
+            .select("*")
             .eq("company_id", companyId)
             .not("requested_at", "is", null)
             .lt("due_date", today)
@@ -199,7 +200,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
         .limit(20),
     ]);
 
-  type Phase = { id: string; estimate_id: string; name: string | null; amount_cents: number; due_date: string; requested_at: string };
+  type Phase = { id: string; estimate_id: string; name: string | null; amount_cents: number; due_date: string; requested_at: string; credit_cents?: number | null };
   type Sms = { id: string; to_number: string; delivery_error: string | null; created_at: string; lead_id: string | null };
   type View = { id: string; estimate_id: string; viewed_at: string };
   type Signed = { id: string; doc_number: string; title: string | null; signed_at: string };
@@ -315,11 +316,12 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     });
   }
 
+  // Less what was credited off it (DECISIONS #154).
   const overduePhases = phases.filter(
-    (p) => p.amount_cents - (paidByPhase.get(p.id) ?? 0) > 0
+    (p) => phaseNetCents(p) - (paidByPhase.get(p.id) ?? 0) > 0
   );
   for (const p of overduePhases.slice(0, 12)) {
-    const owed = p.amount_cents - (paidByPhase.get(p.id) ?? 0);
+    const owed = phaseNetCents(p) - (paidByPhase.get(p.id) ?? 0);
     const days = daysAgo(p.due_date);
     items.push({
       id: `inv:${p.id}`,

@@ -63,7 +63,7 @@ export async function getJobLedger(contractId: string): Promise<{ error?: string
     selectAll<JobLedgerInput["phases"][number]>((f, t) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id, name, sort_order, amount_cents, requested_at, due_date")
+        .select("*")
         .eq("company_id", profile.company_id)
         .in("estimate_id", docIds)
         .range(f, t)

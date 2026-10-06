@@ -77,6 +77,8 @@ export type PortalInvoice = {
   title: string | null;
   totalCents: number;
   paidCents: number;
+  /** Credited off it by the contractor (DECISIONS #154). */
+  creditCents?: number;
 };
 
 type Tab = "Overview" | "Photos" | "Messages" | "Notes";

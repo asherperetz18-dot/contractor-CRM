@@ -71,7 +71,8 @@ export default async function ProfitLossPage() {
       selectAll<PLPhase>((f, t) =>
         admin
           .from("estimate_payments")
-          .select("estimate_id, amount_cents, requested_at")
+          // Every column, so a credit (0209) comes along where it exists.
+          .select("*")
           .eq("company_id", companyId)
           .not("requested_at", "is", null)
           .range(f, t)

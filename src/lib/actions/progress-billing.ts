@@ -25,6 +25,7 @@ import {
   defaultDueDate,
   moneyCents,
   paidTotalCents,
+  phaseOwedCents,
   type EstimateStatus,
   type PortalPayment,
 } from "@/lib/data/types";
@@ -37,6 +38,8 @@ type PhaseRow = {
   amount_cents: number;
   requested_at: string | null;
   due_date: string | null;
+  /** 0209; absent before it. */
+  credit_cents?: number | null;
 };
 
 type ParentEstimate = {
@@ -91,9 +94,10 @@ export async function requestProgressPayment(
   if (locked) return { error: locked };
 
   const admin = createAdminClient();
+  // Every column, so a credit (0209) comes along where it exists.
   const { data: phase } = await admin
     .from("estimate_payments")
-    .select("id, company_id, estimate_id, name, amount_cents, requested_at, due_date")
+    .select("*")
     .eq("id", phaseId)
     .eq("company_id", guard.companyId)
     .maybeSingle<PhaseRow>();
@@ -115,13 +119,17 @@ export async function requestProgressPayment(
     return { error: "This contract isn't signed yet, so there's nothing to bill against." };
   }
 
-  const { data: settled } = await admin
+  // What is still owed: the amount, less credits (DECISIONS #154) and
+  // the money settled on it. That's what the bill asks for -- a bill
+  // part-paid or part-credited is sent for the rest, as the portal's
+  // Pay button charges only the rest (#144).
+  const { data: onPhase } = await admin
     .from("portal_payments")
-    .select("id")
+    .select("status, amount_cents")
     .eq("estimate_payment_id", phaseId)
-    .eq("status", "succeeded")
-    .maybeSingle();
-  if (settled) return { error: "This phase has already been paid." };
+    .returns<Pick<PortalPayment, "status" | "amount_cents">[]>();
+  const owedCents = phaseOwedCents({ ...phase, requested_at: phase.requested_at ?? "now" }, onPhase ?? []);
+  if (owedCents <= 0) return { error: "Nothing is owed on this phase: it's been paid or credited." };
 
   const { data: lead } = await admin
     .from("leads")
@@ -187,7 +195,7 @@ export async function requestProgressPayment(
     });
     // Plain hyphens, no emoji: either one flips the message to UCS-2 and
     // cuts each segment from 160 characters to 70.
-    const body = `${companyName}: ${phase.name || "Progress payment"} on ${estimate.doc_number} is due ${dueLabel} - ${moneyCents(phase.amount_cents)}.\nPay here: ${link}`;
+    const body = `${companyName}: ${phase.name || "Progress payment"} on ${estimate.doc_number} is due ${dueLabel} - ${moneyCents(owedCents)}.\nPay here: ${link}`;
     const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
     if (sent.error) {
       problems.push(`Text failed (${sent.error})`);
@@ -209,7 +217,7 @@ export async function requestProgressPayment(
       docNumber: estimate.doc_number,
       title: estimate.title,
       stageName: isInvoice ? null : phase.name,
-      amountCents: phase.amount_cents,
+      amountCents: owedCents,
       dueDate: due,
       termsLabel: isInvoice ? paymentTermsLabel(estimate.payment_terms_days) : null,
       link,

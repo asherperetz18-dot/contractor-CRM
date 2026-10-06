@@ -52,6 +52,8 @@ export const BACKUP_TABLES = [
   "portal_payments",
   // Which payment reminders went on which bill (0208, DECISIONS #152).
   "bill_reminders",
+  // Credits given on bills, and why (0209, DECISIONS #154).
+  "bill_credits",
   "contract_templates",
   "scope_templates",
   "company_documents",

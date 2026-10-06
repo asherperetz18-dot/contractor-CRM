@@ -47,6 +47,8 @@ export type PLPhase = {
   estimate_id: string;
   amount_cents: number;
   requested_at: string | null;
+  /** Credited off it (0209, DECISIONS #154); absent before it. */
+  credit_cents?: number | null;
 };
 
 /** A signed money document -- contract or change order. */
@@ -224,7 +226,9 @@ function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLE
       // order) has no lead here and is skipped -- nothing was earned.
       const leadId = leadOfEstimate.get(ph.estimate_id);
       if (leadId === undefined) continue;
-      push({ kind: "income", day: ph.requested_at, leadId, cents: ph.amount_cents || 0 });
+      // Less what was credited off it (DECISIONS #154): a credit is
+      // income the job no longer earns.
+      push({ kind: "income", day: ph.requested_at, leadId, cents: (ph.amount_cents || 0) - Math.max(0, ph.credit_cents ?? 0) });
     }
     // Receipts are incurred the day the money was spent on either basis;
     // "bill" rows are excluded because the bill itself is counted below.

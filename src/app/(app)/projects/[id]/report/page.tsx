@@ -19,6 +19,7 @@ import { selectAll } from "@/lib/data/select-all";
 import {
   canViewEstimates,
   computeProjectRollup,
+  creditedCents,
   phaseReceivableCents,
   billRemainingCents,
   moneyCents,
@@ -194,7 +195,7 @@ export default async function ProjectReportPage({
   ] = await Promise.all([
     supabase
       .from("estimate_payments")
-      .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+      .select("*")
       .in("estimate_id", docIds),
     supabase
       .from("portal_payments")
@@ -277,10 +278,18 @@ export default async function ProjectReportPage({
   ).length;
   const soleContract = signedContractsForLead <= 1;
 
+  // Less what was credited on their bills (DECISIONS #154).
   const rollup = computeProjectRollup({
-    contractTotalCents: contract.total_cents,
-    signedChangeOrderCents: signedChangeOrders.reduce((s, e) => s + e.total_cents, 0),
-    invoicedCents,
+    contractTotalCents: contract.total_cents - creditedCents(phases, [contract.id]),
+    signedChangeOrderCents:
+      signedChangeOrders.reduce((s, e) => s + e.total_cents, 0) -
+      creditedCents(phases, signedChangeOrders.map((e) => e.id)),
+    invoicedCents:
+      invoicedCents -
+      creditedCents(
+        phases,
+        changeOrders.filter((e) => e.kind === "invoice" && e.status === "Signed").map((e) => e.id)
+      ),
     payments: paid,
     receivableCents: phaseReceivableCents(phases, paid),
     filedCostCents: filedExpenses.reduce((s, e) => s + e.amount_cents, 0),

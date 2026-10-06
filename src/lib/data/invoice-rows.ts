@@ -58,6 +58,8 @@ export type InvoiceStageLite = {
   requested_at: string | null;
   due_date: string | null;
   cancelled_at: string | null;
+  /** Credited off what is owed (0209, DECISIONS #154); absent before it. */
+  credit_cents?: number | null;
 };
 
 export type InvoicePaymentLite = Pick<PortalPayment, "status" | "amount_cents" | "paid_at"> & {
@@ -70,7 +72,10 @@ export const INVOICE_DOC_COLUMNS = "id, lead_id, doc_number, title, kind, status
 /** The documents the rows come from: signed and cancelled ones of every
  *  kind, and draft invoices (a draft estimate or contract is no bill). */
 export const INVOICE_DOC_FILTER = "status.in.(Signed,Void),and(kind.eq.invoice,status.eq.Draft)";
-export const INVOICE_STAGE_COLUMNS = "id, estimate_id, sort_order, name, amount_cents, requested_at, due_date, cancelled_at";
+/** Every column: a stage row is small, and "*" picks up its credit
+ *  (0209, DECISIONS #154) where it exists without failing where it
+ *  doesn't -- naming a column the database lacks fails the whole read. */
+export const INVOICE_STAGE_COLUMNS = "*";
 export const INVOICE_PAYMENT_COLUMNS = "estimate_payment_id, status, amount_cents, paid_at";
 
 export type InvoiceRow = {
