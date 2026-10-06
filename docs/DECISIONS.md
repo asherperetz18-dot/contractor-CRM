@@ -1702,3 +1702,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The thread is loaded by a server action into state, not by putting the open conversation in the URL: the app's group-level `loading.tsx` would replace the inbox with a skeleton on each click, and a half-typed reply would go with it.
 
 **Consequence:** a visit reads a few hundred texts and a handful of contacts, whatever the history. Finding an old conversation takes **Show older conversations**, or the contact's own Texts tab. Text Reports still reads every text (TECH_DEBT). **Database step: run `supabase/migrations/0204_reply_inbox_lookups.sql`** (indexes and two lookups; changes no data).
+
+## 142 — The Calendar loads one month at a time
+
+**Date:** 2026-10-06
+
+**Context:** The Calendar read every appointment the company had ever booked, every contact that had ever had one (inner join on `events`), all of their tasks and notes, and the company's estimates (a bare select, so silently the newest 1000), on every visit and every refresh. The two service-role lookups behind it (`getAppointmentHolders`, `getLeadsBehindAppointments`) walked every appointment too, and checked visibility of every lead behind them. The board navigates in the browser, so all of it was loaded in case someone clicked back two years.
+
+**Decision:**
+- **The page loads one month, the one in the address** (`?month=YYYY-MM`, else this month), from a week before its first day to a week after its last (`monthRange`). The month grid draws at most six days of the months around it and a week can straddle two months, so the extra week each way covers everything any view shows for a day in that month (`calendar-range.test.ts` walks the grid and every week).
+- **Only what stands behind those appointments comes with them:** their contacts, and those contacts' tasks, notes and estimates, by id in chunks of 150 (each chunk read in full). The service-role lookups take the same range; the Schedule calls them without one and is unchanged.
+- **Moving into another month replaces the address in a transition** (`router.replace`, `useTransition`). Tested before relying on it: a search-param-only navigation keeps the page's client state and does not show the group's `loading.tsx` skeleton; the old screen stays, pending, until the new one arrives. The board fades the grid and says "Loading appointments…" meanwhile. `router.refresh()` after a save refreshes the month on screen.
+- **A link to one appointment opens on its month:** the page looks up the appointment's date first, and the board moves to that day, so the appointment and its contact stay loaded while its window is open; the `?openEvent=` is dropped with the month kept.
+- **The filters follow the people-dropdown rule per month:** the rep filter is Sales plus whoever is on this month's appointments plus whoever is ticked; the dispatcher filter keeps anyone ticked.
+- The line under the title counts the appointments in view instead of "total": the page no longer knows the total.
+
+**Consequence:** a visit reads one month of appointments and only the contacts, tasks, notes and estimates behind them, whatever the history. Moving a month costs one server render. Jobs are still read whole, and the Schedule page still reads everything (TECH_DEBT). No database step.

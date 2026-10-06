@@ -3382,6 +3382,12 @@ a.stat-card {
 .cal-status-chips {
   margin-bottom: 14px;
 }
+/* A month on its way (DECISIONS #142): the grid stays, faded, until the
+   new month's appointments arrive. */
+.cal-main.cal-loading {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
 .cal-layout {
   display: flex;
   gap: 18px;
