@@ -7,7 +7,7 @@ import { canManageBills } from "@/lib/data/types";
 import { companyToday, getCompanyZone } from "@/lib/data/company-today";
 import { personName } from "@/lib/data/client-name";
 import { loadCustomerStatement } from "@/lib/data/load-customer-statement";
-import { statementEmail } from "@/lib/data/customer-statement";
+import { statementEmail, statementPeriod } from "@/lib/data/customer-statement";
 import { lockedServicesError } from "@/lib/billing/company-lock";
 import { billRecipients } from "@/lib/bill-email";
 import { getEmailForCompany } from "@/lib/email-company";
@@ -19,8 +19,12 @@ import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/porta
  * is past due, and every bill and payment, with the View and pay link
  * when something is owed. Gated like recording a payment -- it's the
  * company's money, said to the customer -- and logged in their messages.
+ * For the period on screen, if one is (#159).
  */
-export async function emailCustomerStatement(leadId: string): Promise<{ error?: string; sentTo?: string }> {
+export async function emailCustomerStatement(
+  leadId: string,
+  asked: { from?: string | null; to?: string | null } = {}
+): Promise<{ error?: string; sentTo?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canManageBills(profile)) {
@@ -57,12 +61,13 @@ export async function emailCustomerStatement(leadId: string): Promise<{ error?: 
     getCompanyZone(),
     supabase.from("company_profile").select("name").eq("company_id", profile.company_id).maybeSingle<{ name: string | null }>(),
   ]);
-  const statement = await loadCustomerStatement(supabase, profile.company_id, lead.id, { today, zone });
+  const period = statementPeriod(asked ?? {}, today);
+  const statement = await loadCustomerStatement(supabase, profile.company_id, lead.id, { today, zone, ...period });
 
-  // The link only when something is owed and they pay through the CRM; it
-  // signs them in, so it grants portal access the way a bill does.
+  // The link only when something is owed today and they pay through the
+  // CRM; it signs them in, so it grants portal access the way a bill does.
   let link: string | null = null;
-  if (statement.balanceCents > 0 && !lead.portal_payments_disabled) {
+  if (statement.todayCents > 0 && !lead.portal_payments_disabled) {
     const admin = createAdminClient();
     await admin
       .from("leads")

@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.229.0",
+    date: "2026-10-06",
+    notes: [
+      "Customer statements can cover a period: pick From and To, or This year, Last year or All time. Everything before it shows as one opening balance, and only what happened in those days is listed.",
+      "A statement for a period that has ended shows the balance on its last day and, beside it, what's owed today. Email statement sends the period on screen.",
+    ],
+  },
+  {
     version: "1.227.0",
     date: "2026-10-06",
     notes: [

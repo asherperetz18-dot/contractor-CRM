@@ -1948,3 +1948,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a week that went to payroll stays as it was paid until someone reopens it, with a reason. **Database step: 0212**, any time; until it runs, Approve says to run it and the page is as before.
 
+
+## 159 — Statements for a period: an opening balance, then only what's in it
+
+**Date:** 2026-10-06
+
+**Context:** A customer's statement (#153) covered all time. For a customer with years of work it ran long, and a question like "what did I pay you last year?" meant reading the whole thing.
+
+**Decision:**
+- **From and To on the statement page**, plus **This year**, **Last year** and **All time**. The period is in the page address (`?from=&to=`), like the commission statements, so it can be linked to and printed again as it was. Both days count, on the company's calendar. A day that doesn't exist is ignored, To on or after today means up to today, and a period given backwards is turned round (`statementPeriod`).
+- **What came before is one line.** Everything before From becomes an **Opening balance** at the top. Nothing after To is on it. The billed and paid totals are the period's, so opening + billed − paid is the balance it ends on.
+- **A period that has ended says two numbers:** the balance on its last day, and what's owed today (with what's past due). The heading reads "Balance on Sep 30, 2026", not "Balance due", and money on its way isn't listed, because that is today's. A period running to today reads as before.
+- **The email sends the period on screen.** The subject and first line say which days it covers ("your statement for Sep 1, 2026 – Oct 6, 2026"). A period that has ended leaves "due" out of the subject. The View and pay link goes by what's owed today, whatever the period.
+
+**Consequence:** a statement can be as short as the question. All time is still the default. No database step.

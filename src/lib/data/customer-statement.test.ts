@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildStatement, statementEmail, type StatementDoc, type StatementPayment } from "./customer-statement.ts";
+import {
+  buildStatement,
+  statementEmail,
+  statementPeriod,
+  type StatementDoc,
+  type StatementPayment,
+} from "./customer-statement.ts";
 import type { InvoiceStageLite } from "./invoice-rows.ts";
 
 /**
@@ -171,15 +177,140 @@ test("the email: the balance, what's overdue, every line, and the link when some
   assert.doesNotMatch(settled.text, /View and pay/);
 });
 
+// A date range (statements, the follow-up to DECISIONS #153): what came
+// before it is one opening balance, what came after it isn't there.
+
+test("from a day: what came before is one opening balance, and the rest follows it", () => {
+  const s = buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-09-05" });
+  assert.deepEqual(s.period, { from: "2026-09-05", to: null });
+  // Owed on Sep 5: the deposit was paid, Rough-in billed and not yet.
+  assert.equal(s.openingCents, 1_000_000);
+  assert.deepEqual(
+    s.lines.map((l) => [l.day, l.label, l.balanceCents]),
+    [
+      ["2026-09-10", "Payment — Rough-in complete — EST-1047", 400_000],
+      ["2026-09-20", "Invoice INV-1004", 445_000],
+      ["2026-09-25", "Drywall — EST-1047", 1_245_000],
+    ]
+  );
+  // The totals are the period's, and they add up: opening + billed - paid.
+  assert.equal(s.billedCents, 845_000);
+  assert.equal(s.paidCents, 600_000);
+  assert.equal(s.balanceCents, 1_245_000);
+  assert.equal(s.openingCents + s.billedCents - s.paidCents, s.balanceCents);
+  // It runs to today, so what's owed now, past due and on its way are as ever.
+  assert.equal(s.todayCents, 1_245_000);
+  assert.equal(s.overdueCents, 445_000);
+  assert.deepEqual(s.clearing, { cents: 800_000, count: 1 });
+});
+
+test("from and to: both days count, nothing after it is on it, and it ends on that day's balance", () => {
+  const s = buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-09-01", to: "2026-09-20" });
+  assert.deepEqual(s.period, { from: "2026-09-01", to: "2026-09-20" });
+  assert.equal(s.openingCents, 0);
+  assert.deepEqual(
+    s.lines.map((l) => l.day),
+    ["2026-09-01", "2026-09-10", "2026-09-20"]
+  );
+  assert.equal(s.billedCents, 1_045_000);
+  assert.equal(s.paidCents, 600_000);
+  // Owed on Sep 20, and owed today, are different numbers.
+  assert.equal(s.balanceCents, 445_000);
+  assert.equal(s.todayCents, 1_245_000);
+});
+
+test("a period with nothing in it opens and closes on the same balance; all time has no opening", () => {
+  const quiet = buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-10-01" });
+  assert.deepEqual(quiet.lines, []);
+  assert.equal(quiet.openingCents, 1_245_000);
+  assert.equal(quiet.balanceCents, 1_245_000);
+  assert.equal(quiet.billedCents, 0);
+  assert.equal(quiet.paidCents, 0);
+
+  const all = buildStatement(docs, stages, payments, { today: "2026-10-06", zone });
+  assert.deepEqual(all.period, { from: null, to: null });
+  assert.equal(all.openingCents, null);
+  assert.equal(all.todayCents, all.balanceCents);
+});
+
+test("the period asked for is cleaned up: bad days dropped, today or later means up to today, backwards swapped", () => {
+  const today = "2026-10-06";
+  assert.deepEqual(statementPeriod({}, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ from: "2026-09-01", to: "" }, today), { from: "2026-09-01", to: null });
+  assert.deepEqual(statementPeriod({ from: "soon", to: "2026-13-45" }, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ from: "2026-02-30" }, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ from: ["2026-09-01"], to: 5 }, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ to: today }, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ to: "2026-12-31" }, today), { from: null, to: null });
+  assert.deepEqual(statementPeriod({ from: "2026-12-01" }, today), { from: today, to: null });
+  assert.deepEqual(statementPeriod({ from: "2026-09-30", to: "2026-09-01" }, today), { from: "2026-09-01", to: "2026-09-30" });
+});
+
+test("the email for a period: it says which, opens on the balance before it, and only what's in it", () => {
+  const s = buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-09-05" });
+  const mail = statementEmail({ companyName: "Summit Builders Co", customerName: "Jordan Ellis", today: "2026-10-06", statement: s, link: null });
+  assert.equal(mail.subject, "Summit Builders Co: your statement for Sep 5, 2026 – Oct 6, 2026, $12,450.00 due");
+  assert.match(mail.text, /Here's your statement for Sep 5, 2026 – Oct 6, 2026\./);
+  assert.match(mail.text, /Sep 5, 2026 {2}Opening balance {2}balance \$10,000\.00/);
+  assert.doesNotMatch(mail.text, /Deposit — EST-1047/);
+  assert.match(mail.text, /Balance due: \$12,450\.00 \(\$4,450\.00 past due\)/);
+  assert.match(mail.text, /Payments on their way: \$8,000\.00/);
+  assert.match(mail.html, /Opening balance/);
+
+  const quiet = statementEmail({
+    companyName: "Summit Builders Co",
+    customerName: "Jordan Ellis",
+    today: "2026-10-06",
+    statement: buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-10-01" }),
+    link: null,
+  });
+  assert.match(quiet.text, /Nothing was billed or paid in this period\./);
+  assert.match(quiet.html, /Opening balance/);
+});
+
+test("the email for a period that has ended: the balance on its last day, then what's owed today", () => {
+  const s = buildStatement(docs, stages, payments, { today: "2026-10-06", zone, from: "2026-09-01", to: "2026-09-20" });
+  const mail = statementEmail({ companyName: "Summit Builders Co", customerName: "Jordan Ellis", today: "2026-10-06", statement: s, link: null });
+  // No "due" in the subject: the period's balance isn't what's owed now.
+  assert.equal(mail.subject, "Summit Builders Co: your statement for Sep 1, 2026 – Sep 20, 2026");
+  assert.match(mail.text, /Balance on Sep 20, 2026: \$4,450\.00/);
+  assert.match(mail.text, /Today: \$12,450\.00 due \(\$4,450\.00 past due\)/);
+  assert.doesNotMatch(mail.text, /Drywall/);
+  assert.doesNotMatch(mail.text, /Payments on their way/);
+
+  const upTo = statementEmail({
+    companyName: "Summit Builders Co",
+    customerName: null,
+    today: "2026-10-06",
+    statement: buildStatement(docs, stages, payments, { today: "2026-10-06", zone, to: "2026-09-20" }),
+    link: null,
+  });
+  assert.equal(upTo.subject, "Summit Builders Co: your statement up to Sep 20, 2026");
+  assert.match(upTo.text, /Here's your statement up to Sep 20, 2026\./);
+  assert.doesNotMatch(upTo.text, /Opening balance/);
+});
+
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("the period travels: from the page's address to the statement, the email and its link", () => {
+  const page = source("../../app/(app)/invoices/statement/[leadId]/page.tsx");
+  assert.match(page, /searchParams/);
+  assert.match(page, /statementPeriod\(/);
+  assert.match(page, /<StatementPeriodFilter/);
+  assert.match(page, /<EmailStatementButton[^>]*period=\{period\}/);
+  const action = source("../actions/statements.ts");
+  assert.match(action, /export async function emailCustomerStatement\(\s*leadId: string,\s*asked/);
+  assert.match(action, /statementPeriod\(asked/);
+  // The View and pay link goes by what's owed today, whatever the period.
+  assert.match(action, /statement\.todayCents > 0/);
+});
 
 test("the page is company money: gated like Invoices, and sending it like recording a payment", () => {
   const page = source("../../app/(app)/invoices/statement/[leadId]/page.tsx");
   assert.match(page, /canViewFinancials\(profile\)/);
   assert.match(page, /<PrintButton/);
   const action = source("../actions/statements.ts");
-  assert.match(action, /export async function emailCustomerStatement\(leadId: string\)/);
-  assert.match(action, /canManageBills\(profile\)/);
+    assert.match(action, /canManageBills\(profile\)/);
   assert.match(action, /\[Statement emailed\]/);
   // Read for this company and this customer only.
   const loader = source("./load-customer-statement.ts");
