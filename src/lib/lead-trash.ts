@@ -38,7 +38,8 @@ const ESTIMATE_CHILDREN = [
   "estimate_items",
   "estimate_signers",
   "estimate_payments",
-  // After the bills they're on (0209, DECISIONS #154).
+  // Restored after the bills they're on (0209, DECISIONS #154) and the
+  // refunds they came with (0210, #155) -- see restoreSnapshot.
   "bill_credits",
   "estimate_views",
   "estimate_files",
@@ -142,8 +143,20 @@ export async function restoreSnapshot(
       String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""))
   );
   await put("estimates", estimates);
-  for (const table of ESTIMATE_CHILDREN) await put(table, payload.children[table]);
-  for (const table of LEAD_CHILDREN) await put(table, payload.children[table]);
+  for (const table of ESTIMATE_CHILDREN) {
+    if (table !== "bill_credits") await put(table, payload.children[table]);
+  }
+  for (const table of LEAD_CHILDREN) {
+    // A refund points at the payment it returns (refund_of, 0210), so
+    // payments go in before their refunds.
+    const rows =
+      table === "portal_payments"
+        ? [...(payload.children[table] ?? [])].sort((a, b) => (a.refund_of ? 1 : 0) - (b.refund_of ? 1 : 0))
+        : payload.children[table];
+    await put(table, rows);
+  }
+  // A credit can point at the refund it came with.
+  await put("bill_credits", payload.children.bill_credits);
   await put("lead_duplicate_dismissals", payload.children.lead_duplicate_dismissals);
 
   for (const { table, column } of RELINK_TABLES) {

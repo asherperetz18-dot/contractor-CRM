@@ -209,9 +209,9 @@ export default async function PortalHomePage() {
         .reduce((sum, p) => sum + Math.max(0, p.credit_cents ?? 0), 0),
     }));
   const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
-    const depositPaid = (paymentRows ?? []).some(
-      (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"
-    );
+    // Paid while any of it is kept -- a refund is a row too (#155).
+    const depositPaid =
+      paidTotalCents((paymentRows ?? []).filter((p) => p.estimate_id === e.id && p.kind === "deposit")) > 0;
     const owed = e.status === "Signed" && !depositPaid ? e.deposit_cents || 0 : 0;
     const phaseDueCents =
       e.status === "Signed"

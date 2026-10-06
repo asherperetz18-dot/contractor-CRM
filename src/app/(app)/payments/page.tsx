@@ -7,11 +7,14 @@ import { canViewFinancials } from "@/lib/data/accounting-access";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canManageBills,
+  depositPayment,
   isAdminRole,
+  isRefund,
   paidTotalCents,
   paymentMethodLabel,
   phaseOwedCents,
   phaseState,
+  refundableCents,
   type EstimatePayment,
   type PortalPayment,
   type SignedContract,
@@ -80,7 +83,7 @@ export default async function PaymentsPage() {
 
   const supabase = await createClient();
 
-  const [payments, contracts, billedPhases, stripeConnected, receiptsSent] = await Promise.all([
+  const [payments, contracts, billedPhases, stripeConnected, receiptsSent, refundLinks] = await Promise.all([
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
@@ -120,8 +123,22 @@ export default async function PaymentsPage() {
         .order("id")
         .range(from, to)
     ),
+    // Which payment each refund gives back, and whether the customer
+    // still owes it (0210, DECISIONS #155). Its own read: before 0210
+    // there are no refunds to show.
+    selectAll<{ id: string; refund_of: string; refund_still_owed: boolean | null }>((from, to) =>
+      supabase
+        .from("portal_payments")
+        .select("id, refund_of, refund_still_owed")
+        .eq("company_id", profile.company_id)
+        .not("refund_of", "is", null)
+        .order("id")
+        .range(from, to)
+    ),
   ]);
   const receiptSentById = new Map(receiptsSent.map((r) => [r.id, r.receipt_sent_at]));
+  const refundLinkById = new Map(refundLinks.map((r) => [r.id, r]));
+  const paymentsWithRefunds = payments.map((p) => ({ ...p, refund_of: refundLinkById.get(p.id)?.refund_of ?? null }));
 
   const leadIds = [
     ...new Set([...contracts, ...payments].map((r) => r.lead_id).filter(Boolean) as string[]),
@@ -163,8 +180,10 @@ export default async function PaymentsPage() {
   const docOf = (estimateId: string) =>
     contracts.find((c) => c.id === estimateId) ?? null;
 
+  // A deposit is settled while any of it is kept: refunded in full, it's
+  // due again (DECISIONS #155).
   const settledDeposits = new Set(
-    payments.filter((p) => p.status === "succeeded" && p.kind === "deposit").map((p) => p.estimate_id)
+    contracts.filter((c) => depositPayment(payments.filter((p) => p.estimate_id === c.id))).map((c) => c.id)
   );
 
   // The rows below are the tables, flattened to plain strings and cents
@@ -233,7 +252,7 @@ export default async function PaymentsPage() {
       leadId,
       rep: repOf(leadId),
       customer: nameOf(leadId),
-      kind: p.kind === "deposit" ? "Deposit" : "Progress",
+      kind: isRefund(p) ? (p.kind === "deposit" ? "Deposit refund" : "Refund") : p.kind === "deposit" ? "Deposit" : "Progress",
       status: p.status,
       methodLabel: paymentMethodLabel(p.method) || "—",
       method: p.method,
@@ -243,6 +262,11 @@ export default async function PaymentsPage() {
       amountCents: p.amount_cents,
       manual: p.source === "manual",
       receiptSentAt: receiptSentById.get(p.id) ?? null,
+      isRefund: isRefund(p),
+      refundUndecided:
+        isRefund(p) && !!p.estimate_payment_id && refundLinkById.has(p.id) && refundLinkById.get(p.id)!.refund_still_owed === null,
+      refundableCents: refundableCents(p, paymentsWithRefunds),
+      onBill: !!p.estimate_payment_id,
     };
   });
 

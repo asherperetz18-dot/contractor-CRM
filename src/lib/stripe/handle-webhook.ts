@@ -8,6 +8,7 @@ import { provisionSignup } from "@/lib/signup/provision";
 import { customerIdFromEvent } from "@/lib/billing/subscription";
 import { syncCustomerBilling } from "@/lib/billing/company-billing";
 import { sendAutomaticReceipts } from "@/lib/send-receipt";
+import { syncStripeRefunds } from "@/lib/stripe/sync-refunds";
 
 /**
  * Applies a verified Stripe event to the payment record.
@@ -158,6 +159,22 @@ export async function handleStripeWebhook(
   if (event.type === "checkout.session.expired") {
     const session = event.data.object as Stripe.Checkout.Session;
     await applyToSession(session.id, { status: "cancelled", updated_at: now() });
+  }
+
+  // A refund made in the Stripe dashboard (DECISIONS #155): recorded
+  // against the payment it returns, once. A failure is answered with a
+  // 500 so Stripe delivers it again -- a refund missed is money the CRM
+  // thinks it still has.
+  if (event.type === "charge.refunded" || event.type === "charge.refund.updated") {
+    const obj = event.data.object as Stripe.Charge | Stripe.Refund;
+    const intent = typeof obj.payment_intent === "string" ? obj.payment_intent : (obj.payment_intent?.id ?? null);
+    if (intent) {
+      const synced = await syncStripeRefunds(admin, stripe, intent, companyId).catch((e: unknown) => ({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      }));
+      if (!synced.ok) return NextResponse.json({ error: synced.error }, { status: 500 });
+    }
   }
 
   // Always 200 once verified. Stripe retries on anything else, and a

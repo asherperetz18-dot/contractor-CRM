@@ -104,7 +104,7 @@ export async function runCompanyReminders(
 
   const stageIds = stages.map((s) => s.id);
   const docIds = [...new Set(stages.map((s) => s.estimate_id))];
-  const [docs, payments, reminders] = await Promise.all([
+  const [docs, payments, reminders, undecidedRefunds] = await Promise.all([
     forChunks(docIds, (chunk) =>
       selectAll<InvoiceDocLite>((f, t) =>
         admin.from("estimates").select(INVOICE_DOC_COLUMNS).eq("company_id", companyId).in("id", chunk).order("id").range(f, t)
@@ -132,7 +132,25 @@ export async function runCompanyReminders(
           .range(f, t)
       )
     ),
+    // Refunds made in Stripe that nobody has said are still owed (0210,
+    // DECISIONS #155). Its own read: before 0210 there are none.
+    forChunks(stageIds, (chunk) =>
+      selectAll<{ estimate_payment_id: string }>((f, t) =>
+        admin
+          .from("portal_payments")
+          .select("estimate_payment_id")
+          .eq("company_id", companyId)
+          .in("estimate_payment_id", chunk)
+          .not("refund_of", "is", null)
+          .is("refund_still_owed", null)
+          .order("id")
+          .range(f, t)
+      )
+    ),
   ]);
+  // Money just went back on these: until the office says whether the
+  // customer still owes it, no reminder asks them for it.
+  const awaitingDecision = new Set(undecidedRefunds.map((r) => r.estimate_payment_id));
 
   // Owed, with nothing already on its way -- the Invoices page's statuses.
   const rows = buildInvoiceRows(docs, stages, payments, new Map(), today).filter(
@@ -173,6 +191,7 @@ export async function runCompanyReminders(
     const stage = stageById.get(row.id);
     // A customer billed outside the CRM has no Pay button to send them to.
     if (!lead || !stage || lead.portal_payments_disabled) continue;
+    if (awaitingDecision.has(row.id)) continue;
 
     const past = remindersByStage.get(row.id) ?? [];
     // The last time the customer heard about this bill: the bill itself

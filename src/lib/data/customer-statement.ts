@@ -45,12 +45,13 @@ export type StatementCredit = {
 export type StatementLine = {
   /** The company's YYYY-MM-DD. */
   day: string;
-  kind: "charge" | "credit" | "payment";
+  /** A refund (DECISIONS #155) is money back to them: it puts the balance up. */
+  kind: "charge" | "credit" | "payment" | "refund";
   label: string;
   detail: string;
   docId: string;
   docNumber: string;
-  /** Positive for a charge or a payment; negative for a credit. */
+  /** Positive for a charge, a payment or a refund; negative for a credit. */
   amountCents: number;
   /** What is owed after this line. */
   balanceCents: number;
@@ -137,8 +138,12 @@ export function buildStatement(
   const clearing = { cents: 0, count: 0 };
   for (const p of live) {
     if (p.status === "pending") {
-      clearing.cents += p.amount_cents;
-      clearing.count += 1;
+      // Money on its way in. A refund still going through isn't on the
+      // statement until it has (DECISIONS #155).
+      if (p.amount_cents > 0) {
+        clearing.cents += p.amount_cents;
+        clearing.count += 1;
+      }
       continue;
     }
     if (p.status !== "succeeded") continue;
@@ -146,15 +151,16 @@ export function buildStatement(
     const forWhat =
       (p.estimate_payment_id ? billLabel.get(p.estimate_payment_id) : depositLabel.get(p.estimate_id)) ??
       (p.estimate_payment_id ? d.doc_number : `Deposit — ${d.doc_number}`);
+    const refund = p.amount_cents < 0;
     entries.push({
       at: p.paid_at ?? p.created_at,
       order: 1,
-      kind: "payment",
-      label: `Payment — ${forWhat}`,
+      kind: refund ? "refund" : "payment",
+      label: `${refund ? "Refund" : "Payment"} — ${forWhat}`,
       detail: paidBy(p),
       docId: d.id,
       docNumber: d.doc_number,
-      amountCents: p.amount_cents,
+      amountCents: Math.abs(p.amount_cents),
     });
   }
 
@@ -186,6 +192,10 @@ export function buildStatement(
     if (e.kind === "payment") {
       paid += e.amountCents;
       balance -= e.amountCents;
+    } else if (e.kind === "refund") {
+      // Money back out: what they've paid comes down, what they owe goes up.
+      paid -= e.amountCents;
+      balance += e.amountCents;
     } else {
       billed += e.amountCents;
       balance += e.amountCents;

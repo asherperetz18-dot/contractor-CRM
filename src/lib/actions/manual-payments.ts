@@ -285,14 +285,23 @@ export async function updateManualPayment(
   const admin = createAdminClient();
   const { data: payment } = await admin
     .from("portal_payments")
-    .select("id, estimate_id, source, status")
+    .select("id, estimate_id, source, status, amount_cents")
     .eq("id", paymentId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<{ id: string; estimate_id: string; source: string; status: string }>();
+    .maybeSingle<{ id: string; estimate_id: string; source: string; status: string; amount_cents: number }>();
   if (!payment) return { error: "Payment not found." };
+  // A refund (DECISIONS #155) isn't edited: remove it and record it again.
+  if (payment.amount_cents < 0) return { error: "A refund can't be edited. Remove it and record it again." };
 
   const decision = manualEditUpdate(payment, input);
   if ("error" in decision) return { error: decision.error };
+  // Never below what has been refunded of it.
+  if (decision.update.amount_cents !== undefined) {
+    const refunded = await refundedOfCents(admin, payment.id);
+    if (decision.update.amount_cents < refunded) {
+      return { error: `${moneyCents(refunded)} of this payment has been refunded, so it can't be less than that.` };
+    }
+  }
 
   const { data: updated, error } = await admin
     .from("portal_payments")
@@ -322,6 +331,27 @@ export async function deleteManualPayment(
   if (!isAdminRole(profile)) return { error: "Only Office or Admin users can do that." };
 
   const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("portal_payments")
+    .select("id, estimate_id, amount_cents")
+    .eq("id", paymentId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; estimate_id: string; amount_cents: number }>();
+  if (!row) return { error: "Payment not found." };
+
+  // A refund recorded by mistake (DECISIONS #155): out with the credit
+  // that came with it, in one step. A Stripe refund is Stripe's.
+  if (row.amount_cents < 0) {
+    const { error: removeError } = await admin.rpc("remove_refund", {
+      p_company: profile.company_id,
+      p_refund: row.id,
+    });
+    if (removeError) return { error: removeError.message };
+    revalidatePath("/payments");
+    revalidatePath(`/estimates/${row.estimate_id}`);
+    return { ok: true };
+  }
+
   const { data, error } = await admin
     .from("portal_payments")
     .delete()
@@ -331,12 +361,136 @@ export async function deleteManualPayment(
     // money that actually moved. Those get refunded in Stripe instead.
     .eq("source", "manual")
     .select("id, estimate_id");
-  if (error) return { error: error.message };
+  if (error) {
+    // Refunds point at it (0210): they go first.
+    if (error.code === "23503") return { error: "This payment has refunds recorded against it. Remove those first." };
+    return { error: error.message };
+  }
   if (!data?.length) {
     return { error: "That payment can't be removed here — Stripe payments are refunded in Stripe." };
   }
 
   revalidatePath("/payments");
   revalidatePath(`/estimates/${data[0].estimate_id}`);
+  return { ok: true };
+}
+
+/** What has been refunded of a payment, going or gone through (0 before 0210). */
+async function refundedOfCents(admin: ReturnType<typeof createAdminClient>, paymentId: string): Promise<number> {
+  const { data, error } = await admin
+    .from("portal_payments")
+    .select("amount_cents")
+    .eq("refund_of", paymentId)
+    .in("status", ["pending", "succeeded"])
+    .returns<{ amount_cents: number }[]>();
+  if (error) return 0;
+  return (data ?? []).reduce((sum, r) => sum - r.amount_cents, 0);
+}
+
+const REFUNDS_NEED_0210 = "Refunds need a database update first: run 0210_payment_refunds.sql in Supabase.";
+
+export type RefundInput = {
+  /** The payment the money goes back on. */
+  paymentId: string;
+  amountCents: number;
+  /** Why -- the customer sees it on their statement. */
+  reason: string;
+  /** How it went back, when not the way it came in. */
+  method?: string | null;
+  reference?: string;
+  /** The day it went back, if not today. */
+  refundedOn?: string;
+  /**
+   * Does the customer still owe what was refunded? No (the usual case):
+   * a credit for it goes with the refund, so the bill doesn't come back.
+   * Yes (a bounced check): the bill is owed again. Ignored on a deposit.
+   */
+  stillOwed: boolean;
+};
+
+/**
+ * Records money given back to a customer outside Stripe -- a check, cash,
+ * a transfer (DECISIONS #155). Written with its credit in one step by the
+ * database (record_refund): never more than is left of the payment, on
+ * money that has arrived. A refund made in Stripe records itself.
+ */
+export async function recordRefund(input: RefundInput): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can record a refund." };
+  }
+  const amountCents = Math.round(input.amountCents);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return { error: "Enter an amount greater than zero." };
+  const reason = input.reason.trim();
+  if (!reason) return { error: "Say why — the customer sees it on their statement." };
+
+  const admin = createAdminClient();
+  const { data: payment } = await admin
+    .from("portal_payments")
+    .select("id, estimate_id")
+    .eq("id", input.paymentId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; estimate_id: string }>();
+  if (!payment) return { error: "Payment not found." };
+
+  const { error } = await admin.rpc("record_refund", {
+    p_company: profile.company_id,
+    p_payment: payment.id,
+    p_amount: amountCents,
+    p_reason: reason,
+    p_by: profile.id,
+    p_still_owed: input.stillOwed,
+    p_method: input.method || null,
+    p_reference: input.reference?.trim() || null,
+    p_refunded_at: input.refundedOn ? new Date(`${input.refundedOn}T12:00:00`).toISOString() : null,
+  });
+  if (error) {
+    if (/record_refund/.test(error.message) || error.code === "PGRST202") return { error: REFUNDS_NEED_0210 };
+    return { error: error.message };
+  }
+
+  revalidatePath("/payments");
+  revalidatePath(`/estimates/${payment.estimate_id}`);
+  revalidatePath("/invoices");
+  revalidatePath("/collect");
+  return { ok: true };
+}
+
+/**
+ * Decides a refund made in Stripe (DECISIONS #155): does the customer
+ * still owe what was refunded? No: a credit for it. Yes: the bill is owed
+ * again. Asked once, after the refund has gone through.
+ */
+export async function decideRefund(refundId: string, stillOwed: boolean): Promise<{ error?: string; ok?: boolean }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canManageBills(profile)) {
+    return { error: "Only Bookkeeping, Office or Admin users can do that." };
+  }
+  const admin = createAdminClient();
+  const { data: refund } = await admin
+    .from("portal_payments")
+    .select("id, estimate_id")
+    .eq("id", refundId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ id: string; estimate_id: string }>();
+  if (!refund) return { error: "Refund not found." };
+
+  const { error } = await admin.rpc("decide_refund", {
+    p_company: profile.company_id,
+    p_refund: refund.id,
+    p_still_owed: stillOwed,
+    p_by: profile.id,
+  });
+  if (error) {
+    if (/decide_refund/.test(error.message) || error.code === "PGRST202") return { error: REFUNDS_NEED_0210 };
+    return { error: error.message };
+  }
+
+  revalidatePath("/payments");
+  revalidatePath(`/estimates/${refund.estimate_id}`);
+  revalidatePath("/invoices");
+  revalidatePath("/collect");
   return { ok: true };
 }

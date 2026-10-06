@@ -138,3 +138,23 @@ test("outstanding clamps at zero when collected exceeds signed value", () => {
   assert.equal(s.outstandingCents, 0);
   assert.equal(s.collectedCents, 15_000);
 });
+
+test("a refund still going out isn't money clearing in (DECISIONS #155)", () => {
+  const s = paymentsSummary(
+    { clientId: "", rep: "" },
+    {
+      contracts: [],
+      billed: [],
+      chase: [],
+      history: [
+        { leadId: "l1", rep: null, status: "pending", amountCents: 50_000 },
+        { leadId: "l1", rep: null, status: "pending", amountCents: -20_000 },
+        { leadId: "l1", rep: null, status: "succeeded", amountCents: 100_000 },
+        { leadId: "l1", rep: null, status: "succeeded", amountCents: -30_000 },
+      ],
+    }
+  );
+  assert.equal(s.clearingCents, 50_000);
+  // Collected is net of what went back.
+  assert.equal(s.collectedCents, 70_000);
+});

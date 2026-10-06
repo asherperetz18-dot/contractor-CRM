@@ -289,7 +289,10 @@ export function invoiceSummary(rows: InvoiceRow[], payments: InvoicePaymentLite[
   }
   for (const p of payments) {
     if (p.status !== "succeeded" || !p.paid_at || !p.estimate_payment_id || !standing.has(p.estimate_payment_id)) continue;
-    if (billedWithin(p.paid_at, "30", now)) add(out.paid30, p.amount_cents);
+    if (!billedWithin(p.paid_at, "30", now)) continue;
+    // Net of refunds (DECISIONS #155), counting payments, not refunds.
+    if (p.amount_cents < 0) out.paid30.cents += p.amount_cents;
+    else add(out.paid30, p.amount_cents);
   }
   return out;
 }

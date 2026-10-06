@@ -294,7 +294,13 @@ export async function getDispatcherCommissions(): Promise<{
     const jobPayments = (payments ?? []).filter((p) => docIds.includes(p.estimate_id));
     const collectedOnJob = jobPayments.reduce((s, p) => s + p.amount_cents, 0);
     const lastPaymentAt =
-      jobPayments.map((p) => p.paid_at).filter((d): d is string => !!d).sort().at(-1) ?? null;
+      // When money last came in -- a refund (#155) isn't a payment.
+      jobPayments
+        .filter((p) => p.amount_cents > 0)
+        .map((p) => p.paid_at)
+        .filter((d): d is string => !!d)
+        .sort()
+        .at(-1) ?? null;
 
     const certificate = children.find((c) => c.kind === "completion") ?? null;
     const certificateSigned = certificate?.status === "Signed";

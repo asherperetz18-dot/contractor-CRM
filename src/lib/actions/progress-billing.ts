@@ -396,13 +396,15 @@ export async function markProgressPaymentBilled(
     return { error: "This contract isn't signed yet, so there's nothing to bill against." };
   }
 
-  const { data: settled } = await admin
+  // Money kept on it, not "a paid row exists": a refund is a row too,
+  // and one refunded in full can be billed again (#155).
+  const { data: onPhase } = await admin
     .from("portal_payments")
-    .select("id")
+    .select("status, amount_cents")
     .eq("estimate_payment_id", phaseId)
     .eq("status", "succeeded")
-    .maybeSingle();
-  if (settled) return { error: "This phase has already been paid." };
+    .returns<{ status: "succeeded"; amount_cents: number }[]>();
+  if (paidTotalCents(onPhase ?? []) > 0) return { error: "This phase has already been paid." };
 
   const due = dueDate || phase.due_date || defaultDueDate(await companyToday());
 

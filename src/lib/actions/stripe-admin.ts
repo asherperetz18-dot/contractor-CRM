@@ -61,6 +61,9 @@ const REQUIRED_EVENTS = [
   "checkout.session.async_payment_succeeded",
   "checkout.session.async_payment_failed",
   "checkout.session.expired",
+  // Refunds made in the Stripe dashboard, recorded in the CRM (#155).
+  "charge.refunded",
+  "charge.refund.updated",
 ];
 
 async function requireAdmin() {
@@ -304,9 +307,48 @@ export async function reconcilePendingPayments(): Promise<{
     }
   }
 
+  // Refunds still going through at Stripe (DECISIONS #155) -- their own
+  // read, so a database without 0210 just has none.
+  const { data: pendingRefunds } = await admin
+    .from("portal_payments")
+    .select("id, stripe_refund_id")
+    .eq("company_id", profile.company_id)
+    .eq("status", "pending")
+    .not("stripe_refund_id", "is", null)
+    .returns<{ id: string; stripe_refund_id: string }[]>();
+  for (const r of pendingRefunds ?? []) {
+    try {
+      const refund = await stripe.refunds.retrieve(r.stripe_refund_id);
+      const status =
+        refund.status === "succeeded"
+          ? "succeeded"
+          : refund.status === "failed"
+            ? "failed"
+            : refund.status === "canceled"
+              ? "cancelled"
+              : null;
+      if (!status) continue;
+      const { data } = await admin
+        .from("portal_payments")
+        .update({
+          status,
+          paid_at: status === "succeeded" ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", r.id)
+        .select("id");
+      if (data?.length) {
+        updated += 1;
+        notes.push(`Refund ${r.stripe_refund_id}: ${status === "succeeded" ? "went through" : status}.`);
+      }
+    } catch {
+      notes.push(`Refund ${r.stripe_refund_id}: not found at Stripe, left alone.`);
+    }
+  }
+
   revalidatePath("/payments");
   revalidatePath("/settings/portal-payments");
-  return { updated, checked: rows?.length ?? 0, notes };
+  return { updated, checked: (rows?.length ?? 0) + (pendingRefunds?.length ?? 0), notes };
 }
 
 /**

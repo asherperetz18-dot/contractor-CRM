@@ -179,8 +179,11 @@ export function CompanyStripe() {
           In Stripe: Developers → Webhooks → Add endpoint, subscribing{" "}
           <span className="mono">checkout.session.completed</span>,{" "}
           <span className="mono">async_payment_succeeded</span>,{" "}
-          <span className="mono">async_payment_failed</span> and{" "}
-          <span className="mono">expired</span>. Paste its signing secret above.
+          <span className="mono">async_payment_failed</span>,{" "}
+          <span className="mono">expired</span>, and{" "}
+          <span className="mono">charge.refunded</span> and{" "}
+          <span className="mono">charge.refund.updated</span> (so refunds made in Stripe show up
+          here). Paste its signing secret above.
         </p>
       </div>
     </section>

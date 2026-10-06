@@ -8,6 +8,7 @@ import { leftoverCheckoutAction } from "@/lib/stripe/checkout-reuse";
 import {
   MIN_ONLINE_CHARGE_CENTS,
   depositCents,
+  depositPayment,
   isUnfinishedCheckout,
   moneyCents,
   phaseCheckoutCents,
@@ -106,13 +107,16 @@ export async function getDepositState(estimateId: string): Promise<DepositState>
     .maybeSingle<PayableEstimate>();
   if (!data || data.lead_id !== viewer.lead.id) return none;
 
-  const { data: paid } = await admin
+  // Paid while any of it is kept: a deposit refunded in full is due
+  // again (DECISIONS #155). Every row, so a refund never reads as one.
+  const { data: depositRows } = await admin
     .from("portal_payments")
-    .select("id, paid_at")
+    .select("kind, status, amount_cents, paid_at, method")
     .eq("estimate_id", estimateId)
     .eq("kind", "deposit")
     .eq("status", "succeeded")
-    .maybeSingle<{ id: string; paid_at: string | null }>();
+    .returns<Pick<PortalPayment, "kind" | "status" | "amount_cents" | "paid_at" | "method">[]>();
+  const paid = depositPayment(depositRows ?? []);
   if (paid) return { ...none, paid: true, paidAt: paid.paid_at };
 
   // After the paid check on purpose: a deposit that DID settle through
@@ -222,7 +226,8 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
       const on = (payments ?? []).filter(
         (x) => x.estimate_payment_id === p.id && !isUnfinishedCheckout(x)
       );
-      const settled = on.find((x) => x.status === "succeeded");
+      // When money came in -- a refund (#155) is a row too, never this.
+      const settled = on.find((x) => x.status === "succeeded" && x.amount_cents > 0);
       return {
         id: p.id,
         name: p.name,
@@ -428,14 +433,15 @@ export async function startDepositCheckout(
   const env = await getStripeForCompany(estimate.company_id);
   if (!env) return { error: "Online payment isn't switched on yet." };
 
-  const { data: already } = await admin
+  // Kept money, not "a paid row": a refund is a row too (#155).
+  const { data: depositRows } = await admin
     .from("portal_payments")
-    .select("id")
+    .select("kind, status, amount_cents, paid_at, method")
     .eq("estimate_id", estimateId)
     .eq("kind", "deposit")
     .eq("status", "succeeded")
-    .maybeSingle();
-  if (already) return { error: "This deposit has already been paid." };
+    .returns<Pick<PortalPayment, "kind" | "status" | "amount_cents" | "paid_at" | "method">[]>();
+  if (depositPayment(depositRows ?? [])) return { error: "This deposit has already been paid." };
 
   // Recomputed from the document, not taken from the request. The same
   // rule that caps a written deposit at $1,000 caps what can be collected

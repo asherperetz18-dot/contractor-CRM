@@ -151,6 +151,8 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
             .select("id, estimate_id, amount_cents, paid_at")
             .eq("company_id", companyId)
             .eq("status", "succeeded")
+            // Money in -- a refund isn't a payment received (#155).
+            .gt("amount_cents", 0)
             .gt("paid_at", since)
             .order("paid_at", { ascending: false })
             .limit(PER_KIND)

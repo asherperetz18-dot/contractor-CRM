@@ -585,7 +585,10 @@ export default async function ProjectReportPage({
                 {settled.map((p) => (
                   <tr key={p.id}>
                     <td>{shortDate(p.paid_at ?? p.created_at)}</td>
-                    <td>{p.kind === "deposit" ? "Deposit" : "Progress payment"}</td>
+                    <td>
+                      {/* Money given back (#155) is a negative row. */}
+                      {p.amount_cents < 0 ? "Refund" : p.kind === "deposit" ? "Deposit" : "Progress payment"}
+                    </td>
                     {/* The cheque number rides with the method — "check
                         #1042" — so the statement is enough to reconcile
                         against the bank without opening the app. */}
