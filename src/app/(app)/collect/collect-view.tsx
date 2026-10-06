@@ -307,7 +307,10 @@ export function CollectView({
                           {r.title}
                         </Link>
                         <div className="est-tax-note">
-                          {r.customer}
+                          {/* Their statement: every bill and payment (DECISIONS #153). */}
+                          <Link href={`/invoices/statement/${r.leadId}`} className="link-plain" title={`${r.customer}'s statement`}>
+                            {r.customer}
+                          </Link>
                           {r.address ? ` · ${r.address}` : ""}
                         </div>
                       </td>

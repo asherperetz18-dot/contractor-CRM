@@ -1868,3 +1868,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - `bill_reminders` is a company table: the company's people can read it, only the server writes it, and it carries the subscription lock (0175). Database Health probes 0208.
 
 **Consequence:** a company can stop chasing by hand: every bill gets the same polite sequence, and it stops by itself when the money arrives. Texts and emails count against the company's monthly limits (#133). **Database step: 0208**, any time; until it runs, the setting can't be switched on and nothing is sent.
+
+## 153 — A statement for each customer: every bill, every payment, the balance
+
+**Date:** 2026-10-06
+
+**Context:** Step 5 of the invoicing plan. A customer asking "what do I owe you, and what have I paid?" meant opening each contract and invoice in turn. Nothing put one customer's bills and payments side by side, and nothing could be handed to the customer.
+
+**Decision:**
+- **One page per customer:** `/invoices/statement/<customer>`, reached from the customer's name on Invoices and Money to Collect, and from **Statement** on an invoice. Company money, so the same door as Invoices (`canViewFinancials`). It reads only this company's and this customer's documents, stages and payments.
+- **What's on it** (`buildStatement`, pure and tested): every bill on the Invoices page for this customer (#148) -- billed contract and change-order stages, invoices, credits lowering the balance -- plus each signed contract's **deposit**, which is due at signing and never a billed stage; and every payment that has arrived. In date order on the company's own calendar, the balance after each line, the due date and status of each bill, how each payment was made. Never a cancelled bill, a draft or a stage not billed yet. Money on its way (a bank transfer clearing, a check not yet banked) is listed under the table and left out of the balance until it lands; a checkout opened and left is nothing at all.
+- **Balance due**, the part of it past due (the Invoices page's overdue bills), and billed and paid totals. A balance below zero reads as a credit.
+- **Print / Save as PDF** prints the statement alone (the shared print stylesheet). **Email statement** (Bookkeeping, Office, Admin -- like recording a payment) sends it as an email with the same table, the balance and what's past due, and the View and pay link when something is owed (never to a customer billed outside the CRM); to the customer with a second contact copied, logged in their messages. A locked company can't send.
+
+**Consequence:** "what do I owe" has one answer, the same one Invoices and Money to Collect give, plus the deposit. No database step. A payment kept on a cancelled contract shows as a credit until refunds are recorded (step 6).

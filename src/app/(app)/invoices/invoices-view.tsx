@@ -236,7 +236,16 @@ export function InvoicesView({
                           {r.docNumber}
                         </Link>
                       </td>
-                      <td>{r.customer}</td>
+                      <td>
+                        {/* Their statement: every bill and payment (DECISIONS #153). */}
+                        <Link
+                          href={`/invoices/statement/${r.leadId}`}
+                          className="link-plain"
+                          title={`${r.customer}'s statement`}
+                        >
+                          {r.customer}
+                        </Link>
+                      </td>
                       <td>
                         {r.stage ?? r.title}
                         {r.stage && <div className="est-tax-note">{r.title}</div>}

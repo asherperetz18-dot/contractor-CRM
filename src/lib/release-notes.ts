@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.222.0",
+    date: "2026-10-06",
+    notes: [
+      "Customer statements: click a customer's name on Invoices or Money to Collect, or Statement on an invoice, to see every bill and payment for that customer. Each line shows the running balance, and the top shows what they owe now and how much of it is past due.",
+      "Print the statement or save it as a PDF, or use Email statement to send it to the customer. When something is owed, the email includes a View and pay button.",
+    ],
+  },
+  {
     version: "1.221.0",
     date: "2026-10-06",
     notes: [
