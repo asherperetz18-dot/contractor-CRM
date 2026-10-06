@@ -1817,4 +1817,6 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The approval gate leaves invoices alone** (0205 redefines 0136's trigger function with one added line). Invoices were never held by it -- they used to be inserted already issued -- and a draft invoice being issued is the same act. The admin's Approvals queue leaves draft invoices out for the same reason.
 - **The Invoices page lists drafts** (a Drafts filter): owed nothing and counted in no total. The portal never shows a draft (it already redirected away from any Draft document).
 
+**Follow-up (1.218.1):** sending a draft swaps the editor for the issued invoice page, and the first version dropped the editor's message with it -- a Pay-link text that failed went unreported. `issueInvoice` now says once it has issued, and the editor hands the outcome to the issued page (this tab's session storage, `invoice-note.ts`).
+
 **Consequence:** an invoice can be got right before it goes out, with quantities, tax and terms, and numbers run in order. **Database step: run 0205 in Supabase before merging** -- the code reads the new columns and calls the new function. The text that carries the Pay link is still the only way the CRM sends an invoice; email is the next step.
