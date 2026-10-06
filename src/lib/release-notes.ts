@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.217.0",
+    date: "2026-10-06",
+    notes: [
+      "New Invoices page under Accounting: every bill you've sent a customer, invoices and contract stages alike, in one list with where it stands (Billed, Viewed, Part paid, Overdue, Payment clearing, Paid or Void) and what's still owed. Filter by status and by when it was billed, or search by number, customer or project.",
+      "Money to Collect now sorts unpaid bills by how late they are (Not due yet, 1–30, 31–90, 90+ days late) instead of how long ago they were sent, and now includes the change-order stages you've billed.",
+      "On phones, the money tiles at the top of these pages no longer run off the screen.",
+    ],
+  },
+  {
     version: "1.216.0",
     date: "2026-10-06",
     notes: [

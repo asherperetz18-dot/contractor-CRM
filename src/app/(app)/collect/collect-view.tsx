@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/types";
 import { requestPhaseNow } from "@/lib/actions/receivables";
 import { recordManualPayment } from "@/lib/actions/manual-payments";
+import { agingBucket, daysLate } from "@/lib/data/invoice-rows";
 
 export type ReceivableRow = {
   phaseId: string;
@@ -40,15 +41,15 @@ export type BillableRow = {
   rep: string | null;
 };
 
-const DAY = 86400000;
-const ageDays = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / DAY);
-
 export function CollectView({
   unpaid,
   billable,
+  today,
 }: {
   unpaid: ReceivableRow[];
   billable: BillableRow[];
+  /** The company's own YYYY-MM-DD, so "late" turns over at the office's midnight. */
+  today: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -109,10 +110,16 @@ export function CollectView({
   const scopedBillable = billable.filter(scoped);
   const filtering = Boolean(clientId || rep);
 
+  // Aged by how late each bill is, not how long ago it went out: a bill
+  // sent last week on 30-day terms is not "on track to be a problem"
+  // (DECISIONS #148).
+  const inBucket = (b: ReturnType<typeof agingBucket>) =>
+    scopedUnpaid.filter((r) => agingBucket(r.dueDate, today) === b);
   const buckets = {
-    current: scopedUnpaid.filter((r) => ageDays(r.requestedAt) <= 30),
-    mid: scopedUnpaid.filter((r) => ageDays(r.requestedAt) > 30 && ageDays(r.requestedAt) <= 90),
-    old: scopedUnpaid.filter((r) => ageDays(r.requestedAt) > 90),
+    notDue: inBucket("not_due"),
+    late: inBucket("late_1_30"),
+    mid: inBucket("late_31_90"),
+    old: inBucket("late_90_plus"),
   };
   const sum = (rows: { remainingCents: number }[]) =>
     rows.reduce((s, r) => s + r.remainingCents, 0);
@@ -156,27 +163,31 @@ export function CollectView({
         <div>
           <h1 className="module-title">Money to Collect</h1>
           <p className="module-sub">
-            Outstanding receivables · unpaid invoices sorted oldest first · {scopedUnpaid.length} open
+            Outstanding receivables · unpaid bills, most overdue first · {scopedUnpaid.length} open
           </p>
         </div>
       </div>
 
-      <div className="stat-grid stat-grid-5">
+      <div className="stat-grid stat-grid-6">
         <div className="stat-card stat-static">
           <div className="stat-value mono">{moneyCents(totalOut)}</div>
           <div className="stat-label">Total Outstanding</div>
         </div>
         <div className={"stat-card stat-static" + (buckets.old.length ? " digest-urgent" : "")}>
           <div className="stat-value mono">{moneyCents(sum(buckets.old))}</div>
-          <div className="stat-label">90+ Days · {buckets.old.length} urgent</div>
+          <div className="stat-label">90+ Days Late · {buckets.old.length} urgent</div>
         </div>
         <div className="stat-card stat-static">
           <div className="stat-value mono">{moneyCents(sum(buckets.mid))}</div>
-          <div className="stat-label">31–90 Days · {buckets.mid.length} follow up</div>
+          <div className="stat-label">31–90 Days Late · {buckets.mid.length} follow up</div>
         </div>
         <div className="stat-card stat-static">
-          <div className="stat-value mono">{moneyCents(sum(buckets.current))}</div>
-          <div className="stat-label">Current (0–30) · {buckets.current.length} on track</div>
+          <div className="stat-value mono">{moneyCents(sum(buckets.late))}</div>
+          <div className="stat-label">1–30 Days Late · {buckets.late.length}</div>
+        </div>
+        <div className="stat-card stat-static">
+          <div className="stat-value mono">{moneyCents(sum(buckets.notDue))}</div>
+          <div className="stat-label">Not Due Yet · {buckets.notDue.length} on track</div>
         </div>
         <div className="stat-card stat-static">
           <div className="stat-value mono">{moneyCents(billableTotal)}</div>
@@ -188,8 +199,9 @@ export function CollectView({
         <div className="collect-aging" aria-hidden>
           <span
             className="collect-aging-current"
-            style={{ flexGrow: Math.max(sum(buckets.current), 1) }}
+            style={{ flexGrow: Math.max(sum(buckets.notDue), 1) }}
           />
+          <span className="collect-aging-late" style={{ flexGrow: Math.max(sum(buckets.late), 1) }} />
           <span className="collect-aging-mid" style={{ flexGrow: Math.max(sum(buckets.mid), 1) }} />
           <span className="collect-aging-old" style={{ flexGrow: Math.max(sum(buckets.old), 1) }} />
         </div>
@@ -273,14 +285,14 @@ export function CollectView({
                   <th>Rep</th>
                   <th>Project</th>
                   <th>Phase / Draw</th>
-                  <th>Inv. Date</th>
+                  <th>Due</th>
                   <th className="right">Amount</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {shownUnpaid.map((r) => {
-                  const age = ageDays(r.requestedAt);
+                  const late = daysLate(r.dueDate, today);
                   return (
                     <tr key={r.phaseId}>
                       <td>{r.rep ?? "—"}</td>
@@ -295,13 +307,19 @@ export function CollectView({
                       </td>
                       <td>{r.phase}</td>
                       <td className="mono">
-                        {fmt(r.requestedAt)}
+                        {fmt(r.dueDate)}
                         <div
                           className={
-                            "est-tax-note" + (age > 90 ? " proj-check-overdue" : "")
+                            "est-tax-note" + (late > 30 ? " proj-check-overdue" : "")
                           }
                         >
-                          {age}d ago
+                          {!r.dueDate
+                            ? `Billed ${fmt(r.requestedAt)}`
+                            : late > 0
+                              ? `${late}d late`
+                              : late === 0
+                                ? "Due today"
+                                : `In ${-late}d`}
                         </div>
                       </td>
                       <td className="right mono">{moneyCents(r.remainingCents)}</td>

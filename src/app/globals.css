@@ -3400,6 +3400,22 @@ a.stat-card {
 .text-reports-more .empty-hint {
   margin: 0;
 }
+/* Invoices: faded while another filter loads; a page of rows at a time. */
+.invoices-body.is-loading {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.invoices-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+.invoices-more .empty-hint {
+  margin: 0;
+}
 .schedule-list {
   display: flex;
   flex-direction: column;
@@ -7208,6 +7224,16 @@ a.portal-header-stars:hover {
   .stat-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
+  }
+  /* Two across leaves ~170px a tile: a five-figure amount at full size
+     pushed the right-hand column off the screen (Money to Collect,
+     Invoices). The dashboard's tiles already step down the same way. */
+  .stat-grid > .stat-card {
+    min-width: 0;
+  }
+  .stat-grid .stat-value {
+    font-size: 20px;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -12058,8 +12084,9 @@ textarea.est-item-desc:disabled {
   flex: 0 1 150px;
 }
 
-/* Money to Collect: the aging bar. Green young, amber middle, red old
-   -- proportional to dollars, not counts. */
+/* Money to Collect: the aging bar, by how late each bill is. Green not
+   due yet, pale amber up to 30 days late, amber 31-90, red beyond --
+   proportional to dollars, not counts. */
 .collect-aging {
   display: flex;
   height: 10px;
@@ -12070,6 +12097,9 @@ textarea.est-item-desc:disabled {
 }
 .collect-aging-current {
   background: #7bb287;
+}
+.collect-aging-late {
+  background: #e6cf8a;
 }
 .collect-aging-mid {
   background: #dfb35c;
