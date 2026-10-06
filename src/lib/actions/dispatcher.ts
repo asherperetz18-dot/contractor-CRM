@@ -14,6 +14,7 @@ import {
   commissionQualifiedAt,
   isAdminRole,
   isDispatchScoped,
+  liveCredits,
   type CommissionHold,
   type Lead,
   type LeadNote,
@@ -200,14 +201,15 @@ export async function getDispatcherCommissions(): Promise<{
 
   // Credits on the job's bills (0209, DECISIONS #154): the job is paid
   // off once what's owed after them is in. Their own read -- a database
-  // without 0209 just has none.
+  // without 0209 just has none. Read whole, so it works with or without
+  // 0213, and a credit removed by hand (#160) counts for nothing.
   const { data: creditRows } = await admin
     .from("bill_credits")
-    .select("estimate_id, amount_cents")
+    .select("*")
     .eq("company_id", profile.company_id)
-    .returns<{ estimate_id: string; amount_cents: number }[]>();
+    .returns<{ estimate_id: string; amount_cents: number; removed_at?: string | null }[]>();
   const creditByEstimate = new Map<string, number>();
-  for (const c of creditRows ?? []) {
+  for (const c of liveCredits(creditRows ?? [])) {
     creditByEstimate.set(c.estimate_id, (creditByEstimate.get(c.estimate_id) ?? 0) + c.amount_cents);
   }
 

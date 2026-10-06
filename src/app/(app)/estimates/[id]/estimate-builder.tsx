@@ -24,6 +24,7 @@ import {
   type EstimateItem,
   type EstimateSigner,
   type EstimateGroup,
+  type BillCreditRow,
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
@@ -136,6 +137,7 @@ export function EstimateBuilder({
   payments,
   paid,
   changeOrderBilling = NO_CHANGE_ORDER_BILLING,
+  credits,
   lead,
   rep,
   voidedByName = null,
@@ -157,6 +159,8 @@ export function EstimateBuilder({
   /** What each signed change order collected on its own schedule, for
    *  the mirror rows this contract's schedule carries. */
   changeOrderBilling?: ChangeOrderBilling[];
+  /** Credits on its stages (DECISIONS #154, #160). */
+  credits?: BillCreditRow[];
   lead: BuilderLead | null;
   /** The salesperson for the header. Unsigned it follows the lead, so
    *  it is changed on the lead card; signed it is who sold the job. */
@@ -1315,6 +1319,8 @@ export function EstimateBuilder({
         changeOrderBilling={changeOrderBilling}
         locked={locked}
         onChanged={refreshPage}
+        credits={credits}
+        canRemoveCredits={canManageBills}
       />
 
       {/* Costs are worth recording from the moment a job is real, which is

@@ -75,11 +75,13 @@ export async function loadCustomerStatement(
       )
     ),
     // Credits on their bills (0209, DECISIONS #154); none before it.
+    // Read whole, so it works with or without 0213: a credit removed by
+    // hand (#160) is dropped by buildStatement.
     forChunks(ids, (chunk) =>
       selectAll<StatementCredit>((f, t) =>
         supabase
           .from("bill_credits")
-          .select("estimate_payment_id, amount_cents, reason, created_at")
+          .select("*")
           .eq("company_id", companyId)
           .in("estimate_id", chunk)
           .order("id")

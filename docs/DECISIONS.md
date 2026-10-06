@@ -1974,3 +1974,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The email sends the period on screen.** The subject and first line say which days it covers ("your statement for Sep 1, 2026 – Oct 6, 2026"). A period that has ended leaves "due" out of the subject. The View and pay link goes by what's owed today, whatever the period.
 
 **Consequence:** a statement can be as short as the question. All time is still the default. No database step.
+
+## 160 — Removing a credit: the bill owes it again, and the credit stays on record
+
+**Date:** 2026-10-06
+
+**Context:** A credit on a bill (#154) could only be undone in the database. A credit given on the wrong bill or for the wrong amount had no fix in the app.
+
+**Decision:**
+- **Remove** next to each credit given by hand, on the invoice page's Credits list and under each contract stage's credits (Bookkeeping, Office, Admin, like giving one). It asks why. The bill owes the amount again.
+- **Kept, not deleted.** `bill_credits` gains `removed_at`, `removed_by` and `remove_reason` (0213). A removed credit counts for nothing. The office still sees it, struck through, with when and why it was removed. `remove_bill_credit` (server only) locks the bill, then the credit (the order giving a credit and removing a refund use), refuses one already removed, and lowers the bill's credited total by the credit's amount in the same step.
+- **A refund's credit isn't removed on its own.** It goes when its refund is removed (#155), so the refund and its credit can't come apart.
+- **Everything that adds up credits follows.** Owed, Paid, reminders, the portal, P&L and commissions use the bill's credited total, which the removal lowers. The reads that list credits (the invoice and contract pages, the customer's statement, the dispatcher commission) read them whole (`"*"`), so they work before 0213 has run, and drop the removed ones. The statement leaves a removed credit out, as if it was never given.
+
+**Consequence:** a wrong credit is undone in the app, with a record of who undid it and why. **Database step: 0213**, any time; until it runs, Remove says to run it and everything else is as before.

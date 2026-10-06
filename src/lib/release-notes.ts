@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.230.0",
+    date: "2026-10-06",
+    notes: [
+      "Remove a credit: a credit given by hand on an invoice or a contract stage now has a Remove button. Say why, and the bill is owed again. The credit stays listed, crossed out, with who removed it and why, and comes off the customer's statement.",
+    ],
+  },
+  {
     version: "1.229.0",
     date: "2026-10-06",
     notes: [
