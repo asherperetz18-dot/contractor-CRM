@@ -305,8 +305,7 @@ export async function getDispatcherCommissions(): Promise<{
     const certificate = children.find((c) => c.kind === "completion") ?? null;
     const certificateSigned = certificate?.status === "Signed";
 
-    // Paid off means paid what's owed once credits are off (#154); the
-    // commission is still a share of the contract as sold.
+    // Paid off means paid what's owed once credits are off (#154).
     const creditedOnJob = docIds.reduce((s, id) => s + (creditByEstimate.get(id) ?? 0), 0);
     const holds = commissionHolds({
       // Gross-based, so costs never gate it.
@@ -327,8 +326,12 @@ export async function getDispatcherCommissions(): Promise<{
     };
   }
 
+  // The headline totals are worked out on the same figure as the jobs
+  // under them: the contract less its credits (DECISIONS #154). On the
+  // full contract, a credited job paid in full showed money held back.
+  const sold = signed.map((e) => ({ ...e, total_cents: e.total_cents - (creditByEstimate.get(e.id) ?? 0) }));
   const computed = computeDispatcherCommissions({
-    signed,
+    signed: sold,
     dispatcherByLead,
     collectedByEstimate,
     commissionBp: bp,
@@ -348,8 +351,11 @@ export async function getDispatcherCommissions(): Promise<{
     if (!who) continue;
     const row = byDispatcher.get(who);
     if (!row) continue;
-    const collected = Math.min(collectedByEstimate.get(estimate.id) ?? 0, estimate.total_cents);
-    const commissionCents = Math.round((estimate.total_cents * bp) / 10000);
+    // The contract less what was credited on its bills (DECISIONS #154):
+    // it sold for that much less (the owner's call).
+    const baseCents = estimate.total_cents - (creditByEstimate.get(estimate.id) ?? 0);
+    const collected = Math.min(collectedByEstimate.get(estimate.id) ?? 0, baseCents);
+    const commissionCents = Math.round((baseCents * bp) / 10000);
     const release = releaseFor(estimate);
     // All or nothing. A part payment does not release part of the
     // commission -- the rule is the job is done, signed off and paid for.
@@ -359,7 +365,7 @@ export async function getDispatcherCommissions(): Promise<{
       estimateId: estimate.id,
       docNumber: estimate.doc_number,
       customerName: customerByLead.get(estimate.lead_id) ?? "Unnamed",
-      contractCents: estimate.total_cents,
+      contractCents: baseCents,
       collectedCents: collected,
       commissionCents,
       jobValueCents: release.jobValueCents,

@@ -1897,6 +1897,8 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **A credit is income the job no longer earns:** accrual P&L counts the bill less its credits; the project's % collected and the commission paid-in-full hold measure against what's owed after credits, so a credited job releases once the rest is in. **The commission amount is still worked out on the full contract** -- whether a credit should lower it is the owner's call.
 - **Reads that keep working without 0209:** every read that works out what's owed reads the stage's whole row (`"*"`), so the credit comes along where it exists; naming a column the database lacks would fail the read. `bill_credits` is read on its own wherever it's listed. Backed up, kept with a deleted contact in Trash, probed by Database Health.
 
+**Follow-up (1.223.1), the owner's call:** a credit lowers the commission too -- the job sold for that much less. The rep commission is worked out on the contract (with its change orders) less the credits on their bills, and the dispatcher's on the contract less its own; paid in full is measured against the same figure. The one-job statement shows "Credits given" between the contract and the lead cost.
+
 **Consequence:** a bill can be lowered after it went out without touching what was signed, and every money screen says the same thing. **Database step: 0209**, any time; until it runs, Give credit doesn't show and nothing changes.
 
 ## 155 — Refunds: recorded, never sent, and the office says whether it's still owed

@@ -86,8 +86,16 @@ export function JobStatement({
       <div className="estdoc-totals stmt-breakdown">
         <div className="estdoc-total-row">
           <span>Contract (with signed change orders)</span>
-          <span className="mono">{moneyCents(d.contractCents)}</span>
+          <span className="mono">{moneyCents(d.contractCents + first.creditsCents)}</span>
         </div>
+        {/* Credited off the job's bills (DECISIONS #154): it sold for that
+            much less, so everything below is worked out on the rest. */}
+        {first.creditsCents > 0 && (
+          <div className="estdoc-total-row">
+            <span>Credits given</span>
+            <span className="mono">&minus;{moneyCents(first.creditsCents)}</span>
+          </div>
+        )}
         <div className="estdoc-total-row">
           <span>Lead cost ({leadBp}%)</span>
           <span className="mono">&minus;{moneyCents(d.leadCostCents)}</span>
