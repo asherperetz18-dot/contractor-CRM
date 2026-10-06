@@ -1,0 +1,15 @@
+name: Payment Reminders
+
+on:
+  # The timer (25 * * * * UTC) runs from the database: Supabase Cron,
+  # migration 0208 (DECISIONS #152). This button runs it by hand.
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger payment reminders
+        run: |
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/bill-reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

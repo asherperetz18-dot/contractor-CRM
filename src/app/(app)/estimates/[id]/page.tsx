@@ -12,6 +12,7 @@ import { clientName } from "@/lib/data/client-name";
 import { CompletionEditor } from "./completion-editor";
 import { InvoiceView, type InvoiceLineCost } from "./invoice-view";
 import { InvoiceDraftEditor } from "./invoice-draft-editor";
+import { BillRemindersProvider, type SentReminder } from "@/components/invoices/reminders-toggle";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,28 @@ export default async function EstimateDetailPage({
     );
   }
 
+  // Automatic payment reminders (0208, DECISIONS #152): whether the
+  // company has them on, and which went on this document's bills. Their
+  // own reads, so a database without 0208 just shows none.
+  const stageIds = ((payments ?? []) as EstimatePayment[]).map((p) => p.id);
+  const [{ data: reminderSetting }, { data: sentReminders }] = await Promise.all([
+    supabase
+      .from("company_profile")
+      .select("bill_reminders_enabled")
+      .eq("company_id", profile.company_id)
+      .maybeSingle<{ bill_reminders_enabled: boolean | null }>(),
+    stageIds.length
+      ? supabase
+          .from("bill_reminders")
+          .select("estimate_payment_id, kind, sent_at")
+          .eq("company_id", profile.company_id)
+          .in("estimate_payment_id", stageIds)
+          .returns<SentReminder[]>()
+      : Promise.resolve({ data: [] as SentReminder[] }),
+  ]);
+  const remindersOn = reminderSetting?.bill_reminders_enabled === true;
+  const remindersSent = sentReminders ?? [];
+
   // An invoice (a permit fee billed back) has nothing to build or send
   // for signature: its page is what was billed, what's come in, and the
   // Pay link / Record payment / Cancel that act on it.
@@ -129,17 +152,19 @@ export default async function EstimateDetailPage({
       );
     }
     return (
-      <InvoiceView
-        invoice={estimate}
-        items={lines}
-        phase={((payments ?? []) as EstimatePayment[])[0] ?? null}
-        paid={(paidRows ?? []) as PortalPayment[]}
-        customer={customer}
-        parent={parentRow ?? null}
-        costs={costs}
-        canBill={canCreateEstimates(profile)}
-        canRecord={canManageBills(profile)}
-      />
+      <BillRemindersProvider on={remindersOn} sent={remindersSent}>
+        <InvoiceView
+          invoice={estimate}
+          items={lines}
+          phase={((payments ?? []) as EstimatePayment[])[0] ?? null}
+          paid={(paidRows ?? []) as PortalPayment[]}
+          customer={customer}
+          parent={parentRow ?? null}
+          costs={costs}
+          canBill={canCreateEstimates(profile)}
+          canRecord={canManageBills(profile)}
+        />
+      </BillRemindersProvider>
     );
   }
 
@@ -264,34 +289,36 @@ export default async function EstimateDetailPage({
     : { data: null };
 
   return (
-    <EstimateBuilder
-      estimate={estimate}
-      customerViews={customerViews}
-      items={(items ?? []) as EstimateItem[]}
-      signers={(signers ?? []) as EstimateSigner[]}
-      payments={(payments ?? []) as EstimatePayment[]}
-      paid={(paidRows ?? []) as PortalPayment[]}
-      changeOrderBilling={changeOrderBilling}
-      lead={lead ?? null}
-      rep={{
-        name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,
-        followsLead: repLine.followsLead,
-      }}
-      voidedByName={estimate.voided_by ? voider?.name || voider?.email || "Unnamed" : null}
-      canEdit={canCreateEstimates(profile)}
-      // Drafts only when off: the Users & Roles "Send Estimates" switch,
-      // the approval gate while it waits on an admin, and the closer's
-      // hold on a closer-led lead.
-      canSend={canSendEstimates(profile) && !sendHold}
-      sendHoldNote={sendHold}
-      sendHoldApprovable={sendHoldApprovable}
-      // Separate from canEdit on purpose. A bookkeeper records what the
-      // job cost without being able to touch the contract it is recorded
-      // against -- which is the whole reason the Bookkeeping role exists.
-      canManageCosts={canManageCosts(profile)}
-      canManageBills={canManageBills(profile)}
-      canVoid={isStrictAdmin(profile)}
-      canDelete={canDeleteLeads(profile)}
-    />
+    <BillRemindersProvider on={remindersOn} sent={remindersSent}>
+      <EstimateBuilder
+        estimate={estimate}
+        customerViews={customerViews}
+        items={(items ?? []) as EstimateItem[]}
+        signers={(signers ?? []) as EstimateSigner[]}
+        payments={(payments ?? []) as EstimatePayment[]}
+        paid={(paidRows ?? []) as PortalPayment[]}
+        changeOrderBilling={changeOrderBilling}
+        lead={lead ?? null}
+        rep={{
+          name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,
+          followsLead: repLine.followsLead,
+        }}
+        voidedByName={estimate.voided_by ? voider?.name || voider?.email || "Unnamed" : null}
+        canEdit={canCreateEstimates(profile)}
+        // Drafts only when off: the Users & Roles "Send Estimates" switch,
+        // the approval gate while it waits on an admin, and the closer's
+        // hold on a closer-led lead.
+        canSend={canSendEstimates(profile) && !sendHold}
+        sendHoldNote={sendHold}
+        sendHoldApprovable={sendHoldApprovable}
+        // Separate from canEdit on purpose. A bookkeeper records what the
+        // job cost without being able to touch the contract it is recorded
+        // against -- which is the whole reason the Bookkeeping role exists.
+        canManageCosts={canManageCosts(profile)}
+        canManageBills={canManageBills(profile)}
+        canVoid={isStrictAdmin(profile)}
+        canDelete={canDeleteLeads(profile)}
+      />
+    </BillRemindersProvider>
   );
 }

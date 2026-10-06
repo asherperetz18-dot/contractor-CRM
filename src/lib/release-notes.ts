@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.221.0",
+    date: "2026-10-06",
+    notes: [
+      "Payment reminders: switch them on under Settings › Payment Reminders and customers are reminded about bills they still owe. A reminder goes 3 days before the due date, on the day, then once a week, up to 3 times. They go by email, text or both, and stop as soon as the bill is paid. Reminders are off until you switch them on.",
+      "To stop reminders on one bill (a payment plan, say), use Stop reminders on the invoice or on the contract's payment stage. Those places also show which reminders were sent.",
+    ],
+  },
+  {
     version: "1.220.0",
     date: "2026-10-06",
     notes: [

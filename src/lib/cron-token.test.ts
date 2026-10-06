@@ -23,6 +23,8 @@ test("secrets match only when identical, and an empty one never matches", () => 
 const repo = new URL("../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, repo), "utf8");
 const migration = read("supabase/migrations/0203_scheduled_jobs.sql");
+/** Jobs added since 0203 are scheduled by their own migration. */
+const schedules = migration + read("supabase/migrations/0208_bill_reminders.sql");
 
 /** The jobs the database's scheduler now starts, and when (UTC) -- the times GitHub used. */
 const SCHEDULED: Record<string, string> = {
@@ -35,6 +37,8 @@ const SCHEDULED: Record<string, string> = {
   "ai-receptionist-finalize": "13 */2 * * *",
   "callrail-backfill": "40 */6 * * *",
   "rain-alerts": "0 6,14,22 * * *",
+  // Payment reminders (0208, DECISIONS #152).
+  "bill-reminders": "25 * * * *",
 };
 
 test("every job route is started by exactly one scheduler", () => {
@@ -42,7 +46,7 @@ test("every job route is started by exactly one scheduler", () => {
   // Every route but the backup runs from the database; the backup stays on GitHub.
   assert.deepEqual(routes.filter((r) => r !== "backup"), Object.keys(SCHEDULED).sort());
   for (const [job, cron] of Object.entries(SCHEDULED)) {
-    const line = migration.split("\n").find((l) => l.includes(`'crm-${job}'`)) ?? "";
+    const line = schedules.split("\n").find((l) => l.includes(`'crm-${job}'`)) ?? "";
     assert.ok(line.includes(`'${cron}'`) && line.includes(`crm_jobs.run('/api/cron/${job}`), `${job} is scheduled at ${cron}`);
     // ...and GitHub no longer starts it on a timer, so it can't run twice at once.
     const workflow = read(`.github/workflows/${job}.yml`);

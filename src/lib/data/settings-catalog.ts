@@ -299,6 +299,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/portal-payments",
       },
       {
+        title: "Payment Reminders",
+        desc: "Remind customers automatically before and after a bill is due, by email or text",
+        icon: "⏰",
+        href: "/settings/payment-reminders",
+      },
+      {
         title: "Subscription",
         desc: "Your AI Build Pro plan: update the card you pay with, download invoices, or cancel",
         icon: "🧾",

@@ -81,6 +81,9 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "estimate_payments", column: "sent_at", migration: "0206_bill_sends.sql" },
   { table: "portal_payments", column: "receipt_sent_at", migration: "0207_payment_receipts.sql" },
   { table: "company_profile", column: "receipt_emails_enabled", migration: "0207_payment_receipts.sql" },
+  { table: "company_profile", column: "bill_reminders_enabled", migration: "0208_bill_reminders.sql" },
+  { table: "estimate_payments", column: "reminders_paused", migration: "0208_bill_reminders.sql" },
+  { table: "bill_reminders", column: "kind", migration: "0208_bill_reminders.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };
