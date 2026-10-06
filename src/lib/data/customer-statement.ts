@@ -44,6 +44,8 @@ export type StatementCredit = {
   amount_cents: number;
   reason: string | null;
   created_at: string;
+  /** Removed by hand (0213, DECISIONS #160): not on the statement. */
+  removed_at?: string | null;
 };
 
 export type StatementLine = {
@@ -169,11 +171,12 @@ export function buildStatement(
   }
 
   // Credits on the bills still on it (DECISIONS #154): the bill keeps
-  // its full amount, the credit comes off after it.
+  // its full amount, the credit comes off after it. One removed by hand
+  // (#160) is left out, as if it was never given.
   for (const c of credits) {
     const label = billLabel.get(c.estimate_payment_id);
     const row = rows.find((r) => r.id === c.estimate_payment_id);
-    if (!label || !row || c.amount_cents <= 0) continue;
+    if (!label || !row || c.amount_cents <= 0 || c.removed_at) continue;
     entries.push({
       at: c.created_at,
       order: 1,

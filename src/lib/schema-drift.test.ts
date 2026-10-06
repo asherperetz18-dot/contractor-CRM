@@ -158,6 +158,7 @@ test("the manifest covers the files production was found to have skipped", () =>
     "0209_bill_credits.sql",
     "0210_payment_refunds.sql",
     "0212_timesheet_approvals.sql",
+    "0213_remove_bill_credit.sql",
   ]) {
     assert.ok(files.has(f), f);
   }

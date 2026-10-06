@@ -1,7 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { creditableCents, phaseCheckoutCents, phaseOwedCents, phaseReceivableCents, phaseState } from "./types.ts";
+import {
+  creditableCents,
+  liveCredits,
+  phaseCheckoutCents,
+  phaseOwedCents,
+  phaseReceivableCents,
+  phaseState,
+  removableCredit,
+} from "./types.ts";
 import { buildInvoiceRows } from "./invoice-rows.ts";
 import { buildStatement } from "./customer-statement.ts";
 
@@ -139,4 +147,85 @@ test("a credit lowers the commission: the job sold for that much less (the owner
   // under them, so a credited job paid in full holds nothing back.
   assert.match(dispatch, /const sold = signed\.map\(\(e\) => \(\{ \.\.\.e, total_cents: e\.total_cents - \(creditByEstimate\.get\(e\.id\) \?\? 0\) \}\)\);/);
   assert.match(dispatch, /computeDispatcherCommissions\(\{\s*signed: sold,/);
+});
+
+// Removing a credit given by hand (DECISIONS #160): the bill owes it
+// again, and the credit stays on record -- who removed it, when, why.
+
+test("a removed credit counts for nothing; only a live credit given by hand can be removed", () => {
+  type Credit = { id: string; refund_payment_id: string | null; removed_at?: string | null };
+  const byHand: Credit = { id: "k1", refund_payment_id: null, removed_at: null };
+  const withRefund: Credit = { id: "k2", refund_payment_id: "r1", removed_at: null };
+  const removed: Credit = { id: "k3", refund_payment_id: null, removed_at: "2026-10-06T17:00:00Z" };
+  // Before 0213 a credit has no removed_at at all: it counts.
+  const before0213: Credit = { id: "k4", refund_payment_id: null };
+  assert.deepEqual(
+    liveCredits([byHand, withRefund, removed, before0213]).map((c) => c.id),
+    ["k1", "k2", "k4"]
+  );
+  assert.equal(removableCredit(byHand), true);
+  assert.equal(removableCredit(before0213), true);
+  // A refund's credit goes when the refund is removed, not on its own.
+  assert.equal(removableCredit(withRefund), false);
+  assert.equal(removableCredit(removed), false);
+});
+
+test("the statement leaves a removed credit out, as if it was never given", () => {
+  const s = buildStatement(
+    docs,
+    stages.map((st) => ({ ...st, credit_cents: 0 })),
+    [{ estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "succeeded", amount_cents: 600_000, method: "card", reference: null, paid_at: "2026-09-10T17:00:00Z", created_at: "2026-09-10T17:00:00Z" }],
+    { today: "2026-10-06", zone: "America/Los_Angeles" },
+    [{ estimate_payment_id: "s1", amount_cents: 100_000, reason: "Cabinet delay", created_at: "2026-09-20T17:00:00Z", removed_at: "2026-10-01T17:00:00Z" }]
+  );
+  assert.deepEqual(s.lines.map((l) => l.kind), ["charge", "payment"]);
+  assert.equal(s.balanceCents, 400_000);
+});
+
+test("removing a credit: in the database, bill first, kept on record, never a refund's credit", () => {
+  const sql = source("../../../supabase/migrations/0213_remove_bill_credit.sql");
+  assert.match(sql, /add column if not exists removed_at timestamptz/);
+  assert.match(sql, /add column if not exists removed_by uuid references public\.profiles \(id\) on delete set null/);
+  assert.match(sql, /add column if not exists remove_reason text/);
+  assert.match(sql, /check \(removed_at is null or coalesce\(trim\(remove_reason\), ''\) <> ''\)/);
+  assert.match(sql, /create or replace function public\.remove_bill_credit\(/);
+  // The bill is locked before the credit, the order giving a credit and
+  // removing a refund take them in, so two at once can't deadlock.
+  const fn = sql.slice(sql.indexOf("function public.remove_bill_credit("));
+  const billLock = fn.search(/from public\.estimate_payments[^;]*for update/);
+  const creditLock = fn.search(/from public\.bill_credits[^;]*for update/);
+  assert.ok(billLock > 0 && creditLock > billLock, "bill locked first, then the credit");
+  assert.match(fn, /if v_credit\.refund_payment_id is not null then/);
+  assert.match(fn, /if v_credit\.removed_at is not null then/);
+  assert.match(fn, /set credit_cents = greatest\(0, credit_cents - v_credit\.amount_cents\)/);
+  assert.match(fn, /set removed_at = now\(\),\s*removed_by = p_by,\s*remove_reason = trim\(p_reason\)/);
+  // Kept, never deleted.
+  assert.doesNotMatch(fn, /delete from public\.bill_credits/);
+  assert.match(sql, /revoke all on function public\.remove_bill_credit\([^)]*\) from public, anon, authenticated;/);
+  assert.match(sql, /grant execute on function public\.remove_bill_credit\([^)]*\) to service_role;/);
+  assert.match(sql, /as bill_credit_removal_ready;/);
+
+  const action = source("../actions/bill-credits.ts");
+  assert.match(action, /export async function removeBillCredit\(/);
+  assert.match(action, /\.rpc\("remove_bill_credit"/);
+  assert.match(action, /0213_remove_bill_credit\.sql/);
+  const removeFn = action.slice(action.indexOf("export async function removeBillCredit("));
+  assert.match(removeFn, /canManageBills\(profile\)/);
+});
+
+test("every read of credits counts the live ones, and works before 0213 has run", () => {
+  // Read whole ("*"), so a database without removed_at still reads;
+  // what's removed is dropped after.
+  for (const path of ["../../app/(app)/estimates/[id]/page.tsx", "../actions/dispatcher.ts", "./load-customer-statement.ts"]) {
+    assert.match(source(path), /\.from\("bill_credits"\)\s*\.select\("\*"\)/, path);
+  }
+  assert.match(source("../actions/dispatcher.ts"), /liveCredits\(creditRows \?\? \[\]\)/);
+  assert.match(source("./customer-statement.ts"), /c\.removed_at/);
+  // The office sees removed credits, struck through, and Remove on the ones it can.
+  const invoice = source("../../app/(app)/estimates/[id]/invoice-view.tsx");
+  assert.match(invoice, /removableCredit\(c\)/);
+  assert.match(invoice, /<RemoveCredit/);
+  const schedule = source("../../app/(app)/estimates/[id]/payment-schedule.tsx");
+  assert.match(schedule, /<StageCredits/);
+  assert.match(source("../../components/invoices/stage-credits.tsx"), /<RemoveCredit/);
 });

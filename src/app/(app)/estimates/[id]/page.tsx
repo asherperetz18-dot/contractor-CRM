@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
-import { paidTotalCents } from "@/lib/data/types";
+import { paidTotalCents, type BillCreditRow } from "@/lib/data/types";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import { approvalOnSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
@@ -108,14 +108,16 @@ export default async function EstimateDetailPage({
   const remindersSent = sentReminders ?? [];
 
   // Credits given on this document's bills (0209, DECISIONS #154): their
-  // own read, so a database without 0209 just shows none.
+  // own read, so a database without 0209 just shows none. Read whole, so
+  // the removal columns (0213, #160) are there once it has run -- removed
+  // credits included, for the office to see.
   const { data: creditRows } = await supabase
     .from("bill_credits")
-    .select("id, estimate_payment_id, amount_cents, reason, created_at")
+    .select("*")
     .eq("company_id", profile.company_id)
     .eq("estimate_id", estimate.id)
     .order("created_at")
-    .returns<{ id: string; estimate_payment_id: string; amount_cents: number; reason: string; created_at: string }[]>();
+    .returns<BillCreditRow[]>();
   const credits = creditRows ?? [];
 
   // An invoice (a permit fee billed back) has nothing to build or send
@@ -310,6 +312,7 @@ export default async function EstimateDetailPage({
         payments={(payments ?? []) as EstimatePayment[]}
         paid={(paidRows ?? []) as PortalPayment[]}
         changeOrderBilling={changeOrderBilling}
+        credits={credits}
         lead={lead ?? null}
         rep={{
           name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,

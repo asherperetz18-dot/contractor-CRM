@@ -15,6 +15,7 @@ import {
   depositPayment,
   pendingPayment,
   paymentMethodLabel,
+  type BillCreditRow,
   type EstimatePayment,
   type PortalPayment,
 } from "@/lib/data/types";
@@ -26,6 +27,7 @@ import {
 import { PhaseBilling } from "./phase-billing";
 import { RecordPayment } from "./record-payment";
 import { GiveCredit } from "@/components/invoices/give-credit";
+import { StageCredits } from "@/components/invoices/stage-credits";
 import { depositRuleSentence } from "@/lib/deposit-rule";
 
 type Row = {
@@ -56,6 +58,8 @@ function toRow(p: EstimatePayment): Row {
   };
 }
 
+const NO_CREDITS: BillCreditRow[] = [];
+
 // memo: the estimate builder re-renders on every keystroke; this panel's
 // props are stable then, so it sits those renders out.
 export const PaymentSchedule = memo(function PaymentSchedule({
@@ -68,6 +72,8 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   changeOrderBilling = [],
   locked,
   onChanged,
+  credits = NO_CREDITS,
+  canRemoveCredits = false,
 }: {
   estimateId: string;
   totalCents: number;
@@ -79,6 +85,10 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   changeOrderBilling?: ChangeOrderBilling[];
   locked: boolean;
   onChanged: () => void;
+  /** Credits on its stages (0209, DECISIONS #154), removed ones (#160) included. */
+  credits?: BillCreditRow[];
+  /** Bookkeeping, Office or Admin: may remove a credit given by hand. */
+  canRemoveCredits?: boolean;
 }) {
   const [rows, setRows] = useState<Row[]>(payments.map(toRow));
   /**
@@ -471,6 +481,12 @@ export const PaymentSchedule = memo(function PaymentSchedule({
                             )}
                           />
                         )}
+                        {/* Each credit on it, and Remove on one given by
+                            hand (DECISIONS #160). */}
+                        <StageCredits
+                          credits={credits.filter((c) => c.estimate_payment_id === payments[i].id)}
+                          canRemove={canRemoveCredits}
+                        />
                         {!rollup &&
                           !paid.some(
                             (p) =>

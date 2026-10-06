@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
@@ -11,6 +11,8 @@ import {
   paymentMethodLabel,
   phaseState,
   phaseStateLabel,
+  removableCredit,
+  type BillCreditRow,
   type Estimate,
   type EstimateItem,
   type EstimatePayment,
@@ -25,6 +27,7 @@ import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/i
 import { sentViaLabel, type BillChannel } from "@/lib/bill-email";
 import { RemindersSent, RemindersToggle } from "@/components/invoices/reminders-toggle";
 import { GiveCredit } from "@/components/invoices/give-credit";
+import { RemoveCreditButton, RemoveCreditForm } from "@/components/invoices/remove-credit";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -80,8 +83,9 @@ export function InvoiceView({
   costs: Record<string, InvoiceLineCost>;
   canBill: boolean;
   canRecord: boolean;
-  /** Credits given on it (0209, DECISIONS #154), oldest first. */
-  credits?: { id: string; amount_cents: number; reason: string; created_at: string }[];
+  /** Credits given on it (0209, DECISIONS #154), oldest first; removed
+   *  ones (#160) included, for the record. */
+  credits?: BillCreditRow[];
 }) {
   const router = useRouter();
   // What happened when it was sent from a draft, handed over by the
@@ -92,6 +96,8 @@ export function InvoiceView({
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [pending, startTransition] = useTransition();
+  // Which credit's Remove is open (DECISIONS #160).
+  const [removingCredit, setRemovingCredit] = useState<string | null>(null);
   const [channel, setChannel] = useState<BillChannel>(() => defaultBillChannel(customer));
   // When it last went to the customer, and how (0206, DECISIONS #150).
   const lastSent = phase as (EstimatePayment & { sent_at?: string | null; sent_via?: string | null }) | null;
@@ -336,15 +342,50 @@ export function InvoiceView({
                   <th>Date</th>
                   <th>Why</th>
                   <th className="right">Amount</th>
+                  {canRecord && <th />}
                 </tr>
               </thead>
               <tbody>
                 {credits.map((c) => (
-                  <tr key={c.id}>
-                    <td>{fmtDay(c.created_at)}</td>
-                    <td>{c.reason}</td>
-                    <td className="right mono">-{moneyCents(c.amount_cents)}</td>
-                  </tr>
+                  <Fragment key={c.id}>
+                    <tr className={c.removed_at ? "credit-removed" : undefined}>
+                      <td>{fmtDay(c.created_at)}</td>
+                      <td>
+                        {c.reason}
+                        {c.refund_payment_id && !c.removed_at && <div className="empty-hint">Came with a refund</div>}
+                        {/* Kept on record once removed (DECISIONS #160). */}
+                        {c.removed_at && (
+                          <div className="empty-hint">
+                            Removed {fmtDay(c.removed_at)}
+                            {c.remove_reason ? `: ${c.remove_reason}` : ""}
+                          </div>
+                        )}
+                      </td>
+                      <td className="right mono">
+                        {c.removed_at ? <s>-{moneyCents(c.amount_cents)}</s> : `-${moneyCents(c.amount_cents)}`}
+                      </td>
+                      {canRecord && (
+                        <td className="right">
+                          {removableCredit(c) && removingCredit !== c.id && (
+                            <RemoveCreditButton onClick={() => setRemovingCredit(c.id)} />
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                    {/* The question on a row of its own, the table's width,
+                        so a phone keeps the date and reason in view. */}
+                    {removingCredit === c.id && (
+                      <tr>
+                        <td colSpan={4}>
+                          <RemoveCreditForm
+                            creditId={c.id}
+                            amountCents={c.amount_cents}
+                            onClose={() => setRemovingCredit(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

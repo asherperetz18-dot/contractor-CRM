@@ -13608,3 +13608,41 @@ textarea.est-item-desc:disabled {
     align-items: flex-start;
   }
 }
+
+/* Removing a credit given by hand (DECISIONS #160): the form opens in
+   table cells that don't wrap, so it keeps to the screen and wraps its
+   own sentences, as the refund form does. */
+.remove-credit {
+  position: sticky;
+  left: 0;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  white-space: normal;
+  text-align: left;
+}
+.credit-removed td {
+  color: var(--ink-soft);
+}
+.stage-credits {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 12px;
+  white-space: normal;
+}
+.stage-credit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 2px 0;
+}
+.stage-credit.is-removed {
+  color: var(--ink-soft);
+}
+.stage-credit-note {
+  color: var(--ink-soft);
+}
+.stage-credit.is-removed .stage-credit-amount {
+  text-decoration: line-through;
+}

@@ -2931,6 +2931,35 @@ export function creditableCents(
   return phaseCheckoutCents(phase, payments);
 }
 
+/**
+ * A credit on a bill as the office sees it (bill_credits, 0209). Read
+ * whole, so the columns 0213 adds are there once it has run.
+ */
+export type BillCreditRow = {
+  id: string;
+  estimate_payment_id: string;
+  amount_cents: number;
+  reason: string;
+  created_at: string;
+  /** The refund it came with (0210), if any. */
+  refund_payment_id?: string | null;
+  /** Removed by hand (0213, DECISIONS #160). */
+  removed_at?: string | null;
+  remove_reason?: string | null;
+};
+
+/** The credits that count: one removed by hand (DECISIONS #160) stays on
+ *  record and counts for nothing. */
+export function liveCredits<T extends { removed_at?: string | null }>(credits: T[]): T[] {
+  return credits.filter((c) => !c.removed_at);
+}
+
+/** Only a live credit given by hand can be removed: one that came with a
+ *  refund goes when the refund is removed. */
+export function removableCredit(c: { refund_payment_id?: string | null; removed_at?: string | null }): boolean {
+  return !c.removed_at && !c.refund_payment_id;
+}
+
 /** Stripe refuses a card or bank charge under 50 cents. */
 export const MIN_ONLINE_CHARGE_CENTS = 50;
 
