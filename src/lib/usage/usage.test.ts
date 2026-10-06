@@ -55,7 +55,9 @@ test("company emails are counted; platform mail (setup links, password resets) i
 
 test("every AI answer is counted at the one AI door", () => {
   const door = source("../ai/company-ai.ts");
-  assert.match(door, /return \{ client: metered\(new Anthropic\(\{ apiKey \}\), companyId\) \}/);
-  assert.match(door, /client\.messages\.create = /);
-  assert.match(door, /client\.messages\.stream = /);
+  assert.match(
+    door,
+    /return \{ client: metered\(new Anthropic\(\{ apiKey \}\), \(usage\) => recordUsage\(companyId, aiUsageDeltas\(usage\)\)\) \}/
+  );
+  // How metered() counts both ways of asking: ../ai/metered.test.ts.
 });

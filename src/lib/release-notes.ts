@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.232.1",
+    date: "2026-10-06",
+    notes: [
+      "The AI Assistant (✨ in the top bar) answers again. Since yesterday's update every question got \"The AI is temporarily unavailable\" — fixed.",
+    ],
+  },
+  {
     version: "1.232.0",
     date: "2026-10-06",
     notes: [
