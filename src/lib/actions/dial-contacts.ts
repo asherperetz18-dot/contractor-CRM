@@ -127,7 +127,7 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
     return out;
   }
 
-  // The By Lead tab with neither a call-status nor a disposition pick
+  // The By Stage tab with neither a call-status nor a disposition pick
   // maps straight onto one paged query.
   if (
     input.tab === "lead" &&
@@ -148,7 +148,7 @@ export async function listDialContacts(input: DialContactQuery): Promise<DialCon
   // id list to include, or to exclude from everyone the filters accept.
   let plan;
   if (input.tab === "lead") {
-    // Call status + disposition on By Lead, judged over the calls we
+    // Call status + disposition on By Stage, judged over the calls we
     // actually made (outbound only -- a customer calling us is not us
     // having called them).
     const dialed = await selectAll<{ lead_id: string | null; disposition: string }>((f, t) =>

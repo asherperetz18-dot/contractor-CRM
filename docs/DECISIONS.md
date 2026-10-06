@@ -1915,3 +1915,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Where it shows:** the Payments page (Refund / Deposit refund, a minus amount, no receipt), the invoice page ("Refunded"), the customer's statement ("Refund — …", which raises the balance; a credit with it brings it back down), the job's money list and project report ("Refund"), the commission statement. Never a "payment received" receipt, alert or bell for one. The "already paid" checks (the portal's deposit and Pay buttons, marking a stage billed) count the money kept, not "a paid row exists".
 
 **Consequence:** money going back is on the record, with why, and every money screen nets it. **Database step: 0210, after 0209.** Until it runs, Refund says to run it and nothing else changes.
+
+## 156 — Contacts and leads: a contact is a lead only when it came from a real lead source
+
+**Date:** 2026-10-06
+
+**Context:** Most of the Pipeline is phone numbers the company buys (cold-call lists, imported by spreadsheet, ~79k rows). Real leads come from Meta, Google (CallRail), the website, the lead email inbox, referrals. The CRM called every row a lead and counted every row as one, so a list import read as thousands of new leads. The owner: everyone on the Pipeline is a contact, and only real lead sources make leads; and New Contact belongs on Quick Create.
+
+**Decision:**
+- **The rule is the source.** A contact counts as a lead unless its source is ticked **Bought list** in Settings › Lead Sources (`lead_sources.bought_list`, 0165, until now read only by Marketing Analytics) or it has no source at all. A source nobody ticked still counts, including names that aren't on the Settings list: CallRail files calls under its own source text ("Google Ads"), and treating unlisted names as contacts would drop real calls from the numbers. No per-row "kind" column: the tick is the one switch, so un-ticking a source moves its whole history back. Pure helpers in `src/lib/lead-or-contact.ts`.
+- **Quick Create offers both.** New Contact opens the Pipeline's window as before (`/pipeline?new=1`, no source needed). New Lead (`/pipeline?new=lead`, `quickCreateContactKind`) opens it titled New Lead with Source required and only sources not ticked as bought lists offered (`realLeadSources`, `contactFormComplete`), so a lead typed in by hand can't be saved sourceless and silently count as a contact.
+- **Words.** "Lead" became "contact" wherever it meant a person on the Pipeline: the sidebar ("Pipeline", not "Leads Pipeline"), the phone tab, + New Contact, the import window, the appointment window's Contact tab, the booking step, the new-estimate picker, the Contacts tile "Open in Pipeline", Salespeople's "Assigned Contacts", the dial queue's By Lead tab (now By Stage, since it filters by stage), the tutorials. It stayed "lead" where it is about real leads: lead sources, lead cost, lead refunds, Facebook Lead Ads, lead email intake, the "New leads" numbers, the bell's Leads tab. The standard stage "New Lead" is the company's own stage name and is left alone (renameable in Settings › Pipeline Stages).
+
+**Consequence:** the screens say what the rows are. The lead numbers following the same rule (dashboard, dispatch, daily brief, rep report, bell) ship in the next update with its SQL; until then they count every contact, as before.

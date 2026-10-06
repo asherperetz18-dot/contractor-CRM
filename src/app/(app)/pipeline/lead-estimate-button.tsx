@@ -65,7 +65,7 @@ export function LeadEstimateButton({
     return (
       <span
         className="chip lead-est-none"
-        title="Either nothing has been drawn up for this contact, or it belongs to someone else's leads"
+        title="Either nothing has been drawn up for this contact, or it belongs to someone else's contacts"
       >
         No estimate
       </span>

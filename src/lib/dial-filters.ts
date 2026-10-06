@@ -46,7 +46,7 @@ export type DialContactQuery = {
   callAttempts: CallAttemptsFilter;
   dispositionFilter: string;
   addressTypeFilter: string;
-  // By Lead
+  // By Stage (the tab once called By Lead)
   statusFilter: "All" | "Open" | "Won" | "Lost";
   stageFilter: string;
   repFilter: string;
@@ -132,7 +132,7 @@ export function contactQueryPlan(
 }
 
 /**
- * The By Lead tab's call-status + disposition combination as one query
+ * The By Stage tab's call-status + disposition combination as one query
  * plan, by the same reasoning as contactQueryPlan: when never-called
  * leads qualify (they have 0 attempts and no disposition), the answer
  * is everyone except the dialed leads that fail the combination;

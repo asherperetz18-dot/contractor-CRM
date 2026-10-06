@@ -471,10 +471,10 @@ export function ContactsTable({
           type="button"
           className={"stat-card" + (showingOpen ? " stat-card-active" : "")}
           onClick={() => setFilters((f) => ({ ...f, stages: openStageSelection(stageNames, f.stages, closedNames) }))}
-          title="Show only contacts with an open lead"
+          title="Show only contacts in an open pipeline stage"
         >
           <div className="stat-value mono">{stats.withOpenLeads.toLocaleString()}</div>
-          <div className="stat-label">With Open Leads</div>
+          <div className="stat-label">Open in Pipeline</div>
         </button>
         <button
           type="button"

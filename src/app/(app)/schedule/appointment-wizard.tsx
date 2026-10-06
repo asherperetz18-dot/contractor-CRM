@@ -208,7 +208,7 @@ export function AppointmentWizard({
   return (
     <Modal title="New Appointment" onClose={onCancel} wide>
       <p className="wizard-sub">
-        Schedule an appointment — pick a contact, confirm the lead, set the time.
+        Schedule an appointment — pick a contact, confirm the details, set the time.
       </p>
 
       <div className={"wizard-step" + (step === 1 ? " wizard-step-active" : "")}>
@@ -260,7 +260,7 @@ export function AppointmentWizard({
             <span className={"step-num" + (step > 2 ? " step-done" : "")}>
               {step > 2 ? "✓" : "2"}
             </span>
-            <span className="step-label">Lead</span>
+            <span className="step-label">Contact</span>
             <span className="step-hint">Confirm the deal details</span>
           </div>
           {step === 2 && (

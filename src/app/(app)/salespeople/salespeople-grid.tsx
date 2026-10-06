@@ -66,7 +66,7 @@ export function SalespeopleGrid({
               <th></th>
               <th>Rep</th>
               <th>Roles</th>
-              <th className="right">Assigned Leads</th>
+              <th className="right">Assigned Contacts</th>
               <th className="right">Open</th>
               <th className="right">Won</th>
               <th className="right">Won Value</th>

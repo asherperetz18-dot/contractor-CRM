@@ -88,7 +88,7 @@ test("a named disposition can only ever match called leads, so the plan includes
   assert.deepEqual(contactQueryPlan(stats, "Never", "Booked"), { mode: "include", ids: [] });
 });
 
-test("the By Lead call-status + disposition filters reduce to one plan", () => {
+test("the By Stage tab's call-status + disposition filters reduce to one plan", () => {
   const stats = buildCallStats([
     { lead_id: A, disposition: "Booked" },
     { lead_id: B, disposition: NO_DISPOSITION },

@@ -191,7 +191,7 @@ export function AttentionDigest({
       <DigestSection
         title="Follow-ups Due"
         count={followUpsDueCount}
-        hint={"Leads with a task overdue or due today" + scope}
+        hint={"Contacts with a task overdue or due today" + scope}
         leads={followUpsDue}
         warnings={warnings}
         repName={repName}
@@ -203,7 +203,7 @@ export function AttentionDigest({
         moreLink={<Link href="/tasks">See every open task, company-wide →</Link>}
       />
       <DigestSection
-        title="Cold Leads"
+        title="Cold Contacts"
         count={coldLeadsCount}
         hint={"No appointments on record · stale notes or expired tasks" + scope}
         attention
