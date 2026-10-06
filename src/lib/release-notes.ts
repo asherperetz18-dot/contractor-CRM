@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.231.0",
+    date: "2026-10-06",
+    notes: [
+      "Customer financing: if you offer financing through a lender (Wisetack, Hearth, GreenSky or another), paste its application link under Settings › Customer Financing. Your customers then see Apply for financing on their estimates and contracts, until the job is paid for.",
+    ],
+  },
+  {
     version: "1.230.0",
     date: "2026-10-06",
     notes: [

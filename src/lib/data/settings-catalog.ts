@@ -299,6 +299,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         href: "/settings/portal-payments",
       },
       {
+        title: "Customer Financing",
+        desc: "Your lender's application link, so customers can apply for financing from their estimates",
+        icon: "🏷️",
+        href: "/settings/customer-financing",
+      },
+      {
         title: "Payment Reminders",
         desc: "Remind customers automatically before and after a bill is due, by email or text",
         icon: "⏰",

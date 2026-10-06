@@ -1988,3 +1988,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Everything that adds up credits follows.** Owed, Paid, reminders, the portal, P&L and commissions use the bill's credited total, which the removal lowers. The reads that list credits (the invoice and contract pages, the customer's statement, the dispatcher commission) read them whole (`"*"`), so they work before 0213 has run, and drop the removed ones. The statement leaves a removed credit out, as if it was never given.
 
 **Consequence:** a wrong credit is undone in the app, with a record of who undid it and why. **Database step: 0213**, any time; until it runs, Remove says to run it and everything else is as before.
+
+## 161 — Customer financing, step 1: the company's own lender link, offered on estimates
+
+**Date:** 2026-10-06
+
+**Context:** "Financing integration" was on the roadmap. Customers often want to pay over time, and the CRM had a Pending Finance stage but nothing for the customer to apply with. A built-in connection to a lender (creating the application, getting approved or funded back) needs AI Build Pros to be accepted as a software partner by that lender, which only the owner can apply for. Meanwhile, lenders such as Wisetack and Hearth already give the contractors they work with a link where customers apply.
+
+**Decision:**
+- **Each company adds its own lender and link** under Settings › Customer Financing (Office, Admin): the lender's name as customers will read it, and the application link (`company_profile.financing_provider` / `financing_url`, 0214). The link must be a public https address, with no sign-in in it. The app checks it, and the database refuses anything but https whatever writes it. Clearing both, or **Turn off**, stops the offer.
+- **Customers see it where they decide:** a "Want to pay over time?" card with **Apply for financing** on their estimate, contract and change-order pages in the portal. It opens the lender's page in a new tab. It shows until the document is declined, cancelled or expired, or signed and paid for (no deposit or stage left to pay). Never on invoices or completion certificates, and it isn't printed with the document.
+- **No rate, no monthly payment, no credit-score promise.** Those are the lender's to state, with its own disclosures, and they differ by customer. The card only says the company offers financing through the lender, and that the lender decides and sets the terms.
+- **Read on its own.** The portal reads the two columns separately, so a database without 0214 shows no offer instead of failing the page.
+
+**Consequence:** any company that already has a lender can offer financing today, with any lender. Nothing comes back from the lender yet (TECH_DEBT). Next: the office records financing status on an estimate. Later, with a partnership, a direct connection. **Database step: 0214**, any time; until it runs, the settings page says to run it and customers see nothing new.

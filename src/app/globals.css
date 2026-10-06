@@ -13646,3 +13646,9 @@ textarea.est-item-desc:disabled {
 .stage-credit.is-removed .stage-credit-amount {
   text-decoration: line-through;
 }
+
+/* Apply for financing (DECISIONS #161): its own card, with room before
+   the sign card under it. */
+.financing-offer {
+  margin-bottom: 16px;
+}
