@@ -2830,6 +2830,35 @@ export function phaseOwedCents(
   return Math.max(0, (phase.amount_cents || 0) - paidTotalCents(payments));
 }
 
+/** Stripe refuses a card or bank charge under 50 cents. */
+export const MIN_ONLINE_CHARGE_CENTS = 50;
+
+/**
+ * What the portal's Pay button may charge on one billed phase now: its
+ * amount less the money settled on it AND the money already on its way
+ * (a completed ACH checkout, a cheque recorded as pending) -- charging
+ * the full remainder while a transfer clears would collect twice. A
+ * checkout the customer opened and left is not money, so it reduces
+ * nothing. Zero on an unbilled or covered phase.
+ */
+export function phaseCheckoutCents(
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at">,
+  payments: Pick<PortalPayment, "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id">[]
+): number {
+  if (!phase.requested_at) return 0;
+  const inFlight = payments
+    .filter((p) => p.status === "pending" && !isUnfinishedCheckout(p))
+    .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
+  return Math.max(0, (phase.amount_cents || 0) - paidTotalCents(payments) - inFlight);
+}
+
+/** The customer's Pay button on a phase: the amount it charges, or null for none. */
+export function portalPayCents(state: PhaseState, payableCents: number, invoicedSeparately: boolean): number | null {
+  if (invoicedSeparately || state === "paid" || state === "clearing" || state === "unbilled") return null;
+  // A few cents left over are the contractor's to settle, not Stripe's.
+  return payableCents >= MIN_ONLINE_CHARGE_CENTS ? payableCents : null;
+}
+
 export function phaseStateLabel(state: PhaseState): string {
   if (state === "paid") return "Paid";
   if (state === "clearing") return "Clearing";
