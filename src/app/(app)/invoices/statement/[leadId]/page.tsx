@@ -9,19 +9,28 @@ import { canManageBills } from "@/lib/data/types";
 import { companyToday, getCompanyZone } from "@/lib/data/company-today";
 import { clientName } from "@/lib/data/client-name";
 import { loadCustomerStatement } from "@/lib/data/load-customer-statement";
+import { periodWords, statementPeriod } from "@/lib/data/customer-statement";
 import { PrintButton } from "@/components/print-button";
 import { EmailStatementButton } from "./email-statement-button";
 import { StatementDocument, type StatementCompany } from "./statement-document";
+import { StatementPeriodFilter } from "./statement-period";
 
 export const dynamic = "force-dynamic";
 
 /**
  * One customer's statement (DECISIONS #153): every bill and payment, the
  * balance after each, and what is owed now -- printable, and sent by
- * email. Company money, so the same door as Invoices.
+ * email. Company money, so the same door as Invoices. `?from=&to=` covers
+ * a period, opening on the balance before it (#159).
  */
-export default async function CustomerStatementPage({ params }: { params: Promise<{ leadId: string }> }) {
-  const { leadId } = await params;
+export default async function CustomerStatementPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ leadId: string }>;
+  searchParams: Promise<{ from?: string | string[]; to?: string | string[] }>;
+}) {
+  const [{ leadId }, asked] = await Promise.all([params, searchParams]);
   const profile = await getCurrentProfile();
   if (!profile) return null;
 
@@ -65,7 +74,8 @@ export default async function CustomerStatementPage({ params }: { params: Promis
   ]);
   if (!lead) notFound();
 
-  const statement = await loadCustomerStatement(supabase, profile.company_id, lead.id, { today, zone });
+  const period = statementPeriod(asked, today);
+  const statement = await loadCustomerStatement(supabase, profile.company_id, lead.id, { today, zone, ...period });
   const customer = clientName(lead) || "Customer";
 
   return (
@@ -83,9 +93,18 @@ export default async function CustomerStatementPage({ params }: { params: Promis
             Back to invoices
           </Link>
           <PrintButton label="Print / Save as PDF" title={`Statement - ${customer}`} />
-          {canManageBills(profile) && <EmailStatementButton leadId={lead.id} hasEmail={!!(lead.email || lead.second_contact_email)} />}
+          {canManageBills(profile) && (
+            <EmailStatementButton
+              leadId={lead.id}
+              hasEmail={!!(lead.email || lead.second_contact_email)}
+              period={period}
+              periodLabel={period.from || period.to ? periodWords(period, today) : null}
+            />
+          )}
         </div>
       </div>
+
+      <StatementPeriodFilter from={period.from} to={period.to} today={today} />
 
       <StatementDocument
         company={company ?? null}

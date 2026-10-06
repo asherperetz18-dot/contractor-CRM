@@ -10,6 +10,7 @@ import {
   type StatementCredit,
   type StatementDoc,
   type StatementPayment,
+  type StatementPeriod,
 } from "./customer-statement";
 
 /**
@@ -36,7 +37,7 @@ export async function loadCustomerStatement(
   supabase: Db,
   companyId: string,
   leadId: string,
-  opts: { today: string; zone: string }
+  opts: { today: string; zone: string } & Partial<StatementPeriod>
 ): Promise<CustomerStatement> {
   const docs = await selectAll<StatementDoc>((f, t) =>
     supabase
