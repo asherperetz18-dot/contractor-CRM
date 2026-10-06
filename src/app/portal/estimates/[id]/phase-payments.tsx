@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { moneyCents } from "@/lib/data/types";
+import { moneyCents, portalPayCents } from "@/lib/data/types";
 import { startPhaseCheckout, type PortalPhase } from "@/lib/actions/portal-payments";
 
 function dueLabel(due: string | null) {
@@ -64,12 +64,11 @@ export function PhasePayments({
       <div className="pp-phases">
         {phases.map((p) => {
           const due = dueLabel(p.dueDate);
-          // Money landed but short of the amount. The online checkout
-          // only knows how to take the full phase amount, so the
-          // remainder is collected by the contractor -- what must NOT
-          // happen is a Pay button that would charge the face value on
-          // top of what was already paid.
+          // Money landed but short of the amount.
           const partlyPaid = p.owedCents > 0 && p.owedCents < p.amountCents;
+          // The button charges what is left, never the face amount on top
+          // of what was already paid; none when there is nothing to take.
+          const payCents = portalPayCents(p.state, p.payableCents, !!invoicedSeparately);
           return (
             <div key={p.id} className={"pp-phase pp-phase-" + p.state}>
               <div className="pp-phase-main">
@@ -101,19 +100,19 @@ export function PhasePayments({
                   <span className="est-badge est-badge-signed">Paid</span>
                 ) : p.state === "clearing" ? (
                   <span className="est-badge est-badge-sent">Clearing</span>
-                ) : partlyPaid ? (
-                  <span className="est-badge est-badge-sent">Partially paid</span>
-                ) : invoicedSeparately ? (
-                  <span className="est-badge est-badge-sent">Invoiced separately</span>
-                ) : (
+                ) : payCents !== null ? (
                   <button
                     className="btn-primary"
                     onClick={() => pay(p.id)}
                     disabled={pending && busy === p.id}
                   >
-                    {pending && busy === p.id ? "Opening…" : `Pay ${moneyCents(p.amountCents)}`}
+                    {pending && busy === p.id ? "Opening…" : `Pay ${moneyCents(payCents)}`}
                   </button>
-                )}
+                ) : partlyPaid ? (
+                  <span className="est-badge est-badge-sent">Partially paid</span>
+                ) : invoicedSeparately ? (
+                  <span className="est-badge est-badge-sent">Invoiced separately</span>
+                ) : null}
               </div>
             </div>
           );

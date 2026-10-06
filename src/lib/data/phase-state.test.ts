@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isUnfinishedCheckout, phaseOwedCents, phaseReceivableCents, phaseState } from "./types.ts";
+import { readFileSync } from "node:fs";
+import {
+  MIN_ONLINE_CHARGE_CENTS,
+  isUnfinishedCheckout,
+  phaseCheckoutCents,
+  phaseOwedCents,
+  phaseReceivableCents,
+  phaseState,
+  portalPayCents,
+} from "./types.ts";
 
 /**
  * phaseState used to call a phase "paid" the moment ANY settled payment
@@ -144,4 +153,73 @@ test("a hand-recorded pending payment (a cheque) is not a checkout at all", () =
 test("settled or cancelled rows are never unfinished checkouts", () => {
   assert.equal(isUnfinishedCheckout({ status: "succeeded", stripe_session_id: "cs_1" }), false);
   assert.equal(isUnfinishedCheckout({ status: "cancelled", stripe_session_id: "cs_1" }), false);
+});
+
+// ---- paying the rest online ----------------------------------------------
+//
+// The portal's Pay button used to charge a phase's full amount, so once
+// any money was filed to it (a cheque for part, say) the button was
+// hidden and the rest was chased by hand. It now charges what is left.
+
+const row = (
+  amount: number,
+  status: "succeeded" | "pending" | "failed" | "cancelled",
+  over: { stripe_session_id?: string | null; stripe_payment_intent_id?: string | null } = {}
+) => ({ amount_cents: amount, status, stripe_session_id: null, stripe_payment_intent_id: null, ...over });
+
+test("a billed phase with nothing paid is charged in full", () => {
+  assert.equal(phaseCheckoutCents(phase(), []), 1_000_000);
+});
+
+test("a partly paid phase is charged only the rest", () => {
+  // $4,000 cheque on a $10,000 phase: the button charges $6,000.
+  assert.equal(phaseCheckoutCents(phase(), [row(400_000, "succeeded")]), 600_000);
+});
+
+test("money already on its way is not charged again", () => {
+  // An ACH checkout that completed and a cheque recorded as pending are
+  // both real money in flight: charging the full rest would collect twice.
+  const ach = row(300_000, "pending", { stripe_session_id: "cs_1", stripe_payment_intent_id: "pi_1" });
+  const cheque = row(200_000, "pending");
+  assert.equal(phaseCheckoutCents(phase(), [row(100_000, "succeeded"), ach, cheque]), 400_000);
+});
+
+test("a checkout opened and abandoned is not money and reduces nothing", () => {
+  const abandoned = row(1_000_000, "pending", { stripe_session_id: "cs_1" });
+  assert.equal(phaseCheckoutCents(phase(), [abandoned]), 1_000_000);
+});
+
+test("failed and cancelled payments reduce nothing", () => {
+  assert.equal(phaseCheckoutCents(phase(), [row(400_000, "failed"), row(400_000, "cancelled")]), 1_000_000);
+});
+
+test("nothing is charged on an unbilled or a covered phase", () => {
+  assert.equal(phaseCheckoutCents(phase({ requested_at: null }), []), 0);
+  assert.equal(phaseCheckoutCents(phase(), [row(1_000_000, "succeeded")]), 0);
+  assert.equal(phaseCheckoutCents(phase(), [row(1_200_000, "succeeded")]), 0);
+});
+
+test("the customer's Pay button: the rest, or none", () => {
+  assert.equal(portalPayCents("partial", 225_000, false), 225_000);
+  assert.equal(portalPayCents("overdue", 225_000, false), 225_000);
+  assert.equal(portalPayCents("billed", 1_000_000, false), 1_000_000);
+  // Settled, clearing, or billed outside the CRM: no button.
+  assert.equal(portalPayCents("paid", 0, false), null);
+  assert.equal(portalPayCents("clearing", 0, false), null);
+  assert.equal(portalPayCents("partial", 225_000, true), null);
+  // Stripe won't take a charge under 50 cents; the contractor settles it.
+  assert.equal(MIN_ONLINE_CHARGE_CENTS, 50);
+  assert.equal(portalPayCents("partial", 49, false), null);
+  assert.equal(portalPayCents("partial", 50, false), 50);
+});
+
+test("the checkout charges, records and reuses the same remaining amount", () => {
+  // Stripe's session amount and the pending row the webhook settles must
+  // agree, or a part-paid phase is overcharged or recorded short.
+  const source = readFileSync(new URL("../actions/portal-payments.ts", import.meta.url), "utf8");
+  const checkout = source.slice(source.indexOf("export async function startPhaseCheckout"), source.indexOf("export async function startDepositCheckout"));
+  assert.match(checkout, /phaseCheckoutCents\(/);
+  assert.doesNotMatch(checkout, /unit_amount: phase\.amount_cents/);
+  assert.doesNotMatch(checkout, /amount_cents: phase\.amount_cents/);
+  assert.doesNotMatch(checkout, /leftoverCheckoutAction\(prior, phase\.amount_cents\)/);
 });
