@@ -147,7 +147,7 @@ export function ScheduleList({
     const cmp = (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""));
     // History reads newest-first -- "what happened lately", not a
     // scroll to July. The page loads it in that order, a page at a time.
-    return newestFirst(range) ? -cmp : cmp;
+    return newestFirst(range, customFrom || null) ? -cmp : cmp;
   });
 
   function repName(id: string | null) {
@@ -301,7 +301,7 @@ export function ScheduleList({
               disabled={loading}
               onClick={() => setLimit((n) => Math.min(n + SCHEDULE_PAGE, SCHEDULE_MAX))}
             >
-              {loading ? "Loading…" : newestFirst(range) ? "Show more (older)" : "Show more (later)"}
+              {loading ? "Loading…" : newestFirst(range, customFrom || null) ? "Show more (older)" : "Show more (later)"}
             </button>
           ) : (
             <p className="empty-hint">
