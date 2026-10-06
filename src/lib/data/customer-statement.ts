@@ -22,6 +22,10 @@ import { receiptMethodLabel } from "../receipt-email.ts";
  * (a bank transfer clearing, a check not yet banked) is listed apart and
  * left out of the balance until it lands; a checkout opened and left is
  * no payment at all.
+ *
+ * It can cover a period (DECISIONS #159): what came before its first day
+ * is one opening balance, what came after its last day isn't on it, and
+ * it ends on that day's balance. What's owed today is kept apart.
  */
 
 export type StatementDoc = InvoiceDocLite & { deposit_cents: number | null };
@@ -61,17 +65,49 @@ export type StatementLine = {
   balanceCents: number;
 };
 
+/** Company YYYY-MM-DD days, both counted. No from is since the start;
+ *  no to is up to today. */
+export type StatementPeriod = { from: string | null; to: string | null };
+
 export type CustomerStatement = {
+  period: StatementPeriod;
+  /** Owed before the period's first day; null when it starts at the start. */
+  openingCents: number | null;
+  /** The period's lines. */
   lines: StatementLine[];
+  /** Billed and paid in the period. */
   billedCents: number;
   paidCents: number;
-  /** Owed now; below zero is a credit. */
+  /** Owed at the end of the period; below zero is a credit. */
   balanceCents: number;
-  /** The part of it past its due date. */
+  /** Owed today, whatever the period. */
+  todayCents: number;
+  /** The part owed today that is past its due date. */
   overdueCents: number;
-  /** Payments on their way, not in the balance. */
+  /** Payments on their way today, not in any balance. */
   clearing: { cents: number; count: number };
 };
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+function isDay(v: unknown): v is string {
+  if (typeof v !== "string" || !DAY.test(v)) return false;
+  // Feb 30 rolls over to Mar 2; Sep 45 is no day at all.
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+/**
+ * The period someone asked for, from a page address or a button: days
+ * that aren't real are dropped, today or later means up to today, and
+ * one given backwards is turned round.
+ */
+export function statementPeriod(asked: { from?: unknown; to?: unknown }, today: string): StatementPeriod {
+  let from = isDay(asked.from) ? asked.from : null;
+  let to = isDay(asked.to) && asked.to < today ? asked.to : null;
+  if (from && from > today) from = today;
+  if (from && to && from > to) [from, to] = [to, from];
+  return { from, to };
+}
 
 const longDay = (day: string) =>
   new Date(`${day}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -88,7 +124,7 @@ export function buildStatement(
   docs: StatementDoc[],
   stages: InvoiceStageLite[],
   payments: StatementPayment[],
-  opts: { today: string; zone: string },
+  opts: { today: string; zone: string } & Partial<StatementPeriod>,
   credits: StatementCredit[] = []
 ): CustomerStatement {
   const docById = new Map(docs.map((d) => [d.id, d]));
@@ -189,25 +225,39 @@ export function buildStatement(
   // Oldest first; on the same moment, the bill before the money for it.
   entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime() || a.order - b.order);
 
+  const period: StatementPeriod = { from: opts.from ?? null, to: opts.to ?? null };
   let balance = 0;
   let billed = 0;
   let paid = 0;
-  const lines: StatementLine[] = entries.map(({ at, order: _order, ...e }) => {
-    if (e.kind === "payment") {
-      paid += e.amountCents;
-      balance -= e.amountCents;
-    } else if (e.kind === "refund") {
-      // Money back out: what they've paid comes down, what they owe goes up.
-      paid -= e.amountCents;
-      balance += e.amountCents;
-    } else {
-      billed += e.amountCents;
-      balance += e.amountCents;
-    }
-    return { ...e, day: isoDateInZone(new Date(at), opts.zone), balanceCents: balance };
-  });
+  let opening = 0;
+  let closing = 0;
+  const lines: StatementLine[] = [];
+  for (const { at, order: _order, ...e } of entries) {
+    // Money in brings the balance down; a refund is money back out.
+    const change = e.kind === "payment" ? -e.amountCents : e.amountCents;
+    balance += change;
+    const day = isoDateInZone(new Date(at), opts.zone);
+    if (period.from && day < period.from) opening = balance;
+    if (period.to && day > period.to) continue;
+    closing = balance;
+    if (period.from && day < period.from) continue;
+    if (e.kind === "payment") paid += e.amountCents;
+    else if (e.kind === "refund") paid -= e.amountCents;
+    else billed += e.amountCents;
+    lines.push({ ...e, day, balanceCents: balance });
+  }
 
-  return { lines, billedCents: billed, paidCents: paid, balanceCents: balance, overdueCents, clearing };
+  return {
+    period,
+    openingCents: period.from ? opening : null,
+    lines,
+    billedCents: billed,
+    paidCents: paid,
+    balanceCents: closing,
+    todayCents: balance,
+    overdueCents,
+    clearing,
+  };
 }
 
 const escapeHtml = (value: string) =>
@@ -227,6 +277,19 @@ export function balanceWords(cents: number): string {
   return "nothing due";
 }
 
+/** Which days it covers, as the customer reads it: "as of Oct 6, 2026",
+ *  "for Sep 1, 2026 – Oct 6, 2026" or "up to Sep 20, 2026". */
+export function periodWords(period: StatementPeriod, today: string): string {
+  if (period.from) return `for ${longDay(period.from)} – ${longDay(period.to ?? today)}`;
+  if (period.to) return `up to ${longDay(period.to)}`;
+  return `as of ${longDay(today)}`;
+}
+
+/** "Balance on Sep 20, 2026: $4,450.00", or "Credit on …" below zero. */
+export function balanceOnWords(cents: number, day: string): string {
+  return `${cents < 0 ? "Credit" : "Balance"} on ${longDay(day)}: ${moneyCents(Math.abs(cents))}`;
+}
+
 export function statementEmail(p: {
   companyName: string;
   customerName: string | null;
@@ -237,14 +300,24 @@ export function statementEmail(p: {
   link: string | null;
 }): { subject: string; text: string; html: string } {
   const s = p.statement;
-  const subject = `${p.companyName}: your statement, ${balanceWords(s.balanceCents)}`;
+  const { from, to } = s.period;
+  const words = periodWords(s.period, p.today);
+  // A period that has ended closes on its own balance, which isn't what's
+  // owed now: that's said apart, and the subject doesn't call it due.
+  const subject =
+    `${p.companyName}: your statement${from || to ? ` ${words}` : ""}` + (to ? "" : `, ${balanceWords(s.todayCents)}`);
   const greeting = p.customerName?.trim() || "there";
-  const opening = `Here's your statement as of ${longDay(p.today)}.`;
-  const balanceLine =
-    s.balanceCents < 0
+  const opening = `Here's your statement ${words}.`;
+  const pastDue = s.overdueCents > 0 ? ` (${moneyCents(s.overdueCents)} past due)` : "";
+  const balanceLine = to
+    ? balanceOnWords(s.balanceCents, to)
+    : s.balanceCents < 0
       ? `Credit: ${moneyCents(-s.balanceCents)}`
-      : `Balance due: ${moneyCents(s.balanceCents)}${s.overdueCents > 0 ? ` (${moneyCents(s.overdueCents)} past due)` : ""}`;
-  const clearingLine = s.clearing.cents > 0 ? `Payments on their way: ${moneyCents(s.clearing.cents)}, not counted until they arrive.` : null;
+      : `Balance due: ${moneyCents(s.balanceCents)}${pastDue}`;
+  const todayLine = to ? `Today: ${balanceWords(s.todayCents)}${pastDue}` : null;
+  const clearingLine =
+    !to && s.clearing.cents > 0 ? `Payments on their way: ${moneyCents(s.clearing.cents)}, not counted until they arrive.` : null;
+  const quiet = (from || to) && !s.lines.length ? "Nothing was billed or paid in this period." : null;
 
   const text = [
     `Hi ${greeting},`,
@@ -252,9 +325,12 @@ export function statementEmail(p: {
     opening,
     ``,
     balanceLine,
+    ...(todayLine ? [todayLine] : []),
     ...(clearingLine ? [clearingLine] : []),
     ``,
+    ...(from && s.openingCents !== null ? [`${longDay(from)}  Opening balance  balance ${moneyCents(s.openingCents)}`] : []),
     ...s.lines.map((l) => `${longDay(l.day)}  ${l.label}  ${statementAmount(l)}  balance ${moneyCents(l.balanceCents)}`),
+    ...(quiet ? [quiet] : []),
     ...(p.link ? [``, `View and pay: ${p.link}`, `The link signs you in to your customer page. It expires in 7 days.`] : []),
     ``,
     `Questions? Just reply to this email.`,
@@ -275,6 +351,12 @@ export function statementEmail(p: {
         `<td style="${num}">${escapeHtml(moneyCents(l.balanceCents))}</td></tr>`
     )
     .join("");
+  const openingRow =
+    from && s.openingCents !== null
+      ? `<tr><td style="${cell};font-size:13px">${escapeHtml(longDay(from))}</td>` +
+        `<td style="${cell}"><em>Opening balance</em></td><td style="${num}"></td>` +
+        `<td style="${num}">${escapeHtml(moneyCents(s.openingCents))}</td></tr>`
+      : "";
   const head = `padding:6px 4px;border-bottom:2px solid #ccc;text-align:left;font-size:12px;color:#666`;
 
   const html = [
@@ -282,13 +364,15 @@ export function statementEmail(p: {
     `<p>Hi ${escapeHtml(greeting)},</p>`,
     `<p>${escapeHtml(opening)}</p>`,
     `<p style="margin:0"><strong>${escapeHtml(balanceLine)}</strong></p>`,
+    ...(todayLine ? [`<p style="margin:0">${escapeHtml(todayLine)}</p>`] : []),
     ...(clearingLine ? [`<p style="margin:0;font-size:13px;color:#666">${escapeHtml(clearingLine)}</p>`] : []),
-    s.lines.length
+    s.lines.length || openingRow
       ? `<table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:13px"><thead><tr>` +
         `<th style="${head}">Date</th><th style="${head}">Description</th>` +
         `<th style="${head};text-align:right">Amount</th><th style="${head};text-align:right">Balance</th>` +
-        `</tr></thead><tbody>${rows}</tbody></table>`
-      : `<p>Nothing has been billed yet.</p>`,
+        `</tr></thead><tbody>${openingRow}${rows}</tbody></table>`
+      : "",
+    ...(quiet ? [`<p>${escapeHtml(quiet)}</p>`] : !s.lines.length && !openingRow ? [`<p>Nothing has been billed yet.</p>`] : []),
     ...(p.link
       ? [
           `<p><a href="${escapeHtml(p.link)}" style="display:inline-block;background:#c8601f;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold">View and pay</a></p>`,
