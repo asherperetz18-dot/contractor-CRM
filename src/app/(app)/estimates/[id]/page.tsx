@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { paidTotalCents, type BillCreditRow } from "@/lib/data/types";
+import { readFinancing } from "@/lib/financing";
+import { isMissingSchemaError } from "@/lib/schema-drift";
+import type { FinancingPanelData, FinancingStep } from "./financing-panel";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
 import { approvalOnSend, approvalHoldMessage } from "@/lib/estimate-approval-gate";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
@@ -294,6 +297,59 @@ export default async function EstimateDetailPage({
 
   // Who voided it, read from the whole roster like the rep. Only a hand
   // void sets voided_by; a superseded version leaves it empty.
+  // Financing on it (DECISIONS #161, #162): the company's lender and the
+  // steps so far, each read on its own -- before 0214 or 0215 has run
+  // there's simply nothing to show. Only on an estimate or contract
+  // that's out, and only when there's a lender or a step to show.
+  let financingPanel: FinancingPanelData | null = null;
+  if (
+    (estimate.kind === "contract" || estimate.kind === "change_order" || !estimate.kind) &&
+    !["Draft", "Void", "Declined"].includes(estimate.status)
+  ) {
+    const [{ data: financingRow }, { data: stepRows, error: stepError }] = await Promise.all([
+      supabase
+        .from("company_profile")
+        .select("financing_provider, financing_url")
+        .eq("company_id", profile.company_id)
+        .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>(),
+      supabase
+        .from("estimate_financing_events")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .eq("estimate_id", estimate.id)
+        .order("created_at")
+        .returns<(FinancingStep & { created_by: string | null })[]>(),
+    ]);
+    const lender = readFinancing(financingRow);
+    const steps = stepRows ?? [];
+    if (lender || steps.length) {
+      const ids = [...new Set(steps.map((s) => s.created_by).filter((x): x is string => !!x))];
+      const { data: people } = ids.length
+        ? await supabase.from("profiles").select("id, name, email").in("id", ids).returns<{ id: string; name: string | null; email: string | null }[]>()
+        : { data: [] as { id: string; name: string | null; email: string | null }[] };
+      const nameOf = (id: string | null) => {
+        const p = (people ?? []).find((x) => x.id === id);
+        return p ? p.name || p.email || null : null;
+      };
+      financingPanel = {
+        provider: lender?.provider ?? null,
+        steps: steps.map((s) => ({
+          id: s.id,
+          status: s.status,
+          amount_cents: s.amount_cents,
+          note: s.note,
+          created_at: s.created_at,
+          channel: s.channel,
+          by: nameOf(s.created_by),
+        })),
+        ready: !isMissingSchemaError(stepError),
+        canWork: canCreateEstimates(profile) || canManageBills(profile),
+        hasPhone: !!lead?.phone,
+        hasEmail: !!lead?.email,
+      };
+    }
+  }
+
   const { data: voider } = estimate.voided_by
     ? await supabase
         .from("profiles")
@@ -313,6 +369,7 @@ export default async function EstimateDetailPage({
         paid={(paidRows ?? []) as PortalPayment[]}
         changeOrderBilling={changeOrderBilling}
         credits={credits}
+        financing={financingPanel}
         lead={lead ?? null}
         rep={{
           name: repLine.repId ? rep?.name || rep?.email || "Unnamed" : null,

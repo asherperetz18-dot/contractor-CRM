@@ -44,6 +44,8 @@ const ESTIMATE_CHILDREN = [
   "estimate_views",
   "estimate_files",
   "project_checklist_items",
+  // Financing steps on an estimate (0215, DECISIONS #162).
+  "estimate_financing_events",
 ] as const;
 
 // Tables that survive the delete but lose their pointer (on delete set

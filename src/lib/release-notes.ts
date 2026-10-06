@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.232.0",
+    date: "2026-10-06",
+    notes: [
+      "Financing on the estimate: once you've added your lender under Settings › Customer Financing, sent estimates and contracts have a Financing panel. Text or email the customer the link, and record where it stands: Applied, Approved, Declined or Funded.",
+      "A customer marked Applied or Approved moves to Pending Finance on the pipeline, unless they're already further along.",
+    ],
+  },
+  {
     version: "1.231.0",
     date: "2026-10-06",
     notes: [

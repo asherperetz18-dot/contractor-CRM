@@ -72,3 +72,113 @@ export function showFinancingOffer(doc: {
   if (doc.status === "Signed") return !doc.settled;
   return !doc.expired;
 }
+
+// ---------------------------------------------------------------------
+// Part two (DECISIONS #162): on the estimate, the office sends the
+// customer the link and keeps track of where the application stands. By
+// hand -- nothing comes back from the lender yet.
+
+export const FINANCING_STATUSES = ["sent", "applied", "approved", "declined", "funded"] as const;
+export type FinancingStatus = (typeof FINANCING_STATUSES)[number];
+
+export const FINANCING_STATUS_LABEL: Record<FinancingStatus, string> = {
+  sent: "Link sent",
+  applied: "Applied",
+  approved: "Approved",
+  declined: "Declined",
+  funded: "Funded",
+};
+
+/** One step, as estimate_financing_events (0215) keeps it. */
+export type FinancingEvent = {
+  status: FinancingStatus;
+  amount_cents: number | null;
+  note: string | null;
+  created_at: string;
+};
+
+/** Where the estimate's financing stands: its newest step. */
+export function currentFinancing<T extends FinancingEvent>(events: T[]): T | null {
+  let newest: T | null = null;
+  for (const e of events) {
+    if (!newest || new Date(e.created_at).getTime() > new Date(newest.created_at).getTime()) newest = e;
+  }
+  return newest;
+}
+
+const MAX_AMOUNT = 10_000_000_000;
+const MAX_NOTE = 500;
+
+/** What's wrong with a step the office is recording, or null. */
+export function financingEventError(input: { status: string; amountCents?: number | null; note?: string | null }): string | null {
+  if (!(FINANCING_STATUSES as readonly string[]).includes(input.status)) return "Pick a status.";
+  const amount = input.amountCents;
+  if (amount !== undefined && amount !== null) {
+    if (input.status !== "approved" && input.status !== "funded") {
+      return "An amount goes only with Approved or Funded.";
+    }
+    if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_AMOUNT) return "Enter an amount greater than zero.";
+  }
+  if ((input.note ?? "").trim().length > MAX_NOTE) return "That note is too long.";
+  return null;
+}
+
+/**
+ * Applied or approved puts the lead at Pending Finance -- unless it's
+ * already there or further along (Close to Sale, Won), or it's do not
+ * contact. A company's own untagged stage moves, as an estimate sent does.
+ */
+export function movesToPendingFinance(status: FinancingStatus, stageKey: string | null): boolean {
+  if (status !== "applied" && status !== "approved") return false;
+  return !["pending_finance", "close_to_sale", "won", "dnc"].includes(stageKey ?? "");
+}
+
+/** The text to the customer. A plain hyphen: an em dash re-encodes the
+ *  whole text and shrinks each segment from 160 characters to 70. */
+export function financingText(p: { companyName: string; provider: string; url: string; docNumber: string }): string {
+  return `${p.companyName}: you can apply for financing for ${p.docNumber} with ${p.provider} here:\n${p.url}\n\n${p.provider} decides on your application and sets its terms.`;
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
+
+/** The email to the customer, with the same words as the portal card. */
+export function financingEmail(p: {
+  companyName: string;
+  customerName: string | null;
+  provider: string;
+  url: string;
+  docNumber: string;
+  title: string | null;
+}): { subject: string; text: string; html: string } {
+  const subject = `${p.companyName}: apply for financing with ${p.provider}`;
+  const greeting = p.customerName?.trim() || "there";
+  const doc = p.title?.trim() ? `${p.docNumber} (${p.title.trim()})` : p.docNumber;
+  const opening = `You can apply for financing for ${doc} with ${p.provider}.`;
+  const terms = `You'll apply on ${p.provider}'s website. ${p.provider} decides on your application and sets its terms.`;
+  const text = [
+    `Hi ${greeting},`,
+    ``,
+    opening,
+    ``,
+    `Apply for financing: ${p.url}`,
+    ``,
+    terms,
+    ``,
+    `Questions? Just reply to this email.`,
+    ``,
+    `Thank you,`,
+    p.companyName,
+  ].join("\n");
+  const html = [
+    `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#222;max-width:640px">`,
+    `<p>Hi ${escapeHtml(greeting)},</p>`,
+    `<p>${escapeHtml(opening)}</p>`,
+    `<p><a href="${escapeHtml(p.url)}" style="display:inline-block;background:#c8601f;color:#fff;text-decoration:none;padding:10px 18px;border-radius:6px;font-weight:bold">Apply for financing</a></p>`,
+    `<p style="font-size:13px;color:#666">${escapeHtml(terms)}</p>`,
+    `<p style="font-size:13px;color:#666">Questions? Just reply to this email.</p>`,
+    `<p>Thank you,<br>${escapeHtml(p.companyName)}</p>`,
+    `</div>`,
+  ].join("");
+  return { subject, text, html };
+}
