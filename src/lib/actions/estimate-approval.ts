@@ -88,6 +88,9 @@ export async function getPendingApprovals(): Promise<{
     .eq("company_id", profile.company_id)
     .eq("status", "Draft")
     .is("approved_at", null)
+    // A draft invoice is no estimate waiting to go out: the gate leaves
+    // invoices alone (0205, DECISIONS #149), so it isn't queued here.
+    .or("kind.is.null,kind.neq.invoice")
     .order("updated_at", { ascending: false })
     .limit(200);
   if (error) return { error: error.message };

@@ -1,3 +1,5 @@
+import { computeEstimateTotals } from "./types.ts";
+
 /**
  * Invoices: a charge on top of the contract -- a permit fee, a dumpster,
  * plan copies -- that the customer pays without signing anything.
@@ -9,12 +11,60 @@
  * billed phase, so Payments, Money to Collect and Profit & Loss pick it
  * up with no special case. What keeps it out of sales is its kind:
  * `isSellableKind` is false for it, and `addsToContractValue` below.
+ *
+ * It can wait as a Draft first (DECISIONS #149): edited freely, numbered
+ * from the company's own invoice counter (INV-1001, INV-1002, ...), and
+ * issued when it's right. Once issued it is a record -- a mistake is
+ * cancelled and re-issued, never edited.
  */
 
-/** INV-1042: the company's one document sequence, invoice prefix. */
-export function invoiceDocNumber(sequenced: string): string {
-  const digits = sequenced.replace(/^[A-Za-z]+-/, "");
-  return `INV-${digits}`;
+/** The payment terms an invoice can carry: days from issue until due. */
+export const INVOICE_TERMS_DAYS = [0, 7, 15, 30] as const;
+
+/** "Due on receipt", "Net 15" -- or null where no terms were set. */
+export function paymentTermsLabel(days: number | null | undefined): string | null {
+  if (days === null || days === undefined) return null;
+  return days === 0 ? "Due on receipt" : `Net ${days}`;
+}
+
+/** One line of an invoice being edited: a quantity at a price, taxed or not. */
+export type InvoiceEditLine = {
+  name: string;
+  description: string;
+  quantity: number;
+  unitPriceCents: number;
+  taxable: boolean;
+  /** The job cost it bills back, when it came from one. */
+  sourceExpenseId: string | null;
+  showReceipt: boolean;
+};
+
+/** Why a draft can't be saved, in words for the person saving it. */
+export function invoiceEditError(lines: InvoiceEditLine[]): string | null {
+  if (lines.length === 0) return "Add at least one line.";
+  if (lines.some((l) => !l.name.trim())) return "Every line needs a description.";
+  if (lines.some((l) => !Number.isFinite(l.quantity) || l.quantity <= 0)) {
+    return "Every line needs a quantity greater than zero.";
+  }
+  if (lines.some((l) => !Number.isInteger(l.unitPriceCents) || l.unitPriceCents <= 0)) {
+    return "Every line needs a price greater than zero.";
+  }
+  return null;
+}
+
+/** The money on an invoice, with the estimates' own arithmetic: one
+ *  calculation, so the office and the customer always see one number. */
+export function invoiceEditTotals(lines: InvoiceEditLine[], taxRateBp: number) {
+  return computeEstimateTotals(
+    lines.map((l) => ({
+      quantity: l.quantity,
+      unit_price_cents: l.unitPriceCents,
+      taxable: l.taxable,
+      is_optional: false,
+      optional_selected: false,
+    })),
+    taxRateBp
+  );
 }
 
 /** A cost plus markup, to the cent. Markup is basis points (1000 = 10%);

@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.218.0",
+    date: "2026-10-06",
+    notes: [
+      "Invoices can be saved as a draft and finished later: set quantities and prices, choose which lines are taxed and at what rate, pick the payment terms (Due on receipt, Net 7, 15 or 30) and add a note for the customer. Send it by text or issue it when it's ready, or delete the draft. Once an invoice is sent it can't be edited; cancel it and send a new one instead.",
+      "Invoices now have their own numbers in order (INV-1001, INV-1002 and so on), instead of sharing the estimates' numbers and skipping.",
+      "The customer's invoice shows its payment terms, for example \"Terms: Net 15\".",
+    ],
+  },
+  {
     version: "1.217.0",
     date: "2026-10-06",
     notes: [

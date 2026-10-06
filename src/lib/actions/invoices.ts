@@ -10,6 +10,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import {
   canCreateEstimates,
+  lineTotalCents,
   paidTotalCents,
   vendorLabel,
   type EstimateStatus,
@@ -18,9 +19,11 @@ import {
 } from "@/lib/data/types";
 import {
   billedCostIds,
-  invoiceDocNumber,
   invoiceDraftError,
+  invoiceEditError,
+  invoiceEditTotals,
   invoiceTotalCents,
+  type InvoiceEditLine,
   type InvoiceLineDraft,
 } from "@/lib/data/invoices";
 import { markProgressPaymentBilled, requestProgressPayment } from "@/lib/actions/progress-billing";
@@ -191,14 +194,14 @@ export type NewInvoiceInput = {
   /** Days from today until it's due; 0 is due on receipt. */
   dueInDays: number;
   /** "text": text the customer a Pay link. "marked": they were told
-   *  another way (handed over, emailed from the office). */
-  delivery: "text" | "marked";
+   *  another way (handed over, emailed from the office). "draft": not
+   *  issued yet -- saved to finish and send later (DECISIONS #149). */
+  delivery: "text" | "marked" | "draft";
 };
 
 /**
  * Issues an invoice: numbers it, saves its lines, and bills it in one
- * go -- an invoice has nothing to agree to, so there is no draft stage
- * a customer could be waiting on.
+ * go -- or saves it as a draft to finish and issue later.
  *
  * Issued means status Signed with one billed phase for the whole
  * amount. That is what every money screen reads as "owed", so Payments,
@@ -208,10 +211,11 @@ export type NewInvoiceInput = {
  */
 export async function createInvoice(
   input: NewInvoiceInput
-): Promise<{ error?: string; id?: string; docNumber?: string; sentTo?: string; warning?: string }> {
+): Promise<{ error?: string; id?: string; docNumber?: string; sentTo?: string; warning?: string; draft?: boolean }> {
   const guard = await requireInvoicer();
   if ("error" in guard) return guard;
 
+  const draft = input.delivery === "draft";
   const lines = input.lines.map((l) => ({
     ...l,
     name: l.name.trim(),
@@ -273,15 +277,21 @@ export async function createInvoice(
     if (taken) return { error: `One of those costs is already billed on ${taken.doc_number}.` };
   }
 
-  const { data: sequenced, error: numberError } = await supabase.rpc("next_estimate_number", {
-    check_company_id: guard.companyId,
-  });
-  if (numberError || !sequenced) return { error: numberError?.message ?? "Couldn't number the invoice." };
-  const docNumber = invoiceDocNumber(sequenced as string);
+  // Invoices count on their own: INV-1001, INV-1002, ... (0205).
+  const { data: numbered, error: numberError } = await supabase.rpc("next_invoice_number", { check_company_id: guard.companyId });
+  if (numberError || !numbered) return { error: numberError?.message ?? "Couldn't number the invoice." };
+  const docNumber = numbered as string;
 
-  // Inserted already issued (Signed). An invoice has nothing to agree to
-  // and nothing for the estimate-approval gate to hold -- that gate
-  // (0136) fires on leaving Draft, so a Draft-then-update would trip it.
+  // The company's tax rate, for when the draft's lines are made taxable.
+  const { data: settings } = await supabase
+    .from("company_profile")
+    .select("tax_rate_bp")
+    .eq("company_id", guard.companyId)
+    .maybeSingle<{ tax_rate_bp: number | null }>();
+
+  // Issued means Signed (what every money screen reads as owed); a draft
+  // waits as Draft. The approval gate, written for estimates, leaves
+  // invoices alone either way (0205).
   const now = new Date().toISOString();
   const title = input.title.trim() || (parent?.title ? `Extras on ${parent.title}` : "Invoice");
   const { data: created, error } = await supabase
@@ -293,15 +303,18 @@ export async function createInvoice(
       kind: "invoice",
       doc_number: docNumber,
       title,
-      status: "Signed" as EstimateStatus,
-      issued_at: now,
-      sent_at: now,
-      signed_at: now,
+      status: (draft ? "Draft" : "Signed") as EstimateStatus,
+      issued_at: draft ? null : now,
+      sent_at: draft ? null : now,
+      signed_at: draft ? null : now,
+      payment_terms_days: dueInDays,
       // Whoever the contract names, so a sales-scoped rep who can see the
       // job can see what was billed on it.
       assigned_to: parent?.assigned_to ?? lead.assigned_to ?? guard.userId,
       job_address: parent?.job_address ?? null,
-      tax_rate_bp: 0,
+      // No line is taxable yet, so no tax; the rate is the company's, for
+      // when one is made taxable on the draft.
+      tax_rate_bp: draft ? (settings?.tax_rate_bp ?? 0) : 0,
       subtotal_cents: total,
       tax_cents: 0,
       total_cents: total,
@@ -360,28 +373,241 @@ export async function createInvoice(
     return { error: phaseError?.message ?? "Couldn't save the invoice." };
   }
 
-  const due = addDays(await companyToday(), dueInDays);
+  revalidatePath("/invoices");
+  const delivery = input.delivery;
+  if (delivery === "draft") return { id, docNumber, draft: true };
+
   revalidatePath("/projects");
   revalidatePath("/payments");
   revalidatePath("/collect");
+  return { id, docNumber, ...(await billInvoice(phase[0].id, docNumber, dueInDays, delivery)) };
+}
 
-  if (input.delivery === "text") {
-    const sent = await requestProgressPayment(phase[0].id, due);
-    if (!sent.error) return { id, docNumber, sentTo: sent.sentTo };
-    // The invoice is real either way. Bill it without the text so it is
-    // owed and on the portal, and say why the text didn't go.
-    const marked = await markProgressPaymentBilled(phase[0].id, due);
-    if (marked.error) return { error: marked.error, id, docNumber };
-    return {
-      id,
-      docNumber,
-      warning: `${docNumber} is issued, but the text didn't go out: ${sent.error}`,
-    };
+/**
+ * Bills an issued invoice's one stage, due `termsDays` from the
+ * company's today: texts the Pay link, or marks it billed for a customer
+ * told some other way. A text that can't go out still leaves the
+ * invoice billed -- it is real either way -- and says why.
+ */
+async function billInvoice(
+  phaseId: string,
+  docNumber: string,
+  termsDays: number,
+  delivery: "text" | "marked"
+): Promise<{ error?: string; sentTo?: string; warning?: string }> {
+  const due = addDays(await companyToday(), termsDays);
+  if (delivery === "text") {
+    const sent = await requestProgressPayment(phaseId, due);
+    if (!sent.error) return { sentTo: sent.sentTo };
+    const marked = await markProgressPaymentBilled(phaseId, due);
+    if (marked.error) return { error: marked.error };
+    return { warning: `${docNumber} is issued, but the text didn't go out: ${sent.error}` };
+  }
+  const marked = await markProgressPaymentBilled(phaseId, due);
+  return marked.error ? { error: marked.error } : {};
+}
+
+type DraftRow = {
+  id: string;
+  kind: string | null;
+  status: EstimateStatus;
+  lead_id: string;
+  doc_number: string;
+  total_cents: number;
+  payment_terms_days: number | null;
+};
+
+/**
+ * The one door to a draft invoice: this company's, an invoice, and still
+ * a draft. An issued invoice is a record; a mistake on one is cancelled
+ * and re-issued, never edited.
+ */
+async function loadDraftInvoice(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  companyId: string,
+  invoiceId: string
+): Promise<{ error: string } | { row: DraftRow }> {
+  const { data: row } = await supabase
+    .from("estimates")
+    .select("id, kind, status, lead_id, doc_number, total_cents, payment_terms_days")
+    .eq("id", invoiceId)
+    .eq("company_id", companyId)
+    .maybeSingle<DraftRow>();
+  if (!row || row.kind !== "invoice") return { error: "Invoice not found." };
+  if (row.status !== "Draft") return { error: "This invoice has already been issued. Cancel it and issue a new one to change it." };
+  return { row };
+}
+
+export type InvoiceDraftInput = {
+  title: string;
+  lines: InvoiceEditLine[];
+  /** Basis points: 725 is 7.25%. */
+  taxRateBp: number;
+  /** Days from issue until due; 0 is due on receipt. */
+  termsDays: number;
+  /** Printed on the invoice for the customer. */
+  note: string;
+};
+
+/** Saves a draft invoice: its lines, tax, terms and note, and a total the bill matches. */
+export async function saveInvoiceDraft(invoiceId: string, input: InvoiceDraftInput): Promise<{ error?: string; ok?: boolean }> {
+  const guard = await requireInvoicer();
+  if ("error" in guard) return guard;
+  const supabase = await createClient();
+  const loaded = await loadDraftInvoice(supabase, guard.companyId, invoiceId);
+  if ("error" in loaded) return loaded;
+  const { row } = loaded;
+
+  const lines: InvoiceEditLine[] = input.lines.map((l) => ({
+    name: l.name.trim(),
+    description: l.description.trim(),
+    quantity: Number(l.quantity),
+    unitPriceCents: Math.round(Number(l.unitPriceCents)),
+    taxable: !!l.taxable,
+    sourceExpenseId: l.sourceExpenseId || null,
+    showReceipt: !!l.sourceExpenseId && !!l.showReceipt,
+  }));
+  const problem = invoiceEditError(lines);
+  if (problem) return { error: problem };
+  const taxRateBp = Math.round(Number(input.taxRateBp));
+  if (!Number.isFinite(taxRateBp) || taxRateBp < 0 || taxRateBp > 10000) return { error: "Enter a tax rate between 0% and 100%." };
+  const termsDays = Math.round(Number(input.termsDays));
+  if (!Number.isFinite(termsDays) || termsDays < 0 || termsDays > 365) return { error: "Choose when it's due." };
+
+  // Costs billed back must be this job's, and not on another live invoice.
+  const costIds = [...new Set(lines.map((l) => l.sourceExpenseId).filter((id): id is string => !!id))];
+  if (costIds.length) {
+    const { data: costs } = await supabase
+      .from("job_expenses")
+      .select("id")
+      .eq("lead_id", row.lead_id)
+      .eq("company_id", guard.companyId)
+      .in("id", costIds);
+    if ((costs ?? []).length !== costIds.length) return { error: "One of those costs isn't on this job." };
+    const taken = (await billedLinks(createAdminClient(), guard.companyId, costIds)).find(
+      (l) => l.status !== "Void" && l.doc_number !== row.doc_number
+    );
+    if (taken) return { error: `One of those costs is already billed on ${taken.doc_number}.` };
   }
 
-  const marked = await markProgressPaymentBilled(phase[0].id, due);
-  if (marked.error) return { error: marked.error, id, docNumber };
-  return { id, docNumber };
+  const totals = invoiceEditTotals(lines, taxRateBp);
+  const title = input.title.trim() || "Invoice";
+  const now = new Date().toISOString();
+
+  const { error: removeError } = await supabase.from("estimate_items").delete().eq("estimate_id", row.id).eq("company_id", guard.companyId);
+  if (removeError) return { error: removeError.message };
+  const { error: itemsError } = await supabase.from("estimate_items").insert(
+    lines.map((l, i) => ({
+      company_id: guard.companyId,
+      estimate_id: row.id,
+      sort_order: i,
+      name: l.name,
+      description: l.description || null,
+      quantity: l.quantity,
+      unit_price_cents: l.unitPriceCents,
+      line_total_cents: lineTotalCents(l.quantity, l.unitPriceCents),
+      taxable: l.taxable,
+      source_expense_id: l.sourceExpenseId,
+      show_source_receipt: l.showReceipt,
+    }))
+  );
+  if (itemsError) return { error: itemsError.message };
+
+  const { error } = await supabase
+    .from("estimates")
+    .update({
+      title,
+      tax_rate_bp: taxRateBp,
+      subtotal_cents: totals.subtotalCents,
+      tax_cents: totals.taxCents,
+      total_cents: totals.totalCents,
+      payment_terms_days: termsDays,
+      customer_message: input.note.trim() || null,
+      updated_at: now,
+    })
+    .eq("id", row.id)
+    .eq("company_id", guard.companyId)
+    .eq("status", "Draft");
+  if (error) return { error: error.message };
+
+  // The invoice's one bill is its whole total, named as the text and
+  // Payments call it.
+  const { error: phaseError } = await supabase
+    .from("estimate_payments")
+    .update({ amount_cents: totals.totalCents, name: title, updated_at: now })
+    .eq("estimate_id", row.id)
+    .eq("company_id", guard.companyId);
+  if (phaseError) return { error: phaseError.message };
+
+  revalidatePath(`/estimates/${row.id}`);
+  revalidatePath("/invoices");
+  return { ok: true };
+}
+
+/** Issues a draft invoice: the customer is texted the Pay link, or it's marked billed. */
+export async function issueInvoice(
+  invoiceId: string,
+  delivery: "text" | "marked"
+): Promise<{ error?: string; sentTo?: string; warning?: string }> {
+  const guard = await requireInvoicer();
+  if ("error" in guard) return guard;
+  const supabase = await createClient();
+  const loaded = await loadDraftInvoice(supabase, guard.companyId, invoiceId);
+  if ("error" in loaded) return loaded;
+  const { row } = loaded;
+  if (row.total_cents <= 0) return { error: "Add a line with a price before issuing it." };
+
+  const { data: phase } = await supabase
+    .from("estimate_payments")
+    .select("id")
+    .eq("estimate_id", row.id)
+    .eq("company_id", guard.companyId)
+    .order("sort_order")
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+  if (!phase) return { error: "This draft has nothing to bill. Save it again and retry." };
+
+  const now = new Date().toISOString();
+  const { data: issued, error } = await supabase
+    .from("estimates")
+    .update({ status: "Signed" as EstimateStatus, issued_at: now, sent_at: now, signed_at: now, updated_at: now })
+    .eq("id", row.id)
+    .eq("company_id", guard.companyId)
+    .eq("status", "Draft")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!issued?.length) return { error: "This invoice has already been issued." };
+
+  revalidatePath(`/estimates/${row.id}`);
+  revalidatePath("/invoices");
+  revalidatePath("/projects");
+  revalidatePath("/payments");
+  revalidatePath("/collect");
+  return billInvoice(phase.id, row.doc_number, row.payment_terms_days ?? 0, delivery);
+}
+
+/** Deletes a draft invoice nobody was ever sent. */
+export async function deleteInvoiceDraft(invoiceId: string): Promise<{ error?: string; ok?: boolean }> {
+  const guard = await requireInvoicer();
+  if ("error" in guard) return guard;
+  const supabase = await createClient();
+  const loaded = await loadDraftInvoice(supabase, guard.companyId, invoiceId);
+  if ("error" in loaded) return loaded;
+
+  // The service role, because deleting is Office/Admin under RLS and
+  // anyone who can invoice can start a draft. Still only this company's
+  // draft invoice; its lines and bill go with it.
+  const { error } = await createAdminClient()
+    .from("estimates")
+    .delete()
+    .eq("id", loaded.row.id)
+    .eq("company_id", guard.companyId)
+    .eq("kind", "invoice")
+    .eq("status", "Draft");
+  if (error) return { error: error.message };
+  revalidatePath("/invoices");
+  revalidatePath("/estimates");
+  return { ok: true };
 }
 
 /**
@@ -407,6 +633,7 @@ export async function cancelInvoice(
     .maybeSingle<{ id: string; kind: string | null; status: EstimateStatus; lead_id: string }>();
   if (!invoice || invoice.kind !== "invoice") return { error: "Invoice not found." };
   if (invoice.status === "Void") return { error: "That invoice is already cancelled." };
+  if (invoice.status === "Draft") return { error: "This is still a draft: delete it instead." };
 
   const { data: payments } = await createAdminClient()
     .from("portal_payments")
@@ -435,6 +662,7 @@ export async function cancelInvoice(
     .eq("company_id", guard.companyId);
 
   revalidatePath(`/estimates/${invoiceId}`);
+  revalidatePath("/invoices");
   revalidatePath("/projects");
   revalidatePath("/payments");
   revalidatePath("/collect");

@@ -17,6 +17,7 @@ import {
 } from "@/lib/data/types";
 import { requestProgressPayment } from "@/lib/actions/progress-billing";
 import { cancelInvoice } from "@/lib/actions/invoices";
+import { paymentTermsLabel } from "@/lib/data/invoices";
 import { RecordPayment } from "./record-payment";
 
 const BADGE: Record<string, string> = {
@@ -135,6 +136,7 @@ export function InvoiceView({
             {" · issued "}
             {fmtDay(invoice.issued_at ?? invoice.created_at)}
             {phase?.due_date && !cancelled && <> · due {fmtDay(phase.due_date)}</>}
+            {paymentTermsLabel(invoice.payment_terms_days) && <> · {paymentTermsLabel(invoice.payment_terms_days)}</>}
           </p>
         </div>
         <div className="est-header-actions">
@@ -194,6 +196,12 @@ export function InvoiceView({
                   <td>
                     <strong>{item.name}</strong>
                     {item.description && <div className="est-tax-note">{item.description}</div>}
+                    {Number(item.quantity) !== 1 && (
+                      <div className="est-tax-note">
+                        {item.quantity} × {moneyCents(item.unit_price_cents)}
+                      </div>
+                    )}
+                    {item.taxable && invoice.tax_cents > 0 && <div className="est-tax-note">Taxable</div>}
                     {cost && (
                       <div className="est-tax-note">
                         Bills back a {moneyCents(cost.amount_cents)} cost paid {fmtDay(cost.spent_on)}
@@ -214,6 +222,18 @@ export function InvoiceView({
             })}
           </tbody>
           <tfoot>
+            {invoice.tax_cents > 0 && (
+              <>
+                <tr>
+                  <td colSpan={2}>Subtotal</td>
+                  <td className="right mono">{moneyCents(invoice.subtotal_cents)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={2}>Sales tax ({(invoice.tax_rate_bp ?? 0) / 100}%)</td>
+                  <td className="right mono">{moneyCents(invoice.tax_cents)}</td>
+                </tr>
+              </>
+            )}
             <tr>
               <td colSpan={2}>
                 <strong>Total</strong>

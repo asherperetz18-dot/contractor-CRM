@@ -2024,6 +2024,9 @@ export type Estimate = {
   deposit_cap_cents: number;
   deposit_cents: number | null;
   customer_message: string | null;
+  /** An invoice's payment terms: days from issue until due, 0 = due on
+   *  receipt (0205). Null on other documents, and before 0205 runs. */
+  payment_terms_days?: number | null;
   terms: string | null;
   notes: string | null;
   sent_at: string | null;

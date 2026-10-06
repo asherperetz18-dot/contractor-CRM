@@ -8,7 +8,6 @@ import {
   documentStatusLabel,
   receiptAttachment,
   billedCostIds,
-  invoiceDocNumber,
   invoiceDraftError,
   invoiceLineFromCost,
   invoiceTotalCents,
@@ -23,12 +22,6 @@ import { isSellableKind } from "./types.ts";
  * money is exact, a cost can't be billed twice, and an invoice is never
  * mistaken for a sale.
  */
-
-test("an invoice shares the company's number sequence under its own prefix", () => {
-  assert.equal(invoiceDocNumber("EST-1042"), "INV-1042");
-  // Whatever the sequence hands back, the number keeps its digits.
-  assert.equal(invoiceDocNumber("1043"), "INV-1043");
-});
 
 test("markup is off at zero and rounds to the cent when on", () => {
   assert.equal(withMarkupCents(41250, 0), 41250);
