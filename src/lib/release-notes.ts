@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.208.0",
+    date: "2026-10-05",
+    notes: [
+      "New companies that sign up online now get their first 60 days free instead of 30, still with no card needed. Trials that have already started keep their end date.",
+    ],
+  },
+  {
     version: "1.207.1",
     date: "2026-10-05",
     notes: [

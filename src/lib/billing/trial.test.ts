@@ -15,12 +15,12 @@ const NOW = Date.parse("2026-10-05T12:00:00Z");
 const DAY = 86_400_000;
 const inDays = (d: number) => new Date(NOW + d * DAY).toISOString();
 
-test("a monthly plan is sold as a 30-day free trial with no card asked for", () => {
-  assert.equal(TRIAL_DAYS, 30); // the marketing site promises "First 30 days free, no card up front"
+test("a monthly plan is sold as a 60-day free trial with no card asked for", () => {
+  assert.equal(TRIAL_DAYS, 60); // the marketing site promises "First 2 months free, no card up front" (DECISIONS #139)
   assert.deepEqual(trialCheckoutOptions("subscription"), {
     payment_method_collection: "if_required",
     subscription_data: {
-      trial_period_days: 30,
+      trial_period_days: 60,
       // No card by the end of the trial: Stripe cancels, and the company locks.
       trial_settings: { end_behavior: { missing_payment_method: "cancel" } },
     },
