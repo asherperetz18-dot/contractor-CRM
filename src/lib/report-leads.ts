@@ -28,6 +28,36 @@ export function counterpartyPhoneKeys(
   return keys;
 }
 
+/**
+ * Which contacts the phone keys belong to: for each key, the first
+ * contact in `newestFirst` carrying it as its own phone or its second
+ * contact's -- the newest, as the views' first-match-wins lookup always
+ * landed on. A contact is listed once however many keys it matches, and
+ * one already in hand (`have`, fetched by id) isn't listed again.
+ */
+export function firstLeadPerPhoneKey<L extends { id: string; phone: string | null; second_contact_phone: string | null }>(
+  newestFirst: readonly L[],
+  wanted: ReadonlySet<string>,
+  have: ReadonlySet<string>
+): L[] {
+  const out: L[] = [];
+  const listed = new Set(have);
+  const matchedKeys = new Set<string>();
+  for (const l of newestFirst) {
+    for (const raw of [l.phone, l.second_contact_phone]) {
+      if (!raw) continue;
+      const key = normalizePhone(raw);
+      if (!wanted.has(key) || matchedKeys.has(key)) continue;
+      matchedKeys.add(key);
+      if (!listed.has(l.id)) {
+        listed.add(l.id);
+        out.push(l);
+      }
+    }
+  }
+  return out;
+}
+
 export type RepLeadStats = {
   assignedCount: number;
   openCount: number;

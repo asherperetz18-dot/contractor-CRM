@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.210.0",
+    date: "2026-10-06",
+    notes: [
+      "The Reply Inbox opens faster: it shows your most recent conversations, with Show older conversations at the bottom of the list for anyone further back. A conversation's messages load when you open it, newest first, with Show earlier messages at the top for older ones.",
+    ],
+  },
+  {
     version: "1.209.0",
     date: "2026-10-05",
     notes: [

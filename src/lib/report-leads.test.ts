@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { counterpartyPhoneKeys, repLeadStats, repLeadStatsFromRows } from "./report-leads.ts";
+import { counterpartyPhoneKeys, firstLeadPerPhoneKey, repLeadStats, repLeadStatsFromRows } from "./report-leads.ts";
 
 /**
  * The report pages used to ship every lead in the company to the
@@ -22,6 +22,26 @@ test("phone keys come from the counterparty side of unlinked messages only", () 
     { lead_id: null, direction: "inbound", from_number: "+1 310 555 0137", to_number: "+15625255873" },
   ]);
   assert.deepEqual([...keys].sort(), ["3105550137", "9099380628"]);
+});
+
+test("a number matches the newest contact carrying it, on either phone, each contact once", () => {
+  const row = (id: string, phone: string | null, second: string | null = null) => ({
+    id,
+    phone,
+    second_contact_phone: second,
+  });
+  // Newest first, as both the indexed lookup and the old walk return them.
+  const rows = [
+    row("new", "(555) 555-0101"),
+    row("old", "555-555-0101"),
+    row("both", "5555550102", "+1 555 555 0103"),
+    row("linked", "5555550104"),
+  ];
+  const wanted = new Set(["5555550101", "5555550102", "5555550103", "5555550104"]);
+  const found = firstLeadPerPhoneKey(rows, wanted, new Set(["linked"]));
+  // "old" loses to the newer contact; "both" matches twice but is listed once;
+  // a contact already fetched by id isn't fetched again.
+  assert.deepEqual(found.map((l) => l.id), ["new", "both"]);
 });
 
 test("rep tallies: assigned, open, won, and won value — same buckets the grid drew", () => {

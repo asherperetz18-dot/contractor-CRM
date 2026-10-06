@@ -1688,3 +1688,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** reminders and syncs run on time whatever GitHub is doing. **Database step: run `supabase/migrations/0203_scheduled_jobs.sql` right after merging** — until then nothing starts the nine jobs on a timer.
 
+## 141 — The Reply Inbox reads only what is on screen
+
+**Date:** 2026-10-06
+
+**Context:** The Reply Inbox read every text the company had ever sent or received (`selectAll` over `sms_messages`), grouped them into conversations in the browser, and did it all again on every new inbound text (the `TEXTS_FRESH_EVENT` refresh). To name the texts never linked to a contact, `leadsLiteForMessages` also walked the company's whole contact book, 1000 rows at a time, because a contact's number is stored however it was typed and could only be matched in code. Fine for a new company; at La Home's 79k contacts and years of texts, every visit and every new text paid for all of it.
+
+**Decision:**
+- **The list is the newest conversations.** The server reads texts newest first, 500 at a time, until it has 50 conversations (at most four reads a page), keeps each conversation's newest text, and sends the browser one summary row per conversation (name, number, snippet) instead of the texts. Everything listed is complete and in order: its newest text was read, and anything unread is older. **Show older conversations** reads the list again from the top, one page longer (`getReplyInboxConversations`), so a refresh of the first page can't open a gap between pages (`mergeConversationLists`).
+- **A conversation's messages are read when it is opened** (`getReplyInboxThread`): its newest 100, then 100 more per **Show earlier messages**, up to 500 (one more than asked is read to know older ones exist, which must stay under PostgREST's 1000-row ceiling). The page brings the conversation it opens on, so it doesn't open empty. A new text, or one sent from here, re-reads the list and the open conversation.
+- **Lookups by number happen in the database** (migration 0204), on the app's own key (digits, the last ten: `normalizePhone`, the same expression 0168 uses), each held by an index: `leads_by_phone_keys` for whose number it is (Text Reports benefits too) and `reply_inbox_unlinked_thread` for a conversation never linked to a contact. Both are `security invoker`, so RLS and #113's who-sees-which-texts apply as on any read; anon can't call them. Until 0204 runs, both fall back to the old reads.
+- The browser sends only a conversation key and a count; the key is checked (`parseConversationKey`: a contact id or `phone:` and digits) and the count clamped before any query, and the company always comes from the signed-in profile.
+- The thread is loaded by a server action into state, not by putting the open conversation in the URL: the app's group-level `loading.tsx` would replace the inbox with a skeleton on each click, and a half-typed reply would go with it.
+
+**Consequence:** a visit reads a few hundred texts and a handful of contacts, whatever the history. Finding an old conversation takes **Show older conversations**, or the contact's own Texts tab. Text Reports still reads every text (TECH_DEBT). **Database step: run `supabase/migrations/0204_reply_inbox_lookups.sql`** (indexes and two lookups; changes no data).

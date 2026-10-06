@@ -5068,6 +5068,15 @@ a.stat-card {
   opacity: 0.7;
   margin-top: 4px;
 }
+/* "Show older conversations" under the list, "Show earlier messages" atop
+   the thread: each reads further back only when asked (DECISIONS #141). */
+.ri-list-more {
+  padding: 10px 14px;
+  text-align: center;
+}
+.ri-earlier {
+  align-self: center;
+}
 .ri-reply-bar {
   display: flex;
   gap: 8px;

@@ -1,43 +1,44 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  leadDisplayName,
-  normalizePhone,
-  type LeadLite,
-  type Profile,
-  type SmsMessage,
-} from "@/lib/data/types";
+import { normalizePhone, type LeadLite, type SmsMessage } from "@/lib/data/types";
 import { sendSms } from "@/lib/actions/sms";
+import { getReplyInboxConversations, getReplyInboxThread } from "@/lib/actions/reply-inbox";
 import { replyTargetSnapshot, type ReplyTargetSnapshot } from "@/lib/reply-target";
+import {
+  THREAD_MAX,
+  THREAD_PAGE,
+  mergeConversationLists,
+  withPendingTarget,
+  type ConversationSummary,
+} from "@/lib/reply-inbox";
 import { TEXTS_FRESH_EVENT } from "../popup-alerts";
 import { DeliveryTag } from "@/components/ui/delivery-tag";
 
-type Conversation = {
-  key: string;
-  leadId: string | null;
-  name: string;
-  phone: string;
-  /**
-   * The other end of this thread is a teammate, not a customer. Carried
-   * explicitly rather than inferred from the name, because everything in
-   * here -- who a reply is addressed to, what the send button promises --
-   * turns on it.
-   */
-  isCrew: boolean;
-  messages: SmsMessage[];
-};
+type Thread = { messages: SmsMessage[]; hasEarlier: boolean };
 
+const readSignature = (limit: number, tick: number) => `${limit}:${tick}`;
+
+/**
+ * The newest conversations, and the messages of the one that's open
+ * (DECISIONS #141). The page brings the first page of the list and the
+ * conversation it opens on; any other conversation is read when it is
+ * clicked, and "Show older conversations" reads the list further back.
+ */
 export function ReplyInboxView({
-  messages,
-  leads,
-  reps,
+  conversations: firstPage,
+  hasMore: firstPageHasMore,
+  loadFailed,
+  targetLeads,
+  initialThread,
   canWrite,
 }: {
-  messages: SmsMessage[];
-  leads: LeadLite[];
-  reps: Profile[];
+  conversations: ConversationSummary[];
+  hasMore: boolean;
+  loadFailed: boolean;
+  targetLeads: LeadLite[];
+  initialThread: ({ key: string } & Thread) | null;
   canWrite: boolean;
 }) {
   const router = useRouter();
@@ -53,81 +54,44 @@ export function ReplyInboxView({
   // placeholder conversation from the params meant it vanished on the
   // very next render -- taking the selected thread with it. The whole
   // snapshot (name AND phone) is pinned, not just the ids: once the URL
-  // is stripped, the next server render only carries contacts that
-  // already have messages, so a first-ever text's contact is gone from
-  // `leads` -- which used to leave this thread reading "New
+  // is stripped, the next server render no longer carries the target
+  // contact -- which used to leave this thread reading "New
   // conversation" with no number to send to.
   const [pendingTarget, setPendingTarget] = useState<ReplyTargetSnapshot | null>(null);
   const [reply, setReply] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
-  const conversations = useMemo(() => {
-    const map = new Map<string, Conversation>();
-    for (const m of messages) {
-      const counterpartyPhone = m.direction === "inbound" ? m.from_number : m.to_number;
-      const key = m.lead_id ?? `phone:${normalizePhone(counterpartyPhone)}`;
-      let convo = map.get(key);
-      if (!convo) {
-        // Fall back to matching by phone number when the message was never
-        // linked to a lead record -- like caller ID matching a saved
-        // contact even when the call system itself has no contact ID.
-        // Some conversations are with a rep's own phone (e.g. the "Text
-        // Rep Info" appointment nudges), not a lead, so check both.
-        const lead = m.lead_id
-          ? leads.find((l) => l.id === m.lead_id) ?? null
-          : leads.find((l) => l.phone && normalizePhone(l.phone) === normalizePhone(counterpartyPhone)) ??
-            null;
-        const rep = !lead
-          ? reps.find((r) => r.phone && normalizePhone(r.phone) === normalizePhone(counterpartyPhone)) ??
-            null
-          : null;
-        convo = {
-          key,
-          leadId: m.lead_id ?? lead?.id ?? null,
-          name: lead
-            ? leadDisplayName(lead)
-            : rep
-              ? `👷 ${rep.name || rep.email}`
-              : counterpartyPhone,
-          phone: lead?.phone || counterpartyPhone,
-          isCrew: !!rep,
-          messages: [],
-        };
-        map.set(key, convo);
-      }
-      convo.messages.push(m);
-    }
+  // "Show older conversations": the list read again from the top, one
+  // page longer each time, so a refresh of the first page can't leave a
+  // gap between the two.
+  const [older, setOlder] = useState<{ pages: number; conversations: ConversationSummary[]; hasMore: boolean } | null>(
+    null
+  );
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState("");
 
-    if (pendingTarget?.leadId && !map.has(pendingTarget.leadId)) {
-      map.set(pendingTarget.leadId, {
-        key: pendingTarget.leadId,
-        leadId: pendingTarget.leadId,
-        name: pendingTarget.name,
-        phone: pendingTarget.phone,
-        isCrew: false,
-        messages: [],
-      });
-    } else if (pendingTarget && !pendingTarget.leadId && pendingTarget.phone) {
-      const key = `phone:${normalizePhone(pendingTarget.phone)}`;
-      if (!map.has(key)) {
-        map.set(key, {
-          key,
-          leadId: null,
-          name: pendingTarget.name,
-          phone: pendingTarget.phone,
-          isCrew: false,
-          messages: [],
-        });
-      }
-    }
+  // Opened conversations' messages, by conversation key: one opened
+  // before shows at once while it is read again.
+  const [threads, setThreads] = useState<Record<string, Thread>>(() =>
+    initialThread ? { [initialThread.key]: { messages: initialThread.messages, hasEarlier: initialThread.hasEarlier } } : {}
+  );
+  const [limits, setLimits] = useState<Record<string, number>>({});
+  const [threadTick, setThreadTick] = useState(0);
+  const [threadError, setThreadError] = useState("");
+  const [earlierPending, setEarlierPending] = useState<string | null>(null);
+  // What each conversation's messages were last read for (how many, and
+  // which refresh), so a read is never repeated -- the page already read
+  // the one it opens on.
+  const loadedFor = useRef<Record<string, string>>(
+    initialThread ? { [initialThread.key]: readSignature(THREAD_PAGE, 0) } : {}
+  );
 
-    return [...map.values()].sort((a, b) => {
-      const aLast = a.messages[a.messages.length - 1]?.created_at ?? "";
-      const bLast = b.messages[b.messages.length - 1]?.created_at ?? "";
-      return bLast.localeCompare(aLast);
-    });
-  }, [messages, leads, reps, pendingTarget]);
+  const conversations = useMemo(
+    () => withPendingTarget(mergeConversationLists(firstPage, older?.conversations ?? null), pendingTarget),
+    [firstPage, older, pendingTarget]
+  );
+  const hasMore = older ? older.hasMore : firstPageHasMore;
 
   const targetKey = targetLeadId ?? (targetPhone ? `phone:${normalizePhone(targetPhone)}` : null);
   if (targetKey && targetKey !== consumedTargetKey) {
@@ -135,7 +99,7 @@ export function ReplyInboxView({
     setSelectedKey(targetKey);
     // Resolved NOW, while the ?leadId= render still carries the target
     // contact (the page fetches it for exactly this pass).
-    setPendingTarget(replyTargetSnapshot(leads, targetLeadId, targetPhone));
+    setPendingTarget(replyTargetSnapshot(targetLeads, targetLeadId, targetPhone));
     if (targetBody) setReply(targetBody);
   } else if (selectedKey === null && conversations.length > 0) {
     // else-if, not a second statement. setSelectedKey does not change
@@ -152,25 +116,79 @@ export function ReplyInboxView({
     }
   }, [targetLeadId, targetPhone, router]);
 
+  const limit = selectedKey ? limits[selectedKey] ?? THREAD_PAGE : THREAD_PAGE;
+
+  // The open conversation's messages: read when it is opened, when more
+  // are asked for, and when a text comes or goes (threadTick).
+  useEffect(() => {
+    if (!selectedKey) return;
+    const signature = readSignature(limit, threadTick);
+    if (loadedFor.current[selectedKey] === signature) return;
+    let cancelled = false;
+    getReplyInboxThread(selectedKey, limit).then((res) => {
+      if (cancelled) return;
+      setEarlierPending((k) => (k === selectedKey ? null : k));
+      const thread = res.thread;
+      if (res.error || !thread) {
+        setThreadError(res.error ?? "Couldn't load these messages. Try again.");
+        return;
+      }
+      loadedFor.current[selectedKey] = signature;
+      setThreadError("");
+      setThreads((t) => ({ ...t, [selectedKey]: thread }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKey, limit, threadTick]);
+
   // Live without its own poll: the popup watcher already asks the
   // server for fresh inbound texts every 20 seconds on every open tab
   // (a route handler, off the action path -- DECISIONS #029/#062).
-  // When it sees one, this re-pulls the page's conversations, so a
-  // customer's YES lands in the open thread instead of waiting for a
-  // manual refresh. Selection and a half-typed reply live in state, so
+  // When it sees one, this re-pulls the list and the open conversation,
+  // so a customer's YES lands in the open thread instead of waiting for
+  // a manual refresh. Selection and a half-typed reply live in state, so
   // the refresh does not disturb them.
   useEffect(() => {
-    const onFresh = () => router.refresh();
+    const onFresh = () => {
+      router.refresh();
+      setThreadTick((n) => n + 1);
+    };
     window.addEventListener(TEXTS_FRESH_EVENT, onFresh);
     return () => window.removeEventListener(TEXTS_FRESH_EVENT, onFresh);
   }, [router]);
-
 
   // Deliberately no "?? conversations[0]" fallback here. That silently
   // pointed the composer at whichever thread was most recent whenever the
   // selected key stopped matching -- which is how a confirmation meant
   // for one contact was sent to a different one entirely.
   const selected = conversations.find((c) => c.key === selectedKey) ?? null;
+  const thread = selectedKey ? threads[selectedKey] ?? null : null;
+  const loadingEarlier = earlierPending !== null && earlierPending === selectedKey;
+
+  function open(key: string) {
+    setSelectedKey(key);
+    setThreadError("");
+  }
+
+  async function showOlder() {
+    const pages = (older?.pages ?? 1) + 1;
+    setLoadingOlder(true);
+    setOlderError("");
+    const res = await getReplyInboxConversations(pages);
+    setLoadingOlder(false);
+    if (res.error || !res.conversations) {
+      setOlderError(res.error ?? "Couldn't load older conversations. Try again.");
+      return;
+    }
+    setOlder({ pages, conversations: res.conversations, hasMore: !!res.hasMore });
+  }
+
+  function showEarlier() {
+    if (!selectedKey) return;
+    setEarlierPending(selectedKey);
+    setLimits((l) => ({ ...l, [selectedKey]: Math.min(limit + THREAD_PAGE, THREAD_MAX) }));
+  }
 
   async function handleSend() {
     if (!selected) return;
@@ -185,6 +203,7 @@ export function ReplyInboxView({
     }
     setReply("");
     router.refresh();
+    setThreadTick((n) => n + 1);
   }
 
   return (
@@ -192,37 +211,55 @@ export function ReplyInboxView({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Reply Inbox</h1>
-          <p className="module-sub">{conversations.length} conversations</p>
+          <p className="module-sub">
+            {hasMore
+              ? `Your ${conversations.length} most recent conversations`
+              : `${conversations.length} conversations`}
+          </p>
         </div>
       </div>
 
+      {loadFailed && (
+        <p className="error-note">Couldn&apos;t load your conversations. Refresh the page to try again.</p>
+      )}
+
       {conversations.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-label">No messages yet</p>
-          <p className="empty-hint">
-            Incoming texts to your Twilio number will show up here.
-          </p>
-        </div>
+        !loadFailed && (
+          <div className="empty-state">
+            <p className="empty-label">No messages yet</p>
+            <p className="empty-hint">
+              Incoming texts to your Twilio number will show up here.
+            </p>
+          </div>
+        )
       ) : (
         <div className="ri-layout">
           <div className="ri-list">
             {conversations.map((c) => {
-              const last = c.messages[c.messages.length - 1];
+              // A contact opened from elsewhere has no row of its own
+              // until its messages arrive.
+              const snippet = c.lastBody || threads[c.key]?.messages.at(-1)?.body;
               return (
                 <div
                   key={c.key}
                   className={
                     "ri-list-item" + (selected?.key === c.key ? " ri-list-item-active" : "")
                   }
-                  onClick={() => setSelectedKey(c.key)}
+                  onClick={() => open(c.key)}
                 >
                   <div className="ri-list-name">{c.name}</div>
-                  <div className="ri-list-snippet">
-                    {last?.body || "No messages yet"}
-                  </div>
+                  <div className="ri-list-snippet">{snippet || "No messages yet"}</div>
                 </div>
               );
             })}
+            {hasMore && (
+              <div className="ri-list-more">
+                <button type="button" className="btn-ghost small" onClick={showOlder} disabled={loadingOlder}>
+                  {loadingOlder ? "Loading…" : "Show older conversations"}
+                </button>
+                {olderError && <p className="error-note">{olderError}</p>}
+              </div>
+            )}
           </div>
           <div className="ri-thread">
             {selected ? (
@@ -241,34 +278,52 @@ export function ReplyInboxView({
                   </p>
                 )}
                 <div className="ri-thread-messages">
-                  {selected.messages.length === 0 ? (
+                  {!thread ? (
+                    <p className="empty-hint">{threadError || "Loading messages…"}</p>
+                  ) : thread.messages.length === 0 ? (
                     <p className="empty-hint">No messages yet — send the first one below.</p>
                   ) : (
-                    selected.messages.map((m) => (
-                      <div
-                        key={m.id}
-                        className={
-                          "ri-bubble " + (m.direction === "outbound" ? "ri-bubble-out" : "ri-bubble-in")
-                        }
-                      >
-                        <div>{m.body}</div>
-                        <div className="ri-bubble-time">
-                          {new Date(m.created_at).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                          <DeliveryTag
-                            direction={m.direction}
-                            status={m.delivery_status}
-                            errorCode={m.delivery_error}
-                          />
+                    <>
+                      {thread.hasEarlier &&
+                        (limit < THREAD_MAX ? (
+                          <button
+                            type="button"
+                            className="btn-ghost small ri-earlier"
+                            onClick={showEarlier}
+                            disabled={loadingEarlier}
+                          >
+                            {loadingEarlier ? "Loading…" : "Show earlier messages"}
+                          </button>
+                        ) : (
+                          <p className="empty-hint ri-earlier">Showing the newest {THREAD_MAX} texts.</p>
+                        ))}
+                      {thread.messages.map((m) => (
+                        <div
+                          key={m.id}
+                          className={
+                            "ri-bubble " + (m.direction === "outbound" ? "ri-bubble-out" : "ri-bubble-in")
+                          }
+                        >
+                          <div>{m.body}</div>
+                          <div className="ri-bubble-time">
+                            {new Date(m.created_at).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                            <DeliveryTag
+                              direction={m.direction}
+                              status={m.delivery_status}
+                              errorCode={m.delivery_error}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ))}
+                    </>
                   )}
                 </div>
+                {thread && threadError && <p className="error-note">{threadError}</p>}
                 {canWrite && (
                   <div className="ri-reply-bar">
                     <textarea
