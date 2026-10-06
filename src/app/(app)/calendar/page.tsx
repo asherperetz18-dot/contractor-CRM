@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import type { CalendarRow, Event, Job, PipelineStageRow } from "@/lib/data/types";
+import type { CalendarRow, Event, PipelineStageRow } from "@/lib/data/types";
 import {
   canDeleteAppointments,
   canEditSchedule,
@@ -60,21 +60,13 @@ export default async function CalendarPage({
   // rep actually assigned to the visit. Empty for unscoped viewers.
   const behindAppointments = await getLeadsBehindAppointments(range);
 
-  const [events, jobs, allReps, { data: calendars }, { data: stages }] = await Promise.all([
+  const [events, allReps, { data: calendars }, { data: stages }] = await Promise.all([
     // selectAll: a bare select stops at 1000 rows in silence -- see the
     // schedule page's note on the same shape. At stress-tenant volume
     // (1,100 events here) a bare select was quietly dropping the newest
     // 100 appointments off the calendar.
     selectAll<Event>((f, t) =>
       supabase.from("events").select("*").eq("company_id", companyId).gte("date", range.from).lte("date", range.to).range(f, t)
-    ),
-    selectAll<Job>((f, t) =>
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("name", { ascending: true })
-        .range(f, t)
     ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
@@ -84,8 +76,10 @@ export default async function CalendarPage({
   // Only the contacts these appointments point at, and their tasks,
   // notes and estimates -- all of which only the appointment window
   // reads, for the one contact its visit belongs to. They used to arrive
-  // for every contact that had ever had an appointment.
-  const { leads, leadTasks, leadNotes, estimates } = await loadAppointmentContext(supabase, companyId, events);
+  // for every contact that had ever had an appointment. Likewise only the
+  // jobs these appointments link to (#147); the window's job picker loads
+  // the full list itself.
+  const { leads, leadTasks, leadNotes, estimates, jobs } = await loadAppointmentContext(supabase, companyId, events);
 
   // Everyone active. This is the list the board resolves names from and
   // the appointment form assigns to, so it must stay whole: narrowing it

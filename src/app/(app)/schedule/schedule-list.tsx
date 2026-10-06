@@ -13,13 +13,13 @@ import {
   type CalendarRow,
   type LinkedEstimate,
   type Event,
-  type Job,
   type Lead,
   type LeadNote,
   type LeadTask,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import type { AppointmentJob } from "@/lib/appointment-jobs";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
@@ -75,7 +75,7 @@ export function ScheduleList({
   /** More appointments in the window than were loaded. */
   hasMore: boolean;
   loadFailed: boolean;
-  jobs: Job[];
+  jobs: AppointmentJob[];
   reps: Profile[];
   /** Whole roster, deactivated included -- name lookups only. */
   allMembers?: Profile[];

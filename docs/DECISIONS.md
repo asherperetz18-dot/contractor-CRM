@@ -1774,3 +1774,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The table draws 200 rows at a time** with **Show more**; the numbers above it count them all. Changing a filter starts again from one page.
 
 **Consequence:** a visit reads one month of texts by default instead of the company's whole history, and the browser draws a page of them. All time is still everything (an explicit choice; counting it in the database would be the cure, as for Marketing Analytics). No database step.
+
+## 147 — The Calendar and Schedule read only the jobs their appointments link to
+
+**Date:** 2026-10-06
+
+**Context:** The Calendar and the Schedule each read every job the company had ever had, every column (notes included), on every visit -- after #142 and #143 had windowed everything else on both pages. The jobs were used for three things: a linked job's name on an appointment, its address in the rep-info text, and the appointment window's "Related Job" picker, which lists every job. Jobs are created automatically when a contract is signed, so the list grows with every sale.
+
+**Decision:**
+- **The pages read only the jobs their loaded appointments link to**, by id, through the shared `loadAppointmentContext` (`linkedJobIds`), with only the columns the window uses (`APPOINTMENT_JOB_COLUMNS`: id, name, address -- typed with `satisfies` like #145).
+- **The picker's full list comes when someone who can edit opens an appointment** (`getJobOptions`, read as the signed-in person, in name order as before). Until it arrives the picker holds just the job the appointment links to, so the field reads right and saving without touching it keeps the link (`jobPickerOptions`); a "Loading jobs…" line shows meanwhile, or "Couldn't load the job list" if the request fails. A read-only window never asks. The list is fetched fresh on each open, so a job created since the page loaded is there too.
+- **The picker still lists every job.** Narrowing it (open jobs first, or type-to-search) changes what people can pick, so it is left for when a company's list is long enough to need it (TECH_DEBT).
+
+**Consequence:** a visit to either page no longer grows with the company's job history; an editor opening an appointment pays for the job list once per open. No database step.

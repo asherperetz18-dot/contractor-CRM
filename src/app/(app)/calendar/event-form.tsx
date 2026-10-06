@@ -29,7 +29,6 @@ import {
   type Event,
   type EventInput,
   type EventStatus,
-  type Job,
   type Lead,
   type LeadNote,
   type LeadTask,
@@ -37,6 +36,8 @@ import {
   type Profile,
   type SmsQuickText,
 } from "@/lib/data/types";
+import { jobPickerOptions, type AppointmentJob } from "@/lib/appointment-jobs";
+import { getJobOptions } from "@/lib/actions/jobs";
 import {
   createEvent,
   deleteEvent,
@@ -160,7 +161,7 @@ export function EventForm({
 }: {
   event?: Event;
   initialDate?: string;
-  jobs: Job[];
+  jobs: AppointmentJob[];
   reps: Profile[];
   /** Whole roster, deactivated included -- name lookups only. */
   allMembers?: Profile[];
@@ -292,6 +293,30 @@ export function EventForm({
     // the form opens, not a subscription that fights the person typing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id]);
+
+  // Every job, for the "Related Job" picker (DECISIONS #147) -- asked for
+  // when someone who can edit opens an appointment, rather than carried by
+  // the Calendar and Schedule on every visit. Until it arrives the picker
+  // holds just the job this appointment links to.
+  const [jobOptions, setJobOptions] = useState<AppointmentJob[] | null>(null);
+  const [jobOptionsFailed, setJobOptionsFailed] = useState(false);
+  useEffect(() => {
+    if (readOnly) return;
+    let live = true;
+    getJobOptions()
+      .then((r) => {
+        if (!live) return;
+        if ("jobs" in r) setJobOptions(r.jobs);
+        else setJobOptionsFailed(true);
+      })
+      .catch(() => {
+        if (live) setJobOptionsFailed(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [readOnly]);
+  const jobChoices = jobPickerOptions(jobOptions, jobs, form.job_id);
 
   const lead = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) ?? null : null;
   const linkedTasks = lead ? (leadTasks ?? []).filter((t) => t.lead_id === lead.id) : [];
@@ -562,7 +587,7 @@ export function EventForm({
     setStatus("pending");
     setErrorMsg("");
 
-    const address = lead?.address || jobs.find((j) => j.id === form.job_id)?.address || null;
+    const address = lead?.address || jobChoices.find((j) => j.id === form.job_id)?.address || null;
     const dateLabel = new Date(`${form.date}T00:00:00`).toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",
@@ -866,11 +891,16 @@ export function EventForm({
             <Field label="Related Job">
               <select value={form.job_id} onChange={(e) => set("job_id", e.target.value)}>
                 <option value="">— none —</option>
-                {jobs.map((j) => (
+                {jobChoices.map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.name}
                   </option>
                 ))}
+                {!readOnly && !jobOptions && (
+                  <option value="__job_options" disabled>
+                    {jobOptionsFailed ? "Couldn't load the job list" : "Loading jobs…"}
+                  </option>
+                )}
               </select>
             </Field>
             <Field label="Second Assigned To">

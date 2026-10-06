@@ -6,6 +6,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { backfillSeeds, productionJobRow, type SignedContractSeed } from "@/lib/production-job";
 import { projectHoldForJobStatus } from "@/lib/production-board";
 import { isAdminRole, type JobInput, type JobStatus } from "@/lib/data/types";
+import { selectAll } from "@/lib/data/select-all";
+import { APPOINTMENT_JOB_COLUMNS, type AppointmentJob } from "@/lib/appointment-jobs";
 
 function toRow(input: JobInput) {
   return {
@@ -31,6 +33,30 @@ export async function createJob(input: JobInput) {
   if (error) return { error: error.message };
   revalidatePath("/production");
   return {};
+}
+
+/**
+ * Every job, for the appointment window's "Related Job" picker (DECISIONS
+ * #147). The Calendar and Schedule used to carry the whole jobs table on
+ * every visit for this one dropdown; the window now asks when someone who
+ * can edit opens an appointment. Only what the picker shows, read as the
+ * signed-in person, in name order as before.
+ */
+export async function getJobOptions(): Promise<{ jobs: AppointmentJob[] } | { error: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+
+  const supabase = await createClient();
+  const jobs = await selectAll<AppointmentJob>((f, t) =>
+    supabase
+      .from("jobs")
+      .select(APPOINTMENT_JOB_COLUMNS)
+      .eq("company_id", profile.company_id)
+      .order("name", { ascending: true })
+      .order("id", { ascending: true })
+      .range(f, t)
+  );
+  return { jobs };
 }
 
 export async function updateJob(id: string, input: JobInput) {

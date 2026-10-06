@@ -2,6 +2,7 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { selectAll } from "./select-all";
 import type { Event, Lead, LeadNote, LeadTask, LinkedEstimate } from "./types";
+import { APPOINTMENT_JOB_COLUMNS, linkedJobIds, type AppointmentJob } from "@/lib/appointment-jobs";
 
 /**
  * What the appointment window needs behind a set of appointments: their
@@ -9,7 +10,8 @@ import type { Event, Lead, LeadNote, LeadTask, LinkedEstimate } from "./types";
  * Calendar's month and the Schedule's window (DECISIONS #142, #143).
  * Both pages used to load these for every contact that had ever had an
  * appointment; the window only ever reads the one contact its visit
- * belongs to.
+ * belongs to. Likewise the jobs the appointments link to, not every job
+ * the company has (#147).
  *
  * Read as the signed-in person, so row level security narrows them as
  * always (contacts RLS hides come from getLeadsBehindAppointments).
@@ -33,10 +35,16 @@ const newestFirst = <T extends { created_at: string }>(rows: T[]) =>
 export async function loadAppointmentContext(
   supabase: Db,
   companyId: string,
-  events: Pick<Event, "lead_id">[]
-): Promise<{ leads: Lead[]; leadTasks: LeadTask[]; leadNotes: LeadNote[]; estimates: LinkedEstimate[] }> {
+  events: Pick<Event, "lead_id" | "job_id">[]
+): Promise<{
+  leads: Lead[];
+  leadTasks: LeadTask[];
+  leadNotes: LeadNote[];
+  estimates: LinkedEstimate[];
+  jobs: AppointmentJob[];
+}> {
   const leadIds = [...new Set(events.map((e) => e.lead_id).filter((id): id is string => !!id))];
-  const [leads, leadTasks, leadNotes, estimates] = await Promise.all([
+  const [leads, leadTasks, leadNotes, estimates, jobs] = await Promise.all([
     forChunks(leadIds, (chunk) =>
       selectAll<Lead>((f, t) => supabase.from("leads").select("*").eq("company_id", companyId).in("id", chunk).range(f, t))
     ),
@@ -76,6 +84,18 @@ export async function loadAppointmentContext(
           .range(f, t)
       )
     ).then(newestFirst),
+    // The jobs these appointments link to: a name on the card, an address
+    // for the rep-info text. The window's picker loads the full list itself.
+    forChunks(linkedJobIds(events), (chunk) =>
+      selectAll<AppointmentJob>((f, t) =>
+        supabase
+          .from("jobs")
+          .select(APPOINTMENT_JOB_COLUMNS)
+          .eq("company_id", companyId)
+          .in("id", chunk)
+          .range(f, t)
+      )
+    ),
   ]);
-  return { leads, leadTasks, leadNotes, estimates };
+  return { leads, leadTasks, leadNotes, estimates, jobs };
 }
