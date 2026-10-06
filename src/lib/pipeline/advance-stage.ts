@@ -82,3 +82,24 @@ export function advanceStageOnEstimateSigned(
 ): Promise<StageMove> {
   return moveTo(admin, leadId, companyId, "won", () => true);
 }
+
+/**
+ * The customer has applied for financing, or been approved (DECISIONS
+ * #162): the lead is at Pending Finance. Not from further along (Close
+ * to Sale, Won) and never a do-not-contact lead -- the rule is
+ * movesToPendingFinance's, checked again here against the stage as it
+ * is now.
+ */
+export function advanceStageOnFinancing(
+  admin: SupabaseClient,
+  leadId: string,
+  companyId: string
+): Promise<StageMove> {
+  return moveTo(
+    admin,
+    leadId,
+    companyId,
+    "pending_finance",
+    (key) => !["pending_finance", "close_to_sale", "won", "dnc"].includes(key ?? "")
+  );
+}

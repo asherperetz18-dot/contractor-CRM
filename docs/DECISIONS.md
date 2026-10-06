@@ -2002,3 +2002,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Read on its own.** The portal reads the two columns separately, so a database without 0214 shows no offer instead of failing the page.
 
 **Consequence:** any company that already has a lender can offer financing today, with any lender. Nothing comes back from the lender yet (TECH_DEBT). Next: the office records financing status on an estimate. Later, with a partnership, a direct connection. **Database step: 0214**, any time; until it runs, the settings page says to run it and customers see nothing new.
+
+## 162 — Financing on the estimate: send the link, and keep track by hand
+
+**Date:** 2026-10-06
+
+**Context:** With a company's lender link in place (#161), customers can apply from their customer page. The office also wanted to send the link itself, and to see on the estimate where the customer's financing stands. Nothing comes back from the lender yet, and the Pending Finance stage sat unused.
+
+**Decision:**
+- **A Financing panel on the estimate**, under the payment schedule, for an estimate, contract or change order that's been sent (not a draft, or one declined or cancelled). It shows when the company has a lender link, or when the estimate already has financing steps. It's for the people who work estimates or record payments (`canCreateEstimates` or `canManageBills`).
+- **Text link / Email link** sends the customer the lender's link, with the same words as the portal card: the company, the document number, the lender, and that the lender decides and sets the terms. No rate or payment. It's paused for a locked company, goes through the company's own texting and email (and their monthly limits), and is logged in the contact's messages ("[Financing link emailed]" for an email).
+- **Where it stands, step by step:** Link sent, Applied, Approved, Declined, Funded, with an optional amount (Approved or Funded only) and note. Each step is a row in `estimate_financing_events` (0215): who and when, never changed or removed; the newest is the current status. A sent link records its own step. Read by the company's people; written only by the server. Backed up, kept with a deleted contact in Trash, probed by Database Health.
+- **Applied or Approved moves the lead to Pending Finance**, by its tag (under whatever the company calls it), unless the lead is already there or further along (Close to Sale, Won), or is do-not-contact. A note on the contact says so. Sent, Declined and Funded never move the lead.
+
+**Consequence:** the office sees on each estimate where its financing stands, and the pipeline's Pending Finance stage fills from it. A funded loan is still recorded as a payment by hand (TECH_DEBT). **Database step: 0215**, any time after 0214; until it runs, the panel says to run it.

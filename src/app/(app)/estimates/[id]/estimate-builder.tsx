@@ -44,6 +44,7 @@ import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { PaymentSchedule } from "./payment-schedule";
+import { FinancingPanel, type FinancingPanelData } from "./financing-panel";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
 import { JobCosts } from "./job-costs";
@@ -138,6 +139,7 @@ export function EstimateBuilder({
   paid,
   changeOrderBilling = NO_CHANGE_ORDER_BILLING,
   credits,
+  financing = null,
   lead,
   rep,
   voidedByName = null,
@@ -161,6 +163,8 @@ export function EstimateBuilder({
   changeOrderBilling?: ChangeOrderBilling[];
   /** Credits on its stages (DECISIONS #154, #160). */
   credits?: BillCreditRow[];
+  /** Financing on it (DECISIONS #162); null hides the panel. */
+  financing?: FinancingPanelData | null;
   lead: BuilderLead | null;
   /** The salesperson for the header. Unsigned it follows the lead, so
    *  it is changed on the lead card; signed it is who sold the job. */
@@ -1322,6 +1326,10 @@ export function EstimateBuilder({
         credits={credits}
         canRemoveCredits={canManageBills}
       />
+
+      {/* Financing (DECISIONS #162): send the lender's link, and keep
+          track of where the customer's application stands. */}
+      {financing && <FinancingPanel estimateId={estimate.id} data={financing} />}
 
       {/* Costs are worth recording from the moment a job is real, which is
           when it is signed -- not when it completes. A margin that only

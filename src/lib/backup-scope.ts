@@ -54,6 +54,8 @@ export const BACKUP_TABLES = [
   "bill_reminders",
   // Credits given on bills, and why (0209, DECISIONS #154).
   "bill_credits",
+  // Where each estimate's financing stands, step by step (0215, #162).
+  "estimate_financing_events",
   "contract_templates",
   "scope_templates",
   "company_documents",
