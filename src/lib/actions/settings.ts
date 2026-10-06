@@ -606,3 +606,41 @@ export async function saveAiEstimatorSettings(input: {
   revalidatePath("/settings/ai-estimator");
   return {};
 }
+
+export type PaymentReceiptSettings = { enabled: boolean; ready: boolean };
+
+/** Whether online payments email the customer a receipt (DECISIONS #151). On unless switched off. */
+export async function getPaymentReceiptSettings(): Promise<PaymentReceiptSettings | null> {
+  const profile = await getCurrentProfile();
+  if (!profile || !isAdminRole(profile)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .select("receipt_emails_enabled")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ receipt_emails_enabled: boolean | null }>();
+  return { enabled: error ? true : data?.receipt_emails_enabled !== false, ready: !error };
+}
+
+export async function savePaymentReceiptSettings(enabled: boolean): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ receipt_emails_enabled: enabled === true })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) {
+    if (/receipt_emails_enabled/.test(error.message)) {
+      return { error: "Receipts need a database update first: run 0207_payment_receipts.sql in Supabase." };
+    }
+    return { error: error.message };
+  }
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/portal-payments");
+  return {};
+}

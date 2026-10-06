@@ -80,7 +80,7 @@ export default async function PaymentsPage() {
 
   const supabase = await createClient();
 
-  const [payments, contracts, billedPhases, stripeConnected] = await Promise.all([
+  const [payments, contracts, billedPhases, stripeConnected, receiptsSent] = await Promise.all([
     selectAll<PaymentRow>((from, to) =>
       supabase
         .from("portal_payments")
@@ -109,7 +109,19 @@ export default async function PaymentsPage() {
     ),
     // The company's own account -- the only one its customers can pay into.
     companyHasOwnStripe(profile.company_id),
+    // When each payment's receipt was last emailed (0207, DECISIONS #151).
+    // Its own read, so a database without 0207 only means no "sent" note.
+    selectAll<{ id: string; receipt_sent_at: string }>((from, to) =>
+      supabase
+        .from("portal_payments")
+        .select("id, receipt_sent_at")
+        .eq("company_id", profile.company_id)
+        .not("receipt_sent_at", "is", null)
+        .order("id")
+        .range(from, to)
+    ),
   ]);
+  const receiptSentById = new Map(receiptsSent.map((r) => [r.id, r.receipt_sent_at]));
 
   const leadIds = [
     ...new Set([...contracts, ...payments].map((r) => r.lead_id).filter(Boolean) as string[]),
@@ -230,6 +242,7 @@ export default async function PaymentsPage() {
       date: p.paid_at ?? p.created_at,
       amountCents: p.amount_cents,
       manual: p.source === "manual",
+      receiptSentAt: receiptSentById.get(p.id) ?? null,
     };
   });
 

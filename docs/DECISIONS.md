@@ -1837,3 +1837,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Follow-up (1.219.1):** the first version greeted with `clientContactName`, which names only a company's contact person, so homeowners got "Hi there". It now greets with `personName`, as the estimate email does.
 
 **Consequence:** a customer can be billed by email with a PDF of their invoice, and the record says what went out and when. Emails count against the company's monthly email limit like any other (#133). **Database step: 0206**, any time; until it runs, bills still go out and read Billed.
+
+## 151 — The customer is emailed a receipt when their money arrives
+
+**Date:** 2026-10-06
+
+**Context:** The second half of step 3 of the invoicing plan (#150 was the first). A customer who paid -- online through the portal, or by check or cash the office recorded -- got nothing to say the money had arrived, what it paid for, or what was still owed. Stripe can email its own receipt when a company's account has that switched on, but it knows nothing about the job: not the invoice or stage paid, not the balance.
+
+**Decision:**
+- **One receipt email** (`receiptEmail`, pure and tested, everything escaped): the amount, the day it arrived (the company's own date), how it was paid and any check number or reference, what it paid for ("invoice INV-1004", "Rough-in complete on EST-1047", "the deposit on EST-1047"), and what is left -- "paid in full" or "still owed" on an invoice; on a contract, what is still owed on that stage (when anything is) and "paid so far: $A of $B" on the contract. Only money that has arrived counts (`receiptFigures`, from `paidTotalCents` and `phaseOwedCents`, the figures every money screen uses). It goes to the customer with a second contact copied (`billRecipients`), from the company's email sender with replies to the company, and is logged in the contact's messages.
+- **Only money that has arrived gets a receipt.** A check not yet banked, or a bank transfer still clearing, doesn't; it can be receipted from Payments once it lands.
+- **Online payments get one automatically** when Stripe says the money has settled (card at checkout; bank transfer when it clears), unless the company switched receipts off (Settings > Portal Payments; on by default -- a company whose Stripe account already emails receipts may not want two). **At most one per payment**: the payment is claimed (`portal_payments.receipt_sent_at`, 0207) before the email goes and released if it fails, so Stripe delivering the same event twice -- which it does -- sends one receipt. A receipt never fails the webhook: the money is recorded first, and an error answered to Stripe would only make it deliver again. A locked company sends none (#131).
+- **By hand, when asked:** **Email the customer a receipt** when recording a payment (on the job's page and in Money to Collect; unticked to start, since a payment entered weeks later shouldn't surprise anyone), and **Email receipt** / **Resend receipt** on any arrived payment in Payments' history, for one recorded without or a customer who lost theirs. Gated like recording a payment (`canManageBills`). A failed receipt never undoes the payment; it's said next to it.
+- **Database Health** (Settings) now probes 0205, 0206 and 0207, so a skipped invoicing migration is named there instead of found by a failing feature.
+
+**Consequence:** every payment can leave the customer with a receipt that matches the CRM's own numbers. Emails count against the company's monthly email limit (#133). **Database step: 0207**, any time; until it runs, nothing is receipted automatically, and a receipt asked for by hand still goes.

@@ -63,6 +63,9 @@ export function CollectView({
   const [collecting, setCollecting] = useState<ReceivableRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // What a save wants said that isn't an error: a receipt emailed, or why
+  // one wasn't (DECISIONS #151), and the payment's own warnings.
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);
@@ -135,15 +138,17 @@ export function CollectView({
   const shownUnpaid = scopedUnpaid.filter(match);
   const shownBillable = scopedBillable.filter(match);
 
-  async function run(fn: () => Promise<{ error?: string; ok?: boolean; warning?: string }>) {
+  async function run(fn: () => Promise<{ error?: string; ok?: boolean; warning?: string; receiptSentTo?: string }>) {
     setBusy(true);
     setError("");
+    setNotice("");
     const res = await fn();
     setBusy(false);
     if (res.error) {
       setError(res.error);
       return false;
     }
+    setNotice([res.receiptSentTo ? `Receipt emailed to ${res.receiptSentTo}.` : "", res.warning ?? ""].filter(Boolean).join(" "));
     router.refresh();
     return true;
   }
@@ -266,6 +271,7 @@ export function CollectView({
       </div>
 
       {error && <p className="error-note">{error}</p>}
+      {notice && <p className="hint-note">{notice}</p>}
 
       {tab === "unpaid" ? (
         shownUnpaid.length === 0 ? (
@@ -433,6 +439,7 @@ function CollectPaymentModal({
     reference?: string;
     receivedOn?: string;
     cleared?: boolean;
+    sendReceipt?: boolean;
   }) => void;
   onClose: () => void;
 }) {
@@ -444,6 +451,7 @@ function CollectPaymentModal({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [cleared, setCleared] = useState(true);
+  const [sendReceipt, setSendReceipt] = useState(false);
 
   return (
     <Modal
@@ -510,6 +518,18 @@ function CollectPaymentModal({
           />
           Money has arrived (uncheck for a cheque not yet banked)
         </label>
+        {/* Only money that has arrived gets a receipt (DECISIONS #151). */}
+        {cleared && (
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={sendReceipt}
+              disabled={busy}
+              onChange={(e) => setSendReceipt(e.target.checked)}
+            />
+            Email the customer a receipt
+          </label>
+        )}
       </div>
       <div className="modal-actions">
         <button type="button" className="btn-ghost" disabled={busy} onClick={onClose}>
@@ -520,7 +540,14 @@ function CollectPaymentModal({
           className="btn-primary"
           disabled={busy}
           onClick={() =>
-            onSave({ amountCents: centsFromInput(amount), method, reference, receivedOn, cleared })
+            onSave({
+              amountCents: centsFromInput(amount),
+              method,
+              reference,
+              receivedOn,
+              cleared,
+              sendReceipt: cleared && sendReceipt,
+            })
           }
         >
           {busy ? "Recording…" : "Record payment"}

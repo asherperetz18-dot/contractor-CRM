@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.220.0",
+    date: "2026-10-06",
+    notes: [
+      "Customers who pay online are now emailed a receipt once the money arrives. It shows the amount, what it paid for and what is still owed. You can switch this off under Settings › Portal Payments.",
+      "When you record a check, cash or other payment, tick Email the customer a receipt to send them one. On the Payments page, Email receipt sends one for any payment that has arrived, and Resend receipt sends it again.",
+      "Settings › Database Health now also checks the invoicing database updates.",
+    ],
+  },
+  {
     version: "1.219.1",
     date: "2026-10-06",
     notes: [

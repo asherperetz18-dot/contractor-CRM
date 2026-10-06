@@ -11,6 +11,7 @@ import {
 import { ClientPicker } from "@/components/ui/client-picker";
 import { matchesClientRep, paymentsSummary } from "./payment-filters";
 import { ManualPaymentTools } from "./manual-payment-tools";
+import { ReceiptButton } from "./receipt-button";
 import { EditManualPayment } from "./edit-manual-payment";
 
 /**
@@ -81,6 +82,8 @@ export type PaymentHistoryRow = {
   date: string;
   amountCents: number;
   manual: boolean;
+  /** When the customer was last emailed a receipt for it (DECISIONS #151). */
+  receiptSentAt: string | null;
 };
 
 function statusBadge(status: string) {
@@ -480,9 +483,13 @@ export function PaymentsView({
                       <td className="right mono">{moneyCents(r.amountCents)}</td>
                       {/* Only hand-recorded rows can be settled or removed
                           here. Stripe rows settle by webhook and are
-                          refunded in Stripe. */}
+                          refunded in Stripe. Any payment that has arrived
+                          can be receipted (DECISIONS #151). */}
                       {showTools && (
                         <td>
+                          {r.status === "succeeded" && (
+                            <ReceiptButton paymentId={r.id} sentAt={r.receiptSentAt} />
+                          )}
                           {r.manual && (
                             <ManualPaymentTools
                               paymentId={r.id}

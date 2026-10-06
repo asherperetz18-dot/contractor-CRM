@@ -10,6 +10,7 @@ import { decryptSecret, encryptionAvailable, encryptSecret, secretTail } from "@
 import { stripeConnectionState } from "@/lib/stripe/connection-state";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
+import { sendAutomaticReceipts } from "@/lib/send-receipt";
 
 export type EndpointInfo = {
   url: string;
@@ -292,6 +293,15 @@ export async function reconcilePendingPayments(): Promise<{
     // update matches zero rows and raises nothing.
     const { data } = await admin.from("portal_payments").update(patch).eq("id", r.id).select("id");
     if (data?.length) updated += 1;
+    // The receipt the missed webhook would have sent (DECISIONS #151),
+    // under the same once-per-payment claim.
+    if (data?.length && patch.status === "succeeded") {
+      try {
+        await sendAutomaticReceipts(admin, r.stripe_session_id, profile.company_id);
+      } catch {
+        // The payment is recorded; a receipt can go from Payments.
+      }
+    }
   }
 
   revalidatePath("/payments");
