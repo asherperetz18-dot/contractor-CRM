@@ -3373,6 +3373,17 @@ a.stat-card {
   cursor: default;
 }
 
+/* A window on its way (DECISIONS #143): the list stays, faded, until the
+   new range's appointments arrive; "Show more" sits under it. */
+.schedule-list.schedule-loading {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.schedule-more {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
 .schedule-list {
   display: flex;
   flex-direction: column;

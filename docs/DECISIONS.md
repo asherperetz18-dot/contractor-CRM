@@ -1718,3 +1718,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The line under the title counts the appointments in view instead of "total": the page no longer knows the total.
 
 **Consequence:** a visit reads one month of appointments and only the contacts, tasks, notes and estimates behind them, whatever the history. Moving a month costs one server render. Jobs are still read whole, and the Schedule page still reads everything (TECH_DEBT). No database step.
+
+## 143 — The Schedule loads only the window it shows
+
+**Date:** 2026-10-06
+
+**Context:** The Schedule read every appointment the company had ever booked, every contact that had ever had one, and every task and every note in the company (`selectAll` over `lead_tasks` and `lead_notes` with no filter but the company), then filtered by date in the browser. Its range picker (Upcoming, Today, Tomorrow, Next 7 days, This month, Past, All, Custom) and rep picker only ever hid rows.
+
+**Decision:**
+- **The range and rep ride in the address** (`?range=…&from=…&to=…&rep=…&limit=…`, only what differs from the default; `parseScheduleQuery` keeps a value only when it is what it should be, and the rep only as an id, since it goes into a database filter). Changing either replaces the address in a transition, the same mechanism as the Calendar (#142): the list stays on screen, faded, until the new window arrives.
+- **The server loads that window** (`serverWindow`). It knows only the UTC date, and a browser's own "today" can be a day either side, so every edge that depends on today is a day wider; the list still applies its own exact filter (`listWindow`, the logic it always had). `schedule-window.test.ts` checks the server's window holds the list's for any "today" a day either side, across month, year and leap-day ends.
+- **A page at a time:** 200 appointments, one more read to know there are more, **Show more** in pages of 200 up to 800 (under PostgREST's 1000-row ceiling), then "pick a custom date range". **Past and All read newest first**; All used to read oldest first, which opened it on the oldest appointment ever.
+- **Only what stands behind the loaded appointments comes with them:** contacts, tasks, notes and estimates by lead id (`loadAppointmentContext`, now shared with the Calendar). The service-role lookups (#142's range) cover the loaded appointments' first to last date.
+
+**Consequence:** a visit reads one window of appointments and what stands behind them, whatever the history; an old appointment is a range change and a "Show more" away. Jobs are still read whole (TECH_DEBT). No database step.

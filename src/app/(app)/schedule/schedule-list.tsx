@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
@@ -23,6 +24,16 @@ import { repDropdownOptions } from "@/lib/data/rep-options";
 import { EventForm } from "../calendar/event-form";
 import { AppointmentWizard } from "./appointment-wizard";
 import { useQuickCreate } from "../use-quick-create";
+import {
+  SCHEDULE_MAX,
+  SCHEDULE_PAGE,
+  listWindow,
+  newestFirst,
+  parseScheduleQuery,
+  scheduleQueryString,
+  type ScheduleQuery,
+  type ScheduleRange,
+} from "@/lib/schedule-window";
 
 function formatEventDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
@@ -37,7 +48,10 @@ function formatEventDate(dateStr: string): string {
 }
 
 export function ScheduleList({
+  query,
   events,
+  hasMore,
+  loadFailed,
   jobs,
   reps,
   allMembers,
@@ -54,7 +68,13 @@ export function ScheduleList({
   viewerIsDispatchScoped,
   appointmentHolders,
 }: {
+  /** The window the page loaded: range, rep and how many (DECISIONS #143). */
+  query: ScheduleQuery;
+  /** That window's appointments -- a day wider than the list shows, for time zones. */
   events: Event[];
+  /** More appointments in the window than were loaded. */
+  hasMore: boolean;
+  loadFailed: boolean;
   jobs: Job[];
   reps: Profile[];
   /** Whole roster, deactivated included -- name lookups only. */
@@ -83,36 +103,37 @@ export function ScheduleList({
   // The window opens on what's coming. The page used to open on the
   // oldest appointment in history and everyone scrolled past months to
   // find today.
-  const [range, setRange] = useState("upcoming");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-  const [repFilter, setRepFilter] = useState("All");
+  const [range, setRange] = useState<ScheduleRange>(query.range);
+  const [customFrom, setCustomFrom] = useState(query.from ?? "");
+  const [customTo, setCustomTo] = useState(query.to ?? "");
+  const [repFilter, setRepFilter] = useState(query.rep ?? "All");
+  const [limit, setLimit] = useState(query.limit);
+
+  // The page loads only the window in the address (DECISIONS #143).
+  // Changing the range, the rep or asking for more puts the new window
+  // there -- in a transition, so the list on screen stays put (and any
+  // open appointment with it) until the new one arrives. A different
+  // range or rep starts again from one page.
+  const router = useRouter();
+  const [windowPending, startWindow] = useTransition();
+  const wantedQs = scheduleQueryString(
+    parseScheduleQuery({ range, from: customFrom, to: customTo, rep: repFilter, limit })
+  );
+  const loadedQs = scheduleQueryString(query);
+  useEffect(() => {
+    if (wantedQs !== loadedQs) {
+      startWindow(() => router.replace(`/schedule${wantedQs}`, { scroll: false }));
+    }
+  }, [wantedQs, loadedQs, router]);
+  const loading = windowPending || wantedQs !== loadedQs;
 
   // Local calendar days, compared as the same yyyy-mm-dd strings the
   // rows store -- no timezone arithmetic to get wrong.
   const dayStr = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const today = dayStr(new Date(openedAtMs));
-  const plusDays = (n: number) => {
-    const d = new Date(openedAtMs);
-    d.setDate(d.getDate() + n);
-    return dayStr(d);
-  };
-  let fromDay: string | null = null;
-  let toDay: string | null = null; // inclusive
-  if (range === "upcoming") fromDay = today;
-  else if (range === "today") { fromDay = today; toDay = today; }
-  else if (range === "tomorrow") { fromDay = plusDays(1); toDay = plusDays(1); }
-  else if (range === "7d") { fromDay = today; toDay = plusDays(7); }
-  else if (range === "month") {
-    const d = new Date(openedAtMs);
-    fromDay = dayStr(new Date(d.getFullYear(), d.getMonth(), 1));
-    toDay = dayStr(new Date(d.getFullYear(), d.getMonth() + 1, 0));
-  } else if (range === "past") toDay = plusDays(-1);
-  else if (range === "custom") {
-    fromDay = customFrom || null;
-    toDay = customTo || null;
-  }
+  // The list's own exact window, on this browser's "today".
+  const { from: fromDay, to: toDay } = listWindow(range, today, customFrom, customTo);
 
   const shown = events.filter((ev) => {
     if (fromDay && ev.date < fromDay) return false;
@@ -125,8 +146,8 @@ export function ScheduleList({
   const sorted = [...shown].sort((a, b) => {
     const cmp = (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? ""));
     // History reads newest-first -- "what happened lately", not a
-    // scroll to July.
-    return range === "past" ? -cmp : cmp;
+    // scroll to July. The page loads it in that order, a page at a time.
+    return newestFirst(range) ? -cmp : cmp;
   });
 
   function repName(id: string | null) {
@@ -144,13 +165,18 @@ export function ScheduleList({
         <div>
           <h1 className="module-title">Schedule</h1>
           <p className="module-sub">
-            {shown.length === events.length
-              ? `${events.length} appointments`
-              : `${shown.length} of ${events.length} appointments`}
+            {loading ? "Loading appointments…" : `${sorted.length} appointment${sorted.length === 1 ? "" : "s"}`}
           </p>
         </div>
         <div className="cr-range">
-          <select value={range} onChange={(e) => setRange(e.target.value)} aria-label="Date range">
+          <select
+            value={range}
+            onChange={(e) => {
+              setRange(e.target.value as ScheduleRange);
+              setLimit(SCHEDULE_PAGE);
+            }}
+            aria-label="Date range"
+          >
             <option value="upcoming">Upcoming</option>
             <option value="today">Today</option>
             <option value="tomorrow">Tomorrow</option>
@@ -165,21 +191,30 @@ export function ScheduleList({
               <input
                 type="date"
                 value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  setLimit(SCHEDULE_PAGE);
+                }}
                 aria-label="From date"
               />
               <span>–</span>
               <input
                 type="date"
                 value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  setLimit(SCHEDULE_PAGE);
+                }}
                 aria-label="To date"
               />
             </>
           )}
           <select
             value={repFilter}
-            onChange={(e) => setRepFilter(e.target.value)}
+            onChange={(e) => {
+              setRepFilter(e.target.value);
+              setLimit(SCHEDULE_PAGE);
+            }}
             aria-label="Rep"
           >
             <option value="All">All Reps</option>
@@ -202,22 +237,28 @@ export function ScheduleList({
         </div>
       </div>
 
+      {loadFailed && (
+        <p className="error-note">Couldn&apos;t load appointments. Refresh the page to try again.</p>
+      )}
+
       {sorted.length === 0 ? (
         <div className="empty-state">
           <div className="empty-mark" aria-hidden="true">
             ＋
           </div>
+          {/* Only the window is loaded now, so "nothing at all" can only be
+              said when the window is everything. */}
           <p className="empty-label">
-            {events.length === 0 ? "Nothing scheduled" : "Nothing in this window"}
+            {loading ? "Loading…" : range === "all" && repFilter === "All" ? "Nothing scheduled" : "Nothing in this window"}
           </p>
           <p className="empty-hint">
-            {events.length === 0
+            {range === "all" && repFilter === "All"
               ? "Add estimates, site visits, or crew appointments."
               : "Widen the date range or switch back to All Reps."}
           </p>
         </div>
       ) : (
-        <div className="schedule-list">
+        <div className={"schedule-list" + (loading ? " schedule-loading" : "")} aria-busy={loading}>
           {sorted.map((ev) => {
             const rain = rainAlertLabel(ev.rain_alert_pop);
             return (
@@ -248,6 +289,25 @@ export function ScheduleList({
             </div>
             );
           })}
+        </div>
+      )}
+
+      {hasMore && sorted.length > 0 && (
+        <div className="schedule-more">
+          {limit < SCHEDULE_MAX ? (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={loading}
+              onClick={() => setLimit((n) => Math.min(n + SCHEDULE_PAGE, SCHEDULE_MAX))}
+            >
+              {loading ? "Loading…" : newestFirst(range) ? "Show more (older)" : "Show more (later)"}
+            </button>
+          ) : (
+            <p className="empty-hint">
+              Showing {SCHEDULE_MAX} appointments. Pick a custom date range to see others.
+            </p>
+          )}
         </div>
       )}
 

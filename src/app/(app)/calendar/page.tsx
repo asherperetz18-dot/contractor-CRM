@@ -2,16 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import type {
-  CalendarRow,
-  LinkedEstimate,
-  Event,
-  Job,
-  Lead,
-  LeadNote,
-  LeadTask,
-  PipelineStageRow,
-} from "@/lib/data/types";
+import type { CalendarRow, Event, Job, PipelineStageRow } from "@/lib/data/types";
 import {
   canDeleteAppointments,
   canEditSchedule,
@@ -19,21 +10,9 @@ import {
   isDispatchScoped,
 } from "@/lib/data/types";
 import { monthOf, monthRange, parseMonthParam } from "@/lib/calendar-range";
+import { loadAppointmentContext } from "@/lib/data/appointment-context";
 import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions/dispatcher";
 import { CalendarBoard } from "./calendar-board";
-
-/** How many ids go in one in() filter, so a busy month can't outgrow the request URL. */
-const IN_CHUNK = 150;
-
-/** Rows for every chunk of ids, each chunk read in full. */
-async function forChunks<T>(
-  ids: string[],
-  read: (chunk: string[]) => Promise<T[]>
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < ids.length; i += IN_CHUNK) out.push(...(await read(ids.slice(i, i + IN_CHUNK))));
-  return out;
-}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -106,48 +85,7 @@ export default async function CalendarPage({
   // notes and estimates -- all of which only the appointment window
   // reads, for the one contact its visit belongs to. They used to arrive
   // for every contact that had ever had an appointment.
-  const leadIds = [...new Set(events.map((e) => e.lead_id).filter((id): id is string => !!id))];
-  const [leads, leadTasks, leadNotes, estimates] = await Promise.all([
-    forChunks(leadIds, (chunk) =>
-      selectAll<Lead>((f, t) => supabase.from("leads").select("*").eq("company_id", companyId).in("id", chunk).range(f, t))
-    ),
-    forChunks(leadIds, (chunk) =>
-      selectAll<LeadTask>((f, t) =>
-        supabase
-          .from("lead_tasks")
-          .select("id, lead_id, title, due_date, completed_at, assigned_to, created_by, created_at")
-          .eq("company_id", companyId)
-          .in("lead_id", chunk)
-          .range(f, t)
-      )
-    ),
-    forChunks(leadIds, (chunk) =>
-      selectAll<LeadNote>((f, t) =>
-        supabase
-          .from("lead_notes")
-          .select("id, lead_id, author_id, body, event_id, created_at")
-          .eq("company_id", companyId)
-          .in("lead_id", chunk)
-          .order("created_at", { ascending: false })
-          .range(f, t)
-      )
-    ).then((rows) => rows.sort((a, b) => b.created_at.localeCompare(a.created_at))),
-    // The estimates table, not the legacy documents one. This tab used to
-    // read documents where type = 'Estimate', which is a different feature
-    // entirely -- so a lead with three real estimates against it showed
-    // "no estimates yet".
-    forChunks(leadIds, (chunk) =>
-      selectAll<LinkedEstimate>((f, t) =>
-        supabase
-          .from("estimates")
-          .select("id, lead_id, doc_number, title, status, total_cents, issued_at, created_at")
-          .eq("company_id", companyId)
-          .in("lead_id", chunk)
-          .order("created_at", { ascending: false })
-          .range(f, t)
-      )
-    ).then((rows) => rows.sort((a, b) => b.created_at.localeCompare(a.created_at))),
-  ]);
+  const { leads, leadTasks, leadNotes, estimates } = await loadAppointmentContext(supabase, companyId, events);
 
   // Everyone active. This is the list the board resolves names from and
   // the appointment form assigns to, so it must stay whole: narrowing it

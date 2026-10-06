@@ -71,8 +71,10 @@ test("the page reads one month of appointments, and only what stands behind them
   assert.match(page, /\.from\("events"\)\.select\("\*"\)\.eq\("company_id", companyId\)\.gte\("date", range\.from\)\.lte\("date", range\.to\)/);
   // No more "every contact that ever had an appointment".
   assert.doesNotMatch(page, /events!inner/);
+  assert.match(page, /loadAppointmentContext\(supabase, companyId, events\)/);
+  const context = source("./data/appointment-context.ts");
   for (const table of ["leads", "lead_tasks", "lead_notes", "estimates"]) {
-    assert.match(page, new RegExp(`from\\("${table}"\\)[\\s\\S]{0,200}\\.in\\("${table === "leads" ? "id" : "lead_id"}", chunk\\)`), table);
+    assert.match(context, new RegExp(`from\\("${table}"\\)[\\s\\S]{0,200}\\.in\\("${table === "leads" ? "id" : "lead_id"}", chunk\\)`), table);
   }
   // The two lookups that run with the service role are held to the same month.
   assert.match(page, /getAppointmentHolders\(range\)/);
