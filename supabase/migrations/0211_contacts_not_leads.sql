@@ -116,7 +116,8 @@ create trigger leads_default_cost
 
 -- ── 4. Take the default cost back off bought-list contacts ─────────────
 
--- What was cleared, so it can be put back:
+-- What was cleared, so it can be put back (un-tick the source first, or
+-- the next run of this file takes it off again):
 --   update public.leads l set lead_cost = b.lead_cost
 --   from public.lead_cost_cleared_0211 b where b.lead_id = l.id;
 create table if not exists public.lead_cost_cleared_0211 (
@@ -153,7 +154,15 @@ alter table public.leads disable trigger leads_set_won_at;
 update public.leads l
 set lead_cost = 0
 from public.lead_cost_cleared_0211 b
-where b.lead_id = l.id and l.lead_cost = b.lead_cost;
+where b.lead_id = l.id and l.lead_cost = b.lead_cost
+  -- Still a bought list: a source un-ticked and put back from the table
+  -- above keeps its cost when this file runs again.
+  and exists (
+    select 1 from public.lead_sources s
+    where s.company_id = l.company_id
+      and s.bought_list
+      and lower(btrim(s.name)) = lower(btrim(l.source))
+  );
 alter table public.leads enable trigger leads_set_updated_at;
 alter table public.leads enable trigger leads_set_won_at;
 
