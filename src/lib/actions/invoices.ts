@@ -27,6 +27,7 @@ import {
   type InvoiceLineDraft,
 } from "@/lib/data/invoices";
 import { markProgressPaymentBilled, requestProgressPayment } from "@/lib/actions/progress-billing";
+import type { BillChannel } from "@/lib/bill-email";
 
 /**
  * Billing a customer is an estimate-editing act, gated the way billing
@@ -85,7 +86,7 @@ export type InvoiceCostOption = {
 };
 
 export type InvoiceSetup = {
-  customer: { name: string; phone: string | null };
+  customer: { name: string; phone: string | null; email: string | null };
   contracts: { id: string; label: string }[];
   costs: InvoiceCostOption[];
 };
@@ -102,7 +103,7 @@ export async function getInvoiceSetup(leadId: string): Promise<{ error?: string;
   const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, contact_type, company_name, first_name, last_name, phone")
+    .select("id, contact_type, company_name, first_name, last_name, phone, email, second_contact_email")
     .eq("id", leadId)
     .eq("company_id", guard.companyId)
     .maybeSingle<{
@@ -112,6 +113,8 @@ export async function getInvoiceSetup(leadId: string): Promise<{ error?: string;
       first_name: string | null;
       last_name: string | null;
       phone: string | null;
+      email: string | null;
+      second_contact_email: string | null;
     }>();
   if (!lead) return { error: "Customer not found." };
 
@@ -159,6 +162,7 @@ export async function getInvoiceSetup(leadId: string): Promise<{ error?: string;
       customer: {
         name: clientName(lead) || "Customer",
         phone: lead.phone,
+        email: lead.email || lead.second_contact_email || null,
       },
       contracts: (contracts ?? []).map((c) => ({
         id: c.id,
@@ -193,10 +197,10 @@ export type NewInvoiceInput = {
   lines: InvoiceLineDraft[];
   /** Days from today until it's due; 0 is due on receipt. */
   dueInDays: number;
-  /** "text": text the customer a Pay link. "marked": they were told
-   *  another way (handed over, emailed from the office). "draft": not
+  /** "text", "email" or "both": send the customer the Pay link that way
+   *  (DECISIONS #150). "marked": they were told another way. "draft": not
    *  issued yet -- saved to finish and send later (DECISIONS #149). */
-  delivery: "text" | "marked" | "draft";
+  delivery: BillChannel | "marked" | "draft";
 };
 
 /**
@@ -393,15 +397,15 @@ async function billInvoice(
   phaseId: string,
   docNumber: string,
   termsDays: number,
-  delivery: "text" | "marked"
+  delivery: BillChannel | "marked"
 ): Promise<{ error?: string; sentTo?: string; warning?: string }> {
   const due = addDays(await companyToday(), termsDays);
-  if (delivery === "text") {
-    const sent = await requestProgressPayment(phaseId, due);
-    if (!sent.error) return { sentTo: sent.sentTo };
+  if (delivery !== "marked") {
+    const sent = await requestProgressPayment(phaseId, due, delivery);
+    if (!sent.error) return { sentTo: sent.sentTo, warning: sent.warning };
     const marked = await markProgressPaymentBilled(phaseId, due);
     if (marked.error) return { error: marked.error };
-    return { warning: `${docNumber} is issued, but the text didn't go out: ${sent.error}` };
+    return { warning: `${docNumber} is issued, but nothing went out: ${sent.error}` };
   }
   const marked = await markProgressPaymentBilled(phaseId, due);
   return marked.error ? { error: marked.error } : {};
@@ -547,7 +551,7 @@ export async function saveInvoiceDraft(invoiceId: string, input: InvoiceDraftInp
 /** Issues a draft invoice: the customer is texted the Pay link, or it's marked billed. */
 export async function issueInvoice(
   invoiceId: string,
-  delivery: "text" | "marked"
+  delivery: BillChannel | "marked"
 ): Promise<{ error?: string; sentTo?: string; warning?: string; issued?: boolean }> {
   const guard = await requireInvoicer();
   if ("error" in guard) return guard;

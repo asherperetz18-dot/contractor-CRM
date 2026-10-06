@@ -27,6 +27,7 @@ import {
   scheduledPhases,
 } from "@/lib/document-words";
 import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
+import { paymentTermsLabel } from "@/lib/data/invoices";
 
 /**
  * The estimate/contract document as a PDF, for the Drive backup.
@@ -286,6 +287,9 @@ export async function renderDocumentPdf(bundle: DocumentPdfBundle): Promise<Uint
   if (L.banner) metaLines.push({ text: L.banner, bold: true });
   metaLines.push({ text: estimate.doc_number, bold: true });
   metaLines.push({ text: `Issued ${longDate(estimate.issued_at ?? estimate.created_at)}` });
+  // An invoice's terms, as the web copy prints them (DECISIONS #149, #150).
+  const terms = isInvoice ? paymentTermsLabel(estimate.payment_terms_days) : null;
+  if (terms) metaLines.push({ text: `Terms: ${terms}` });
   if ((isChangeOrder || priceless || isInvoice) && parent) {
     metaLines.push({
       text: `${L.parentLink} ${parent.doc_number}${parent.signed_at ? `, signed ${longDate(parent.signed_at)}` : ""}`,

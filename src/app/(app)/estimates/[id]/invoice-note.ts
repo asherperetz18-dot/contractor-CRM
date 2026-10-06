@@ -39,6 +39,6 @@ export function clearInvoiceNote(invoiceId: string): void {
 /** What a successful send says. */
 export function issuedNote(docNumber: string, sentTo: string | undefined): string {
   return sentTo
-    ? `${docNumber} sent — Pay link texted to ${sentTo}.`
+    ? `${docNumber} sent — Pay link sent to ${sentTo}.`
     : `${docNumber} issued. It's on the customer's portal with a Pay button.`;
 }

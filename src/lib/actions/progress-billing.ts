@@ -8,6 +8,18 @@ import { getTwilioForSending } from "@/lib/twilio-company";
 import { lockedServicesError } from "@/lib/billing/company-lock";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getEmailForCompany } from "@/lib/email-company";
+import { sendEmail } from "@/lib/email-env";
+import { clientContactName } from "@/lib/data/client-name";
+import { paymentTermsLabel } from "@/lib/data/invoices";
+import { invoicePdfAttachment } from "@/lib/pdf/invoice-attachment";
+import {
+  billChannelParts,
+  billEmail,
+  billRecipients,
+  sentViaOf,
+  type BillChannel,
+} from "@/lib/bill-email";
 import {
   canCreateEstimates,
   defaultDueDate,
@@ -34,15 +46,18 @@ type ParentEstimate = {
   doc_number: string;
   title: string | null;
   status: EstimateStatus;
+  kind?: string | null;
+  /** An invoice's terms (0205); absent before it ran. */
+  payment_terms_days?: number | null;
 };
 
-async function requireBiller(): Promise<{ error: string } | { companyId: string }> {
+async function requireBiller(): Promise<{ error: string } | { companyId: string; userId: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   // Billing a customer is an estimate-editing act, gated the same way.
   if (!canCreateEstimates(profile))
     return { error: "You don't have permission to bill on estimates." };
-  return { companyId: profile.company_id };
+  return { companyId: profile.company_id, userId: profile.id };
 }
 
 /**
@@ -57,11 +72,18 @@ async function requireBiller(): Promise<{ error: string } | { companyId: string 
  * Ordering is not enforced. A contractor who finishes drywall before the
  * customer has paid for rough-in still needs to bill drywall, and
  * blocking that would just mean billing outside the system.
+ *
+ * It goes by text, by email, or both (DECISIONS #150) -- an invoice by
+ * email carries its PDF -- and the same call sends a billed one again.
+ * Whatever went out is logged in the contact's messages, and recorded on
+ * the bill (`sent_at`, `sent_via`) so the Invoices page can tell a bill
+ * that was sent from one only marked billed.
  */
 export async function requestProgressPayment(
   phaseId: string,
-  dueDate?: string
-): Promise<{ error?: string; sentTo?: string }> {
+  dueDate?: string,
+  channel: BillChannel = "text"
+): Promise<{ error?: string; sentTo?: string; warning?: string }> {
   const guard = await requireBiller();
   if ("error" in guard) return guard;
   // Paused while the company's subscription is locked (DECISIONS #131).
@@ -78,9 +100,11 @@ export async function requestProgressPayment(
   if (!phase) return { error: "That payment phase no longer exists." };
   if (phase.amount_cents <= 0) return { error: "This phase has no amount to bill." };
 
+  // Every column, so an invoice's terms come along where 0205 has run
+  // and nothing breaks where it hasn't.
   const { data: estimate } = await admin
     .from("estimates")
-    .select("id, lead_id, company_id, doc_number, title, status")
+    .select("*")
     .eq("id", phase.estimate_id)
     .eq("company_id", guard.companyId)
     .maybeSingle<ParentEstimate>();
@@ -101,14 +125,33 @@ export async function requestProgressPayment(
 
   const { data: lead } = await admin
     .from("leads")
-    .select("id, first_name, phone, company_id")
+    .select("id, contact_type, first_name, last_name, company_name, phone, email, second_contact_email, company_id")
     .eq("id", estimate.lead_id)
-    .maybeSingle<{ id: string; first_name: string | null; phone: string | null; company_id: string }>();
+    .maybeSingle<{
+      id: string;
+      contact_type: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      company_name: string | null;
+      phone: string | null;
+      email: string | null;
+      second_contact_email: string | null;
+      company_id: string;
+    }>();
   if (!lead) return { error: "Customer not found." };
-  if (!lead.phone) return { error: "This customer has no phone number on file." };
 
-  const twilioEnv = await getTwilioForSending(guard.companyId);
-  if (!twilioEnv) return { error: "Texting isn't configured for this company yet." };
+  // What can go out, by the channels asked for. A text needs a number and
+  // the company's Twilio; an email an address and an email sender.
+  const want = billChannelParts(channel);
+  const problems: string[] = [];
+  const twilioEnv = want.text && lead.phone ? await getTwilioForSending(guard.companyId) : null;
+  if (want.text && !lead.phone) problems.push("This customer has no phone number on file.");
+  else if (want.text && !twilioEnv) problems.push("Texting isn't configured for this company yet.");
+  const recipients = billRecipients(lead.email, lead.second_contact_email);
+  const emailEnv = want.email && recipients.to.length ? await getEmailForCompany(guard.companyId) : null;
+  if (want.email && !recipients.to.length) problems.push("This customer has no email address on file.");
+  else if (want.email && !emailEnv) problems.push("Email isn't set up for this company yet.");
+  if (!twilioEnv && !emailEnv) return { error: problems.join(" ") };
 
   const due = dueDate || phase.due_date || defaultDueDate(await companyToday());
 
@@ -132,33 +175,107 @@ export async function requestProgressPayment(
   const next = encodeURIComponent(`/portal/estimates/${estimate.id}`);
   const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(token)}&next=${next}`;
 
-  const dueLabel = new Date(`${due}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-  // Plain hyphens, no emoji: either one flips the message to UCS-2 and
-  // cuts each segment from 160 characters to 70.
-  const body = `${companyName}: ${phase.name || "Progress payment"} on ${estimate.doc_number} is due ${dueLabel} - ${moneyCents(phase.amount_cents)}.\nPay here: ${link}`;
+  const sentTo: string[] = [];
+  const logRows: { from_number: string; to_number: string; body: string; twilio_sid: string | null; channel: string }[] = [];
+  let texted = false;
+  let emailed = false;
 
-  const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
-  if (sent.error) return { error: `Text failed (${sent.error})` };
+  if (twilioEnv && lead.phone) {
+    const dueLabel = new Date(`${due}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    // Plain hyphens, no emoji: either one flips the message to UCS-2 and
+    // cuts each segment from 160 characters to 70.
+    const body = `${companyName}: ${phase.name || "Progress payment"} on ${estimate.doc_number} is due ${dueLabel} - ${moneyCents(phase.amount_cents)}.\nPay here: ${link}`;
+    const sent = await sendTwilioSms(lead.phone, body, twilioEnv);
+    if (sent.error) {
+      problems.push(`Text failed (${sent.error})`);
+    } else {
+      texted = true;
+      sentTo.push(lead.phone);
+      logRows.push({ from_number: twilioEnv.phoneNumber, to_number: lead.phone, body, twilio_sid: sent.sid || null, channel: "sms" });
+    }
+  }
 
-  // Stamped only after the text actually goes out. Marking a phase billed
-  // when the customer was never told would put it on the overdue list for
-  // a request they never received.
+  if (emailEnv) {
+    const isInvoice = estimate.kind === "invoice";
+    const mail = billEmail({
+      companyName,
+      customerName: clientContactName(lead) || null,
+      isInvoice,
+      docNumber: estimate.doc_number,
+      title: estimate.title,
+      stageName: isInvoice ? null : phase.name,
+      amountCents: phase.amount_cents,
+      dueDate: due,
+      termsLabel: isInvoice ? paymentTermsLabel(estimate.payment_terms_days) : null,
+      link,
+    });
+    // An invoice's own PDF goes with it; without one it still goes out.
+    const pdf = isInvoice ? await invoicePdfAttachment(admin, guard.companyId, estimate.id, estimate.doc_number) : null;
+    const sent = await sendEmail(recipients.to, mail.subject, mail.html, mail.text, {
+      replyTo: emailEnv.replyTo ?? undefined,
+      env: emailEnv,
+      cc: recipients.cc,
+      attachments: pdf ? [pdf] : undefined,
+    });
+    if (sent.error) {
+      problems.push(`Email failed (${sent.error})`);
+    } else {
+      emailed = true;
+      for (const addr of [...recipients.to, ...recipients.cc]) {
+        sentTo.push(addr);
+        logRows.push({ from_number: "email", to_number: addr, body: `[Bill emailed] ${mail.subject}`, twilio_sid: sent.id || null, channel: "email" });
+      }
+    }
+  }
+
+  // Nothing went out: say why, and leave the bill as it was.
+  if (!texted && !emailed) return { error: problems.join(" ") || "Couldn't send it." };
+
+  // In the contact's messages, where the team already looks for "did
+  // they ever get anything?". Best effort: the send already happened.
+  for (const row of logRows) {
+    await admin.from("sms_messages").insert({
+      lead_id: lead.id,
+      direction: "outbound",
+      sent_by: guard.userId,
+      company_id: guard.companyId,
+      ...row,
+    });
+  }
+
+  // Stamped only after something actually went out. Marking a phase
+  // billed when the customer was never told would put it on the overdue
+  // list for a request they never received. A send of a bill already
+  // billed keeps the day it was first billed.
+  const now = new Date().toISOString();
   const { data: updated, error } = await admin
     .from("estimate_payments")
-    .update({ requested_at: new Date().toISOString(), due_date: due, updated_at: new Date().toISOString() })
+    .update({ requested_at: phase.requested_at ?? now, due_date: due, updated_at: now })
     .eq("id", phaseId)
     .eq("company_id", guard.companyId)
     .select("id");
   if (error || !updated?.length) {
-    return { error: "The text went out but the phase couldn't be marked billed. Check Payments." };
+    return { error: "It went out, but the phase couldn't be marked billed. Check Payments." };
   }
+  // The send record (0206) is its own write: a database without it still
+  // bills, it just can't show Sent.
+  const via = sentViaOf(texted, emailed);
+  await admin
+    .from("estimate_payments")
+    .update({ sent_at: now, sent_via: via })
+    .eq("id", phaseId)
+    .eq("company_id", guard.companyId);
 
   revalidatePath(`/estimates/${estimate.id}`);
   revalidatePath("/payments");
-  return { sentTo: lead.phone };
+  revalidatePath("/invoices");
+  return {
+    sentTo: sentTo.join(", "),
+    ...(problems.length ? { warning: `Sent to ${sentTo.join(", ")}, but: ${problems.join(" ")}` } : {}),
+  };
 }
 
 /**

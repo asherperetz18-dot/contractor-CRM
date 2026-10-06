@@ -12,6 +12,8 @@ import {
   type InvoiceSetup,
 } from "@/lib/actions/invoices";
 import { searchEstimateLeads, type EstimateLeadMatch } from "@/lib/actions/lead-search";
+import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/invoices/send-channel-select";
+import type { BillChannel } from "@/lib/bill-email";
 
 type Line = {
   key: number;
@@ -81,6 +83,8 @@ export function NewInvoiceModal({
   const [markup, setMarkup] = useState(false);
   const [markupPct, setMarkupPct] = useState("10");
   const [dueInDays, setDueInDays] = useState<number>(0);
+  // Picked once the customer is known: what they can actually receive.
+  const [channel, setChannel] = useState<BillChannel>("text");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +95,7 @@ export function NewInvoiceModal({
       if (cancelled) return;
       if (res.error || !res.setup) return setError(res.error ?? "Couldn't load this customer.");
       setSetup(res.setup);
+      setChannel(defaultBillChannel(res.setup.customer));
       // The row's contract when it's one of theirs; the only one when
       // there's just one; otherwise let them pick (or none).
       const ids = res.setup.contracts.map((c) => c.id);
@@ -120,7 +125,7 @@ export function NewInvoiceModal({
   const patch = (key: number, p: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...p } : l)));
 
-  async function send(delivery: "text" | "marked" | "draft") {
+  async function send(delivery: BillChannel | "marked" | "draft") {
     if (!leadId) return setError("Pick the customer first.");
     const drafts = lines.map((l) => ({
       name: l.name,
@@ -151,7 +156,7 @@ export function NewInvoiceModal({
         (res.draft
           ? `${res.docNumber} saved as a draft. Finish it and send it when it's ready.`
           : res.sentTo
-          ? `${res.docNumber} sent — Pay link texted to ${res.sentTo}.`
+          ? `${res.docNumber} sent — Pay link sent to ${res.sentTo}.`
           : `${res.docNumber} issued. It's on the customer's portal with a Pay button.`),
     });
   }
@@ -339,22 +344,23 @@ export function NewInvoiceModal({
         {error && <p className="error-note">{error}</p>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <SendChannelSelect value={channel} onChange={setChannel} disabled={!setup} />
           <button
             type="button"
             className="btn-primary"
             disabled={!setup || lines.length === 0}
-            onClick={() => void send("text")}
+            onClick={() => void send(channel)}
           >
-            {saving ? "Sending…" : "Send invoice by text"}
+            {saving ? "Sending…" : sendLabel(channel)}
           </button>
           <button
             type="button"
             className="btn-ghost"
             disabled={!setup || lines.length === 0}
-            title="Issue it without a text — you're handing it over or emailing it yourself"
+            title="Issue it without sending anything — you're handing it over yourself"
             onClick={() => void send("marked")}
           >
-            Issue without texting
+            Issue without sending
           </button>
           <button
             type="button"

@@ -84,12 +84,30 @@ export async function loadInvoiceRows(
     ),
   ]);
 
-  let rows = buildInvoiceRows(docs, stages, payments, new Map(), today);
+  // When each bill was last sent (0206, DECISIONS #150), for the Invoices
+  // page's Sent. Its own read, so a database without 0206 -- or any
+  // trouble here -- only means every bill reads Billed.
+  const sentByStage = new Map<string, string>();
+  if (opts.views) {
+    const sends = await selectAll<{ id: string; sent_at: string }>((f, t) =>
+      supabase
+        .from("estimate_payments")
+        .select("id, sent_at")
+        .eq("company_id", companyId)
+        .not("sent_at", "is", null)
+        .not("requested_at", "is", null)
+        .order("id")
+        .range(f, t)
+    );
+    for (const s of sends) sentByStage.set(s.id, s.sent_at);
+  }
+
+  let rows = buildInvoiceRows(docs, stages, payments, new Map(), today, sentByStage);
 
   // Whether the customer has opened a bill since it went out -- asked
   // only about the documents with a bill still waiting on that answer.
   if (opts.views) {
-    const waiting = rows.filter((r) => r.status === "billed");
+    const waiting = rows.filter((r) => r.status === "billed" || r.status === "sent");
     const docIds = [...new Set(waiting.map((r) => r.docId))];
     if (docIds.length) {
       const since = waiting.reduce((min, r) => (r.billedAt < min ? r.billedAt : min), waiting[0].billedAt);
@@ -107,7 +125,7 @@ export async function loadInvoiceRows(
       );
       const lastView = new Map<string, string>();
       for (const v of views) if (!lastView.has(v.estimate_id)) lastView.set(v.estimate_id, v.viewed_at);
-      if (lastView.size) rows = buildInvoiceRows(docs, stages, payments, lastView, today);
+      if (lastView.size) rows = buildInvoiceRows(docs, stages, payments, lastView, today, sentByStage);
     }
   }
 

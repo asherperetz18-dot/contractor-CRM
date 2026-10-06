@@ -67,6 +67,8 @@ export type SendEmailOptions = {
   // `bcc` stays invisible to all of them. Omit either for a plain send.
   cc?: string[];
   bcc?: string[];
+  /** Files sent with it -- an invoice's PDF (DECISIONS #150). Content is base64. */
+  attachments?: { filename: string; content: string }[];
 };
 
 export async function sendEmail(
@@ -105,6 +107,7 @@ export async function sendEmail(
   if (options.replyTo) body.reply_to = options.replyTo;
   if (options.cc?.length) body.cc = options.cc;
   if (options.bcc?.length) body.bcc = options.bcc;
+  if (options.attachments?.length) body.attachments = options.attachments;
 
   // Network faults and malformed values surface as a readable message
   // instead of a 500 from an unhandled throw.

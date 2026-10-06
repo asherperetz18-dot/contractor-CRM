@@ -112,6 +112,7 @@ export default async function EstimateDetailPage({
       id: estimate.lead_id,
       name: clientName(lead) || "Customer",
       phone: lead?.phone ?? null,
+      email: lead?.email || lead?.second_contact_email || null,
     };
     const costs = Object.fromEntries((costRows ?? []).map((c) => [c.id, c]));
     // A draft is still being written (DECISIONS #149); once issued it's a record.

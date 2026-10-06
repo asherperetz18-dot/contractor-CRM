@@ -42,6 +42,7 @@ const PERIODS: { key: InvoicePeriod; label: string }[] = [
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
   draft: "#9A6B2F",
   billed: "#5F6B7A",
+  sent: "#3B6EA5",
   viewed: "#2D5F8A",
   partial: "#B7791F",
   overdue: "#C0392B",

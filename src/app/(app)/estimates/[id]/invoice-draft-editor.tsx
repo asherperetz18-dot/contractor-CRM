@@ -21,6 +21,8 @@ import {
 } from "@/lib/actions/invoices";
 import type { InvoiceLineCost } from "./invoice-view";
 import { issuedNote, stashInvoiceNote } from "./invoice-note";
+import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/invoices/send-channel-select";
+import type { BillChannel } from "@/lib/bill-email";
 
 type Line = {
   key: number;
@@ -84,7 +86,7 @@ export function InvoiceDraftEditor({
 }: {
   invoice: Estimate;
   items: (EstimateItem & { source_expense_id?: string | null; show_source_receipt?: boolean | null })[];
-  customer: { id: string; name: string; phone: string | null };
+  customer: { id: string; name: string; phone: string | null; email: string | null };
   parent: { id: string; doc_number: string } | null;
   costs: Record<string, InvoiceLineCost>;
   canEdit: boolean;
@@ -116,6 +118,7 @@ export function InvoiceDraftEditor({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [channel, setChannel] = useState<BillChannel>(() => defaultBillChannel(customer));
   const [pending, startTransition] = useTransition();
 
   // The job's paid costs that aren't on another invoice, to bill back.
@@ -159,7 +162,7 @@ export function InvoiceDraftEditor({
     return true;
   }
 
-  function act(kind: "save" | "text" | "marked") {
+  function act(kind: "save" | BillChannel | "marked") {
     setError(null);
     setSaved(null);
     startTransition(async () => {
@@ -383,16 +386,17 @@ export function InvoiceDraftEditor({
         {saved && <p className="hint-note">{saved}</p>}
 
         <div className="inv-actions">
-          <button type="button" className="btn-primary" onClick={() => act("text")}>
-            {pending ? "Working…" : "Send by text"}
+          <SendChannelSelect value={channel} onChange={setChannel} />
+          <button type="button" className="btn-primary" onClick={() => act(channel)}>
+            {pending ? "Working…" : sendLabel(channel)}
           </button>
           <button
             type="button"
             className="btn-ghost"
-            title="Issue it without a text — you're handing it over or emailing it yourself"
+            title="Issue it without sending anything — you're handing it over yourself"
             onClick={() => act("marked")}
           >
-            Issue without texting
+            Issue without sending
           </button>
           <button type="button" className="btn-ghost" onClick={() => act("save")}>
             Save draft
@@ -412,8 +416,11 @@ export function InvoiceDraftEditor({
             </>
           )}
         </div>
-        {!customer.phone && (
-          <p className="est-tax-note">{customer.name} has no phone number on file, so it can&apos;t be texted. Issue it without texting instead.</p>
+        {(!customer.phone || !customer.email) && (
+          <p className="est-tax-note">
+            {customer.name} has no {!customer.phone && !customer.email ? "phone number or email address" : !customer.phone ? "phone number" : "email address"} on file
+            {customer.phone || customer.email ? `, so it can only go by ${customer.phone ? "text" : "email"}.` : ", so it can't be sent. Issue it without sending instead."}
+          </p>
         )}
       </fieldset>
     </div>
