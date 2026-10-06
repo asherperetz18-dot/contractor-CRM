@@ -548,7 +548,7 @@ export async function saveInvoiceDraft(invoiceId: string, input: InvoiceDraftInp
 export async function issueInvoice(
   invoiceId: string,
   delivery: "text" | "marked"
-): Promise<{ error?: string; sentTo?: string; warning?: string }> {
+): Promise<{ error?: string; sentTo?: string; warning?: string; issued?: boolean }> {
   const guard = await requireInvoicer();
   if ("error" in guard) return guard;
   const supabase = await createClient();
@@ -583,7 +583,8 @@ export async function issueInvoice(
   revalidatePath("/projects");
   revalidatePath("/payments");
   revalidatePath("/collect");
-  return billInvoice(phase.id, row.doc_number, row.payment_terms_days ?? 0, delivery);
+  // Issued from here on, whatever the text does: the caller must say so.
+  return { issued: true, ...(await billInvoice(phase.id, row.doc_number, row.payment_terms_days ?? 0, delivery)) };
 }
 
 /** Deletes a draft invoice nobody was ever sent. */
