@@ -137,6 +137,8 @@ export function InvoiceView({
           </h1>
           <p className="module-sub">
             <Link href={`/contacts?openLead=${customer.id}&from=/estimates/${invoice.id}`}>{customer.name}</Link>
+            {" · "}
+            <Link href={`/invoices/statement/${customer.id}`}>Statement</Link>
             {parent && (
               <>
                 {" · for contract "}
