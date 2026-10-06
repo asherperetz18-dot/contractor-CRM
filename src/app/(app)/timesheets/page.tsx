@@ -11,6 +11,7 @@ import { punchMinutes, timesheetCsv, wallInputValue, weekDays, weekSummary, type
 import { appointmentAttendance } from "@/lib/time-clock/attendance";
 import { describePunchChange, type PunchSnapshot } from "@/lib/time-clock/punch-changes";
 import { clockFlags, describeStamp } from "@/lib/time-clock/clock-in-check";
+import { approvalBlocker, weekPeriod } from "@/lib/time-clock/approval";
 import type { ClockCheck } from "@/lib/time-clock/geo";
 import { TimesheetView, type TimesheetPerson } from "./timesheet-view";
 
@@ -155,6 +156,29 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
         .in("id", punchIds)
     : { data: [] };
   const stampOf = new Map(((stampData as Stamp[] | null) ?? []).map((st) => [st.id, st]));
+
+  // Week approvals (0212, DECISIONS #157). Their own read: before 0212
+  // there are none, and the page is as it was.
+  type Approval = {
+    profile_id: string;
+    approved_by: string | null;
+    approved_at: string;
+    reopened_by: string | null;
+    reopened_at: string | null;
+    reopen_reason: string | null;
+  };
+  const { data: approvalData } = await supabase
+    .from("timesheet_approvals")
+    .select("profile_id, approved_by, approved_at, reopened_by, reopened_at, reopen_reason")
+    .eq("company_id", companyId)
+    .eq("week_start", days[0])
+    .order("approved_at", { ascending: true });
+  const approvals = (approvalData as Approval[] | null) ?? [];
+  const liveApproval = (id: string) => approvals.find((a) => a.profile_id === id && !a.reopened_at) ?? null;
+  const shortDate = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { timeZone: zone, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const periodEnd = weekPeriod(days, zone).end;
+  const approverIsAdmin = profile.roles.includes("Admin");
   const flagsOf = (id: string) =>
     clockFlags(punches.filter((p) => p.profile_id === id && stampOf.has(p.id)).map((p) => stampOf.get(p.id)!));
 
@@ -165,9 +189,24 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
       const onSite = visits
         .filter((v) => v.profile_id === id && (v.event_id || v.job_id))
         .reduce((s, v) => s + punchMinutes({ id: "", profile_id: id, clock_in: v.arrived_at, clock_out: v.left_at, end_reason: null }, now), 0);
+      const approval = liveApproval(id);
       return {
         id,
         name: nameOf(id),
+        approval: approval
+          ? { by: approval.approved_by ? nameOf(approval.approved_by) : "Someone", when: shortDate(approval.approved_at) }
+          : null,
+        // Why it can't be approved yet, or null when it can.
+        approveBlocker: approval
+          ? null
+          : approvalBlocker({ periodEnd, now, open: row.open, isSelf: id === profile.id, isAdmin: approverIsAdmin }),
+        reopens: approvals
+          .filter((a) => a.profile_id === id && a.reopened_at)
+          .map((a) => ({
+            when: shortDate(a.reopened_at!),
+            who: a.reopened_by ? nameOf(a.reopened_by) : "Someone",
+            reason: a.reopen_reason ?? "",
+          })),
         minutesByDay: row.minutesByDay,
         totalMinutes: row.totalMinutes,
         overtimeMinutes: row.overtimeMinutes,
@@ -219,7 +258,16 @@ async function Timesheets({ searchParams }: { searchParams: Promise<{ week?: str
       <TimesheetView
         days={days}
         people={people}
-        csv={timesheetCsv(summary, days, nameOf, (id) => flagsOf(id).offSite)}
+        csv={timesheetCsv(
+          summary,
+          days,
+          nameOf,
+          (id) => flagsOf(id).offSite,
+          (id) => {
+            const a = liveApproval(id);
+            return a ? { by: a.approved_by ? nameOf(a.approved_by) : "", on: isoDateInZone(new Date(a.approved_at), zone) } : null;
+          }
+        )}
         overtimeHours={settings.overtime_weekly_hours}
       />
     </>

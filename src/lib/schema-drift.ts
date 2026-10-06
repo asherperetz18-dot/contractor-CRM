@@ -89,6 +89,7 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "portal_payments", column: "refund_of", migration: "0210_payment_refunds.sql" },
   { table: "portal_payments", column: "refund_still_owed", migration: "0210_payment_refunds.sql" },
   { table: "portal_payments", column: "stripe_refund_id", migration: "0210_payment_refunds.sql" },
+  { table: "timesheet_approvals", column: "reopen_reason", migration: "0212_timesheet_approvals.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

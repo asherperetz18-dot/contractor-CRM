@@ -1933,3 +1933,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Seeing it.** Pipeline cards and the Contacts list show a lead's source as an orange "Lead · Google" (safety orange: one to work) and a bought list's as a grey label; both pages have a Leads only filter, resolved server-side so the browser never says which sources are bought. Marketing Analytics opens with Exclude bought lists on. The contact window says under Source whether that contact counts.
 
 **Consequence:** the screens say what the rows are, and a list import no longer reads as thousands of new leads anywhere. **Database step: 0211, after 0210.** Until it runs, the dashboard and dispatch dashboard count every contact as before and nothing is re-priced; the parts worked out in the app (bell, popups, daily brief, rep report, assistant, the tags and Leads only) apply the rule from deploy, with whatever sources are already ticked (0165's flag) -- "CSV Import" counts as a bought list only once 0211 ticks it.
+
+## 157 — Week approval: the office signs off a week, and then its hours can't change
+
+**Date:** 2026-10-06
+
+**Context:** Timesheets showed each person's week and exported it for payroll, but nothing marked a week as checked, and a punch could still be fixed after payroll had been run on it -- so the export and what was paid could quietly drift apart. "Lock an approved week before export" was on the roadmap.
+
+**Decision:**
+- **Approve per person, per week.** Office or Admin approves a person's week on Timesheets (**Approve week** in their punches, or **Approve all ready** for every week that can be). Only a week that is over (Monday 00:00 to the next Monday on the company's clock) and with no punch still open. An Office user can't approve or reopen their own week; an Admin can.
+- **Approved means locked, in the database.** `timesheet_approvals` (0212) stores the instants the week covers; a trigger on `time_punches` refuses any insert or update of a punch that starts, or would start, inside a live approved week -- for everyone, Office and Admin included, whichever way it is written. The punch action says so before it tries, and Fix is hidden on an approved week. Punches are never deleted by people, so removing a person or a company still works.
+- **Reopen with a reason, on record.** **Reopen week** needs a reason; the approval row keeps who reopened it, when and why, and the next approval is a new row. At most one live approval per person and week.
+- **What payroll sees:** the CSV gains Approved by and Approved on; the bar says how many of the week's people are approved. The approval also records the week's total and overtime as approved.
+
+**Consequence:** a week that went to payroll stays as it was paid until someone reopens it, with a reason. **Database step: 0212**, any time; until it runs, Approve says to run it and the page is as before.
+

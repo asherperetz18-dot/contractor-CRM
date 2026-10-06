@@ -117,12 +117,16 @@ test("CSV has one row per person, hours to two decimals, and quotes names", () =
     s,
     days,
     (id) => (id === P ? 'Dana "DJ" Levi' : "Unnamed"),
-    (id) => (id === P ? 2 : 0)
+    (id) => (id === P ? 2 : 0),
+    // Who approved the week and when (DECISIONS #157); blank until then.
+    () => null
   );
   assert.equal(
     csv,
-    'Person,2026-09-21,Total hours,Overtime hours,Auto clock-outs,Off-site clock-ins\n"Dana ""DJ"" Levi",8.33,8.33,0.00,0,2\n'
+    'Person,2026-09-21,Total hours,Overtime hours,Auto clock-outs,Off-site clock-ins,Approved by,Approved on\n"Dana ""DJ"" Levi",8.33,8.33,0.00,0,2,,\n'
   );
+  const approved = timesheetCsv(s, days, () => "Sam Ortiz", () => 0, () => ({ by: "Lee, Office", on: "2026-09-28" }));
+  assert.match(approved, /\nSam Ortiz,8\.33,8\.33,0\.00,0,0,"Lee, Office",2026-09-28\n$/);
 });
 
 test("a week runs Monday to Sunday around any day in it", () => {
