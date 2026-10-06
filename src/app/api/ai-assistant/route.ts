@@ -9,6 +9,7 @@ import { captureError } from "@/lib/observability/sentry";
 import { aiFailureFromError } from "@/lib/ai-failure";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   isAdminRole,
@@ -256,10 +257,10 @@ async function gatherContext(
     // at 1000, so on 1520 leads the assistant answered "how many open
     // leads" from two thirds of the book while sounding certain, and
     // disagreed with the Dashboard it was meant to corroborate.
-    selectAll<{ stage_key: string | null; value: number }>((rangeFrom, rangeTo) =>
+    selectAll<{ stage_key: string | null; value: number; source: string | null }>((rangeFrom, rangeTo) =>
       supabase
         .from("leads")
-        .select("stage_key, value")
+        .select("stage_key, value, source")
         .eq("company_id", companyId)
         .match(repMatch)
         .range(rangeFrom, rangeTo)
@@ -400,7 +401,8 @@ async function gatherContext(
     team,
     access,
     leads: roster,
-    leadTotals: (allLeadTotals as { stage_key: string | null; value: number }[] | null) ?? [],
+    leadTotals: (allLeadTotals as { stage_key: string | null; value: number; source: string | null }[] | null) ?? [],
+    boughtKeys: await getBoughtListKeysCached(companyId),
     events: ((events ?? []) as AssistantEvent[]) ?? [],
     tasks: ((tasks ?? []) as AssistantTask[]) ?? [],
     estimates,

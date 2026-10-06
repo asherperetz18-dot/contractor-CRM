@@ -14,7 +14,9 @@ export default async function MarketingAnalyticsPage() {
   const [initial, members, { data: stages }] = await Promise.all([
     // The default window's numbers, reduced server-side; other ranges
     // are fetched on demand. No lead rows ride to the browser.
-    getMarketingAnalytics(presetWindow("30"), { excludeBoughtLists: false }),
+    // Bought lists start excluded: they're contacts, not leads (DECISIONS
+    // #156). Must match the view's initial toggle, which reuses this.
+    getMarketingAnalytics(presetWindow("30"), { excludeBoughtLists: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);

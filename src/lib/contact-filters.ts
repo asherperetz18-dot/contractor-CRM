@@ -8,7 +8,14 @@
  * `or` clause, and every clause lands on the same query.
  */
 
-export type ContactFilters = { sources: string[]; reps: string[]; stages: string[] };
+export type ContactFilters = {
+  sources: string[];
+  reps: string[];
+  stages: string[];
+  /** Real leads only -- not a bought list, not blank (DECISIONS #156).
+   *  Present only when on; the server resolves it to a source filter. */
+  leadsOnly?: true;
+};
 
 /** The tick for "No source" / "Unassigned". Not a value a lead can hold. */
 export const NO_VALUE = "__none";
@@ -19,9 +26,10 @@ const MAX_TICKS = 100;
 
 const PARAM = { sources: "source", reps: "rep", stages: "stage" } as const;
 const GROUPS = ["sources", "reps", "stages"] as const;
+const LEADS_PARAM = "leads";
 
 export function hasContactFilters(f: ContactFilters): boolean {
-  return GROUPS.some((g) => f[g].length > 0);
+  return f.leadsOnly === true || GROUPS.some((g) => f[g].length > 0);
 }
 
 /** A PostgREST list value, double-quoted so commas, parentheses and
@@ -67,13 +75,16 @@ export function parseContactFilters(raw: unknown): ContactFilters {
   // A ContactFilters object passes through; a searchParams record is
   // read by its URL keys.
   const read = (g: (typeof GROUPS)[number]) => ticks(g in r ? r[g] : r[PARAM[g]]);
-  return { sources: read("sources"), reps: read("reps"), stages: read("stages") };
+  const out: ContactFilters = { sources: read("sources"), reps: read("reps"), stages: read("stages") };
+  if (r.leadsOnly === true || r[LEADS_PARAM] === "1") out.leadsOnly = true;
+  return out;
 }
 
 /** The filters as a query string, "" when none are ticked. */
 export function contactFiltersQuery(f: ContactFilters): string {
   const p = new URLSearchParams();
   for (const g of GROUPS) for (const v of f[g]) p.append(PARAM[g], v);
+  if (f.leadsOnly) p.append(LEADS_PARAM, "1");
   return p.toString();
 }
 

@@ -80,6 +80,19 @@ test("parsing takes Next's searchParams shape and drops junk", () => {
   assert.deepEqual(parseContactFilters(null), NONE);
 });
 
+test("Leads only rides in the URL as leads=1 and counts as a filter", () => {
+  // DECISIONS #156: real lead sources only, bought lists hidden.
+  const f = { ...NONE, leadsOnly: true as const };
+  assert.equal(hasContactFilters(f), true);
+  assert.equal(contactFiltersQuery(f), "leads=1");
+  assert.equal(contactFiltersQuery({ ...f, sources: ["Google"] }), "source=Google&leads=1");
+  assert.deepEqual(parseContactFilters({ leads: "1" }), f);
+  assert.deepEqual(parseContactFilters({ leadsOnly: true }), f, "a server action's object passes through");
+  assert.deepEqual(parseContactFilters({ leads: "yes" }), NONE);
+  // It's a filter of its own, not a source tick: no or-clause.
+  assert.deepEqual(contactFilterClauses(f), []);
+});
+
 test("parsing caps each group so a crafted request can't build a huge query", () => {
   const many = Array.from({ length: 500 }, (_, i) => `s${i}`);
   assert.equal(parseContactFilters({ source: many }).sources.length, 100);

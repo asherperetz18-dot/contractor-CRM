@@ -20,6 +20,7 @@ import {
   type LeadInput,
   type PipelineStage,
 } from "@/lib/data/types";
+import { IMPORT_DEFAULT_SOURCE } from "@/lib/lead-or-contact";
 
 function toRow(input: LeadInput) {
   return {
@@ -142,7 +143,7 @@ export async function bulkImportLeads(rows: BulkLeadRow[], stage: PipelineStage)
     value: Number(r.value) || 0,
     date_received: importDate(r.date_received, today),
     stage,
-    source: r.source || "CSV Import",
+    source: r.source || IMPORT_DEFAULT_SOURCE,
     notes: r.notes || null,
     created_by: profile.id,
     company_id: profile.company_id,

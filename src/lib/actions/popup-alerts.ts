@@ -3,6 +3,8 @@
 import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 import {
   canEditDispatch,
   canViewEstimates,
@@ -131,6 +133,11 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
   const seesAllWeather =
     isAdminRole(profile) || profile.roles.includes("Office") || profile.roles.includes("Dispatch");
 
+  // Only real leads are news: a bought-list import is thousands of
+  // contacts nobody needs to act on (DECISIONS #156). Cached, so the
+  // poll pays no extra round trip for it.
+  const notALead = worksLeads ? notALeadPattern(await getBoughtListKeysCached(companyId)) : "";
+
   const [texts, failedTexts, paid, signed, viewed, newLeads, newAppts, newSteps, newRain, newClientNotes] =
     await Promise.all([
       textsPromise,
@@ -197,6 +204,7 @@ export async function getPopupAlerts({ textsSince, eventsSince }: PopupAlertsInp
             .from("leads")
             .select("id, contact_type, first_name, last_name, company_name, project_type, source, created_at, created_by")
             .eq("company_id", companyId)
+            .not("source", "imatch", notALead)
             .gt("created_at", since)
             .order("created_at", { ascending: false })
             .limit(PER_KIND)

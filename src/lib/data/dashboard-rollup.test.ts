@@ -62,10 +62,11 @@ const inputs: RollupInputs = {
   leadsInWindow: [
     { id: "L1", created_at: "2026-09-02T10:00:00Z", stage: "New Leads", value: 1000, has_appt: true, source: "Meta", assigned_to: "r1" },
     { id: "L2", created_at: "2026-09-05T10:00:00Z", stage: "Estimate Sent", value: 2000, has_appt: true, source: "Meta", assigned_to: "r1" },
-    { id: "L3", created_at: "2026-09-10T10:00:00Z", stage: "Won", value: 3000, has_appt: false, source: "", assigned_to: "r2" },
+    { id: "L3", created_at: "2026-09-10T10:00:00Z", stage: "Won", value: 3000, has_appt: false, source: "Website", assigned_to: "r2" },
     { id: "L4", created_at: "2026-09-12T10:00:00Z", stage: "New Leads", value: 0, has_appt: false, source: "Referral", assigned_to: null },
   ],
   prevLeadCount: 7,
+  boughtKeys: [],
   openLeads: [
     { stage: "New Leads", stage_key: null, value: 100, updated_at: "2026-09-15T08:00:00Z" },
     { stage: "New Leads", stage_key: null, value: 200, updated_at: "2026-08-01T08:00:00Z" },
@@ -149,6 +150,7 @@ test("KPI totals: current window and the period before it", () => {
     signedCount: 2,
     signedCents: 500000,
     collectedCents: 100000,
+    contactsAdded: 0,
   });
   assert.deepEqual(R.prev, {
     leads: 7,
@@ -181,8 +183,32 @@ test("sources: count and signed-contract credit, busiest first", () => {
   assert.deepEqual(R.sources, [
     { source: "Meta", count: 2, signedCount: 0, signedCents: 0 },
     { source: "Referral", count: 1, signedCount: 0, signedCents: 0 },
-    { source: "Unknown", count: 1, signedCount: 1, signedCents: 500000 },
+    { source: "Website", count: 1, signedCount: 1, signedCents: 500000 },
   ]);
+});
+
+test("bought-list and sourceless contacts aren't leads: counted apart, out of every lead number", () => {
+  // Mirrors 0211's cohort (DECISIONS #156): New leads, the funnel, Win
+  // rate and Leads by source keep only leads; the rest are contacts added.
+  const r = buildDashboardRollup({
+    ...inputs,
+    boughtKeys: ["csv import"],
+    leadsInWindow: [
+      ...inputs.leadsInWindow,
+      { id: "C1", created_at: "2026-09-11T10:00:00Z", stage: "Unsorted", value: 0, has_appt: true, source: " CSV Import", assigned_to: "r1" },
+      { id: "C2", created_at: "2026-09-11T10:00:00Z", stage: "Unsorted", value: 0, has_appt: false, source: "", assigned_to: null },
+      { id: "C3", created_at: "2026-09-11T10:00:00Z", stage: "Unsorted", value: 0, has_appt: false, source: null, assigned_to: null },
+    ],
+    estimatesForFunnel: [
+      ...inputs.estimatesForFunnel,
+      // A sale from a bought list is still a sale, just not a lead's.
+      { lead_id: "C1", status: "Signed", kind: "contract", total_cents: 700000 },
+    ],
+  });
+  assert.equal(r.window.leads, 4);
+  assert.equal(r.window.contactsAdded, 3);
+  assert.deepEqual(r.funnel, R.funnel);
+  assert.deepEqual(r.sources, R.sources);
 });
 
 test("stages: open stages only, bucketed by how recently the lead was touched", () => {

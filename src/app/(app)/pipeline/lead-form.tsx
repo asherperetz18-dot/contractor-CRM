@@ -74,7 +74,7 @@ import {
 import { LeadFilesPanel } from "./lead-files-panel";
 import { CallsPanel } from "./calls-panel";
 import { stageKeyOf, stageLabel, stageNameFor, type StageKey } from "@/lib/pipeline/stage-keys";
-import { contactFormComplete, realLeadSources } from "@/lib/lead-or-contact";
+import { boughtListKeys, contactFormComplete, countsAsLead, realLeadSources } from "@/lib/lead-or-contact";
 
 type Tab = "Overview" | "Appointments" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
@@ -197,6 +197,7 @@ export function LeadForm({
     projectTypes
   );
   const newLead = !lead && !!asLead;
+  const boughtKeys = boughtListKeys(sources);
   const [sourceOptions, setSourceOptions] = useState<{ id: string; name: string }[]>(() =>
     newLead ? realLeadSources(sources) : sources
   );
@@ -1036,11 +1037,15 @@ export function LeadForm({
               onOptionAdded={(o) => setSourceOptions((prev) => [...prev, o])}
               disabled={readOnly || pending}
             />
-            {newLead && (
-              <span className="hint-note">
-                Bought lists aren&apos;t offered here. Add those with New Contact.
-              </span>
-            )}
+            {/* Lead or contact, as every number counts it (DECISIONS #156). */}
+            <span className="hint-note">
+              {!form.source.trim()
+                ? "No source: a contact, not counted as a lead."
+                : countsAsLead(form.source, boughtKeys)
+                  ? "Counts as a lead."
+                  : "Bought list: a contact, not counted as a lead."}
+              {newLead && " Bought lists aren't offered here. Add those with New Contact."}
+            </span>
           </Field>
           <Field label="Date Received">
             <input

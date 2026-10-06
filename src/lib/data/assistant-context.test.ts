@@ -205,10 +205,12 @@ test("lead summary totals come from every row, lines from the capped roster", ()
   const totals = Array.from({ length: 1520 }, (_, i) => ({
     stage_key: i < 1500 ? null : i < 1510 ? "won" : "dnc",
     value: 100,
+    source: "Google",
   }));
   const text = buildAssistantContext(baseInput({ leads, leadTotals: totals }));
-  assert.ok(text.includes("1500 open leads"));
-  assert.ok(text.includes("1520 leads overall"));
+  assert.ok(text.includes("1500 open contacts"));
+  assert.ok(text.includes("1520 contacts overall"));
+  assert.ok(text.includes("1520 of them are leads"));
   assert.ok(text.includes(`most recent 5 of 1520`));
   assert.ok(text.includes(String(MAX_LEADS_IN_CONTEXT)) === false || MAX_LEADS_IN_CONTEXT > 5);
 });
@@ -437,6 +439,23 @@ test("scoped context announces the viewer and stops claiming company-wide", () =
     "summary is labeled as theirs"
   );
   assert.ok(!text.includes("company-wide"), "never claims company-wide numbers");
+});
+
+test("the summary tells leads from bought-list and sourceless contacts", () => {
+  // DECISIONS #156: a contact is a lead only from a real lead source.
+  const text = buildAssistantContext(
+    baseInput({
+      boughtKeys: ["csv import"],
+      leadTotals: [
+        { stage_key: null, value: 100, source: "Google" },
+        { stage_key: null, value: 100, source: "CSV Import" },
+        { stage_key: null, value: 100, source: null },
+      ],
+    })
+  );
+  assert.ok(text.includes("3 open contacts"));
+  assert.ok(text.includes("1 of them are leads"));
+  assert.ok(text.includes("Bought lists: csv import"), "names the bought lists so it can apply the rule");
 });
 
 test("unscoped context keeps the company-wide summary and no viewer banner", () => {

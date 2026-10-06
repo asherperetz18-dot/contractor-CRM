@@ -109,6 +109,7 @@ export const BACKUP_LEFT_OUT: Record<string, string> = {
   company_usage: "the platform's own usage counts",
   company_limits: "the platform's own limits",
   company_closures: "the platform's own record of a closed company",
+  lead_cost_cleared_0211: "the lead costs 0211 took off bought-list contacts, kept only to undo it",
 };
 
 /**

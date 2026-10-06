@@ -7,6 +7,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { appointmentAttended, isAdminRole, type EventStatus } from "@/lib/data/types";
 import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 import { selectAll } from "@/lib/data/select-all";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { countsAsLead } from "@/lib/lead-or-contact";
 
 type BriefLead = {
   id: string;
@@ -82,6 +84,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const in7Days = addDays(todayISO, 7);
 
   const [
+    boughtKeys,
     { data: company },
     leads,
     events,
@@ -90,6 +93,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     tasks,
     { data: members },
   ] = await Promise.all([
+    getBoughtListKeysCached(companyId),
     supabase.from("company_profile").select("name").eq("company_id", companyId).maybeSingle(),
     // selectAll: every figure on the brief is a sum over this, and a
     // bare select stops at 1000. On 1520 leads the morning brief was
@@ -151,7 +155,8 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     const wonInPeriod = leadRows.filter((l) => l.won_at && l.won_at >= since);
     const periodCalls = callRows.filter((c) => c.created_at >= since);
     return {
-      leadsAdded: leadRows.filter((l) => l.created_at >= since).length,
+      // Real leads only: a bought-list import isn't leads (DECISIONS #156).
+      leadsAdded: leadRows.filter((l) => l.created_at >= since && countsAsLead(l.source, boughtKeys)).length,
       apptsBooked: eventRows.filter((e) => e.created_at >= since).length,
       apptsScheduled: periodEvents.length,
       showed: periodEvents.filter((e) => appointmentAttended(e.status as EventStatus)).length,
@@ -208,8 +213,8 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const sourceTally = new Map<string, number>();
   const weekAgo = startOf("week");
   for (const l of leadRows) {
-    if (l.created_at < weekAgo) continue;
-    const key = l.source || "(none)";
+    if (l.created_at < weekAgo || !countsAsLead(l.source, boughtKeys)) continue;
+    const key = l.source as string;
     sourceTally.set(key, (sourceTally.get(key) ?? 0) + 1);
   }
   const topSources = [...sourceTally.entries()]

@@ -9,6 +9,8 @@ import type { PipelineStage, PipelineStageRow } from "@/lib/data/types";
 import { bulkImportLeads, getExistingContactKeys } from "@/lib/actions/leads";
 import { IMPORT_CHUNK_ROWS, chunkRows, matchDuplicateIndexes } from "@/lib/import-batching";
 import { stageLabel } from "@/lib/pipeline/stage-keys";
+import { markImportSourcesBought } from "@/lib/actions/lead-field-options";
+import { importSourceNames } from "@/lib/lead-or-contact";
 
 type Mapping = {
   firstName: number;
@@ -106,11 +108,24 @@ function cell(row: unknown[], idx: number) {
   return idx >= 0 && idx < row.length ? String(row[idx] ?? "").trim() : "";
 }
 
+/** "A", "B" and 3 more -- the hint names the file's sources. */
+function quoteList(names: string[]): string {
+  const quoted = names.slice(0, 3).map((n) => `\u201c${n}\u201d`);
+  const more = names.length - quoted.length;
+  if (more > 0) return `${quoted.join(", ")} and ${more} more`;
+  if (quoted.length <= 1) return quoted.join("");
+  return `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]}`;
+}
+
 export function CsvImportPanel({
   stages,
+  canTickBoughtLists,
   onCancel,
 }: {
   stages: PipelineStageRow[];
+  /** Office/Admin: may tick the file's sources as bought lists, like the
+   *  tick in Settings > Lead Sources. */
+  canTickBoughtLists: boolean;
   onCancel: () => void;
 }) {
   const router = useRouter();
@@ -128,6 +143,9 @@ export function CsvImportPanel({
   const [dupeCount, setDupeCount] = useState<number | null>(null);
   const [dupeChecking, setDupeChecking] = useState(false);
   const [skipDupes, setSkipDupes] = useState(true);
+  // On by default: what gets imported here is bought cold-call lists,
+  // which are contacts, not leads (DECISIONS #156).
+  const [boughtList, setBoughtList] = useState(true);
   const [dupeIndexes, setDupeIndexes] = useState<Set<number>>(new Set());
   // Live "12,000 / 61,542" while chunks upload, and where to pick up
   // from if a chunk fails mid-run -- already-imported leads are never
@@ -255,6 +273,9 @@ export function CsvImportPanel({
       ),
     [builtLeads]
   );
+  // The sources the file will write ("CSV Import" for a blank cell).
+  const fileSources = useMemo(() => importSourceNames(usableLeads.map((l) => l.source)), [usableLeads]);
+
   // What will actually be created, once unusable rows and (if chosen)
   // known duplicates are taken out.
   const importCount =
@@ -328,6 +349,15 @@ export function CsvImportPanel({
     let done = importCursor;
     setImportProgress({ done, total: newLeads.length });
     try {
+      // Ticked before any row goes in, so each one is priced as a
+      // bought-list contact ($0) the moment it's inserted.
+      if (canTickBoughtLists && boughtList) {
+        const marked = await markImportSourcesBought(importSourceNames(newLeads.map((l) => l.source)));
+        if (marked.error) {
+          setError(marked.error);
+          return;
+        }
+      }
       for (const chunk of chunkRows(newLeads.slice(importCursor), IMPORT_CHUNK_ROWS)) {
         const result = await bulkImportLeads(chunk, targetStage);
         if ("error" in result && result.error) {
@@ -426,6 +456,28 @@ export function CsvImportPanel({
               </select>
             </Field>
           </div>
+
+          {canTickBoughtLists ? (
+            <label className="csv-dupe-skip">
+              <input
+                type="checkbox"
+                checked={boughtList}
+                onChange={(e) => setBoughtList(e.target.checked)}
+              />{" "}
+              These are bought-list contacts, not leads
+              <span className="csv-dupe-hint">
+                {boughtList
+                  ? `Ticks ${quoteList(fileSources)} as a bought list in Settings › Lead Sources, so these count as contacts. Untick for a file of real leads.`
+                  : "They'll count as leads, unless their source is already ticked as a bought list."}
+              </span>
+            </label>
+          ) : (
+            <p className="hint-note">
+              Contacts from a source ticked as a bought list in Settings › Lead Sources count as
+              contacts, not leads. A file with no Source column is &ldquo;CSV Import&rdquo;, which is
+              one.
+            </p>
+          )}
 
           <p
             className={

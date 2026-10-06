@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { monthKey } from "@/lib/data/marketing-spend";
+import { revalidateBoughtLists } from "@/lib/data/company-chrome";
 import { isAdminRole } from "@/lib/data/types";
 
 async function requireOfficeOrAdmin(): Promise<
@@ -80,6 +81,8 @@ export async function setSourceBoughtList(
     .eq("id", id)
     .eq("company_id", guard.companyId);
   if (error) return { error: explain(error.message, "The bought-list flag") };
+  // The tick decides lead or contact everywhere now (DECISIONS #156).
+  revalidateBoughtLists(guard.companyId);
   revalidate();
   return {};
 }

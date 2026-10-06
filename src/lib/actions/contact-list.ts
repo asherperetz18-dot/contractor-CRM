@@ -14,6 +14,8 @@ import {
 } from "@/lib/contact-filters";
 import type { Lead } from "@/lib/data/types";
 import { OPEN_LEADS_FILTER } from "@/lib/pipeline/stage-keys";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 
 /**
  * The Contacts page's server side -- same cure as the Power Dialer and
@@ -70,14 +72,28 @@ function searchClause(search: string): string | null {
   return parts.join(",");
 }
 
+/** Leads only, resolved: the company's bought-list sources as a filter
+ *  pattern (DECISIONS #156), or null when the filter is off. */
+async function leadsOnlyPattern(filters: unknown, companyId: string): Promise<string | null> {
+  if (!parseContactFilters(filters).leadsOnly) return null;
+  return notALeadPattern(await getBoughtListKeysCached(companyId));
+}
+
 /**
- * The search box and the Source / Rep / Stage filters, on any leads
- * query. `filters` comes from the browser, so it is re-parsed here.
+ * The search box and the Source / Rep / Stage / Leads only filters, on
+ * any leads query. `filters` comes from the browser, so it is re-parsed
+ * here; `notALead` is leadsOnlyPattern's answer.
  */
-function narrow<Q extends { or(filters: string): Q }>(q: Q, search: string, filters: unknown): Q {
+function narrow<Q extends { or(filters: string): Q; not(column: string, operator: string, value: unknown): Q }>(
+  q: Q,
+  search: string,
+  filters: unknown,
+  notALead: string | null
+): Q {
   const or = searchClause(search);
   if (or) q = q.or(or);
   for (const clause of contactFilterClauses(parseContactFilters(filters))) q = q.or(clause);
+  if (notALead !== null) q = q.not("source", "imatch", notALead);
   return q;
 }
 
@@ -94,7 +110,8 @@ export async function listContacts(input: {
   const q = narrow(
     supabase.from("leads").select(ROW_COLUMNS, { count: "exact" }).eq("company_id", profile.company_id),
     input.search,
-    input.filters
+    input.filters,
+    await leadsOnlyPattern(input.filters, profile.company_id)
   );
   const { data, count, error } = await q
     .order("created_at", { ascending: false })
@@ -122,7 +139,8 @@ export async function getContactStats(input?: { search?: string; filters?: Conta
   const narrowed = search.trim() !== "" || hasContactFilters(filters);
   const book = () =>
     supabase.from("leads").select("id", { count: "exact", head: true }).eq("company_id", profile.company_id);
-  const base = () => narrow(book(), search, filters);
+  const notALead = await leadsOnlyPattern(filters, profile.company_id);
+  const base = () => narrow(book(), search, filters, notALead);
   const [total, open, unassigned, whole] = await Promise.all([
     base(),
     base().or(OPEN_LEADS_FILTER),
@@ -209,7 +227,8 @@ export async function listMatchingRecipients(
       .select("id, contact_type, company_name, first_name, last_name, email", { count: "exact" })
       .eq("company_id", profile.company_id),
     search,
-    filters
+    filters,
+    await leadsOnlyPattern(filters, profile.company_id)
   );
   const { data, count } = await q
     .order("created_at", { ascending: false })

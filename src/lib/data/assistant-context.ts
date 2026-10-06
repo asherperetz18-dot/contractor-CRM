@@ -9,6 +9,7 @@ import {
 } from "./types.ts";
 import { funnelCardStats, effectiveEstimateStatus } from "./funnel-cards.ts";
 import { isClosedStageKey } from "../pipeline/stage-keys.ts";
+import { countsAsLead } from "../lead-or-contact.ts";
 
 /**
  * Everything the AI assistant is allowed to read, rendered as one plain
@@ -172,8 +173,10 @@ export type AssistantContextInput = {
   access: AssistantAccess;
   /** The capped detail roster (query-limited to MAX_LEADS_IN_CONTEXT). */
   leads: AssistantLead[];
-  /** Narrow columns for EVERY lead -- the accurate totals. */
-  leadTotals: { stage_key: string | null; value: number }[];
+  /** Narrow columns for EVERY contact -- the accurate totals. */
+  leadTotals: { stage_key: string | null; value: number; source?: string | null }[];
+  /** The bought-list sources' keys: which contacts are leads (#156). */
+  boughtKeys?: string[];
   events: AssistantEvent[];
   tasks: AssistantTask[];
   /** Every document, like the Estimates page fetches. */
@@ -247,6 +250,8 @@ export function buildAssistantContext(input: AssistantContextInput): string {
   // tag (DECISIONS #120) -- the same count as the Dashboard.
   const openTotals = input.leadTotals.filter((l) => !isClosedStageKey(l.stage_key));
   const openPipelineValue = openTotals.reduce((sum, l) => sum + (Number(l.value) || 0), 0);
+  const boughtKeys = input.boughtKeys ?? [];
+  const realLeads = input.leadTotals.filter((l) => countsAsLead(l.source, boughtKeys)).length;
 
   const leadLines = input.leads.map((l) => {
     // The id is included so a proposed change can name exact records.
@@ -284,7 +289,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
       `TEAM (use these ids when proposing an assignment):`,
       input.team.length ? input.team.map((m) => `- id: ${m.id} | ${m.name}`).join("\n") : "(none)",
     ].join("\n"),
-    `Summary (${input.repScope ? `accurate totals for ${input.repScope.name}'s assigned leads` : "accurate company-wide totals"} -- use these for any count/value question): ${openTotals.length} open leads worth ${money(openPipelineValue)} total, out of ${input.leadTotals.length} leads overall.`,
+    `Summary (${input.repScope ? `accurate totals for ${input.repScope.name}'s assigned leads` : "accurate company-wide totals"} -- use these for any count/value question): ${openTotals.length} open contacts worth ${money(openPipelineValue)} total, out of ${input.leadTotals.length} contacts overall; ${realLeads} of them are leads. Everyone on the pipeline is a contact; a contact is a lead only when its source is a real lead source -- not blank and not a bought list (purchased phone lists). Bought lists: ${boughtKeys.join(", ") || "none"}. When asked about leads, count only those.`,
     [
       `LEADS -- detail roster, most recent ${input.leads.length} of ${input.leadTotals.length} total (older leads are omitted here; rely on the Summary above for totals, not a count of this list):`,
       leadLines.length ? leadLines.join("\n") : "(none)",
