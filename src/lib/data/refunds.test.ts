@@ -166,8 +166,9 @@ test("Stripe: refunds made there are recorded here, once each, and the Stripe ch
 });
 
 test("the places that look at single rows know a refund when they see one", () => {
-  // Never a "payment received" receipt, alert or bell for money going out.
-  assert.match(source("../send-receipt.ts"), /payment\.amount_cents <= 0/);
+  // Never a "payment received" receipt, alert or bell for money going out
+  // (a refund gets its own notice, #158).
+  assert.match(source("../send-receipt.ts"), /if \(payment\.amount_cents < 0\) \{/);
   assert.match(source("../actions/popup-alerts.ts"), /\.gt\("amount_cents", 0\)/);
   assert.match(source("../actions/notifications.ts"), /\.gt\("amount_cents", 0\)/);
   // "Already paid" is what's owed, never "a paid row exists".
@@ -196,7 +197,8 @@ test("no reminder asks for money that just went back until someone says it's sti
 test("the Payments page: Refund on money that's in, the still-owed question on bills, none of a payment's tools on a refund", () => {
   const view = source("../../app/(app)/payments/payments-view.tsx");
   assert.match(view, /const editable = r\.manual && showTools && !r\.isRefund;/);
-  assert.match(view, /r\.status === "succeeded" && !r\.isRefund && \(\s*<ReceiptButton/);
+  // A refund's own notice (#158), once "Still owed?" is answered.
+  assert.match(view, /r\.status === "succeeded" && !r\.refundUndecided && \(\s*<ReceiptButton paymentId=\{r\.id\} sentAt=\{r\.receiptSentAt\} refund=\{r\.isRefund\} \/>/);
   assert.match(view, /r\.refundUndecided && r\.status === "succeeded" && <DecideRefund/);
   const form = source("../../app/(app)/payments/refund-payment.tsx");
   assert.match(form, /Does the customer still owe this amount\?/);

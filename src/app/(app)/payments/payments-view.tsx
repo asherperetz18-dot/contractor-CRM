@@ -501,8 +501,10 @@ export function PaymentsView({
                           (#155) -- a refund itself, neither. */}
                       {showTools && (
                         <td>
-                          {r.status === "succeeded" && !r.isRefund && (
-                            <ReceiptButton paymentId={r.id} sentAt={r.receiptSentAt} />
+                          {/* A refund gets a refund notice (#158) once it's been
+                              answered: the notice says what's owed now. */}
+                          {r.status === "succeeded" && !r.refundUndecided && (
+                            <ReceiptButton paymentId={r.id} sentAt={r.receiptSentAt} refund={r.isRefund} />
                           )}
                           {r.refundableCents > 0 && (
                             <button

@@ -29,6 +29,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.228.0",
+    date: "2026-10-06",
+    notes: [
+      "Refund notices: when you record a refund, tick Email the customer that the money is coming back. The email says how much went back, for what and why, and what's still owed. A refund on the Payments page also has an Email refund notice button. That includes Stripe refunds once you've answered \"Still owed?\".",
+    ],
+  },
+  {
     version: "1.227.0",
     date: "2026-10-06",
     notes: [

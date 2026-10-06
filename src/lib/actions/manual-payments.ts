@@ -406,6 +406,8 @@ export type RefundInput = {
    * Yes (a bounced check): the bill is owed again. Ignored on a deposit.
    */
   stillOwed: boolean;
+  /** Email the customer a refund notice once it's recorded (#158). */
+  emailCustomer?: boolean;
 };
 
 /**
@@ -414,7 +416,9 @@ export type RefundInput = {
  * database (record_refund): never more than is left of the payment, on
  * money that has arrived. A refund made in Stripe records itself.
  */
-export async function recordRefund(input: RefundInput): Promise<{ error?: string; ok?: boolean }> {
+export async function recordRefund(
+  input: RefundInput
+): Promise<{ error?: string; ok?: boolean; sentTo?: string; emailError?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canManageBills(profile)) {
@@ -434,7 +438,7 @@ export async function recordRefund(input: RefundInput): Promise<{ error?: string
     .maybeSingle<{ id: string; estimate_id: string }>();
   if (!payment) return { error: "Payment not found." };
 
-  const { error } = await admin.rpc("record_refund", {
+  const { data: refundId, error } = await admin.rpc("record_refund", {
     p_company: profile.company_id,
     p_payment: payment.id,
     p_amount: amountCents,
@@ -450,11 +454,21 @@ export async function recordRefund(input: RefundInput): Promise<{ error?: string
     return { error: error.message };
   }
 
+  // The refund is recorded whatever the email does: a send that fails is
+  // said, and Email refund notice on Payments tries again.
+  let sentTo: string | undefined;
+  let emailError: string | undefined;
+  if (input.emailCustomer) {
+    const sent = await sendPaymentReceipt(admin, String(refundId), profile.company_id, { automatic: false, sentBy: profile.id });
+    sentTo = sent.sentTo;
+    emailError = sent.error;
+  }
+
   revalidatePath("/payments");
   revalidatePath(`/estimates/${payment.estimate_id}`);
   revalidatePath("/invoices");
   revalidatePath("/collect");
-  return { ok: true };
+  return { ok: true, sentTo, emailError };
 }
 
 /**
