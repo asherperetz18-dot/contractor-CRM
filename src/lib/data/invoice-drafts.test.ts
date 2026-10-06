@@ -142,6 +142,17 @@ test("only a draft can be edited, issued from draft, or deleted; an issued invoi
   assert.match(actions, /if \(invoice\.status === "Draft"\) return \{ error: "This is still a draft: delete it instead\." \};/);
 });
 
+test("sending a draft always says what happened, including a text that didn't go out", () => {
+  const actions = source("../actions/invoices.ts");
+  // Past the point of issuing, the result says so, whatever the text did.
+  assert.match(actions, /return \{ issued: true, \.\.\.\(await billInvoice\(phase\.id, row\.doc_number, row\.payment_terms_days \?\? 0, delivery\)\) \};/);
+  const editor = source("../../app/(app)/estimates/[id]/invoice-draft-editor.tsx");
+  // The editor gives way to the issued page, so the outcome is handed to it.
+  assert.match(editor, /stashInvoiceNote\(invoice\.id, res\.error \?\? res\.warning \?\? issuedNote\(invoice\.doc_number, res\.sentTo\)\);/);
+  const view = source("../../app/(app)/estimates/[id]/invoice-view.tsx");
+  assert.match(view, /useState<string \| null>\(\(\) => peekInvoiceNote\(invoice\.id\)\)/);
+});
+
 test("the customer's copy says its terms, and a draft never reaches the customer", () => {
   const doc = source("../../components/estimate-document.tsx");
   assert.match(doc, /paymentTermsLabel\(estimate\.payment_terms_days\)/);

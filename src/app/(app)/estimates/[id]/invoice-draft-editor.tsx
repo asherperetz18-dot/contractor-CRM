@@ -20,6 +20,7 @@ import {
   type InvoiceCostOption,
 } from "@/lib/actions/invoices";
 import type { InvoiceLineCost } from "./invoice-view";
+import { issuedNote, stashInvoiceNote } from "./invoice-note";
 
 type Line = {
   key: number;
@@ -169,7 +170,10 @@ export function InvoiceDraftEditor({
         return;
       }
       const res = await issueInvoice(invoice.id, kind);
-      if (res.error) return setError(res.error);
+      if (!res.issued) return setError(res.error ?? "Couldn't send it.");
+      // Issued: this page gives way to the issued invoice, which says
+      // what happened -- including a text that didn't go out.
+      stashInvoiceNote(invoice.id, res.error ?? res.warning ?? issuedNote(invoice.doc_number, res.sentTo));
       router.refresh();
     });
   }

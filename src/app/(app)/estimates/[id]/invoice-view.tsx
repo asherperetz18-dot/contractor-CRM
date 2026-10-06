@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
@@ -19,6 +19,7 @@ import { requestProgressPayment } from "@/lib/actions/progress-billing";
 import { cancelInvoice } from "@/lib/actions/invoices";
 import { paymentTermsLabel } from "@/lib/data/invoices";
 import { RecordPayment } from "./record-payment";
+import { clearInvoiceNote, peekInvoiceNote } from "./invoice-note";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -75,7 +76,10 @@ export function InvoiceView({
   canRecord: boolean;
 }) {
   const router = useRouter();
-  const [note, setNote] = useState<string | null>(null);
+  // What happened when it was sent from a draft, handed over by the
+  // editor this page replaced (a text that didn't go out included).
+  const [note, setNote] = useState<string | null>(() => peekInvoiceNote(invoice.id));
+  useEffect(() => clearInvoiceNote(invoice.id), [invoice.id]);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
