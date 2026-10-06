@@ -6,8 +6,11 @@ import { stripeClient } from "@/lib/stripe-env";
 import { getStripeForCompany } from "@/lib/stripe-company";
 import { leftoverCheckoutAction } from "@/lib/stripe/checkout-reuse";
 import {
+  MIN_ONLINE_CHARGE_CENTS,
   depositCents,
   isUnfinishedCheckout,
+  moneyCents,
+  phaseCheckoutCents,
   phaseOwedCents,
   phaseState,
   type EstimatePayment,
@@ -152,6 +155,9 @@ export type PortalPhase = {
   /** What is still owed on the phase. Less than amountCents once a
    *  partial payment has been recorded against it. */
   owedCents: number;
+  /** What the Pay button charges: what is owed less money already on its
+   *  way. The rest of a part-paid phase, never the face amount again. */
+  payableCents: number;
   dueDate: string | null;
   state: PhaseState;
   paidAt: string | null;
@@ -221,6 +227,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         description: p.description,
         amountCents: p.amount_cents,
         owedCents: phaseOwedCents(p, on),
+        payableCents: phaseCheckoutCents(p, on),
         dueDate: p.due_date ?? null,
         state: phaseState(p, on),
         paidAt: settled?.paid_at ?? null,
@@ -278,19 +285,36 @@ export async function startPhaseCheckout(
   }
   if (estimate.status !== "Signed") return { error: "This contract isn't signed." };
 
-  const { data: already } = await admin
+  // What is left to pay, not the face amount: a phase part-paid by
+  // cheque is charged only the rest, and money already on its way is
+  // never charged twice. The same figure goes to Stripe and onto the
+  // pending row the webhook settles, so the two can't disagree.
+  const { data: rows } = await admin
     .from("portal_payments")
-    .select("id")
+    .select("id, status, amount_cents, stripe_session_id, stripe_payment_intent_id")
     .eq("estimate_payment_id", phaseId)
-    .eq("status", "succeeded")
-    .maybeSingle();
-  if (already) return { error: "This payment has already been made." };
+    .returns<
+      Pick<PortalPayment, "id" | "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id">[]
+    >();
+  const payments = rows ?? [];
+  const cents = phaseCheckoutCents(phase, payments);
+  if (cents === 0) {
+    return payments.some((p) => p.status === "pending" && !isUnfinishedCheckout(p))
+      ? { error: "This payment is already going through. Refresh the page in a minute." }
+      : { error: "This payment has already been made." };
+  }
 
   const { data: company } = await admin
     .from("company_profile")
     .select("name")
     .eq("company_id", estimate.company_id)
     .maybeSingle<{ name: string | null }>();
+
+  if (cents < MIN_ONLINE_CHARGE_CENTS) {
+    return {
+      error: `The remaining ${moneyCents(cents)} can't be paid online. ${company?.name || "Your contractor"} will settle it with you.`,
+    };
+  }
 
   const base = portalBaseUrl();
   try {
@@ -299,22 +323,16 @@ export async function startPhaseCheckout(
     // A checkout this customer opened earlier and left. Handing back the
     // one still open, instead of starting another, is what stops two
     // tabs from paying the same phase twice.
-    const { data: leftovers } = await admin
-      .from("portal_payments")
-      .select("id, status, stripe_session_id, stripe_payment_intent_id")
-      .eq("estimate_payment_id", phaseId)
-      .eq("status", "pending")
-      .returns<
-        Pick<PortalPayment, "id" | "status" | "stripe_session_id" | "stripe_payment_intent_id">[]
-      >();
-    for (const row of (leftovers ?? []).filter(isUnfinishedCheckout)) {
+    for (const row of payments.filter(isUnfinishedCheckout)) {
       // A session Stripe can't find (the company changed accounts) is no
       // reason to refuse the customer a fresh one.
       const prior = await stripe.checkout.sessions
         .retrieve(row.stripe_session_id!)
         .catch(() => null);
       if (!prior) continue;
-      const action = leftoverCheckoutAction(prior, phase.amount_cents);
+      // An open checkout for the full amount is closed once part has been
+      // paid another way: it would charge the old figure.
+      const action = leftoverCheckoutAction(prior, cents);
       if (action === "reuse" && prior.url) return { url: prior.url };
       if (action === "in-flight") {
         return { error: "This payment is already going through. Refresh the page in a minute." };
@@ -333,9 +351,9 @@ export async function startPhaseCheckout(
           quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: phase.amount_cents,
+            unit_amount: cents,
             product_data: {
-              name: `${phase.name || "Progress payment"} — ${estimate.doc_number}`,
+              name: `${phase.name || "Progress payment"}${cents < phase.amount_cents ? " (remaining balance)" : ""} — ${estimate.doc_number}`,
               description: await checkoutDescription(admin, estimate, company?.name),
             },
           },
@@ -360,7 +378,7 @@ export async function startPhaseCheckout(
       estimate_payment_id: phase.id,
       lead_id: estimate.lead_id,
       kind: "progress",
-      amount_cents: phase.amount_cents,
+      amount_cents: cents,
       status: "pending",
       stripe_session_id: session.id,
     });

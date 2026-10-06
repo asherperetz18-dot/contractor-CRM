@@ -373,7 +373,7 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Decision:** `phaseState` is amount-aware, with a new `partial` state ("Partially paid"): paid means the settled money covers the amount; clearing means money in flight covers the remainder (a token pending payment no longer hides lateness); a partially paid phase past its due date is overdue, because the remainder is late. The Billed, Unpaid and Overdue cards sum `phaseOwedCents` — the identical per-phase remainder `phaseReceivableCents` sums for Projects — pinned equal in `src/lib/data/phase-state.test.ts`, so the two pages can only ever say the same number. Money still clearing stays on Billed, Unpaid until it lands (the Clearing card names what is in flight). Billed phases on documents that are no longer live signed contracts are dropped from the page, matching Projects' refusal to count a cancelled job's bills.
 
-**Consequence:** A partly paid invoice reads "Partially paid" with its remainder on Payments, the contract schedule and the customer portal, and the remainder stays on the cards until settled. The portal shows no Pay button on such a phase — checkout only knows how to charge the full face amount (see TECH_DEBT: portal remainder checkout).
+**Consequence:** A partly paid invoice reads "Partially paid" with its remainder on Payments, the contract schedule and the customer portal, and the remainder stays on the cards until settled. The portal shows no Pay button on such a phase — checkout only knows how to charge the full face amount (see TECH_DEBT: portal remainder checkout). Since #144 the portal charges the remainder instead.
 
 ---
 
@@ -1732,6 +1732,22 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Only what stands behind the loaded appointments comes with them:** contacts, tasks, notes and estimates by lead id (`loadAppointmentContext`, now shared with the Calendar). The service-role lookups (#142's range) cover the loaded appointments' first to last date.
 
 **Consequence:** a visit reads one window of appointments and what stands behind them, whatever the history; an old appointment is a range change and a "Show more" away. Jobs are still read whole (TECH_DEBT). No database step.
+
+## 144 — The portal charges what's left on a part-paid stage
+
+**Date:** 2026-10-06
+
+**Context:** Once any money was filed to a billed stage — a cheque for part of it, say — the customer's portal showed "Partially paid — $X still due" with no Pay button (#033). Checkout only knew how to charge a stage's full amount, so a button there would have charged the face value on top of what was paid. The rest was chased and recorded by hand.
+
+**Decision:**
+- **The Pay button charges the rest:** the stage's amount less settled money *and* money already on its way — a completed ACH checkout or a cheque recorded as pending — so a transfer still clearing is never charged twice. A checkout the customer opened and left is not money and reduces nothing (`phaseCheckoutCents`, pure and tested).
+- **One figure everywhere in a checkout:** the same amount goes to Stripe's session, to the pending row the webhook settles, and to the reuse check — so an open checkout left over from before a cheque landed is closed, not handed back at the old amount. The webhook needed no change: it settles the pending row's own amount. A source test fails if the checkout goes back to the face amount in any of the three.
+- **The "already paid" check reads every payment on the stage,** not a single settled row (it used to refuse any stage with one settled payment, and silently skipped the check with two).
+- **Below 50¢ left, no button:** Stripe refuses smaller charges, so the contractor settles the cents (`MIN_ONLINE_CHARGE_CENTS`, `portalPayCents`).
+- Stripe's line item reads "… (remaining balance) — EST-…" on a part payment, so the customer's receipt says what it was for.
+
+**Consequence:** a customer who part-paid can finish online. Invoices benefit too — their one stage goes through the same checkout. Deposits are unchanged. No database step. **Worth one real test payment after deploy** (a small amount on a test job), since this changes what Stripe is asked to charge.
+
 
 ## 145 — The Estimates list reads only the columns it draws
 

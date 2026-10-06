@@ -28,6 +28,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     ],
   },
   {
+    version: "1.213.0",
+    date: "2026-10-06",
+    notes: [
+      "Customers can pay the rest of a part-paid payment stage online. If a client paid part of a stage by check, their portal now shows what's left with a Pay button for exactly that amount, instead of \"Partially paid\" with no way to pay.",
+    ],
+  },
+  {
     version: "1.212.1",
     date: "2026-10-06",
     notes: [
