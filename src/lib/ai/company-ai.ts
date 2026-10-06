@@ -4,6 +4,7 @@ import { isCompanyLocked, LOCKED_SERVICES_ERROR, lockedServicesError } from "@/l
 import { recordUsage } from "@/lib/usage/record-usage";
 import { usageLimitError } from "@/lib/usage/company-limits";
 import { aiUsageDeltas } from "@/lib/usage/usage";
+import { metered } from "@/lib/ai/metered";
 
 /**
  * The one door to the AI (DECISIONS #131). Every feature that asks the
@@ -33,36 +34,5 @@ export async function aiForCompany(
   if (limited) return { error: limited, reason: "limit" };
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { error: notConfigured, reason: "not_configured" };
-  return { client: metered(new Anthropic({ apiKey }), companyId) };
-}
-
-/**
- * The client, counting every answer it gets for this company (DECISIONS
- * #132): one AI use, plus the words read and written, once the answer is
- * complete. A request that fails isn't counted. Both ways the CRM asks --
- * a whole answer (create) and a streamed one (stream) -- are covered;
- * counting never changes what the caller gets back.
- */
-function metered(client: Anthropic, companyId: string): Anthropic {
-  const create = client.messages.create.bind(client.messages) as (
-    ...args: unknown[]
-  ) => Promise<{ usage?: Parameters<typeof aiUsageDeltas>[0] }>;
-  const stream = client.messages.stream.bind(client.messages);
-
-  client.messages.create = ((...args: unknown[]) =>
-    create(...args).then(async (message) => {
-      await recordUsage(companyId, aiUsageDeltas(message?.usage));
-      return message;
-    })) as unknown as typeof client.messages.create;
-
-  client.messages.stream = ((...args: Parameters<typeof stream>) => {
-    const live = stream(...args);
-    live
-      .finalMessage()
-      .then((message) => recordUsage(companyId, aiUsageDeltas(message.usage)))
-      .catch(() => {});
-    return live;
-  }) as typeof client.messages.stream;
-
-  return client;
+  return { client: metered(new Anthropic({ apiKey }), (usage) => recordUsage(companyId, aiUsageDeltas(usage))) };
 }
