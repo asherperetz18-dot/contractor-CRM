@@ -20,6 +20,8 @@ import { cancelInvoice } from "@/lib/actions/invoices";
 import { paymentTermsLabel } from "@/lib/data/invoices";
 import { RecordPayment } from "./record-payment";
 import { clearInvoiceNote, peekInvoiceNote } from "./invoice-note";
+import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/invoices/send-channel-select";
+import { sentViaLabel, type BillChannel } from "@/lib/bill-email";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -68,7 +70,7 @@ export function InvoiceView({
   items: EstimateItem[];
   phase: EstimatePayment | null;
   paid: PortalPayment[];
-  customer: { id: string; name: string; phone: string | null };
+  customer: { id: string; name: string; phone: string | null; email: string | null };
   parent: { id: string; doc_number: string } | null;
   /** The job costs its lines bill back, by cost id. */
   costs: Record<string, InvoiceLineCost>;
@@ -84,6 +86,9 @@ export function InvoiceView({
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [pending, startTransition] = useTransition();
+  const [channel, setChannel] = useState<BillChannel>(() => defaultBillChannel(customer));
+  // When it last went to the customer, and how (0206, DECISIONS #150).
+  const lastSent = phase as (EstimatePayment & { sent_at?: string | null; sent_via?: string | null }) | null;
 
   const cancelled = invoice.status === "Void";
   const settled = paidTotalCents(paid);
@@ -95,9 +100,9 @@ export function InvoiceView({
     if (!phase) return;
     setError(null);
     startTransition(async () => {
-      const res = await requestProgressPayment(phase.id, phase.due_date ?? undefined);
+      const res = await requestProgressPayment(phase.id, phase.due_date ?? undefined, channel);
       if (res.error) return setError(res.error);
-      setNote(`Pay link texted to ${res.sentTo}.`);
+      setNote(res.warning ?? `Pay link sent to ${res.sentTo}.`);
       router.refresh();
     });
   }
@@ -141,6 +146,12 @@ export function InvoiceView({
             {fmtDay(invoice.issued_at ?? invoice.created_at)}
             {phase?.due_date && !cancelled && <> · due {fmtDay(phase.due_date)}</>}
             {paymentTermsLabel(invoice.payment_terms_days) && <> · {paymentTermsLabel(invoice.payment_terms_days)}</>}
+            {lastSent?.sent_at && !cancelled && (
+              <>
+                {" · last sent "}
+                {fmtDay(lastSent.sent_at)} {sentViaLabel(lastSent.sent_via)}
+              </>
+            )}
           </p>
         </div>
         <div className="est-header-actions">
@@ -290,9 +301,12 @@ export function InvoiceView({
       {!cancelled && (
         <div className="inv-actions">
           {canBill && phase && owed > 0 && (
-            <button type="button" className="btn-primary" disabled={pending} onClick={resend}>
-              {pending ? "Sending…" : "Text the Pay link"}
-            </button>
+            <>
+              <SendChannelSelect value={channel} onChange={setChannel} disabled={pending} />
+              <button type="button" className="btn-primary" disabled={pending} onClick={resend}>
+                {pending ? "Sending…" : sendLabel(channel).replace("Send", "Send again")}
+              </button>
+            </>
           )}
           {canRecord && owed > 0 && (
             <RecordPayment

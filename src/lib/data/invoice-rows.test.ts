@@ -244,7 +244,7 @@ test("both pages read the same rows; Money to Collect ages them by due date", ()
   assert.match(loader, /buildInvoiceRows\(/);
   assert.doesNotMatch(loader, /\.select\("\*"\)/);
   // A stable order, so paging past 1,000 rows neither repeats nor skips one.
-  assert.equal((loader.match(/\.order\("id"\)/g) ?? []).length, 3);
+  assert.equal((loader.match(/\.order\("id"\)/g) ?? []).length, 4);
   for (const page of ["../../app/(app)/invoices/page.tsx", "../../app/(app)/collect/page.tsx"]) {
     const src = source(page);
     assert.match(src, /loadInvoiceRows\(supabase, /, page);

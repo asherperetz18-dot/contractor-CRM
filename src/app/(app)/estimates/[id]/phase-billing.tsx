@@ -18,6 +18,8 @@ import {
   markProgressPaymentBilled,
   cancelProgressRequest,
 } from "@/lib/actions/progress-billing";
+import { SendChannelSelect, sendLabel } from "@/components/invoices/send-channel-select";
+import type { BillChannel } from "@/lib/bill-email";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -54,6 +56,8 @@ export function PhaseBilling({
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [due, setDue] = useState(() => defaultDueDate(isoDay(new Date())));
+  // Text, as this always was; email or both on request (DECISIONS #150).
+  const [channel, setChannel] = useState<BillChannel>("text");
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -96,10 +100,10 @@ export function PhaseBilling({
   function bill() {
     setError(null);
     startTransition(async () => {
-      const res = await requestProgressPayment(phase.id, due);
+      const res = await requestProgressPayment(phase.id, due, channel);
       if (res.error) return setError(res.error);
       setConfirming(false);
-      setNote(`Texted ${res.sentTo}`);
+      setNote(res.warning ?? `Sent to ${res.sentTo}`);
       router.refresh();
     });
   }
@@ -162,16 +166,17 @@ export function PhaseBilling({
               disabled={pending}
             />
           </label>
+          <SendChannelSelect value={channel} onChange={setChannel} disabled={pending} />
           <button className="btn-primary" onClick={bill} disabled={pending}>
-            {pending ? "Texting…" : "Text pay link"}
+            {pending ? "Sending…" : sendLabel(channel)}
           </button>
           <button
             className="btn-ghost"
             onClick={billQuietly}
             disabled={pending}
-            title="Marks the phase billed and due, without texting the customer"
+            title="Marks the phase billed and due, without sending the customer anything"
           >
-            {pending ? "Saving…" : "Save, don't text"}
+            {pending ? "Saving…" : "Save, don't send"}
           </button>
           <button className="btn-ghost" onClick={() => setConfirming(false)} disabled={pending}>
             Cancel

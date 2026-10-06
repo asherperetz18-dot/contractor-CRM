@@ -15,6 +15,7 @@ import { paidTotalCents, phaseOwedCents, phaseState, type PortalPayment } from "
 export type InvoiceStatus =
   | "draft"
   | "billed"
+  | "sent"
   | "viewed"
   | "partial"
   | "overdue"
@@ -26,6 +27,7 @@ export type InvoiceStatus =
 export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "Draft",
   billed: "Billed",
+  sent: "Sent",
   viewed: "Viewed",
   partial: "Part paid",
   overdue: "Overdue",
@@ -99,14 +101,17 @@ export type InvoiceRow = {
  *
  * `lastViewByDoc` is each document's most recent opening in the portal;
  * `today` is the company's own YYYY-MM-DD, so "overdue" turns over at the
- * office's midnight, not the server's.
+ * office's midnight, not the server's. `sentByStage` is when each bill
+ * was last sent to the customer (DECISIONS #150): a bill billed without
+ * a send reads Billed, one sent reads Sent.
  */
 export function buildInvoiceRows(
   docs: InvoiceDocLite[],
   stages: InvoiceStageLite[],
   payments: InvoicePaymentLite[],
   lastViewByDoc: Map<string, string>,
-  today: string
+  today: string,
+  sentByStage: Map<string, string> = new Map()
 ): InvoiceRow[] {
   const docById = new Map(docs.map((d) => [d.id, d]));
   const paymentsByStage = new Map<string, InvoicePaymentLite[]>();
@@ -154,7 +159,14 @@ export function buildInvoiceRows(
     const lastView = lastViewByDoc.get(d.id) ?? null;
     const viewedAt = lastView && lastView >= s.requested_at ? lastView : null;
     const state = phaseState(s, paid, at);
-    const status: InvoiceStatus = state === "billed" || state === "unbilled" ? (viewedAt ? "viewed" : "billed") : state;
+    const status: InvoiceStatus =
+      state === "billed" || state === "unbilled"
+        ? viewedAt
+          ? "viewed"
+          : sentByStage.has(s.id)
+            ? "sent"
+            : "billed"
+        : state;
     rows.push({ ...base, owedCents: phaseOwedCents(s, paid), status, viewedAt });
   }
 
@@ -184,7 +196,7 @@ export function buildInvoiceRows(
 export const INVOICE_STATUS_GROUPS = ["open", "overdue", "paid", "draft", "void", "all"] as const;
 export type InvoiceStatusGroup = (typeof INVOICE_STATUS_GROUPS)[number];
 
-const OPEN: InvoiceStatus[] = ["billed", "viewed", "partial", "overdue", "clearing"];
+const OPEN: InvoiceStatus[] = ["billed", "sent", "viewed", "partial", "overdue", "clearing"];
 
 /** Whether a row's status belongs to a filter. Open is everything still owed. */
 export function inStatusGroup(status: InvoiceStatus, group: InvoiceStatusGroup): boolean {

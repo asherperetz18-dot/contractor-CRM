@@ -651,82 +651,18 @@ async function backupDocumentsBatch(
   let synced = 0;
 
   const { renderDocumentPdf } = await import("@/lib/pdf/document-pdf");
+  const { loadDocumentPdfBundle } = await import("@/lib/pdf/document-bundle");
   const words = await loadCompanyWords(admin, companyId);
 
   for (const row of batch) {
-    type EstimateRow = import("@/lib/data/types").Estimate & {
-      parent_estimate_id?: string | null;
-    };
-    const [est, items, signers, payments, groups, companyRes] = await Promise.all([
-      admin.from("estimates").select("*").eq("id", row.id).single<EstimateRow>(),
-      admin
-        .from("estimate_items")
-        .select("*")
-        .eq("estimate_id", row.id)
-        .order("sort_order")
-        .returns<import("@/lib/data/types").EstimateItem[]>(),
-      admin
-        .from("estimate_signers")
-        .select("*")
-        .eq("estimate_id", row.id)
-        .order("sort_order")
-        .returns<import("@/lib/data/types").EstimateSigner[]>(),
-      admin
-        .from("estimate_payments")
-        .select("*")
-        .eq("estimate_id", row.id)
-        .order("sort_order")
-        .returns<(import("@/lib/data/types").EstimatePayment & { cancelled_at?: string | null })[]>(),
-      admin
-        .from("estimate_groups")
-        .select("*")
-        .eq("estimate_id", row.id)
-        .order("sort_order")
-        .returns<import("@/lib/data/types").EstimateGroup[]>(),
-      admin
-        .from("company_profile")
-        .select("name, address, phone, email, website, logo_url, license_number, license_state, license_type, timezone")
-        .eq("company_id", companyId)
-        .maybeSingle<{
-          name: string | null; address: string | null; phone: string | null; email: string | null;
-          website: string | null; logo_url: string | null; license_number: string | null;
-          license_state: string | null; license_type: string | null; timezone: string | null;
-        }>(),
-    ]);
-    const estimate = est.data;
-    if (!estimate) continue;
-
-    const { data: lead } = await admin
-      .from("leads")
-      .select("contact_type, first_name, last_name, company_name, address, phone, email")
-      .eq("id", estimate.lead_id)
-      .maybeSingle<{
-        contact_type: string | null; first_name: string | null; last_name: string | null; company_name: string | null;
-        address: string | null; phone: string | null; email: string | null;
-      }>();
-    const parent = estimate.parent_estimate_id
-      ? (
-          await admin
-            .from("estimates")
-            .select("doc_number, total_cents, signed_at")
-            .eq("id", estimate.parent_estimate_id)
-            .maybeSingle<{ doc_number: string; total_cents: number; signed_at: string | null }>()
-        ).data
-      : null;
+    // The same bundle an emailed invoice's PDF is drawn from (#150).
+    const loaded = await loadDocumentPdfBundle(admin, companyId, row.id, words);
+    if (!loaded) continue;
+    const { lead } = loaded;
 
     let bytes: Uint8Array;
     try {
-      bytes = await renderDocumentPdf({
-        estimate,
-        items: items.data ?? [],
-        signers: signers.data ?? [],
-        payments: (payments.data ?? []).filter((p) => !p.cancelled_at),
-        sections: groups.data ?? [],
-        company: companyRes.data ?? null,
-        customer: lead ?? null,
-        parent: parent ?? null,
-        words,
-      });
+      bytes = await renderDocumentPdf(loaded.bundle);
     } catch {
       continue;
     }

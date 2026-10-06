@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.219.0",
+    date: "2026-10-06",
+    notes: [
+      "Invoices and contract payment requests can now go by email as well as text, or both. Choose how next to the Send button. An emailed invoice comes with a PDF copy attached and a View and pay button, and a second contact on the job is copied in.",
+      "The Invoices page now shows Sent for bills that went to the customer, and Billed for ones you only marked as billed. An invoice's page says when it was last sent and how, with Send again.",
+      "Every bill you send now appears in the customer's message history, texts as well as emails.",
+    ],
+  },
+  {
     version: "1.218.1",
     date: "2026-10-06",
     notes: [

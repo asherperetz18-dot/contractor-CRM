@@ -1820,3 +1820,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Follow-up (1.218.1):** sending a draft swaps the editor for the issued invoice page, and the first version dropped the editor's message with it -- a Pay-link text that failed went unreported. `issueInvoice` now says once it has issued, and the editor hands the outcome to the issued page (this tab's session storage, `invoice-note.ts`).
 
 **Consequence:** an invoice can be got right before it goes out, with quantities, tax and terms, and numbers run in order. **Database step: run 0205 in Supabase before merging** -- the code reads the new columns and calls the new function. The text that carries the Pay link is still the only way the CRM sends an invoice; email is the next step.
+
+## 150 — Bills go by email as well as text, and each send is recorded
+
+**Date:** 2026-10-06
+
+**Context:** Step 3 of the invoicing plan (split in two: receipts are the next pull request). A bill -- an invoice, or a billed stage of a contract or change order -- could only be texted. There was no way to email it, so customers without a mobile number were billed outside the CRM, and nothing recorded that a bill had gone out at all: the Invoices page could not tell a bill texted to the customer from one only marked billed (#148).
+
+**Decision:**
+- **One send path for every bill**, the existing `requestProgressPayment`, now taking a channel: text, email or both (`text` stays the default, so every existing caller behaves as before). A text needs a phone number and the company's Twilio; an email needs an address and the company's email sender (`getEmailForCompany`: its own Resend key, or the platform's). Whatever can't go is said, and the rest still goes; nothing going out is an error that leaves the bill as it was.
+- **The email** (`billEmail`, pure and tested, everything escaped): what it is ("invoice INV-1004" or "Rough-in complete on EST-1047"), the amount, the due date with an invoice's terms, and a View and pay button on the same signed portal link the text carries. It goes to the customer with a second contact copied (`billRecipients`), replies go to the company. **An invoice's email carries its PDF** -- the same document the Drive backup files, now drawn by one shared loader (`loadDocumentPdfBundle`, which the backup uses too); if the PDF can't be drawn, the email still goes with its link. The PDF prints the invoice's terms, as the web copy does.
+- **Every send is logged** in the contact's messages (texts as well as emails -- the bill's text wasn't logged before), and **recorded on the bill**: `estimate_payments.sent_at` and `sent_via` (0206). That write is separate from billing, so a database without 0206 still bills; it only can't say Sent. The Invoices page reads sends with its own query for the same reason, and shows **Sent** for a bill that went out, **Billed** for one only marked billed (sends before 0206 read Billed).
+- **Sending a bill again keeps the day it was first billed** (`requested_at` was reset on every re-send, which made a re-sent bill look new).
+- Everywhere a bill goes out offers the channel: New invoice, the draft editor, **Send again** on an issued invoice (which also says when it was last sent and how), and **Bill this phase** on a contract. "Issue without texting" and "Save, don't text" are now "without sending".
+
+**Consequence:** a customer can be billed by email with a PDF of their invoice, and the record says what went out and when. Emails count against the company's monthly email limit like any other (#133). **Database step: 0206**, any time; until it runs, bills still go out and read Billed.
