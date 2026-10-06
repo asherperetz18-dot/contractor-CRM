@@ -3384,6 +3384,22 @@ a.stat-card {
   justify-content: center;
   padding: 16px 0;
 }
+/* Text Reports: faded while a new period loads; a page of rows at a time. */
+.text-reports-body.is-loading {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.text-reports-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+.text-reports-more .empty-hint {
+  margin: 0;
+}
 .schedule-list {
   display: flex;
   flex-direction: column;

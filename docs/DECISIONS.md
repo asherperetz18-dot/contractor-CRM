@@ -1760,3 +1760,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The list is typed on those rows** (`EstimateListRow`, `EstimateListSigner`), and every helper it calls already takes a `Pick` of what it reads, so a field the list starts reading without being added to the list fails the build instead of reading as blank.
 
 **Consequence:** a document costs the list a few hundred bytes instead of its terms and signature pictures; the cards, filters, search and rows are unchanged. The list still grows with the company's document history (TECH_DEBT): paging it would mean computing the cards in the database. No database step.
+
+## 146 — Text Reports loads only the period it shows
+
+**Date:** 2026-10-06
+
+**Context:** Text Reports read every text the company had ever sent or received (`selectAll` over `sms_messages`, every column), then filtered by period, direction and search in the browser and drew every match as a table row. Its period picker (Last 7, 30 or 90 days, All time, a custom range) only ever hid rows, and it opened on the last 30 days, so the default visit downloaded the company's whole text history to show one month of it.
+
+**Decision:**
+- **The period rides in the address** (`?range=90`, or `?from=…&to=…` for a custom range, only what differs from the default "Last 30 days"; `parseTextReportQuery` keeps a date only when it is a real calendar day, since it goes into a database filter). Changing it replaces the address in a transition, the same mechanism as the Calendar (#142) and Schedule (#143): the report stays on screen, faded, until the new period arrives, and its numbers stay on the period that is loaded until then rather than counting part of the new one.
+- **The server loads that period** (`textReportServerWindow`) on the existing `(company_id, created_at)` index. It knows only the UTC date and a browser's own "today" can be a day either side, so a "last N days" period starts a day earlier on the server; custom dates are absolute and loaded exactly. The report still applies its own exact filter. `text-reports-window.test.ts` runs the browser's own date logic in nine time zones, across date and year ends and the nights clocks change, and checks the server's period always holds it.
+- **Every text in the period still comes**, so the cards (sent, received, reply rate, confirmed / declined) and the busiest day stay exact. Only the columns the report uses (`TEXT_REPORT_COLUMNS`, typed with `satisfies` like #145), newest first with the id as a tie-breaker so paging past 1,000 texts neither repeats nor skips one.
+- **The table draws 200 rows at a time** with **Show more**; the numbers above it count them all. Changing a filter starts again from one page.
+
+**Consequence:** a visit reads one month of texts by default instead of the company's whole history, and the browser draws a page of them. All time is still everything (an explicit choice; counting it in the database would be the cure, as for Marketing Analytics). No database step.

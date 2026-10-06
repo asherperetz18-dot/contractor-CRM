@@ -1,19 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { resolveWindow, withinWindow } from "@/lib/data/date-range";
-import { leadDisplayName, normalizePhone, type LeadLite, type SmsMessage } from "@/lib/data/types";
+import { leadDisplayName, normalizePhone, type LeadLite } from "@/lib/data/types";
+import {
+  TEXT_REPORT_PRESETS,
+  TEXT_REPORT_ROWS,
+  parseTextReportQuery,
+  textReportQueryString,
+  textReportRange,
+  type TextReportQuery,
+  type TextReportRow,
+} from "@/lib/text-reports-window";
 
 type DirectionFilter = "All" | "outbound" | "inbound";
 
-const PRESETS = [
-  { key: "7", label: "Last 7 days" },
-  { key: "30", label: "Last 30 days" },
-  { key: "90", label: "Last 90 days" },
-  { key: "all", label: "All time" },
-];
+const PRESETS = [...TEXT_REPORT_PRESETS];
 
 // Replies the SMS webhook treats as an appointment confirmation/decline --
 // surfaced here so it's obvious at a glance which inbound texts actually
@@ -21,7 +26,7 @@ const PRESETS = [
 const YES_WORDS = new Set(["yes", "y", "confirm", "confirmed", "ok", "okay", "yeah", "yep", "sure"]);
 const NO_WORDS = new Set(["no", "n", "cancel", "decline", "declined", "nope"]);
 
-function replyKind(m: SmsMessage): "yes" | "no" | null {
+function replyKind(m: TextReportRow): "yes" | "no" | null {
   if (m.direction !== "inbound") return null;
   const b = m.body.trim().toLowerCase();
   if (YES_WORDS.has(b)) return "yes";
@@ -33,13 +38,41 @@ function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
 
-export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; leads: LeadLite[] }) {
+export function TextReportsView({
+  query,
+  messages,
+  leads,
+}: {
+  query: TextReportQuery;
+  messages: TextReportRow[];
+  leads: LeadLite[];
+}) {
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<DirectionFilter>("All");
-  const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
+  const [range, setRange] = useState<RangeState>(() => textReportRange(query));
   // Captured once at mount -- a "now" read during render would make the
   // date-range filter shift unpredictably across re-renders.
   const [now] = useState(() => Date.now());
+
+  // The page loads only the period in the address (DECISIONS #146).
+  // Changing it puts the new period there -- in a transition, so the
+  // report stays on screen, faded, until the new texts arrive. Until
+  // then the numbers stay on the period that's loaded, rather than
+  // counting a part of the new one as if it were all of it.
+  const router = useRouter();
+  const [windowPending, startWindow] = useTransition();
+  const wantedQs = textReportQueryString(
+    parseTextReportQuery({ range: range.preset, from: range.from, to: range.to })
+  );
+  const loadedQs = textReportQueryString(query);
+  useEffect(() => {
+    if (wantedQs !== loadedQs) {
+      startWindow(() => router.replace(`/text-reports${wantedQs}`, { scroll: false }));
+    }
+  }, [wantedQs, loadedQs, router]);
+  const loading = windowPending || wantedQs !== loadedQs;
+  const loadedRange = useMemo(() => textReportRange(query), [query]);
+  const shownRange = loading ? loadedRange : range;
 
   const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
 
@@ -54,7 +87,7 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
     return map;
   }, [leads]);
 
-  function contactFor(m: SmsMessage): LeadLite | null {
+  function contactFor(m: TextReportRow): LeadLite | null {
     if (m.lead_id) return leadById.get(m.lead_id) ?? null;
     const other = m.direction === "inbound" ? m.from_number : m.to_number;
     return leadByPhone.get(normalizePhone(other)) ?? null;
@@ -62,7 +95,7 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const win = resolveWindow(range, new Date(now));
+    const win = resolveWindow(shownRange, new Date(now));
     return messages.filter((m) => {
       if (direction !== "All" && m.direction !== direction) return false;
       if (!withinWindow(m.created_at, win)) return false;
@@ -78,7 +111,14 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
     });
     // contactFor is derived from the same inputs the memo already tracks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, direction, range, search, now, leadById, leadByPhone]);
+  }, [messages, direction, shownRange, search, now, leadById, leadByPhone]);
+
+  // The table draws a page of rows at a time -- a busy month is thousands
+  // of texts -- while the numbers above it count them all. Another filter
+  // starts again from one page.
+  const filterSig = `${search}|${direction}|${wantedQs}`;
+  const [more, setMore] = useState({ sig: filterSig, count: TEXT_REPORT_ROWS });
+  const shownCount = more.sig === filterSig ? more.count : TEXT_REPORT_ROWS;
 
   const sent = rows.filter((m) => m.direction === "outbound").length;
   const received = rows.filter((m) => m.direction === "inbound").length;
@@ -173,56 +213,72 @@ export function TextReportsView({ messages, leads }: { messages: SmsMessage[]; l
         </p>
       )}
 
-      {rows.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-label">No texts yet</p>
-          <p className="empty-hint">
-            Messages sent from the Reply Inbox, appointment reminders, and rep info texts will show
-            up here.
-          </p>
-        </div>
-      ) : (
-        <div className="table-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Date/Time</th>
-                <th>Direction</th>
-                <th>Contact</th>
-                <th>Phone</th>
-                <th>Message</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((m) => {
-                const lead = contactFor(m);
-                const other = m.direction === "inbound" ? m.from_number : m.to_number;
-                const kind = replyKind(m);
-                return (
-                  <tr key={m.id}>
-                    <td>{new Date(m.created_at).toLocaleString()}</td>
-                    <td>
-                      <Badge color={m.direction === "inbound" ? "#2F855A" : "#2D5F8A"}>
-                        {m.direction === "inbound" ? "Received" : "Sent"}
-                      </Badge>
-                      {kind && (
-                        <span style={{ marginLeft: 6 }}>
-                          <Badge color={kind === "yes" ? "#2F855A" : "#C0392B"}>
-                            {kind === "yes" ? "✓ Confirmed" : "✕ Declined"}
-                          </Badge>
-                        </span>
-                      )}
-                    </td>
-                    <td>{lead ? leadDisplayName(lead) : "—"}</td>
-                    <td className="mono">{other}</td>
-                    <td style={{ whiteSpace: "pre-wrap", maxWidth: 420 }}>{m.body}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className={"text-reports-body" + (loading ? " is-loading" : "")} aria-busy={loading}>
+        {rows.length === 0 ? (
+          <div className="empty-state">
+            <p className="empty-label">{loading ? "Loading…" : "No texts yet"}</p>
+            <p className="empty-hint">
+              Messages sent from the Reply Inbox, appointment reminders, and rep info texts will show
+              up here.
+            </p>
+          </div>
+        ) : (
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date/Time</th>
+                  <th>Direction</th>
+                  <th>Contact</th>
+                  <th>Phone</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, shownCount).map((m) => {
+                  const lead = contactFor(m);
+                  const other = m.direction === "inbound" ? m.from_number : m.to_number;
+                  const kind = replyKind(m);
+                  return (
+                    <tr key={m.id}>
+                      <td>{new Date(m.created_at).toLocaleString()}</td>
+                      <td>
+                        <Badge color={m.direction === "inbound" ? "#2F855A" : "#2D5F8A"}>
+                          {m.direction === "inbound" ? "Received" : "Sent"}
+                        </Badge>
+                        {kind && (
+                          <span style={{ marginLeft: 6 }}>
+                            <Badge color={kind === "yes" ? "#2F855A" : "#C0392B"}>
+                              {kind === "yes" ? "✓ Confirmed" : "✕ Declined"}
+                            </Badge>
+                          </span>
+                        )}
+                      </td>
+                      <td>{lead ? leadDisplayName(lead) : "—"}</td>
+                      <td className="mono">{other}</td>
+                      <td style={{ whiteSpace: "pre-wrap", maxWidth: 420 }}>{m.body}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {rows.length > shownCount && (
+          <div className="text-reports-more">
+            <span className="empty-hint">
+              Showing {shownCount} of {rows.length} texts
+            </span>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setMore({ sig: filterSig, count: shownCount + TEXT_REPORT_ROWS })}
+            >
+              Show more
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
