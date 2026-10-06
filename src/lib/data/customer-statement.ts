@@ -32,6 +32,7 @@ export type StatementPayment = InvoicePaymentLite &
     reference: string | null;
     stripe_session_id?: string | null;
     stripe_payment_intent_id?: string | null;
+    id?: string;
     /** On a refund, why (DECISIONS #155) -- shown to the customer. A
      *  payment's own note is the office's and never is. */
     note?: string | null;

@@ -18,7 +18,9 @@ import {
   type EstimateStatus,
   type PhaseState,
   type PortalPayment,
+  withoutUndecidedRefunds,
 } from "@/lib/data/types";
+import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
 import { loadCompanyWords } from "@/lib/load-company-words";
 import { word } from "@/lib/company-words";
 
@@ -193,7 +195,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
   if (!estimate || estimate.lead_id !== viewer.lead.id) return [];
   if (estimate.status !== "Signed") return [];
 
-  const [{ data: phases }, { data: payments }] = await Promise.all([
+  const [{ data: phases }, { data: allPayments }, undecided] = await Promise.all([
     admin
       .from("estimate_payments")
       .select("*")
@@ -216,14 +218,18 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
           | "stripe_payment_intent_id"
         >[]
       >(),
+    undecidedRefundIds(admin, "estimate_id", [estimateId]),
   ]);
+  // A refund made in Stripe waits on the office's "still owed?" before
+  // the customer sees it (#155).
+  const payments = withoutUndecidedRefunds(allPayments ?? [], undecided);
 
   return (phases ?? [])
     .filter((p) => p.requested_at && p.amount_cents > 0)
     .map((p) => {
       // A checkout opened and abandoned is not money on its way: counting
       // it read "Clearing" and hid the Pay button for a day.
-      const on = (payments ?? []).filter(
+      const on = payments.filter(
         (x) => x.estimate_payment_id === p.id && !isUnfinishedCheckout(x)
       );
       // When money came in -- a refund (#155) is a row too, never this.
@@ -304,7 +310,9 @@ export async function startPhaseCheckout(
     .returns<
       Pick<PortalPayment, "id" | "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id">[]
     >();
-  const payments = rows ?? [];
+  // Never a charge for money just given back while the office hasn't
+  // said whether it's still owed (#155).
+  const payments = withoutUndecidedRefunds(rows ?? [], await undecidedRefundIds(admin, "estimate_payment_id", [phaseId]));
   const cents = phaseCheckoutCents(phase, payments);
   if (cents === 0) {
     return payments.some((p) => p.status === "pending" && !isUnfinishedCheckout(p))

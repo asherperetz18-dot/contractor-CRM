@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, readPortalSession } from "@/lib/portal/session";
-import { estimateExpired, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
+import { estimateExpired, withoutUndecidedRefunds, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
+import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { invoiceReceiptAttachments } from "@/lib/data/invoice-receipts";
 import { portalParentContract } from "@/lib/portal/parent-contract";
@@ -120,6 +121,13 @@ export default async function PortalEstimatePage({
       .returns<EstimateGroup[]>(),
   ]);
 
+  // A refund made in Stripe waits on the office's "still owed?" before
+  // the customer sees it (#155).
+  const shownPaid = withoutUndecidedRefunds(
+    (paidRows ?? []) as PortalPayment[],
+    await undecidedRefundIds(admin, "estimate_id", [id])
+  );
+
   const photos: EstimatePhoto[] = [
     // An invoice line billed back from a cost carries that cost's
     // receipt, so the customer sees what the city actually charged.
@@ -180,7 +188,7 @@ export default async function PortalEstimatePage({
         items={(items ?? []) as EstimateItem[]}
         signers={signerRows}
         payments={(payments ?? []) as EstimatePayment[]}
-        paid={(paidRows ?? []) as PortalPayment[]}
+        paid={shownPaid}
         photos={photos}
         sections={sectionRows ?? []}
         company={company ?? null}

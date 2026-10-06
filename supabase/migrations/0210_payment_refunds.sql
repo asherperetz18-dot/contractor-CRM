@@ -19,8 +19,13 @@
 --     made in Stripe, decided in the CRM after).
 --   * record_refund / decide_refund / remove_refund: the server's only
 --     ways to write them, each checked and written in one step.
---   * give_bill_credit (0209) again, with one change: a refund still
---     going through at Stripe isn't money on its way in.
+--   * give_bill_credit (0209) again, with two changes: a refund still
+--     going through at Stripe isn't money on its way in, and the credit
+--     that goes with a refund can sit on a stage not billed yet.
+--   * settle_refund: a Stripe refund going through, or failing (a failed
+--     one takes back the credit that came with it).
+--   * dashboard_rollup (0209) again, with the same one change: a refund
+--     still going through isn't money on its way in.
 --
 -- Run AFTER 0209, in the Supabase SQL editor. Columns and functions are
 -- added; the old amount check is replaced by one that still refuses
@@ -103,7 +108,9 @@ begin
   if v_status is distinct from 'Signed' then
     raise exception 'Only a bill on a signed contract or an issued invoice can be credited.' using errcode = 'check_violation';
   end if;
-  if v_phase.requested_at is null or v_phase.cancelled_at is not null then
+  -- A credit given by hand is on a bill; the one that goes with a
+  -- refund can be on a stage paid before it was billed.
+  if v_phase.cancelled_at is not null or (v_phase.requested_at is null and p_refund is null) then
     raise exception 'Only a bill that has been billed can be credited.' using errcode = 'check_violation';
   end if;
 
@@ -135,9 +142,10 @@ end
 $$;
 
 -- The credit that goes with a refund the customer no longer owes: what
--- was refunded, never more than is now owed on the bill (a refund of an
--- overpayment leaves nothing to credit). Only on a bill that can be
--- credited -- a cancelled contract owes nothing anyway.
+-- was refunded, never more than is now owed on the stage (a refund of an
+-- overpayment leaves nothing to credit). Billed or not yet -- a stage
+-- paid early and part refunded is billed later for the rest -- but never
+-- on a cancelled bill or contract, which owes nothing anyway.
 create or replace function public.credit_after_refund(p_company uuid, p_refund uuid, p_by uuid)
 returns void
 language plpgsql
@@ -161,7 +169,7 @@ begin
     into v_phase
     from public.estimate_payments ph
    where ph.id = v_ref.estimate_payment_id and ph.company_id = p_company;
-  if not found or v_phase.requested_at is null or v_phase.cancelled_at is not null then
+  if not found or v_phase.cancelled_at is not null then
     return;
   end if;
   select e.status into v_status from public.estimates e where e.id = v_phase.estimate_id and e.company_id = p_company;
@@ -233,6 +241,18 @@ begin
     raise exception 'Only a payment that has arrived can be refunded.' using errcode = 'check_violation';
   end if;
 
+  -- Stripe tells us about a refund more than once, sometimes at the same
+  -- moment. The payment's lock above puts the second after the first:
+  -- it finds the row and is done, rather than reading as too much.
+  if p_stripe_refund_id is not null then
+    select r.id into v_id
+      from public.portal_payments r
+     where r.stripe_refund_id = p_stripe_refund_id and r.company_id = p_company;
+    if found then
+      return v_id;
+    end if;
+  end if;
+
   select coalesce(-sum(r.amount_cents), 0) into v_refunded
     from public.portal_payments r
    where r.refund_of = p_payment and r.status in ('pending', 'succeeded');
@@ -299,6 +319,65 @@ begin
 end
 $$;
 
+-- Takes back the credit that came with a refund.
+create or replace function public.drop_refund_credits(p_company uuid, p_refund uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_credit record;
+begin
+  for v_credit in
+    select id, estimate_payment_id, amount_cents from public.bill_credits
+     where refund_payment_id = p_refund and company_id = p_company
+  loop
+    update public.estimate_payments
+       set credit_cents = greatest(0, credit_cents - v_credit.amount_cents),
+           updated_at = now()
+     where id = v_credit.estimate_payment_id;
+    delete from public.bill_credits where id = v_credit.id;
+  end loop;
+end
+$$;
+
+-- A refund made in Stripe moving on: going through, gone through, or
+-- failed. A failed one never moved money, so the credit that came with
+-- it goes too -- the bill is back where it was.
+create or replace function public.settle_refund(p_company uuid, p_refund uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_ref public.portal_payments%rowtype;
+begin
+  if p_status not in ('pending', 'succeeded', 'failed', 'cancelled') then
+    raise exception 'Unknown refund status.' using errcode = 'check_violation';
+  end if;
+  select * into v_ref
+    from public.portal_payments
+   where id = p_refund and company_id = p_company
+   for update;
+  if not found or v_ref.refund_of is null then
+    raise exception 'Refund not found.' using errcode = 'no_data_found';
+  end if;
+  if v_ref.status = p_status then
+    return;
+  end if;
+  update public.portal_payments
+     set status = p_status,
+         paid_at = case when p_status = 'succeeded' then coalesce(paid_at, now()) end,
+         updated_at = now()
+   where id = p_refund;
+  if p_status in ('failed', 'cancelled') then
+    perform public.drop_refund_credits(p_company, p_refund);
+  end if;
+end
+$$;
+
 -- Takes out a refund recorded by mistake, with the credit that came
 -- with it. Only one recorded by hand: a Stripe refund is Stripe's.
 create or replace function public.remove_refund(p_company uuid, p_refund uuid)
@@ -309,7 +388,6 @@ set search_path = public
 as $$
 declare
   v_ref public.portal_payments%rowtype;
-  v_credit record;
 begin
   select * into v_ref
     from public.portal_payments
@@ -321,16 +399,7 @@ begin
   if v_ref.source <> 'manual' then
     raise exception 'A refund made in Stripe can''t be removed here.' using errcode = 'check_violation';
   end if;
-  for v_credit in
-    select id, estimate_payment_id, amount_cents from public.bill_credits
-     where refund_payment_id = p_refund and company_id = p_company
-  loop
-    update public.estimate_payments
-       set credit_cents = greatest(0, credit_cents - v_credit.amount_cents),
-           updated_at = now()
-     where id = v_credit.estimate_payment_id;
-    delete from public.bill_credits where id = v_credit.id;
-  end loop;
+  perform public.drop_refund_credits(p_company, p_refund);
   delete from public.portal_payments where id = p_refund;
 end
 $$;
@@ -343,6 +412,363 @@ revoke all on function public.decide_refund(uuid, uuid, boolean, uuid) from publ
 grant execute on function public.decide_refund(uuid, uuid, boolean, uuid) to service_role;
 revoke all on function public.remove_refund(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.remove_refund(uuid, uuid) to service_role;
+revoke all on function public.drop_refund_credits(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.drop_refund_credits(uuid, uuid) to service_role;
+revoke all on function public.settle_refund(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.settle_refund(uuid, uuid, text) to service_role;
+
+-- The dashboard: the 0209 definition, with that same one change.
+CREATE OR REPLACE FUNCTION public.dashboard_rollup(p_company uuid, p_from date, p_to date, p_prev_from date, p_prev_to date, p_months_from date, p_today date, p_d30 date, p_d60 date, p_d90 date, p_calls_from date)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+with
+cohort as (
+  select id, stage, value, has_appt,
+         coalesce(nullif(source, ''), 'Unknown') as source
+  from leads
+  where company_id = p_company
+    and (p_from is null or (created_at at time zone 'utc')::date >= p_from)
+    and (p_to is null or (created_at at time zone 'utc')::date <= p_to)
+),
+cohort_est as (
+  select e.lead_id,
+         bool_or(e.status <> 'Draft') as saw,
+         coalesce(sum(e.total_cents) filter (where e.status = 'Signed'), 0) as signed_cents
+  from estimates e
+  join cohort c on c.id = e.lead_id
+  where e.company_id = p_company
+    and coalesce(e.kind, 'contract') = 'contract'
+  group by e.lead_id
+),
+sales as (
+  select id as sale_id, assigned_to,
+         sales_rep_1, sales_rep_1_bp, sales_rep_2, sales_rep_2_bp,
+         (signed_at at time zone 'utc')::date as signed_day,
+         to_char(signed_at at time zone 'utc', 'YYYY-MM') as signed_month,
+         total_cents
+  from estimates
+  where company_id = p_company
+    and status = 'Signed'
+    and coalesce(kind, 'contract') = 'contract'
+    and signed_at is not null
+),
+-- Who each sale counts for on the team panel: the Sales team seats with
+-- a share, dollars split by share; seats without a share fall to seat
+-- one; no seats falls to the stamped rep (src/lib/data/sale-credit.ts).
+sale_seats as (
+  select sale_id, sales_rep_1 as rep, coalesce(sales_rep_1_bp, 10000) as bp, 1 as ord
+  from sales where sales_rep_1 is not null
+  union all
+  select sale_id, sales_rep_2, coalesce(sales_rep_2_bp, 0), 2
+  from sales where sales_rep_2 is not null
+),
+sale_credits as (
+  select s.sale_id, s.signed_day, x.rep,
+         round(s.total_cents * x.bp / 10000.0)::bigint as cents
+  from sales s
+  join sale_seats x on x.sale_id = s.sale_id and x.bp > 0
+  union all
+  select s.sale_id, s.signed_day,
+         (select x.rep from sale_seats x where x.sale_id = s.sale_id order by x.ord limit 1),
+         s.total_cents
+  from sales s
+  where exists (select 1 from sale_seats x where x.sale_id = s.sale_id)
+    and not exists (select 1 from sale_seats x where x.sale_id = s.sale_id and x.bp > 0)
+  union all
+  select s.sale_id, s.signed_day, s.assigned_to, s.total_cents
+  from sales s
+  where s.assigned_to is not null
+    and not exists (select 1 from sale_seats x where x.sale_id = s.sale_id)
+),
+pays as (
+  select amount_cents,
+         (coalesce(paid_at, created_at) at time zone 'utc')::date as pay_day,
+         to_char(coalesce(paid_at, created_at) at time zone 'utc', 'YYYY-MM') as pay_month
+  from portal_payments
+  where company_id = p_company and status = 'succeeded'
+),
+win_events as (
+  select assigned_to
+  from events
+  where company_id = p_company
+    and (p_from is null or date >= p_from)
+    and (p_to is null or date <= p_to)
+),
+phases as (
+  -- What each bill asks once its credits are off (0209, DECISIONS #154).
+  select ph.id, ph.amount_cents - ph.credit_cents as amount_cents, ph.credit_cents, ph.due_date,
+         coalesce(sum(pp.amount_cents) filter (where pp.status = 'succeeded'), 0) as settled,
+         -- Money on its way in: a refund still going through isn't (0210).
+         coalesce(sum(pp.amount_cents) filter (where pp.status = 'pending' and pp.amount_cents > 0), 0) as pending,
+         coalesce(bool_or(pp.status = 'succeeded'), false) as any_succeeded
+  from estimate_payments ph
+  join estimates e on e.id = ph.estimate_id and e.status = 'Signed'
+  left join portal_payments pp on pp.estimate_payment_id = ph.id
+  where ph.company_id = p_company and ph.requested_at is not null
+  group by ph.id, ph.amount_cents, ph.credit_cents, ph.due_date
+),
+phase_rows as (
+  select greatest(0, amount_cents - settled) as owed,
+         case
+           when (any_succeeded or credit_cents > 0) and settled >= amount_cents then 'paid'
+           when pending > 0 and settled + pending >= amount_cents then 'clearing'
+           when due_date is not null and due_date < p_today then 'overdue'
+           when settled > 0 then 'partial'
+           else 'billed'
+         end as state,
+         case when due_date is not null then p_today - due_date else 0 end as late
+  from phases
+),
+open_leads as (
+  select stage::text as stage, value,
+         (updated_at at time zone 'utc')::date as touch
+  from leads
+  where company_id = p_company
+    and not public.is_closed_stage(stage_key)
+)
+select jsonb_build_object(
+  'attention', jsonb_build_object(
+    'overdueTasks', (
+      select count(*) from lead_tasks
+      where company_id = p_company and completed_at is null and due_date < p_today
+    ),
+    'apptsToday', (
+      select count(*) from events where company_id = p_company and date = p_today
+    ),
+    'awaitingCount', (
+      select count(*) from estimates
+      where company_id = p_company and status in ('Sent', 'Viewed')
+        and coalesce(kind, 'contract') = 'contract'
+    ),
+    'awaitingCents', (
+      select coalesce(sum(total_cents), 0) from estimates
+      where company_id = p_company and status in ('Sent', 'Viewed')
+        and coalesce(kind, 'contract') = 'contract'
+    ),
+    'overdueOwedCents', (
+      select coalesce(sum(owed), 0) from phase_rows where state = 'overdue' and owed > 0
+    ),
+    'overdueOwedCount', (
+      select count(*) from phase_rows where state = 'overdue' and owed > 0
+    )
+  ),
+  'window', jsonb_build_object(
+    'leads', (select count(*) from cohort),
+    'appts', (select count(*) from win_events),
+    'signedCount', (
+      select count(*) from sales
+      where (p_from is null or signed_day >= p_from) and (p_to is null or signed_day <= p_to)
+    ),
+    'signedCents', (
+      select coalesce(sum(total_cents), 0) from sales
+      where (p_from is null or signed_day >= p_from) and (p_to is null or signed_day <= p_to)
+    ),
+    'collectedCents', (
+      select coalesce(sum(amount_cents), 0) from pays
+      where (p_from is null or pay_day >= p_from) and (p_to is null or pay_day <= p_to)
+    )
+  ),
+  'prev', jsonb_build_object(
+    'leads', (
+      select count(*) from leads
+      where company_id = p_company and p_prev_from is not null
+        and (created_at at time zone 'utc')::date between p_prev_from and p_prev_to
+    ),
+    'appts', (
+      select count(*) from events
+      where company_id = p_company and p_prev_from is not null
+        and date between p_prev_from and p_prev_to
+    ),
+    'signedCount', (
+      select count(*) from sales
+      where p_prev_from is not null and signed_day between p_prev_from and p_prev_to
+    ),
+    'signedCents', (
+      select coalesce(sum(total_cents), 0) from sales
+      where p_prev_from is not null and signed_day between p_prev_from and p_prev_to
+    ),
+    'collectedCents', (
+      select coalesce(sum(amount_cents), 0) from pays
+      where p_prev_from is not null and pay_day between p_prev_from and p_prev_to
+    )
+  ),
+  'months', (
+    select jsonb_agg(
+      jsonb_build_object(
+        'month', to_char(m.d, 'YYYY-MM'),
+        'signedCents', coalesce(s.cents, 0),
+        'collectedCents', coalesce(p.cents, 0)
+      ) order by m.d
+    )
+    from generate_series(p_months_from, p_months_from + interval '11 months', interval '1 month') as m(d)
+    left join (select signed_month, sum(total_cents) as cents from sales group by 1) s
+      on s.signed_month = to_char(m.d, 'YYYY-MM')
+    left join (select pay_month, sum(amount_cents) as cents from pays group by 1) p
+      on p.pay_month = to_char(m.d, 'YYYY-MM')
+  ),
+  'funnel', jsonb_build_object(
+    'leads', (select count(*) from cohort),
+    'withAppt', (select count(*) from cohort where has_appt),
+    'estimated', (
+      select count(*) from cohort c join cohort_est ce on ce.lead_id = c.id where ce.saw
+    ),
+    'signed', (
+      select count(*) from cohort c join cohort_est ce on ce.lead_id = c.id
+      where ce.signed_cents > 0
+    )
+  ),
+  'stages', (
+    select coalesce(jsonb_agg(row order by stage), '[]'::jsonb)
+    from (
+      select stage,
+        jsonb_build_object(
+          'stage', stage,
+          'buckets', jsonb_build_object(
+            'd30', jsonb_build_object(
+              'count', count(*) filter (where touch >= p_d30),
+              'value', coalesce(sum(value) filter (where touch >= p_d30), 0)
+            ),
+            'd60', jsonb_build_object(
+              'count', count(*) filter (where touch >= p_d60),
+              'value', coalesce(sum(value) filter (where touch >= p_d60), 0)
+            ),
+            'd90', jsonb_build_object(
+              'count', count(*) filter (where touch >= p_d90),
+              'value', coalesce(sum(value) filter (where touch >= p_d90), 0)
+            ),
+            'all', jsonb_build_object(
+              'count', count(*),
+              'value', coalesce(sum(value), 0)
+            )
+          )
+        ) as row
+      from open_leads
+      group by stage
+    ) t
+  ),
+  'sources', (
+    select coalesce(jsonb_agg(row order by cnt desc, source asc), '[]'::jsonb)
+    from (
+      select c.source, count(*) as cnt,
+        jsonb_build_object(
+          'source', c.source,
+          'count', count(*),
+          'signedCount', count(*) filter (where ce.signed_cents > 0),
+          'signedCents', coalesce(sum(ce.signed_cents) filter (where ce.signed_cents > 0), 0)
+        ) as row
+      from cohort c
+      left join cohort_est ce on ce.lead_id = c.id
+      group by c.source
+    ) t
+  ),
+  'aging', jsonb_build_object(
+    'notYetDueCents', (
+      select coalesce(sum(owed), 0) from phase_rows
+      where owed > 0 and state in ('billed', 'partial', 'clearing')
+    ),
+    'late1_30Cents', (
+      select coalesce(sum(owed), 0) from phase_rows
+      where owed > 0 and state = 'overdue' and late <= 30
+    ),
+    'late31_60Cents', (
+      select coalesce(sum(owed), 0) from phase_rows
+      where owed > 0 and state = 'overdue' and late > 30 and late <= 60
+    ),
+    'late61PlusCents', (
+      select coalesce(sum(owed), 0) from phase_rows
+      where owed > 0 and state = 'overdue' and late > 60
+    ),
+    'overdueCount', (
+      select count(*) from phase_rows where owed > 0 and state = 'overdue'
+    )
+  ),
+  'team', (
+    select coalesce(
+      jsonb_agg(row order by cents desc, appts desc, rep asc), '[]'::jsonb
+    )
+    from (
+      select coalesce(ts.rep, ta.rep) as rep,
+             coalesce(ts.cents, 0) as cents,
+             coalesce(ta.n, 0) as appts,
+             jsonb_build_object(
+               'rep', coalesce(ts.rep, ta.rep),
+               'signedCount', coalesce(ts.n, 0),
+               'signedCents', coalesce(ts.cents, 0),
+               'appts', coalesce(ta.n, 0)
+             ) as row
+      from (
+        select rep, count(*) as n, sum(cents) as cents
+        from sale_credits
+        where (p_from is null or signed_day >= p_from)
+          and (p_to is null or signed_day <= p_to)
+        group by rep
+      ) ts
+      full join (
+        select assigned_to as rep, count(*) as n
+        from win_events
+        where assigned_to is not null
+        group by assigned_to
+      ) ta on ta.rep = ts.rep
+    ) t
+  ),
+  'calls', jsonb_build_object(
+    'dials', (
+      select count(*) from call_logs
+      where company_id = p_company
+        and (p_from is null or (created_at at time zone 'utc')::date >= p_from)
+        and (p_to is null or (created_at at time zone 'utc')::date <= p_to)
+    ),
+    'connected', (
+      select count(*) from call_logs
+      where company_id = p_company and duration_seconds > 0
+        and (p_from is null or (created_at at time zone 'utc')::date >= p_from)
+        and (p_to is null or (created_at at time zone 'utc')::date <= p_to)
+    ),
+    'talkSeconds', (
+      select coalesce(sum(duration_seconds), 0) from call_logs
+      where company_id = p_company
+        and (p_from is null or (created_at at time zone 'utc')::date >= p_from)
+        and (p_to is null or (created_at at time zone 'utc')::date <= p_to)
+    ),
+    'perDay', (
+      select jsonb_agg(
+        jsonb_build_object('day', to_char(d.d, 'YYYY-MM-DD'), 'dials', coalesce(c.n, 0))
+        order by d.d
+      )
+      from generate_series(p_calls_from, p_today, interval '1 day') as d(d)
+      left join (
+        select (created_at at time zone 'utc')::date as day, count(*) as n
+        from call_logs
+        where company_id = p_company
+          and (created_at at time zone 'utc')::date >= p_calls_from
+        group by 1
+      ) c on c.day = d.d::date
+    )
+  ),
+  'production', jsonb_build_object(
+    'notStarted', (
+      select count(*) from jobs where company_id = p_company and status = 'Not Started'
+    ),
+    'inProgress', (
+      select count(*) from jobs where company_id = p_company and status = 'In Progress'
+    ),
+    'onHold', (
+      select count(*) from jobs where company_id = p_company and status = 'On Hold'
+    ),
+    'completedInWindow', (
+      select count(*) from jobs
+      where company_id = p_company and status = 'Complete'
+        and (p_from is null
+             or coalesce(end_date, (updated_at at time zone 'utc')::date) >= p_from)
+        and (p_to is null
+             or coalesce(end_date, (updated_at at time zone 'utc')::date) <= p_to)
+    )
+  )
+)
+$function$;
 
 commit;
 
@@ -354,5 +780,7 @@ select
   and exists (select 1 from pg_constraint where conname = 'portal_payments_amount_sign_check')
   and not exists (select 1 from pg_constraint where conname = 'portal_payments_amount_cents_check')
   and (select count(*) from pg_proc where pronamespace = 'public'::regnamespace
-        and proname in ('record_refund', 'decide_refund', 'remove_refund', 'credit_after_refund')) = 4
+        and proname in ('record_refund', 'decide_refund', 'remove_refund', 'credit_after_refund',
+                        'drop_refund_credits', 'settle_refund')) = 6
+  and pg_get_functiondef('public.dashboard_rollup'::regproc) like '%pp.amount_cents > 0%'
   as refunds_ready;

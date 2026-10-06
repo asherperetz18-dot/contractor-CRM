@@ -2304,6 +2304,18 @@ export function paidTotalCents(payments: Pick<PortalPayment, "status" | "amount_
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
 }
 
+/**
+ * The payments as the customer sees them while refunds made in Stripe
+ * wait on the office's "still owed?" (DECISIONS #155): without those
+ * refunds, so the bill reads as it did before -- never owed again, with a
+ * Pay button, for money just given back to them. `undecided` is from
+ * `undecidedRefundIds`.
+ */
+export function withoutUndecidedRefunds<T extends { id?: string | null }>(payments: T[], undecided: Set<string>): T[] {
+  if (!undecided.size) return payments;
+  return payments.filter((p) => !(p.id && undecided.has(p.id)));
+}
+
 /** The deposit money that has arrived, less any refunded (DECISIONS #155). */
 export function depositNetCents(payments: Pick<PortalPayment, "kind" | "status" | "amount_cents">[]): number {
   return paidTotalCents(payments.filter((p) => p.kind === "deposit"));

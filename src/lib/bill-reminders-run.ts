@@ -143,6 +143,8 @@ export async function runCompanyReminders(
           .in("estimate_payment_id", chunk)
           .not("refund_of", "is", null)
           .is("refund_still_owed", null)
+          // One that failed moved no money: nothing to decide.
+          .in("status", ["pending", "succeeded"])
           .order("id")
           .range(f, t)
       )

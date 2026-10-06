@@ -264,7 +264,11 @@ export default async function PaymentsPage() {
       receiptSentAt: receiptSentById.get(p.id) ?? null,
       isRefund: isRefund(p),
       refundUndecided:
-        isRefund(p) && !!p.estimate_payment_id && refundLinkById.has(p.id) && refundLinkById.get(p.id)!.refund_still_owed === null,
+        isRefund(p) &&
+        p.status === "succeeded" &&
+        !!p.estimate_payment_id &&
+        refundLinkById.has(p.id) &&
+        refundLinkById.get(p.id)!.refund_still_owed === null,
       refundableCents: refundableCents(p, paymentsWithRefunds),
       onBill: !!p.estimate_payment_id,
     };

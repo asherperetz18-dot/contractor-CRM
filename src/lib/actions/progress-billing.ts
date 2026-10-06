@@ -8,6 +8,7 @@ import { getTwilioForSending } from "@/lib/twilio-company";
 import { lockedServicesError } from "@/lib/billing/company-lock";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
 import { getEmailForCompany } from "@/lib/email-company";
 import { sendEmail } from "@/lib/email-env";
 import { personName } from "@/lib/data/client-name";
@@ -130,6 +131,15 @@ export async function requestProgressPayment(
     .returns<Pick<PortalPayment, "status" | "amount_cents">[]>();
   const owedCents = phaseOwedCents({ ...phase, requested_at: phase.requested_at ?? "now" }, onPhase ?? []);
   if (owedCents <= 0) return { error: "Nothing is owed on this phase: it's been paid or credited." };
+  // Money just went back on it in Stripe and nobody has said whether the
+  // customer still owes it (#155): asking for it now could be asking for
+  // their own refund.
+  if ((await undecidedRefundIds(admin, "estimate_payment_id", [phaseId])).size) {
+    return {
+      error:
+        "A refund on this bill is waiting for an answer: does the customer still owe it? Answer it on the Payments page first.",
+    };
+  }
 
   const { data: lead } = await admin
     .from("leads")

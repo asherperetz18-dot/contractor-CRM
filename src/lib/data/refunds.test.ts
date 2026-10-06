@@ -11,6 +11,7 @@ import {
   phaseOwedCents,
   phaseState,
   refundableCents,
+  withoutUndecidedRefunds,
 } from "./types.ts";
 import { buildInvoiceRows, invoiceSummary } from "./invoice-rows.ts";
 import { buildStatement } from "./customer-statement.ts";
@@ -203,4 +204,69 @@ test("the Payments page: Refund on money that's in, the still-owed question on b
   // The deposit-paid checks count money kept, not "a paid row".
   assert.match(source("../../app/(app)/payments/page.tsx"), /depositPayment\(payments\.filter/);
   assert.match(source("../../app/portal/home/page.tsx"), /p\.kind === "deposit"\)\) > 0/);
+});
+
+test("a Stripe refund nobody has decided on: the customer sees the bill as it was, never a Pay button for money just given back", () => {
+  const stage = { id: "s1", amount_cents: 1_000_000, requested_at: "2026-09-01T17:00:00Z", due_date: "2026-09-15" };
+  const rows = [
+    { ...pay(1_000_000), id: "p1" },
+    { ...pay(-200_000, { refund_of: "p1" }), id: "r1" },
+  ];
+  // Counted, the bill is owed again...
+  assert.equal(phaseCheckoutCents(stage, rows), 200_000);
+  // ...held back until the office answers, it is as it was.
+  const shown = withoutUndecidedRefunds(rows, new Set(["r1"]));
+  assert.equal(phaseCheckoutCents(stage, shown), 0);
+  assert.equal(phaseState(stage, shown, new Date("2026-10-01T12:00:00")), "paid");
+  // Nothing undecided, nothing changes.
+  assert.equal(withoutUndecidedRefunds(rows, new Set()).length, 2);
+
+  // Every place the customer sees money, and the Pay button's own check.
+  const helper = source("./undecided-refunds.ts");
+  assert.match(helper, /\.is\("refund_still_owed", null\)/);
+  assert.match(helper, /\.eq\("status", "succeeded"\)/);
+  for (const path of [
+    "../actions/portal-payments.ts",
+    "../../app/portal/home/page.tsx",
+    "../../app/portal/estimates/[id]/page.tsx",
+    "./load-customer-statement.ts",
+  ]) {
+    assert.match(source(path), /withoutUndecidedRefunds\(/, path);
+  }
+  // Nor does the office send a bill for it before answering.
+  assert.match(source("../actions/progress-billing.ts"), /A refund on this bill is waiting for an answer/);
+  // Both in the portal's bills and in what Pay charges.
+  assert.equal(source("../actions/portal-payments.ts").match(/withoutUndecidedRefunds\(/g)?.length, 2);
+});
+
+test("a Stripe refund that fails takes back its credit, and is never waiting on anyone", () => {
+  const sql = source("../../../supabase/migrations/0210_payment_refunds.sql");
+  assert.match(sql, /create or replace function public\.settle_refund\(/);
+  assert.match(sql, /if p_status in \('failed', 'cancelled'\) then\s*perform public\.drop_refund_credits/);
+  // The same Stripe refund told twice is one refund, not "too much".
+  assert.match(sql, /where r\.stripe_refund_id = p_stripe_refund_id and r\.company_id = p_company;\s*if found then\s*return v_id;/);
+  // A stage paid early and part refunded gets its credit too.
+  assert.match(sql, /v_phase\.cancelled_at is not null or \(v_phase\.requested_at is null and p_refund is null\)/);
+  // The dashboard's money on its way in is money coming in.
+  assert.match(sql, /filter \(where pp\.status = 'pending' and pp\.amount_cents > 0\), 0\) as pending/);
+  assert.match(source("../stripe/sync-refunds.ts"), /\.rpc\("settle_refund"/);
+  assert.match(source("../actions/stripe-admin.ts"), /\.rpc\("settle_refund"/);
+  assert.match(source("../bill-reminders-run.ts"), /\.in\("status", \["pending", "succeeded"\]\)/);
+});
+
+test("Stripe refunds: never dropped while the payment is on its way, never retried for days when retrying can't help, and caught up by hand", () => {
+  const sync = source("../stripe/sync-refunds.ts");
+  // The read failing, or the checkout not linked yet: Stripe tries again.
+  assert.match(sync, /if \(readError\) return retry\(/);
+  assert.match(sync, /stripe\.checkout\.sessions\.list\(\{ payment_intent: paymentIntentId, limit: 1 \}\)/);
+  assert.match(sync, /if \(original\.status !== "succeeded"\) return retry\(/);
+  // Refused for good (more than is left) or before 0210: reported, not retried.
+  assert.match(sync, /return code === "23514" \|\| code === "P0002";/);
+  assert.match(sync, /return code === "42703" \|\| code === "PGRST202" \|\| code === "PGRST204";/);
+  // Every refund of the payment, past the first page.
+  assert.match(sync, /for await \(const r of stripe\.refunds\.list\(/);
+  // Sync payments from Stripe records the ones the webhook never told us about.
+  const reconcile = source("../actions/stripe-admin.ts");
+  assert.match(reconcile, /stripe\.refunds\.list\(\{ created: \{ gte: since \}, limit: 100 \}\)/);
+  assert.match(reconcile, /syncStripeRefunds\(admin, stripe, intent, profile\.company_id, \{ lookUpCheckout: false \}\)/);
 });

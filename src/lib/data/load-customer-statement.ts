@@ -2,6 +2,8 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { selectAll } from "./select-all";
 import { INVOICE_DOC_COLUMNS, INVOICE_DOC_FILTER, INVOICE_STAGE_COLUMNS, type InvoiceStageLite } from "./invoice-rows";
+import { withoutUndecidedRefunds } from "./types";
+import { undecidedRefundIds } from "./undecided-refunds";
 import {
   buildStatement,
   type CustomerStatement,
@@ -28,7 +30,7 @@ async function forChunks<T>(ids: string[], read: (chunk: string[]) => Promise<T[
 }
 
 export const STATEMENT_PAYMENT_COLUMNS =
-  "estimate_id, estimate_payment_id, kind, status, amount_cents, method, reference, note, paid_at, created_at, stripe_session_id, stripe_payment_intent_id";
+  "id, estimate_id, estimate_payment_id, kind, status, amount_cents, method, reference, note, paid_at, created_at, stripe_session_id, stripe_payment_intent_id";
 
 export async function loadCustomerStatement(
   supabase: Db,
@@ -47,7 +49,7 @@ export async function loadCustomerStatement(
       .range(f, t)
   );
   const ids = docs.map((d) => d.id);
-  const [stages, payments, credits] = await Promise.all([
+  const [stages, allPayments, credits, undecided] = await Promise.all([
     forChunks(ids, (chunk) =>
       selectAll<InvoiceStageLite>((f, t) =>
         supabase
@@ -83,6 +85,10 @@ export async function loadCustomerStatement(
           .range(f, t)
       )
     ),
+    undecidedRefundIds(supabase, "estimate_id", ids),
   ]);
+  // A refund made in Stripe isn't on it until the office has said
+  // whether it's still owed (#155): the customer is sent this.
+  const payments = withoutUndecidedRefunds(allPayments, undecided);
   return buildStatement(docs, stages, payments, opts, credits);
 }

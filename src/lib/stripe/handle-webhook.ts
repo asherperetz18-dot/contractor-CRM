@@ -162,9 +162,11 @@ export async function handleStripeWebhook(
   }
 
   // A refund made in the Stripe dashboard (DECISIONS #155): recorded
-  // against the payment it returns, once. A failure is answered with a
-  // 500 so Stripe delivers it again -- a refund missed is money the CRM
-  // thinks it still has.
+  // against the payment it returns, once. A failure worth retrying is
+  // answered with a 500 so Stripe delivers it again -- a refund missed is
+  // money the CRM thinks it still has. One the database refuses for good
+  // is logged and answered 200: retrying for days can't change it, and
+  // Sync payments from Stripe reports it to the office.
   if (event.type === "charge.refunded" || event.type === "charge.refund.updated") {
     const obj = event.data.object as Stripe.Charge | Stripe.Refund;
     const intent = typeof obj.payment_intent === "string" ? obj.payment_intent : (obj.payment_intent?.id ?? null);
@@ -172,6 +174,8 @@ export async function handleStripeWebhook(
       const synced = await syncStripeRefunds(admin, stripe, intent, companyId).catch((e: unknown) => ({
         ok: false,
         error: e instanceof Error ? e.message : String(e),
+        recorded: 0,
+        refused: [] as string[],
       }));
       if (!synced.ok) return NextResponse.json({ error: synced.error }, { status: 500 });
     }
