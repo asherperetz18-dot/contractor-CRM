@@ -201,6 +201,9 @@ test("the Payments page: Refund on money that's in, the still-owed question on b
   const form = source("../../app/(app)/payments/refund-payment.tsx");
   assert.match(form, /Does the customer still owe this amount\?/);
   assert.match(form, /stillOwed: !onBill \|\| stillOwed === "yes"/);
+  // The day it went back is the office's day, never tomorrow's UTC date.
+  assert.doesNotMatch(form, /toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(source("../../../supabase/migrations/0210_payment_refunds.sql"), /if p_refunded_at > now\(\) \+ interval '1 day' then/);
   // The deposit-paid checks count money kept, not "a paid row".
   assert.match(source("../../app/(app)/payments/page.tsx"), /depositPayment\(payments\.filter/);
   assert.match(source("../../app/portal/home/page.tsx"), /p\.kind === "deposit"\)\) > 0/);

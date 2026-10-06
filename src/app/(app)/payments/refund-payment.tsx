@@ -50,7 +50,12 @@ export function RefundPayment({
   const [payMethod, setPayMethod] = useState<ManualPaymentMethod>("check");
   const [ref, setRef] = useState("");
   const [reason, setReason] = useState("");
-  const [refundedOn, setRefundedOn] = useState(new Date().toISOString().slice(0, 10));
+  // Today on this computer's calendar -- the UTC date is already
+  // tomorrow in a US office every evening.
+  const [refundedOn, setRefundedOn] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [stillOwed, setStillOwed] = useState<"no" | "yes" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();

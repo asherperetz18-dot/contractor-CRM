@@ -226,6 +226,9 @@ begin
   if p_status not in ('pending', 'succeeded') then
     raise exception 'A refund is recorded as pending or succeeded.' using errcode = 'check_violation';
   end if;
+  if p_refunded_at > now() + interval '1 day' then
+    raise exception 'A refund can''t be dated in the future.' using errcode = 'check_violation';
+  end if;
 
   select * into v_pay
     from public.portal_payments
@@ -309,8 +312,11 @@ begin
   if v_ref.refund_still_owed is not null then
     raise exception 'This refund has already been decided.' using errcode = 'check_violation';
   end if;
-  if v_ref.status <> 'succeeded' then
+  if v_ref.status = 'pending' then
     raise exception 'This refund is still going through at Stripe. Decide once it has.' using errcode = 'check_violation';
+  end if;
+  if v_ref.status <> 'succeeded' then
+    raise exception 'This refund didn''t go through at Stripe, so there''s nothing to decide.' using errcode = 'check_violation';
   end if;
   update public.portal_payments set refund_still_owed = p_still_owed, updated_at = now() where id = p_refund;
   if not p_still_owed then
