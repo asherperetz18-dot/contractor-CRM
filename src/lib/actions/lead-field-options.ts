@@ -6,6 +6,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { isAdminRole } from "@/lib/data/types";
 import { parseLeadCostInput } from "@/lib/data/lead-source-cost";
+import { revalidateBoughtLists } from "@/lib/data/company-chrome";
+import { boughtListPlan } from "@/lib/lead-or-contact";
 
 export type OptionTable = "project_types" | "lead_sources";
 
@@ -38,7 +40,9 @@ async function requireCanEditLeads(): Promise<{ error: string } | { companyId: s
   return { companyId: profile.company_id };
 }
 
-function revalidate(table: OptionTable) {
+function revalidate(table: OptionTable, companyId: string) {
+  // A renamed or removed source changes which contacts are leads.
+  if (table === "lead_sources") revalidateBoughtLists(companyId);
   revalidatePath(settingsPathFor(table));
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
@@ -178,9 +182,58 @@ export async function mergeFieldValues(
 
   await supabase.from(table).delete().eq("company_id", guard.companyId).in("name", sources);
 
-  revalidate(table);
+  revalidate(table, guard.companyId);
   revalidatePath("/marketing-analytics");
   return { moved: moved?.length ?? 0 };
+}
+
+/**
+ * The import window's "These are bought-list contacts" (DECISIONS #156):
+ * ticks every source the file will write as a bought list, adding the
+ * ones Settings doesn't list yet, BEFORE the rows go in -- the lead-cost
+ * trigger prices a bought-list contact at $0 only if the tick is there
+ * when it's inserted. Office/Admin, like the tick in Settings.
+ */
+export async function markImportSourcesBought(names: string[]): Promise<{ error?: string }> {
+  const guard = await requireOfficeOrAdmin();
+  if ("error" in guard) return guard;
+
+  const supabase = await createClient();
+  const { data: existing, error: readError } = await supabase
+    .from("lead_sources")
+    .select("id, name, bought_list, sort_order")
+    .eq("company_id", guard.companyId)
+    .order("sort_order", { ascending: false });
+  if (readError) {
+    return /bought_list/.test(readError.message)
+      ? { error: "Run migration 0211 in Supabase first: bought lists can't be ticked until then." }
+      : { error: readError.message };
+  }
+  const rows = (existing ?? []) as { id: string; name: string; bought_list: boolean; sort_order: number }[];
+  const plan = boughtListPlan(names, rows);
+
+  if (plan.tick.length > 0) {
+    const { error } = await supabase
+      .from("lead_sources")
+      .update({ bought_list: true })
+      .eq("company_id", guard.companyId)
+      .in("id", plan.tick);
+    if (error) return { error: error.message };
+  }
+  if (plan.add.length > 0) {
+    const next = (rows[0]?.sort_order ?? 0) + 1;
+    const { error } = await supabase.from("lead_sources").insert(
+      plan.add.map((name, i) => ({
+        company_id: guard.companyId,
+        name,
+        sort_order: next + i,
+        bought_list: true,
+      }))
+    );
+    if (error) return { error: error.message };
+  }
+  if (plan.tick.length > 0 || plan.add.length > 0) revalidate("lead_sources", guard.companyId);
+  return {};
 }
 
 export async function createFieldOption(
@@ -213,7 +266,7 @@ export async function createFieldOption(
     return { error: error.message };
   }
 
-  revalidate(table);
+  revalidate(table, guard.companyId);
   return { id: (data as { id: string }).id };
 }
 
@@ -247,7 +300,7 @@ export async function renameFieldOption(
   patch[column] = trimmed;
   await supabase.from("leads").update(patch).eq(column, current.name).eq("company_id", guard.companyId);
 
-  revalidate(table);
+  revalidate(table, guard.companyId);
   return {};
 }
 
@@ -262,7 +315,7 @@ export async function deleteFieldOption(
   const { error } = await supabase.from(table).delete().eq("id", id);
   if (error) return { error: error.message };
 
-  revalidate(table);
+  revalidate(table, guard.companyId);
   return {};
 }
 
@@ -369,6 +422,6 @@ export async function reorderFieldOptions(
   const failed = results.find((r) => r.error);
   if (failed?.error) return { error: failed.error.message };
 
-  revalidate(table);
+  revalidate(table, guard.companyId);
   return {};
 }

@@ -40,6 +40,9 @@ export type PipelineBoardQuery = {
   receivedSince: string;
   receivedBefore: string;
   noApptOnly: boolean;
+  /** Only contacts that count as leads -- a real lead source, not a
+   *  bought list or blank (DECISIONS #156). Absent reads as off. */
+  leadsOnly?: boolean;
   sortBy: "Name" | "Days" | "Amount";
   sortDir: "asc" | "desc";
   /** Cards per column on first load. */

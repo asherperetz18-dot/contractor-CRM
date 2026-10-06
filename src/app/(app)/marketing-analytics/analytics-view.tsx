@@ -95,7 +95,9 @@ export function AnalyticsView({
   canManageSpend: boolean;
 }) {
   const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
-  const [excludeBought, setExcludeBought] = useState(false);
+  // On by default, like the page's first fetch: bought lists are
+  // contacts, not leads (DECISIONS #156). Off shows what each list made.
+  const [excludeBought, setExcludeBought] = useState(true);
   // Fixed at mount. A "now" read during render moves the window under the
   // user between re-renders, so the same list can come back different.
   const [now] = useState(() => new Date());

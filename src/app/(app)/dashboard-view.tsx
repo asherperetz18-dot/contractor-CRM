@@ -535,8 +535,18 @@ export function DashboardView({
         <Link href="/pipeline" className="stat-card dash-kpi">
           <div className="stat-value">{R.window.leads}</div>
           <div className="stat-label">New leads</div>
-          <div className="dash-kpi-foot">
+          <div className="dash-kpi-foot dash-kpi-foot-wrap">
             <Delta cur={R.window.leads} prev={R.prev.leads} />
+            {/* Bought lists and sourceless contacts aren't leads, but a big
+                import should still be visible somewhere (DECISIONS #156). */}
+            {R.window.contactsAdded > 0 && (
+              <span
+                className="dash-delta muted"
+                title="Contacts added in this period that aren't leads: bought lists, or no source"
+              >
+                +{R.window.contactsAdded.toLocaleString()} contacts
+              </span>
+            )}
           </div>
         </Link>
         <Link href="/schedule" className="stat-card dash-kpi">

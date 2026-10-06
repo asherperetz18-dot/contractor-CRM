@@ -6,6 +6,8 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { computeBoardAggregates, type BoardSlimLead } from "@/lib/pipeline-aggregates";
 import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 import { OPEN_LEADS_FILTER, isEndingStageKey, stageNameFor } from "@/lib/pipeline/stage-keys";
 import {
   computeLeadWarnings,
@@ -68,8 +70,21 @@ type LeadsQuery = {
   ): PromiseLike<R>;
 };
 
-function applyFilters(q: LeadsQuery, companyId: string, input: PipelineBoardQuery): LeadsQuery {
+/** The query with "Leads only" resolved to its filter, server-side: the
+ *  bought-list sources are the company's, never the browser's to say. */
+type ScopedQuery = PipelineBoardQuery & { notALead?: string };
+
+async function scopeLeadsOnly(input: PipelineBoardQuery, companyId: string): Promise<ScopedQuery> {
+  // Always set here, so a pattern smuggled in by the browser is replaced.
+  return {
+    ...input,
+    notALead: input.leadsOnly ? notALeadPattern(await getBoughtListKeysCached(companyId)) : undefined,
+  };
+}
+
+function applyFilters(q: LeadsQuery, companyId: string, input: ScopedQuery): LeadsQuery {
   let out = q.eq("company_id", companyId);
+  if (input.notALead !== undefined) out = out.not("source", "imatch", input.notALead);
   if (input.repFilter === "unassigned") out = out.is("assigned_to", null);
   else if (input.repFilter !== "All") out = out.eq("assigned_to", input.repFilter);
   if (input.receivedSince) out = out.gte("date_received", input.receivedSince);
@@ -95,7 +110,7 @@ function applySort(q: LeadsQuery, input: PipelineBoardQuery): LeadsQuery {
 async function fetchStageWindow(
   supabase: Awaited<ReturnType<typeof createClient>>,
   companyId: string,
-  input: PipelineBoardQuery,
+  input: ScopedQuery,
   stage: string,
   offset: number,
   limit: number
@@ -113,11 +128,12 @@ async function fetchStageWindow(
   return { cards: (data ?? []) as BoardCard[], count: count ?? 0 };
 }
 
-export async function getPipelineBoardData(input: PipelineBoardQuery): Promise<PipelineBoardData | null> {
+export async function getPipelineBoardData(query: PipelineBoardQuery): Promise<PipelineBoardData | null> {
   const profile = await getCurrentProfile();
   if (!profile) return null;
   const companyId = profile.company_id;
   const supabase = await createClient();
+  const input = await scopeLeadsOnly(query, companyId);
 
   const stages = await loadTaggedStages(supabase, companyId);
   // Open shows every column but the two endings; Won and Lost show that
@@ -177,7 +193,7 @@ export async function getPipelineBoardData(input: PipelineBoardQuery): Promise<P
 async function buildDigest(
   supabase: Awaited<ReturnType<typeof createClient>>,
   companyId: string,
-  input: PipelineBoardQuery
+  input: ScopedQuery
 ) {
   const today = await companyToday();
   const [{ data: windowRows }, tasks] = await Promise.all([
@@ -258,7 +274,8 @@ export async function getStageCards(
   const profile = await getCurrentProfile();
   if (!profile) return { cards: [], count: 0 };
   const supabase = await createClient();
-  return fetchStageWindow(supabase, profile.company_id, input, stage, offset, Math.min(limit, 200));
+  const scoped = await scopeLeadsOnly(input, profile.company_id);
+  return fetchStageWindow(supabase, profile.company_id, scoped, stage, offset, Math.min(limit, 200));
 }
 
 /**

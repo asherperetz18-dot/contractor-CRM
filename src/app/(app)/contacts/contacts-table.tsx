@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,6 +44,7 @@ import {
 } from "@/lib/contact-filters";
 import { closedStageNames } from "@/lib/pipeline/stage-keys";
 import { CONTACT_ROW_BATCH } from "./row-batch";
+import { boughtListKeys, sourceTag } from "@/lib/lead-or-contact";
 
 /**
  * One contact row, memoized. Clicking a row re-renders the table (the
@@ -55,6 +56,7 @@ const ContactRow = memo(function ContactRow({
   lead,
   repLabel,
   color,
+  boughtKeys,
   onOpen,
   selectable,
   checked,
@@ -63,6 +65,8 @@ const ContactRow = memo(function ContactRow({
   lead: ContactListRow;
   repLabel: string;
   color: string;
+  /** Bought-list source keys: which rows are leads (DECISIONS #156). */
+  boughtKeys: string[];
   onOpen: (lead: ContactListRow) => void;
   selectable: boolean;
   checked: boolean;
@@ -99,7 +103,12 @@ const ContactRow = memo(function ContactRow({
         )}
       </td>
       <td>{lead.phone || "—"}</td>
-      <td>{lead.source || "—"}</td>
+      <td>
+        {(() => {
+          const tag = sourceTag(lead.source, boughtKeys);
+          return tag ? <span className={`source-tag source-tag-${tag.tone}`}>{tag.label}</span> : "—";
+        })()}
+      </td>
       <td>{repLabel}</td>
       <td>
         <Badge color={color}>{lead.stage}</Badge>
@@ -166,6 +175,8 @@ export function ContactsTable({
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<ContactFilters>(initialFilters);
+  // A stable array, so the memoized rows don't re-render on it.
+  const boughtKeys = useMemo(() => boughtListKeys(sources), [sources]);
   const filtersKey = contactFiltersQuery(filters);
   const [stats, setStats] = useState<ContactStats>(initialStats);
   /** The opened contact window: the full row plus its tasks/notes/files,
@@ -569,6 +580,17 @@ export function ContactsTable({
           selected={new Set(filters.stages)}
           onChange={(next) => setGroup("stages", next, stageOptions.length)}
         />
+        <button
+          type="button"
+          className={"chip" + (filters.leadsOnly ? " chip-active" : "")}
+          aria-pressed={filters.leadsOnly === true}
+          onClick={() =>
+            setFilters(({ leadsOnly, ...rest }) => (leadsOnly ? rest : { ...rest, leadsOnly: true }))
+          }
+          title="Only contacts from a real lead source, not a bought list"
+        >
+          Leads only
+        </button>
         {narrowed && (
           <>
             <span className="list-filters-count">
@@ -643,6 +665,7 @@ export function ContactsTable({
                 lead={l}
                 repLabel={repDisplayName(l.assigned_to, roster)}
                 color={stageColor(stages, l.stage)}
+                boughtKeys={boughtKeys}
                 onOpen={(lead) => void openLead(lead.id)}
                 selectable={canWrite}
                 checked={selected.has(l.id)}

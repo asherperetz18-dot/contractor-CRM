@@ -5,6 +5,7 @@ import type { RolePageVisibilityRow, TimeFormat } from "@/lib/data/types";
 import { loadCompanyWords } from "@/lib/load-company-words";
 import type { CompanyWords } from "@/lib/company-words";
 import { STANDARD_ROLE_NAMES, readRoleNames, type RoleNames } from "@/lib/role-names";
+import { boughtListKeys } from "@/lib/lead-or-contact";
 
 /**
  * The parts of the app shell that are the same on every page.
@@ -46,6 +47,7 @@ const EMPTY_CHROME: CompanyChrome = {
 
 const chromeTag = (companyId: string) => `company-chrome:${companyId}`;
 const visibilityTag = (companyId: string) => `role-visibility:${companyId}`;
+const boughtListsTag = (companyId: string) => `bought-lists:${companyId}`;
 
 // Long, because the tags below do the real invalidating.
 const BACKSTOP_SECONDS = 300;
@@ -104,6 +106,30 @@ export function getRoleNamesCached(companyId: string): Promise<RoleNames> {
   )(companyId);
 }
 
+/**
+ * The company's sources ticked as bought lists, as rule keys (DECISIONS
+ * #156): what a query needs to count only real leads -- the bell and the
+ * 20-second popup poll among them, which shouldn't pay a round trip for
+ * a list that changes a few times a year. Dropped when a source is
+ * ticked, added, renamed, merged or removed. Empty before 0165 adds the
+ * flag, which is today's "every sourced contact is a lead".
+ */
+export function getBoughtListKeysCached(companyId: string): Promise<string[]> {
+  return unstable_cache(
+    async (id: string): Promise<string[]> => {
+      const { data, error } = await createAdminClient()
+        .from("lead_sources")
+        .select("name, bought_list")
+        .eq("company_id", id)
+        .eq("bought_list", true);
+      if (error) return [];
+      return boughtListKeys((data ?? []) as { name: string; bought_list: boolean }[]);
+    },
+    ["bought-lists", companyId],
+    { tags: [boughtListsTag(companyId)], revalidate: BACKSTOP_SECONDS }
+  )(companyId);
+}
+
 export function getRoleVisibility(companyId: string): Promise<RolePageVisibilityRow[]> {
   return unstable_cache(
     async (id: string): Promise<RolePageVisibilityRow[]> => {
@@ -135,4 +161,9 @@ export function revalidateCompanyChrome(companyId: string) {
 /** Call after changing the Role Visibility matrix. */
 export function revalidateRoleVisibility(companyId: string) {
   updateTag(visibilityTag(companyId));
+}
+
+/** Call after changing the lead sources list or a bought-list tick. */
+export function revalidateBoughtLists(companyId: string) {
+  updateTag(boughtListsTag(companyId));
 }

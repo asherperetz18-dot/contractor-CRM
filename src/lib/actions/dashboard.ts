@@ -14,6 +14,8 @@ import {
 } from "@/lib/data/dashboard-rollup";
 import { mergePanelOrder } from "@/lib/data/dashboard-layout";
 import { OPEN_LEADS_FILTER } from "@/lib/pipeline/stage-keys";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 
 /** The day after, in UTC -- the exclusive upper bound for timestamptz
  *  columns, so "to Sep 20" keeps everything stamped during Sep 20. */
@@ -55,6 +57,7 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
 
   // ── Fallback: the same buckets from targeted queries ─────────────
   const companyId = profile.company_id;
+  const boughtKeys = await getBoughtListKeysCached(companyId);
   // The cohort never runs unbounded: with no window start (which the
   // dashboard's presets never produce) it caps at the month series.
   const cohortFrom = B.from ?? B.monthsFrom;
@@ -92,6 +95,8 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
           .from("leads")
           .select("id", { count: "exact", head: true })
           .eq("company_id", companyId)
+          // Leads only, like the cohort (DECISIONS #156).
+          .not("source", "imatch", notALeadPattern(boughtKeys))
           .gte("created_at", B.prevFrom)
           .lt("created_at", nextDay(B.prevTo!))
       : Promise.resolve({ count: 0 }),
@@ -234,6 +239,7 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
     boundaries: B,
     leadsInWindow,
     prevLeadCount: prevLeads.count ?? 0,
+    boughtKeys,
     openLeads,
     signedSinceMonths,
     paymentsSinceMonths,

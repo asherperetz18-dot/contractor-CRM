@@ -33,6 +33,7 @@ import { CsvImportPanel } from "./csv-import-panel";
 import { BulkEmailModal } from "@/components/bulk-email-modal";
 import { useQuickCreate } from "../use-quick-create";
 import { quickCreateContactKind } from "@/lib/data/quick-create";
+import { boughtListKeys, sourceTag } from "@/lib/lead-or-contact";
 import { PhoneLeadList } from "./phone-lead-list";
 import { isClosedStageKey, isEndingStageKey } from "@/lib/pipeline/stage-keys";
 
@@ -71,6 +72,7 @@ const PipelineColumn = memo(function PipelineColumn({
   isDragOver,
   draggedId,
   repById,
+  boughtKeys,
   onOpenLead,
   onLoadMore,
   onDragStartCard,
@@ -91,6 +93,8 @@ const PipelineColumn = memo(function PipelineColumn({
   isDragOver: boolean;
   draggedId: string | null;
   repById: Map<string, string>;
+  /** Bought-list source keys: which cards are leads (DECISIONS #156). */
+  boughtKeys: string[];
   onOpenLead: (card: BoardCard) => void;
   /** Ask the server for the column's next window of cards. */
   onLoadMore: (stage: string) => void;
@@ -183,7 +187,10 @@ const PipelineColumn = memo(function PipelineColumn({
                   />
                 )}
                 <span className="lead-card-name">{leadDisplayName(l)}</span>
-                {l.source && <span className="source-tag">{l.source}</span>}
+                {(() => {
+                  const tag = sourceTag(l.source, boughtKeys);
+                  return tag ? <span className={`source-tag source-tag-${tag.tone}`}>{tag.label}</span> : null;
+                })()}
               </div>
               {l.phone && <div className="lead-card-line">☎ {l.phone}</div>}
               {l.email && <div className="lead-card-line">✉ {l.email}</div>}
@@ -249,6 +256,7 @@ export function PipelineBoard({
   canDelete,
   isAdmin,
   canManageMoney,
+  canTickBoughtLists = false,
   estimateIndex,
   dispatcherPicker,
 }: {
@@ -267,6 +275,8 @@ export function PipelineBoard({
   canDelete: boolean;
   isAdmin: boolean;
   canManageMoney?: boolean;
+  /** Office/Admin: the import window may tick its sources as bought lists. */
+  canTickBoughtLists?: boolean;
   estimateIndex: LeadEstimateIndex;
   dispatcherPicker?: DispatcherPickerBootstrap;
 }) {
@@ -284,6 +294,10 @@ export function PipelineBoard({
   const [repFilter, setRepFilter] = useState<string>("All");
   const [ageFilter, setAgeFilter] = useState<AgeFilter>("All");
   const [noApptOnly, setNoApptOnly] = useState(false);
+  // Real leads only, hiding the bought lists (DECISIONS #156).
+  const [leadsOnly, setLeadsOnly] = useState(false);
+  // A stable array, so the memoized columns don't re-render on it.
+  const boughtKeys = useMemo(() => boughtListKeys(sources), [sources]);
   const [hiddenStages, setHiddenStages] = useState<Set<string>>(() => loadHiddenStages());
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -444,11 +458,12 @@ export function PipelineBoard({
       receivedSince: ageFilter === "7" ? iso(7) : ageFilter === "30" ? iso(30) : "",
       receivedBefore: ageFilter === "Stale" ? iso(14) : "",
       noApptOnly,
+      leadsOnly,
       sortBy,
       sortDir,
       window: PIPELINE_CARD_WINDOW,
     };
-  }, [statusFilter, repFilter, ageFilter, noApptOnly, sortBy, sortDir]);
+  }, [statusFilter, repFilter, ageFilter, noApptOnly, leadsOnly, sortBy, sortDir]);
 
   // Newest query wins: every fetch of the whole board -- a filter
   // change or a post-drop refetch -- takes a token, and only the
@@ -934,6 +949,14 @@ export function PipelineBoard({
           >
             No Appt Yet
           </button>
+          <button
+            className={"chip" + (leadsOnly ? " chip-active" : "")}
+            aria-pressed={leadsOnly}
+            onClick={() => setLeadsOnly((v) => !v)}
+            title="Only contacts from a real lead source, not a bought list"
+          >
+            Leads only
+          </button>
           <select
             className="ur-company-filter"
             value={ageFilter}
@@ -1074,6 +1097,7 @@ export function PipelineBoard({
               isDragOver={dragOverStage === stage}
               draggedId={draggedId}
               repById={repById}
+              boughtKeys={boughtKeys}
               onOpenLead={openLead}
               onLoadMore={onLoadMore}
               onDragStartCard={setDraggedId}
@@ -1121,7 +1145,11 @@ export function PipelineBoard({
         />
       )}
       {showImport && canWrite && (
-        <CsvImportPanel stages={stages} onCancel={() => setShowImport(false)} />
+        <CsvImportPanel
+          stages={stages}
+          canTickBoughtLists={canTickBoughtLists}
+          onCancel={() => setShowImport(false)}
+        />
       )}
       {editing && (
         <LeadForm

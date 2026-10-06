@@ -4,7 +4,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { getRoleNamesCached } from "@/lib/data/company-chrome";
+import { getBoughtListKeysCached, getRoleNamesCached } from "@/lib/data/company-chrome";
+import { countsAsLead } from "@/lib/lead-or-contact";
 import { roleName } from "@/lib/role-names";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
@@ -178,11 +179,16 @@ function buildFunnel(
   estimates: Estimate[],
   leadRepById: Map<string, string | null>,
   win: Window,
-  todayISO: string
+  todayISO: string,
+  boughtKeys: string[]
 ): Funnel {
   const inRange = (d: string | null) => within(d, win);
 
-  const mine = leads.filter((l) => l.assigned_to === repId && inRange(l.created_at));
+  // Leads only: bought-list contacts handed to a rep to call aren't
+  // leads they were given (DECISIONS #156). Their sales still count.
+  const mine = leads.filter(
+    (l) => l.assigned_to === repId && inRange(l.created_at) && countsAsLead(l.source, boughtKeys)
+  );
 
   // Primary assignee only. A ride-along used to count in the rider's
   // funnel too, which put appointments -- and their outcomes -- on a
@@ -334,7 +340,7 @@ export default async function RepReportPage({
   const rangeKey = custom ? "custom" : sp.days && RANGE_LABEL[sp.days] ? sp.days : "30";
 
   const supabase = await createClient();
-  const [leads, members, events, { data: estimates }, { data: company }] =
+  const [leads, members, events, { data: estimates }, { data: company }, boughtKeys] =
     await Promise.all([
       selectAll<RepReportLead>((f, t) =>
         supabase
@@ -360,6 +366,7 @@ export default async function RepReportPage({
         .select("name, address, phone, email, logo_url")
         .eq("company_id", companyId)
         .maybeSingle<Company>(),
+      getBoughtListKeysCached(companyId),
     ]);
 
   // The office's calendar, not the server's UTC one (data/company-today).
@@ -386,7 +393,8 @@ export default async function RepReportPage({
       ((estimates as Estimate[]) ?? []),
       leadRepById,
       win,
-      todayISO
+      todayISO,
+      boughtKeys
     );
 
   const chosen = sp.rep ? salespeople.find((r) => r.id === sp.rep) : null;
@@ -645,7 +653,7 @@ export default async function RepReportPage({
               </table>
             )}
 
-            <h2 className="estdoc-terms-head">Leads</h2>
+            <h2 className="estdoc-terms-head">Contacts</h2>
             {leadLines.length === 0 ? (
               <p className="estdoc-muted">None in this period.</p>
             ) : (

@@ -1,3 +1,4 @@
+import { countsAsLead } from "../lead-or-contact.ts";
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
 import { phaseOwedCents, phaseState, type PortalPayment } from "./types.ts";
 import { saleCredits, splitCents } from "./sale-credit.ts";
@@ -80,7 +81,9 @@ export type DashboardRollup = {
     overdueOwedCents: number;
     overdueOwedCount: number;
   };
-  window: DashboardWindowTotals;
+  /** contactsAdded: contacts added in the window that aren't leads --
+   *  bought lists, no source (DECISIONS #156). */
+  window: DashboardWindowTotals & { contactsAdded: number };
   prev: DashboardWindowTotals;
   months: { month: string; signedCents: number; collectedCents: number }[];
   funnel: { leads: number; withAppt: number; estimated: number; signed: number };
@@ -101,7 +104,8 @@ export type DashboardRollup = {
 /** The rows the fallback fetches; the SQL reads the same tables. */
 export type RollupInputs = {
   boundaries: RollupBoundaries;
-  /** Leads created in the window (the funnel/source cohort). */
+  /** Contacts created in the window; the leads among them are the
+   *  funnel/source cohort. */
   leadsInWindow: {
     id: string;
     created_at: string;
@@ -111,7 +115,10 @@ export type RollupInputs = {
     source: string | null;
     assigned_to: string | null;
   }[];
+  /** Leads only, like the cohort. */
   prevLeadCount: number;
+  /** The bought-list sources' keys, for the lead rule (0211). */
+  boughtKeys: string[];
   /** Open-stage leads (not Won/Lost/DNC), for the stage panel. */
   openLeads: { stage: string; stage_key: string | null; value: number | string | null; updated_at: string | null }[];
   /** Signed true contracts since fetchFrom (change orders excluded by the reader). */
@@ -231,7 +238,8 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     string,
     { source: string; count: number; signedCount: number; signedCents: number }
   >();
-  for (const l of inputs.leadsInWindow) {
+  const cohort = inputs.leadsInWindow.filter((l) => countsAsLead(l.source, inputs.boughtKeys));
+  for (const l of cohort) {
     funnel.leads += 1;
     if (l.has_appt) funnel.withAppt += 1;
     if (sawEstimate.has(l.id)) funnel.estimated += 1;
@@ -369,7 +377,8 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
       overdueOwedCount: aging.overdueCount,
     },
     window: {
-      leads: inputs.leadsInWindow.length,
+      leads: cohort.length,
+      contactsAdded: inputs.leadsInWindow.length - cohort.length,
       appts: inputs.eventsInWindow.length,
       signedCount: signedCur.count,
       signedCents: signedCur.cents,
@@ -441,7 +450,8 @@ export function coerceDashboardRollup(raw: unknown): DashboardRollup {
       overdueOwedCents: num(attention.overdueOwedCents),
       overdueOwedCount: num(attention.overdueOwedCount),
     },
-    window: totals(r.window),
+    // contactsAdded reads 0 from a database without 0211.
+    window: { ...totals(r.window), contactsAdded: num(obj(r.window).contactsAdded) },
     prev: totals(r.prev),
     months: arr(r.months).map((m: Record<string, unknown>) => ({
       month: String(m.month ?? ""),

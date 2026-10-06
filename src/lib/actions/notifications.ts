@@ -4,6 +4,8 @@ import { clientName } from "@/lib/data/client-name";
 import { companyToday } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 import {
   canEditDispatch,
   canViewEstimates,
@@ -75,6 +77,11 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
   // A rep's bell talks about the rep's own customers. See the module
   // note on seesOnlyOwnDocuments for why, and which roles stay wide.
   const ownDocsOnly = seesOnlyOwnDocuments(profile);
+
+  // Only real leads are news: a bought-list import is thousands of
+  // contacts nobody needs to act on (DECISIONS #156). Cached, so the
+  // poll pays no extra round trip for it.
+  const notALead = worksLeads ? notALeadPattern(await getBoughtListKeysCached(companyId)) : "";
 
   const [reads, failedTexts, duePhases, paidRecent, viewsRecent, signedRecent, dueSteps, newLeads, newAppts, rainAlerts, clientNotesRecent] =
     await Promise.all([
@@ -169,6 +176,7 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
             .from("leads")
             .select("id, contact_type, first_name, last_name, company_name, project_type, source, created_at, created_by")
             .eq("company_id", companyId)
+            .not("source", "imatch", notALead)
             .gte("created_at", since7d)
             .order("created_at", { ascending: false })
             .limit(30)
