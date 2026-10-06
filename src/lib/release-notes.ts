@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.227.0",
+    date: "2026-10-06",
+    notes: [
+      "Approve timesheets: once a week is over, open a person on Timesheets and click Approve week, or use Approve all ready. An approved week's hours are locked so nobody can change them after payroll. To change something, click Reopen week and say why.",
+      "The payroll export now shows who approved each person's week and when, and the page shows how many of the week's people are approved.",
+    ],
+  },
+  {
     version: "1.226.1",
     date: "2026-10-06",
     notes: [

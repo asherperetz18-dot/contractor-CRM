@@ -84,6 +84,8 @@ export const BACKUP_TABLES = [
   "time_clock_settings",
   "time_punches",
   "time_punch_changes",
+  // Approved weeks (0212, DECISIONS #157).
+  "timesheet_approvals",
   "location_pings",
   "site_visits",
   "tracking_notices",

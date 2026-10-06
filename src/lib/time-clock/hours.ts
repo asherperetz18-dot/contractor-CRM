@@ -87,9 +87,13 @@ export function timesheetCsv(
   summary: Map<string, WeekRow>,
   days: string[],
   nameOf: (profileId: string) => string,
-  offSiteOf: (profileId: string) => number
+  offSiteOf: (profileId: string) => number,
+  // Who approved the week and on what day (DECISIONS #157); null until then.
+  approvalOf: (profileId: string) => { by: string; on: string } | null
 ): string {
-  const lines = [["Person", ...days, "Total hours", "Overtime hours", "Auto clock-outs", "Off-site clock-ins"].join(",")];
+  const lines = [
+    ["Person", ...days, "Total hours", "Overtime hours", "Auto clock-outs", "Off-site clock-ins", "Approved by", "Approved on"].join(","),
+  ];
   const people = [...summary.entries()].sort(([a], [b]) => nameOf(a).localeCompare(nameOf(b)));
   for (const [id, row] of people) {
     lines.push(
@@ -100,6 +104,8 @@ export function timesheetCsv(
         hours(row.overtimeMinutes),
         String(row.autoClosed),
         String(offSiteOf(id)),
+        csvCell(approvalOf(id)?.by ?? ""),
+        approvalOf(id)?.on ?? "",
       ].join(",")
     );
   }

@@ -3,6 +3,7 @@
 import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { correctPunch } from "@/lib/actions/time-clock";
+import { approveWeek, reopenWeek } from "@/lib/actions/timesheet-approvals";
 import { stampChipClass } from "@/lib/time-clock/clock-in-check";
 import type { ClockCheck } from "@/lib/time-clock/geo";
 
@@ -12,6 +13,12 @@ type PunchStamp = { check: ClockCheck | null; text: string | null } | null;
 export type TimesheetPerson = {
   id: string;
   name: string;
+  /** Approved for payroll, and by whom (DECISIONS #157): its hours are locked. */
+  approval: { by: string; when: string } | null;
+  /** Why the week can't be approved yet, or null when it can. */
+  approveBlocker: string | null;
+  /** Earlier approvals of this week that were reopened, and why. */
+  reopens: { when: string; who: string; reason: string }[];
   minutesByDay: Record<string, number>;
   totalMinutes: number;
   overtimeMinutes: number;
@@ -89,6 +96,80 @@ function PunchEditor({ punch, onDone }: { punch: TimesheetPerson["punches"][numb
   );
 }
 
+/**
+ * Approving one person's week, or reopening it (DECISIONS #157). Shown
+ * at the top of their punches.
+ */
+function WeekApproval({ week, person, onDone }: { week: string; person: TimesheetPerson; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [reopening, setReopening] = useState(false);
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function approve() {
+    setError("");
+    startTransition(async () => {
+      const res = await approveWeek({ week, profileIds: [person.id] });
+      if (res.error) return setError(res.error);
+      if (res.skipped?.length) return setError(res.skipped.join(" "));
+      onDone();
+    });
+  }
+  function reopen() {
+    setError("");
+    startTransition(async () => {
+      const res = await reopenWeek({ week, profileId: person.id, reason });
+      if (res.error) return setError(res.error);
+      setReopening(false);
+      setReason("");
+      onDone();
+    });
+  }
+
+  return (
+    <div className="tc-approval">
+      {person.approval ? (
+        <>
+          <span className="tc-line">
+            <span>
+              <strong>Approved</strong> by {person.approval.by} · {person.approval.when}. The hours are locked.
+            </span>
+            <button type="button" className="btn-ghost small" onClick={() => setReopening(!reopening)}>
+              {reopening ? "Cancel" : "Reopen week"}
+            </button>
+          </span>
+          {reopening && (
+            <span className="tc-editor">
+              <label className="field tc-editor-reason">
+                <span className="field-label">Why (kept on record)</span>
+                <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Missed Friday's overtime" />
+              </label>
+              <button type="button" className="btn-primary small" disabled={pending} onClick={reopen}>
+                Reopen
+              </button>
+            </span>
+          )}
+        </>
+      ) : person.approveBlocker ? (
+        <span className="tc-soft">Not approved yet. {person.approveBlocker}</span>
+      ) : (
+        <span className="tc-line">
+          <span className="tc-soft">Checked the hours? Approving locks this week for payroll.</span>
+          <button type="button" className="btn-primary small" disabled={pending} onClick={approve}>
+            {pending ? "Approving…" : "Approve week"}
+          </button>
+        </span>
+      )}
+      {person.reopens.map((r, i) => (
+        <div key={i} className="tc-history">
+          {r.when} · {r.who} reopened the week · &ldquo;{r.reason}&rdquo;
+        </div>
+      ))}
+      {error && <p className="error-note">{error}</p>}
+    </div>
+  );
+}
+
 export function TimesheetView({
   days,
   people,
@@ -103,6 +184,23 @@ export function TimesheetView({
   const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
+  const [bulkNote, setBulkNote] = useState("");
+  const [bulkPending, startBulk] = useTransition();
+  const ready = people.filter((p) => !p.approval && !p.approveBlocker);
+  const approvedCount = people.filter((p) => p.approval).length;
+
+  // Every week that's ready, in one go; the rest say why not.
+  function approveAll() {
+    setBulkNote("");
+    startBulk(async () => {
+      const res = await approveWeek({ week: days[0], profileIds: ready.map((p) => p.id) });
+      if (res.error) return setBulkNote(res.error);
+      setBulkNote(
+        [`Approved ${res.approved ?? 0}.`, ...(res.skipped ?? [])].join(" ")
+      );
+      router.refresh();
+    });
+  }
 
   function download() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
@@ -128,8 +226,16 @@ export function TimesheetView({
         <button type="button" className="btn-ghost" onClick={download}>
           Export for payroll (CSV)
         </button>
-        <span className="tc-soft">Overtime after {overtimeHours} h a week. Click a person to see and fix their punches.</span>
+        {ready.length > 0 && (
+          <button type="button" className="btn-primary" disabled={bulkPending} onClick={approveAll}>
+            {bulkPending ? "Approving…" : `Approve all ready (${ready.length})`}
+          </button>
+        )}
+        <span className="tc-soft">
+          {approvedCount} of {people.length} approved. Overtime after {overtimeHours} h a week. Click a person to see and fix their punches.
+        </span>
       </div>
+      {bulkNote && <p className="tc-soft">{bulkNote}</p>}
       <div className="tc-table-wrap">
         <table className="data-table">
           <thead>
@@ -167,6 +273,7 @@ export function TimesheetView({
                   <td className="right tc-mono">{p.late}</td>
                   <td>
                     <span className="chip-row">
+                      {p.approval && <span className="tc-chip tc-chip-at-job">Approved · {p.approval.by}</span>}
                       {p.open && <span className="tc-chip tc-chip-driving">On the clock</span>}
                       {p.overtimeMinutes > 0 && <span className="tc-chip tc-chip-stopped">Overtime {hrs(p.overtimeMinutes)} h</span>}
                       {p.autoClosed > 0 && <span className="tc-chip tc-chip-no-signal">Missed clock-out ×{p.autoClosed}</span>}
@@ -181,6 +288,7 @@ export function TimesheetView({
                 {openId === p.id && (
                   <tr>
                     <td colSpan={days.length + 5} className="tc-detail">
+                      <WeekApproval week={days[0]} person={p} onDone={() => router.refresh()} />
                       {p.punches.map((pu) => (
                         <div key={pu.id} className="tc-punch">
                           <div className="tc-line">
@@ -191,9 +299,12 @@ export function TimesheetView({
                             </span>
                             <span className="chip-row">
                               <span className="tc-mono">{hrs(pu.minutes)} h</span>
-                              <button type="button" className="btn-ghost small" onClick={() => setEditing(editing === pu.id ? null : pu.id)}>
-                                {editing === pu.id ? "Cancel" : "Fix"}
-                              </button>
+                              {/* An approved week is locked: reopen it first. */}
+                              {!p.approval && (
+                                <button type="button" className="btn-ghost small" onClick={() => setEditing(editing === pu.id ? null : pu.id)}>
+                                  {editing === pu.id ? "Cancel" : "Fix"}
+                                </button>
+                              )}
                             </span>
                           </div>
                           {(pu.inStamp?.text || pu.outStamp?.text) && (
@@ -203,7 +314,7 @@ export function TimesheetView({
                             </span>
                           )}
                           {pu.reason && <div className="tc-stamp">Why: &ldquo;{pu.reason}&rdquo;</div>}
-                          {editing === pu.id && (
+                          {editing === pu.id && !p.approval && (
                             <PunchEditor
                               punch={pu}
                               onDone={() => {
@@ -227,7 +338,10 @@ export function TimesheetView({
           </tbody>
         </table>
       </div>
-      <p className="hint-note">Every change to hours is kept with who made it, when and why, and can&apos;t be deleted.</p>
+      <p className="hint-note">
+        Every change to hours is kept with who made it, when and why, and can&apos;t be deleted. Once a week is approved its hours
+        are locked until it&apos;s reopened, and the export shows who approved it.
+      </p>
     </div>
   );
 }

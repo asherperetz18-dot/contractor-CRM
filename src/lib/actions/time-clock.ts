@@ -15,6 +15,8 @@ import { isMissingSchemaError } from "@/lib/schema-drift";
 import { instantOfWallClock } from "@/lib/company-clock";
 
 type Result = { error?: string; ok?: boolean };
+
+const WEEK_APPROVED = "This week has been approved. Reopen it on Timesheets to change its hours.";
 type Fix = { lat: number; lng: number; accuracy?: number | null } | null;
 
 const MIGRATION_HINT = "The time clock isn't set up yet — migration 0174_time_clock.sql needs to be run.";
@@ -221,13 +223,27 @@ export async function correctPunch(input: {
   if (clockOutIso && clockOutIso < clockInIso) return { error: "Clock-out can't be before clock-in." };
 
   const supabase = await createClient();
-  const { data: before } = await supabase
+  const { data: found } = await supabase
     .from("time_punches")
-    .select("clock_in, clock_out, end_reason")
+    .select("profile_id, clock_in, clock_out, end_reason")
     .eq("id", input.punchId)
     .eq("company_id", profile.company_id)
-    .maybeSingle<PunchSnapshot>();
-  if (!before) return { error: "That punch wasn't found." };
+    .maybeSingle<PunchSnapshot & { profile_id: string }>();
+  if (!found) return { error: "That punch wasn't found." };
+  const { profile_id: worker, ...before } = found;
+
+  // An approved week is closed (DECISIONS #157): said here, refused by
+  // the database (0212) whatever writes. Its own read -- none before 0212.
+  const { data: locks } = await supabase
+    .from("timesheet_approvals")
+    .select("period_start, period_end")
+    .eq("company_id", profile.company_id)
+    .eq("profile_id", worker)
+    .is("reopened_at", null)
+    .returns<{ period_start: string; period_end: string }[]>();
+  const inLockedWeek = (iso: string) =>
+    (locks ?? []).some((l) => new Date(iso) >= new Date(l.period_start) && new Date(iso) < new Date(l.period_end));
+  if (inLockedWeek(before.clock_in) || inLockedWeek(clockInIso)) return { error: WEEK_APPROVED };
 
   const after: PunchSnapshot = {
     clock_in: clockInIso,
@@ -242,7 +258,11 @@ export async function correctPunch(input: {
     .eq("id", input.punchId)
     .eq("company_id", profile.company_id)
     .select("id");
-  if (error) return { error: error.code === "23505" ? "They already have another open punch." : error.message };
+  if (error) {
+    if (error.code === "23505") return { error: "They already have another open punch." };
+    if (/week has been approved/i.test(error.message)) return { error: WEEK_APPROVED };
+    return { error: error.message };
+  }
   if (!updated?.length) return { error: "Couldn't change that punch." };
 
   const { error: auditError } = await supabase.from("time_punch_changes").insert({
