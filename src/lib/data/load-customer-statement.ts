@@ -28,7 +28,7 @@ async function forChunks<T>(ids: string[], read: (chunk: string[]) => Promise<T[
 }
 
 export const STATEMENT_PAYMENT_COLUMNS =
-  "estimate_id, estimate_payment_id, kind, status, amount_cents, method, reference, paid_at, created_at, stripe_session_id, stripe_payment_intent_id";
+  "estimate_id, estimate_payment_id, kind, status, amount_cents, method, reference, note, paid_at, created_at, stripe_session_id, stripe_payment_intent_id";
 
 export async function loadCustomerStatement(
   supabase: Db,

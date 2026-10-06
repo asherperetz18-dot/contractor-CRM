@@ -110,8 +110,9 @@ test("the statement: a refund is its own line, and puts the balance back up", ()
     [{ id: "c1", lead_id: "l1", doc_number: "EST-1047", title: "Kitchen remodel", kind: "contract", status: "Signed", signed_at: "2026-08-01T17:00:00Z", created_at: "2026-07-20T17:00:00Z", total_cents: 2_500_000, deposit_cents: 0 }],
     [{ id: "s1", estimate_id: "c1", sort_order: 0, name: "Rough-in complete", amount_cents: 1_000_000, requested_at: "2026-09-01T17:00:00Z", due_date: "2026-09-15", cancelled_at: null, credit_cents: 100_000 }],
     [
-      { estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "succeeded", amount_cents: 1_000_000, method: "card", reference: null, paid_at: "2026-09-10T17:00:00Z", created_at: "2026-09-10T17:00:00Z" },
-      { estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "succeeded", amount_cents: -100_000, method: "card", reference: null, paid_at: "2026-09-20T17:00:00Z", created_at: "2026-09-20T17:00:00Z" },
+      // A payment's own note is the office's: never on the statement.
+      { estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "succeeded", amount_cents: 1_000_000, method: "card", reference: null, note: "Called twice", paid_at: "2026-09-10T17:00:00Z", created_at: "2026-09-10T17:00:00Z" },
+      { estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "succeeded", amount_cents: -100_000, method: "card", reference: null, note: "Cabinet delay", paid_at: "2026-09-20T17:00:00Z", created_at: "2026-09-20T17:00:00Z" },
       // A refund still going through: not on it yet.
       { estimate_id: "c1", estimate_payment_id: "s1", kind: "progress", status: "pending", amount_cents: -5_000, method: "card", reference: null, paid_at: null, created_at: "2026-09-21T17:00:00Z" },
     ],
@@ -123,7 +124,8 @@ test("the statement: a refund is its own line, and puts the balance back up", ()
     [
       ["charge", "Rough-in complete — EST-1047", "Kitchen remodel · due Sep 15, 2026 · Paid", 1_000_000, 1_000_000],
       ["payment", "Payment — Rough-in complete — EST-1047", "Card", 1_000_000, 0],
-      ["refund", "Refund — Rough-in complete — EST-1047", "Card", 100_000, 100_000],
+      // The refund's reason is the customer's to see.
+      ["refund", "Refund — Rough-in complete — EST-1047", "Card · Cabinet delay", 100_000, 100_000],
       ["credit", "Credit — Rough-in complete — EST-1047", "Refunded: cabinet delay", -100_000, 0],
     ]
   );

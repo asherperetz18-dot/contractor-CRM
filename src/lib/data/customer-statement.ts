@@ -32,6 +32,9 @@ export type StatementPayment = InvoicePaymentLite &
     reference: string | null;
     stripe_session_id?: string | null;
     stripe_payment_intent_id?: string | null;
+    /** On a refund, why (DECISIONS #155) -- shown to the customer. A
+     *  payment's own note is the office's and never is. */
+    note?: string | null;
   };
 
 /** A credit on one of the customer's bills (0209, DECISIONS #154). */
@@ -157,7 +160,7 @@ export function buildStatement(
       order: 1,
       kind: refund ? "refund" : "payment",
       label: `${refund ? "Refund" : "Payment"} — ${forWhat}`,
-      detail: paidBy(p),
+      detail: refund ? [paidBy(p), p.note?.trim()].filter(Boolean).join(" · ") : paidBy(p),
       docId: d.id,
       docNumber: d.doc_number,
       amountCents: Math.abs(p.amount_cents),

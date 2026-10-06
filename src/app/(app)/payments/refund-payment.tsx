@@ -77,7 +77,7 @@ export function RefundPayment({
   }
 
   return (
-    <div className="est-record">
+    <div className="est-record refund-form">
       <div className="est-record-title">Record a refund — up to {moneyCents(refundableCents)}</div>
       {viaStripe && (
         <p className="empty-hint">
