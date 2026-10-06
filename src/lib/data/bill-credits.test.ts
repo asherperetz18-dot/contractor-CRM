@@ -123,3 +123,16 @@ test("giving a credit: checked and written together in the database, by the peop
   }
   assert.match(source("./invoice-rows.ts"), /export const INVOICE_STAGE_COLUMNS = "\*"/);
 });
+
+test("a credit lowers the commission: the job sold for that much less (the owner's call)", () => {
+  const reps = source("../actions/rep-commission.ts");
+  // Worked out on the contract less its credits -- and paid in full against the same figure.
+  assert.match(reps, /const soldCents = contractCents - creditsOnJob;/);
+  assert.match(reps, /computeRepCommission\(\{\s*contractCents: soldCents,/);
+  assert.match(reps, /contractCents: soldCents,\s*certificateSigned,/);
+  // The one-job statement shows the credits between the contract and the lead cost.
+  assert.match(source("../../app/(app)/sales-commission/statement/job-statement.tsx"), /Credits given/);
+  const dispatch = source("../actions/dispatcher.ts");
+  assert.match(dispatch, /const baseCents = estimate\.total_cents - \(creditByEstimate\.get\(estimate\.id\) \?\? 0\);/);
+  assert.match(dispatch, /Math\.round\(\(baseCents \* bp\) \/ 10000\)/);
+});

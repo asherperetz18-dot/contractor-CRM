@@ -434,6 +434,9 @@ export type RepCommissionRow = {
   /** The share, once every hold is clear. Nil until then. */
   payableCents: number;
   detail: RepCommission;
+  /** Credited off the job's bills (DECISIONS #154); detail.contractCents
+   *  is already less this. */
+  creditsCents: number;
   /** The customer's bills no contract claims (several contracts, bill
    *  filed to none) -- why a job with receipts still reads uncosted. */
   unassignedCosts: { count: number; cents: number };
@@ -618,6 +621,11 @@ export async function getRepCommissions(opts?: {
     // Not invoices: a paid permit fee must not count toward the contract
     // being paid off, or the hold below releases early.
     const docIds = new Set([c.id, ...children.filter((e) => e.kind !== "invoice").map((e) => e.id)]);
+    // Credits given on the job's bills (DECISIONS #154): it sold for that
+    // much less, so the commission is worked out on the rest and paid in
+    // full means paid that (the owner's call).
+    const creditsOnJob = creditedCents(phases, docIds);
+    const soldCents = contractCents - creditsOnJob;
     const contractPhaseIds = new Set(
       phases.filter((p) => docIds.has(p.estimate_id)).map((p) => p.id)
     );
@@ -689,7 +697,7 @@ export async function getRepCommissions(opts?: {
 
     const repOne = c.sales_rep_1 ?? assignedByLead.get(c.lead_id) ?? null;
     const detail = computeRepCommission({
-      contractCents,
+      contractCents: soldCents,
       leadCostBp: c.lead_cost_bp ?? settings?.sales_lead_cost_bp ?? 1500,
       commissionRateBp: c.commission_rate_bp ?? settings?.sales_commission_bp ?? 5000,
       expensesCents,
@@ -704,15 +712,11 @@ export async function getRepCommissions(opts?: {
     // Earned when the job sells; paid when the job is finished and
     // settled. One number would either promise a rep money the company
     // has not received, or hide what they have already earned.
-    // Paid in full means paid what's owed once credits are off (DECISIONS
-    // #154) -- otherwise a credited job holds its commission forever. The
-    // commission itself is still worked out on the full contract.
-    const owedOnJobCents = contractCents - creditedCents(phases, docIds);
-    const collectedPct = owedOnJobCents > 0 ? collectedCents / owedOnJobCents : 0;
+    const collectedPct = soldCents > 0 ? collectedCents / soldCents : 0;
     const holds = commissionHolds({
       hasCosts: counted > 0,
       collectedCents,
-      contractCents: owedOnJobCents,
+      contractCents: soldCents,
       certificateSigned,
     });
     const qualifiedAt = commissionQualifiedAt({
@@ -748,6 +752,7 @@ export async function getRepCommissions(opts?: {
         // All or nothing. A part payment does not release a part of the
         // commission -- the rule is the job is done and paid for.
         payableCents: holds.length === 0 ? shareCents : 0,
+        creditsCents: creditsOnJob,
         detail,
         unassignedCosts,
         job,
