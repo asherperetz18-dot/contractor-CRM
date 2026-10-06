@@ -16,13 +16,13 @@ import {
   type LinkedEstimate,
   type Event,
   type EventStatus,
-  type Job,
   type Lead,
   type LeadNote,
   type LeadTask,
   type PipelineStageRow,
   type Profile,
 } from "@/lib/data/types";
+import type { AppointmentJob } from "@/lib/appointment-jobs";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { safeInternalPath } from "@/lib/safe-path";
@@ -110,7 +110,7 @@ export function CalendarBoard({
   appointmentHolders,
 }: {
   events: Event[];
-  jobs: Job[];
+  jobs: AppointmentJob[];
   /** Every active member: name lookups and the assignee picker. */
   reps: Profile[];
   /** The whole roster, deactivated included -- the tasks panel's name

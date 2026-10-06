@@ -1,8 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import type { CalendarRow, Event, Job, PipelineStageRow } from "@/lib/data/types";
+import type { CalendarRow, Event, PipelineStageRow } from "@/lib/data/types";
 import {
   canDeleteAppointments,
   canEditSchedule,
@@ -36,21 +35,13 @@ export default async function SchedulePage({
   if (bounds.hi) events = events.lte("date", bounds.hi);
   if (query.rep) events = events.or(`assigned_to.eq.${query.rep},second_assigned_to.eq.${query.rep}`);
 
-  const [eventsResult, jobs, allReps, { data: stages }, { data: calendars }] = await Promise.all([
+  const [eventsResult, allReps, { data: stages }, { data: calendars }] = await Promise.all([
     // One more than a page, to know whether there is more.
     events
       .order("date", { ascending })
       .order("time", { ascending, nullsFirst: ascending })
       .order("id", { ascending })
       .range(0, query.limit),
-    selectAll<Job>((f, t) =>
-      supabase
-        .from("jobs")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("name", { ascending: true })
-        .range(f, t)
-    ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
@@ -71,8 +62,10 @@ export default async function SchedulePage({
     : [{}, { leads: [], notes: [] }];
 
   // Only the contacts these appointments point at, with their tasks,
-  // notes and estimates -- the appointment window's, for its own contact.
-  const { leads, leadTasks, leadNotes, estimates } = await loadAppointmentContext(supabase, companyId, loaded);
+  // notes and estimates -- the appointment window's, for its own contact
+  // -- and the jobs they link to (#147); the window's job picker loads
+  // the full list itself.
+  const { leads, leadTasks, leadNotes, estimates, jobs } = await loadAppointmentContext(supabase, companyId, loaded);
 
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 

@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.216.0",
+    date: "2026-10-06",
+    notes: [
+      "The Calendar and Schedule open faster: they no longer download every job the company has ever had, only the jobs their appointments are linked to. The Related Job list in an appointment still has every job; it loads when you open the appointment and shows \"Loading jobs…\" for a moment.",
+    ],
+  },
+  {
     version: "1.215.0",
     date: "2026-10-06",
     notes: [
