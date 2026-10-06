@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import { addsToContractValue } from "@/lib/data/invoices";
+import { parseRange, type CalendarRange } from "@/lib/calendar-range";
 import {
   computeDispatcherCommissions,
   commissionHolds,
@@ -510,6 +511,18 @@ export async function setDispatcherCommissionRate(
  * admin-side lookup runs for the users who can edit everything anyway.
  */
 /**
+ * Only appointments dated inside the range, when there is one -- the
+ * Calendar loads a month at a time (DECISIONS #142); the Schedule passes
+ * none and still reads every appointment.
+ */
+function withinRange<Q extends { gte(column: string, value: string): Q; lte(column: string, value: string): Q }>(
+  query: Q,
+  range: CalendarRange | null
+): Q {
+  return range ? query.gte("date", range.from).lte("date", range.to) : query;
+}
+
+/**
  * The leads standing behind this company's appointments that RLS hides
  * from the current viewer.
  *
@@ -524,12 +537,13 @@ export async function setDispatcherCommissionRate(
  * Same shape as getAppointmentHolders below: empty for viewers whose
  * lead list is already complete, so no admin-side lookup runs for them.
  */
-export async function getLeadsBehindAppointments(): Promise<{
+export async function getLeadsBehindAppointments(range?: CalendarRange): Promise<{
   leads: Lead[];
   notes: LeadNote[];
 }> {
   const profile = await getCurrentProfile();
   if (!profile) return { leads: [], notes: [] };
+  const within = parseRange(range);
 
   const admin = createAdminClient();
   // selectAll: Calendar and Schedule both call this to find appointment
@@ -537,12 +551,10 @@ export async function getLeadsBehindAppointments(): Promise<{
   // whichever appointments land past row 1000 -- their leads' Notes/
   // Photos/Result tabs would then just be missing, not merely stale.
   const events = await selectAll<{ lead_id: string }>((f, t) =>
-    admin
-      .from("events")
-      .select("lead_id")
-      .eq("company_id", profile.company_id)
-      .not("lead_id", "is", null)
-      .range(f, t)
+    withinRange(
+      admin.from("events").select("lead_id").eq("company_id", profile.company_id).not("lead_id", "is", null),
+      within
+    ).range(f, t)
   );
   const ids = [...new Set(events.map((e) => e.lead_id))];
   if (!ids.length) return { leads: [], notes: [] };
@@ -588,9 +600,10 @@ export async function getLeadsBehindAppointments(): Promise<{
   return { leads: extra, notes: extraNotes };
 }
 
-export async function getAppointmentHolders(): Promise<Record<string, string | null>> {
+export async function getAppointmentHolders(range?: CalendarRange): Promise<Record<string, string | null>> {
   const profile = await getCurrentProfile();
   if (!profile || !isDispatchScoped(profile)) return {};
+  const within = parseRange(range);
 
   const admin = createAdminClient();
   // selectAll: this maps every appointment to its dispatcher, and a bare
@@ -599,11 +612,7 @@ export async function getAppointmentHolders(): Promise<Record<string, string | n
   // scoped viewer would see the appointment holder lock simply not
   // apply to them.
   const events = await selectAll<{ id: string; lead_id: string | null }>((f, t) =>
-    admin
-      .from("events")
-      .select("id, lead_id")
-      .eq("company_id", profile.company_id)
-      .range(f, t)
+    withinRange(admin.from("events").select("id, lead_id").eq("company_id", profile.company_id), within).range(f, t)
   );
   if (!events.length) return {};
 

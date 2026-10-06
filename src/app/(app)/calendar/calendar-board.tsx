@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
 import {
@@ -30,6 +30,8 @@ import { rescheduleEvent } from "@/lib/actions/events";
 import { EventForm } from "./event-form";
 import { AppointmentWizard } from "../schedule/appointment-wizard";
 import { FilterSelect } from "@/components/filter-select";
+import { repDropdownOptions } from "@/lib/data/rep-options";
+import { monthOf } from "@/lib/calendar-range";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -93,7 +95,7 @@ export function CalendarBoard({
   jobs,
   reps,
   allMembers,
-  filterReps,
+  month: loadedMonth,
   leads,
   leadTasks,
   leadNotes,
@@ -114,8 +116,9 @@ export function CalendarBoard({
   /** The whole roster, deactivated included -- the tasks panel's name
    *  lookups only. */
   allMembers?: Profile[];
-  /** Just the salespeople, for the rep filter. */
-  filterReps: Profile[];
+  /** The month whose appointments these are ("YYYY-MM"), plus a week
+   *  either side -- the page loads one at a time (DECISIONS #142). */
+  month: string;
   leads: Lead[];
   leadTasks: LeadTask[];
   leadNotes: LeadNote[];
@@ -155,7 +158,11 @@ export function CalendarBoard({
   // cannot. Month stays one click away for planning ahead.
   const viewMode: ViewMode = chosenView ?? (narrow ? "day" : "week");
   const setViewMode = setChosenView;
-  const [cursorDate, setCursorDate] = useState(todayISO());
+  // Starts in the month the page loaded: today, or the month in the
+  // address (a reload, or a link to one appointment).
+  const [cursorDate, setCursorDate] = useState(() =>
+    monthOf(todayISO()) === loadedMonth ? todayISO() : `${loadedMonth}-01`
+  );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
@@ -181,18 +188,34 @@ export function CalendarBoard({
     setConsumedOpenId(openEventId);
     setReturnTo(safeInternalPath(searchParams.get("from")));
     const found = events.find((e) => e.id === openEventId);
-    if (found) setEditing(found);
+    if (found) {
+      // On its own day: the page loaded this appointment's month for it,
+      // so it and its contact stay loaded while the window is open.
+      setEditing(found);
+      setCursorDate(found.date);
+    }
   } else if (!openEventId && consumedOpenId) {
     // Param stripped below -- clear the guard so the same appointment can
     // be opened again later without a full reload.
     setConsumedOpenId(null);
   }
 
+  // The page loads one month (plus a week either side), the one in the
+  // address. Moving to another month asks for it -- in a transition, so
+  // the calendar on screen stays put (view, filters, an open window)
+  // until the new month arrives, and the toolbar says it's loading. A
+  // link's ?openEvent= is dropped here too, keeping the month.
+  const neededMonth = monthOf(cursorDate);
+  const [monthPending, startMonth] = useTransition();
+  const linkPending = !!searchParams.get("openEvent");
   useEffect(() => {
-    if (searchParams.get("openEvent")) {
-      router.replace("/calendar", { scroll: false });
+    if (linkPending || neededMonth !== loadedMonth) {
+      startMonth(() =>
+        router.replace(`/calendar?month=${neededMonth}`, { scroll: false })
+      );
     }
-  }, [searchParams, router]);
+  }, [linkPending, neededMonth, loadedMonth, router]);
+  const monthLoading = monthPending || neededMonth !== loadedMonth;
 
   /**
    * Close the appointment, returning to whatever sent us here.
@@ -275,12 +298,24 @@ export function CalendarBoard({
   // Resolved against the full member list, not the narrowed rep filter
   // list: dispatchers are precisely the people that list leaves out, so
   // looking them up there returned nothing and every name read "Unnamed".
-  const dispatchers = [...new Set(dispatcherByLead.values())]
+  // Plus anyone still ticked, so a tick made in another month can be
+  // undone here even when they hold nothing this month.
+  const dispatchers = [...new Set([...dispatcherByLead.values(), ...dispatcherFilter])]
     .map((id) => {
       const person = reps.find((r) => r.id === id);
       return { id, name: person?.name || person?.email || "Unnamed" };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // The rep filter: salespeople, plus whoever is on this month's
+  // appointments and whoever is still ticked -- a tick that no longer
+  // renders can't be undone (the people-dropdown rule).
+  const onCalendar = new Set<string>();
+  for (const e of events) {
+    if (e.assigned_to) onCalendar.add(e.assigned_to);
+    if (e.second_assigned_to) onCalendar.add(e.second_assigned_to);
+  }
+  const filterReps = repDropdownOptions(reps, [...onCalendar, ...repFilter]);
 
   const filteredEvents = events.filter((ev) => {
     if (statusFilter.size > 0 && !statusFilter.has(ev.status)) return false;
@@ -338,6 +373,20 @@ export function CalendarBoard({
     d.setDate(weekStart.getDate() + i);
     return { inMonth: true, day: d.getDate(), dateStr: ymdFromDate(d) };
   });
+
+  // How many appointments the view is showing: the month's own days, the
+  // week, or the day. The page holds a month at a time now, so a count of
+  // everything loaded would be neither "total" nor what's on screen.
+  const viewDates = new Set(
+    viewMode === "month"
+      ? monthCells.filter((c) => c.inMonth).map((c) => c.dateStr)
+      : viewMode === "week"
+        ? weekCells.map((c) => c.dateStr)
+        : [cursorDate]
+  );
+  const inViewCount = [...eventsByDate.entries()]
+    .filter(([date]) => viewDates.has(date))
+    .reduce((n, [, list]) => n + list.length, 0);
 
   function shiftCursor(days: number) {
     const d = new Date(`${cursorDate}T00:00:00`);
@@ -642,7 +691,11 @@ export function CalendarBoard({
       <div className="module-toolbar">
         <div>
           <h1 className="module-title">Calendar</h1>
-          <p className="module-sub">{filteredEvents.length} total appointments</p>
+          <p className="module-sub">
+            {monthLoading
+              ? "Loading appointments…"
+              : `${inViewCount} appointment${inViewCount === 1 ? "" : "s"} shown`}
+          </p>
         </div>
         <div className="cal-toolbar-actions">
           {/* Every rep can connect their own Google Calendar, and this
@@ -709,7 +762,7 @@ export function CalendarBoard({
           )}
         </aside>
 
-        <div className="cal-main">
+        <div className={"cal-main" + (monthLoading ? " cal-loading" : "")} aria-busy={monthLoading}>
           <div className="cal-toolbar">
             <div className="cal-nav">
               <button className="icon-btn cal-nav-btn" onClick={goPrev} aria-label="Previous">

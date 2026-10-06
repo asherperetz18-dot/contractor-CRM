@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.211.0",
+    date: "2026-10-06",
+    notes: [
+      "The Calendar opens faster: it loads the month you're looking at, and the next or previous month loads as you move to it. The line under the title now counts the appointments in view. A link to an appointment, from a contact or a reminder, opens the calendar on that appointment's day.",
+    ],
+  },
+  {
     version: "1.210.0",
     date: "2026-10-06",
     notes: [
