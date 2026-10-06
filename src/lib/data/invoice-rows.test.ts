@@ -191,7 +191,7 @@ test("the address is read strictly and carries only what differs", () => {
   assert.equal(invoiceQueryString({ status: "open", period: "all" }), "");
   assert.equal(invoiceQueryString({ status: "overdue", period: "all" }), "?status=overdue");
   assert.equal(invoiceQueryString({ status: "all", period: "365" }), "?status=all&period=365");
-  for (const status of ["open", "overdue", "paid", "void", "all"] as const) {
+  for (const status of ["open", "overdue", "paid", "draft", "void", "all"] as const) {
     for (const period of ["all", "30", "90", "365"] as const) {
       const qs = invoiceQueryString({ status, period });
       assert.deepEqual(parseInvoiceQuery(Object.fromEntries(new URLSearchParams(qs.slice(1)))), { status, period }, qs);

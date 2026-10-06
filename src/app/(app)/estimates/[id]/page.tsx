@@ -11,6 +11,7 @@ import { estimateRepLine } from "@/lib/estimate-rep-line";
 import { clientName } from "@/lib/data/client-name";
 import { CompletionEditor } from "./completion-editor";
 import { InvoiceView, type InvoiceLineCost } from "./invoice-view";
+import { InvoiceDraftEditor } from "./invoice-draft-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -107,19 +108,34 @@ export default async function EstimateDetailPage({
             .maybeSingle<{ id: string; doc_number: string }>()
         : Promise.resolve({ data: null }),
     ]);
+    const customer = {
+      id: estimate.lead_id,
+      name: clientName(lead) || "Customer",
+      phone: lead?.phone ?? null,
+    };
+    const costs = Object.fromEntries((costRows ?? []).map((c) => [c.id, c]));
+    // A draft is still being written (DECISIONS #149); once issued it's a record.
+    if (estimate.status === "Draft") {
+      return (
+        <InvoiceDraftEditor
+          invoice={estimate}
+          items={lines}
+          customer={customer}
+          parent={parentRow ?? null}
+          costs={costs}
+          canEdit={canCreateEstimates(profile)}
+        />
+      );
+    }
     return (
       <InvoiceView
         invoice={estimate}
         items={lines}
         phase={((payments ?? []) as EstimatePayment[])[0] ?? null}
         paid={(paidRows ?? []) as PortalPayment[]}
-        customer={{
-          id: estimate.lead_id,
-          name: clientName(lead) || "Customer",
-          phone: lead?.phone ?? null,
-        }}
+        customer={customer}
         parent={parentRow ?? null}
-        costs={Object.fromEntries((costRows ?? []).map((c) => [c.id, c]))}
+        costs={costs}
         canBill={canCreateEstimates(profile)}
         canRecord={canManageBills(profile)}
       />

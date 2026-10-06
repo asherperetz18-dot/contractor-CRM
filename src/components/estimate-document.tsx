@@ -34,6 +34,7 @@ import {
   scheduledPhases,
 } from "@/lib/document-words";
 import { STANDARD_WORDS, type CompanyWords } from "@/lib/company-words";
+import { paymentTermsLabel } from "@/lib/data/invoices";
 
 export type DocumentCompany = {
   name: string | null;
@@ -298,6 +299,11 @@ export function EstimateDocument({
           {L.banner && <div className="estdoc-doctype">{L.banner}</div>}
           <div className="estdoc-docnum">{estimate.doc_number}</div>
           <div className="estdoc-muted">Issued {longDate(estimate.issued_at ?? estimate.created_at)}</div>
+          {/* An invoice says when it's due the way the customer reads
+              terms on any bill: "Net 15", "Due on receipt" (DECISIONS #149). */}
+          {isInvoice && paymentTermsLabel(estimate.payment_terms_days) && (
+            <div className="estdoc-muted">Terms: {paymentTermsLabel(estimate.payment_terms_days)}</div>
+          )}
           {(isChangeOrder || priceless || isInvoice) && parent && (
             <div className="estdoc-muted">
               {L.parentLink} {parent.doc_number}

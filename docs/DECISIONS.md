@@ -1803,3 +1803,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - On phones, stat tiles step their amounts down to fit two across; five-figure amounts were running off the screen.
 
 **Consequence:** one place to see every bill and its state, and an ageing that matches the terms each bill was sent on. Totals on Money to Collect can rise where change-order stages were billed, because those were missing before. No database step.
+
+## 149 — Draft invoices, their own numbering, and payment terms
+
+**Date:** 2026-10-06
+
+**Context:** Step 2 of the invoicing plan the owner approved. An invoice was issued the moment it was saved: one quantity per line, no tax, no terms printed, no way to fix a typo except cancelling it and starting again. It was numbered from the estimates' counter with an INV prefix, so invoice numbers skipped whenever an estimate was made in between. The owner chose: only drafts can be edited (a sent invoice is cancelled and re-issued, which keeps the books clean), and invoices get their own sequence.
+
+**Decision:**
+- **Drafts.** The New invoice window gains **Save as draft**. A draft opens in an editor: lines with a quantity and a price (fractions allowed, for hours or yards), which are taxable and at what rate (starting at the company's estimate tax rate), payment terms (Due on receipt, Net 7, 15 or 30), and a note to the customer (`customer_message`, which the document already prints). The money is computed with the estimates' own `computeEstimateTotals` (`invoiceEditTotals`), so the office and the customer always see one number, and the invoice's single bill (its stage) is kept equal to the total. **Send by text** and **Issue without texting** issue it, due its terms from the company's today; **Delete draft** removes it. Every draft action goes through one guard (`loadDraftInvoice`): this company's invoice, still a draft. Cancelling refuses a draft ("delete it instead").
+- **Own numbering** (0205): `next_invoice_number` hands out INV-1001, INV-1002, ... from `company_profile.invoice_seq`, which starts above the highest invoice number the company already had. It skips any number already on one of the company's documents, so an invoice numbered by the old code while the migration and the deploy were apart can't clash, and it serves only a member of the company. A draft takes its number when it's started; a deleted draft leaves a gap, as cancelling always has.
+- **Payment terms** (`estimates.payment_terms_days`, 0205) are printed on the customer's copy as "Terms: Net 15" or "Terms: Due on receipt", and shown on the office page with the due date.
+- **The approval gate leaves invoices alone** (0205 redefines 0136's trigger function with one added line). Invoices were never held by it -- they used to be inserted already issued -- and a draft invoice being issued is the same act. The admin's Approvals queue leaves draft invoices out for the same reason.
+- **The Invoices page lists drafts** (a Drafts filter): owed nothing and counted in no total. The portal never shows a draft (it already redirected away from any Draft document).
+
+**Consequence:** an invoice can be got right before it goes out, with quantities, tax and terms, and numbers run in order. **Database step: run 0205 in Supabase before merging** -- the code reads the new columns and calls the new function. The text that carries the Pay link is still the only way the CRM sends an invoice; email is the next step.

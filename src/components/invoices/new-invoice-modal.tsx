@@ -120,7 +120,7 @@ export function NewInvoiceModal({
   const patch = (key: number, p: Partial<Line>) =>
     setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...p } : l)));
 
-  async function send(delivery: "text" | "marked") {
+  async function send(delivery: "text" | "marked" | "draft") {
     if (!leadId) return setError("Pick the customer first.");
     const drafts = lines.map((l) => ({
       name: l.name,
@@ -148,7 +148,9 @@ export function NewInvoiceModal({
       docNumber: res.docNumber ?? "The invoice",
       note:
         res.error ?? res.warning ??
-        (res.sentTo
+        (res.draft
+          ? `${res.docNumber} saved as a draft. Finish it and send it when it's ready.`
+          : res.sentTo
           ? `${res.docNumber} sent — Pay link texted to ${res.sentTo}.`
           : `${res.docNumber} issued. It's on the customer's portal with a Pay button.`),
     });
@@ -353,6 +355,15 @@ export function NewInvoiceModal({
             onClick={() => void send("marked")}
           >
             Issue without texting
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={!setup || lines.length === 0}
+            title="Save it to finish later: change quantities, add tax, set the terms, then send"
+            onClick={() => void send("draft")}
+          >
+            Save as draft
           </button>
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel

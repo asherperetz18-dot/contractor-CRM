@@ -3,6 +3,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { selectAll } from "./select-all";
 import {
   INVOICE_DOC_COLUMNS,
+  INVOICE_DOC_FILTER,
   INVOICE_PAYMENT_COLUMNS,
   INVOICE_STAGE_COLUMNS,
   buildInvoiceRows,
@@ -14,7 +15,8 @@ import {
 
 /**
  * The rows behind Invoices and Money to Collect (DECISIONS #148), read
- * once and the same way for both: signed and cancelled documents, billed
+ * once and the same way for both: signed and cancelled documents and
+ * draft invoices (#149), billed
  * stages and the payments filed to them -- only the columns the rows are
  * built from -- plus the customers they name. Read as the signed-in
  * person, so row level security narrows them as always.
@@ -58,7 +60,7 @@ export async function loadInvoiceRows(
         .from("estimates")
         .select(INVOICE_DOC_COLUMNS)
         .eq("company_id", companyId)
-        .in("status", ["Signed", "Void"])
+        .or(INVOICE_DOC_FILTER)
         .order("id")
         .range(f, t)
     ),

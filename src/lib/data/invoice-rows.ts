@@ -12,9 +12,19 @@ import { paidTotalCents, phaseOwedCents, phaseState, type PortalPayment } from "
  * Pure, so the pages and the tests share it.
  */
 
-export type InvoiceStatus = "billed" | "viewed" | "partial" | "overdue" | "clearing" | "paid" | "void" | "credit";
+export type InvoiceStatus =
+  | "draft"
+  | "billed"
+  | "viewed"
+  | "partial"
+  | "overdue"
+  | "clearing"
+  | "paid"
+  | "void"
+  | "credit";
 
 export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
+  draft: "Draft",
   billed: "Billed",
   viewed: "Viewed",
   partial: "Part paid",
@@ -54,11 +64,16 @@ export type InvoicePaymentLite = Pick<PortalPayment, "status" | "amount_cents" |
 
 /** The columns the rows are built from, for the pages' selects. */
 export const INVOICE_DOC_COLUMNS = "id, lead_id, doc_number, title, kind, status, signed_at, created_at, total_cents";
+
+/** The documents the rows come from: signed and cancelled ones of every
+ *  kind, and draft invoices (a draft estimate or contract is no bill). */
+export const INVOICE_DOC_FILTER = "status.in.(Signed,Void),and(kind.eq.invoice,status.eq.Draft)";
 export const INVOICE_STAGE_COLUMNS = "id, estimate_id, sort_order, name, amount_cents, requested_at, due_date, cancelled_at";
 export const INVOICE_PAYMENT_COLUMNS = "estimate_payment_id, status, amount_cents, paid_at";
 
 export type InvoiceRow = {
-  /** The stage's id, or `void-<document id>` for a cancelled invoice. */
+  /** The stage's id, or `void-<document id>` for a cancelled invoice and
+   *  `draft-<document id>` for one not issued yet. */
   id: string;
   docId: string;
   docNumber: string;
@@ -68,6 +83,7 @@ export type InvoiceRow = {
   title: string;
   /** The stage billed, or null for an invoice. */
   stage: string | null;
+  /** When it was billed; for a draft, when it was started. */
   billedAt: string;
   dueDate: string | null;
   amountCents: number;
@@ -143,28 +159,29 @@ export function buildInvoiceRows(
   }
 
   for (const d of docs) {
-    if (d.kind !== "invoice" || d.status !== "Void") continue;
+    if (d.kind !== "invoice" || (d.status !== "Void" && d.status !== "Draft")) continue;
+    const draft = d.status === "Draft";
     rows.push({
-      id: `void-${d.id}`,
+      id: `${draft ? "draft" : "void"}-${d.id}`,
       docId: d.id,
       docNumber: d.doc_number,
       leadId: d.lead_id,
       isInvoice: true,
       title: d.title || d.doc_number,
       stage: null,
-      billedAt: d.signed_at ?? d.created_at,
+      billedAt: draft ? d.created_at : (d.signed_at ?? d.created_at),
       dueDate: null,
       amountCents: d.total_cents,
       paidCents: 0,
       owedCents: 0,
-      status: "void",
+      status: draft ? "draft" : "void",
       viewedAt: null,
     });
   }
   return rows;
 }
 
-export const INVOICE_STATUS_GROUPS = ["open", "overdue", "paid", "void", "all"] as const;
+export const INVOICE_STATUS_GROUPS = ["open", "overdue", "paid", "draft", "void", "all"] as const;
 export type InvoiceStatusGroup = (typeof INVOICE_STATUS_GROUPS)[number];
 
 const OPEN: InvoiceStatus[] = ["billed", "viewed", "partial", "overdue", "clearing"];
@@ -246,7 +263,8 @@ export function invoiceSummary(rows: InvoiceRow[], payments: InvoicePaymentLite[
   };
   const standing = new Set<string>();
   for (const r of rows) {
-    if (r.status === "void") continue;
+    // A cancelled bill is owed nothing, and a draft hasn't been billed.
+    if (r.status === "void" || r.status === "draft") continue;
     standing.add(r.id);
     if (inStatusGroup(r.status, "open")) add(out.outstanding, r.owedCents);
     if (r.status === "overdue") add(out.overdue, r.owedCents);

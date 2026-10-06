@@ -27,6 +27,7 @@ const GROUPS: { key: InvoiceStatusGroup; label: string }[] = [
   { key: "open", label: "Open" },
   { key: "overdue", label: "Overdue" },
   { key: "paid", label: "Paid" },
+  { key: "draft", label: "Drafts" },
   { key: "void", label: "Void" },
   { key: "all", label: "All" },
 ];
@@ -39,6 +40,7 @@ const PERIODS: { key: InvoicePeriod; label: string }[] = [
 ];
 
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
+  draft: "#9A6B2F",
   billed: "#5F6B7A",
   viewed: "#2D5F8A",
   partial: "#B7791F",
@@ -238,7 +240,10 @@ export function InvoicesView({
                         {r.stage ?? r.title}
                         {r.stage && <div className="est-tax-note">{r.title}</div>}
                       </td>
-                      <td className="mono">{fmt(r.billedAt)}</td>
+                      <td className="mono">
+                        {r.status === "draft" ? "—" : fmt(r.billedAt)}
+                        {r.status === "draft" && <div className="est-tax-note">Started {fmt(r.billedAt)}</div>}
+                      </td>
                       <td className="mono">
                         {fmt(r.dueDate)}
                         {due && <div className="est-tax-note">{due}</div>}
