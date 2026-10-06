@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.226.1",
+    date: "2026-10-06",
+    notes: [
+      "Fix: running the contacts-vs-leads database step again no longer takes the lead cost off a source you un-ticked as a bought list and put the cost back on.",
+    ],
+  },
+  {
     version: "1.226.0",
     date: "2026-10-06",
     notes: [
