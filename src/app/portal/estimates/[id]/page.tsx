@@ -19,6 +19,7 @@ import { PhasePayments } from "./phase-payments";
 import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments";
 import { loadCompanyWords } from "@/lib/load-company-words";
 import { word } from "@/lib/company-words";
+import { documentPaymentSection, scheduledPhases } from "@/lib/document-words";
 
 export const dynamic = "force-dynamic";
 
@@ -223,6 +224,15 @@ export default async function PortalEstimatePage({
             : null
         }
         kind={estimate.kind}
+        // The same section the document prints, so the message can't point
+        // the customer somewhere the document doesn't.
+        paymentSection={documentPaymentSection({
+          kind: estimate.kind,
+          depositCents: estimate.deposit_cents,
+          phaseCount: scheduledPhases((payments ?? []) as EstimatePayment[]).length,
+          totalCents: estimate.total_cents,
+          hasParent: !!parent,
+        })}
         companyName={companyName}
         words={words}
       />

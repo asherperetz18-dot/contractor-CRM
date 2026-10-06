@@ -144,3 +144,8 @@ export function depositDueLine(
 export function scheduledPhases<T extends { cancelled_at?: string | null }>(phases: T[]): T[] {
   return phases.filter((p) => !p.cancelled_at);
 }
+
+/** After signing a change order that has its own stages: where it gets paid. */
+export function changeOrderSignedLine(words: CompanyWords = STANDARD_WORDS): string {
+  return `This ${word(words, "change_order", { lower: true })} is billed in the stages above, as each one comes due.`;
+}

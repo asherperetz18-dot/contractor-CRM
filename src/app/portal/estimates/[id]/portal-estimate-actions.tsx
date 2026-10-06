@@ -6,7 +6,7 @@ import { declineEstimateAsCustomer, signEstimateAsCustomer } from "@/lib/actions
 import { SignaturePad } from "@/components/signature-pad";
 import type { EstimateStatus } from "@/lib/data/types";
 import { STANDARD_WORDS, formText, word, type CompanyWords } from "@/lib/company-words";
-import { documentWord } from "@/lib/document-words";
+import { changeOrderSignedLine, documentWord, type PaymentSection } from "@/lib/document-words";
 
 export function PortalEstimateActions({
   estimateId,
@@ -16,6 +16,7 @@ export function PortalEstimateActions({
   signerName,
   parentContract,
   kind,
+  paymentSection = null,
   companyName,
   words = STANDARD_WORDS,
 }: {
@@ -27,6 +28,9 @@ export function PortalEstimateActions({
   /** Set only on a change order: the contract it was added to. */
   parentContract?: { id: string; doc_number: string } | null;
   kind?: string | null;
+  /** The payment section the document above prints (documentPaymentSection),
+   *  so the signed message points where this change order is really paid. */
+  paymentSection?: PaymentSection;
   /** Who the customer is dealing with, by name -- not "your contractor". */
   companyName: string;
   /** The company's own words (DECISIONS #121). */
@@ -57,13 +61,15 @@ export function PortalEstimateActions({
         {isCompletion
           ? `Thank you — ${companyName} has been notified. Anything you listed is recorded on this certificate and remains their responsibility.`
           : `Thank you — ${companyName} has been notified and will be in touch about scheduling.`}
-        {/* A signed change order has no Pay button of its own, and left at
-            that the customer is told nothing about how they pay for what
-            they just approved. Its amount is a phase on the contract's
-            schedule, so this says where it went and links there -- rather
-            than adding a second place to pay for one job, which is how a
-            customer pays twice. */}
-        {parentContract && (
+        {/* Where the customer pays for what they just approved. A change
+            order with its own stages is billed on them, printed right above
+            this; one without is a single line on the contract's schedule,
+            so this says where it went and links there. One place to pay
+            for each, which is how a customer never pays twice. */}
+        {parentContract && !isCompletion && paymentSection === "schedule" && (
+          <p style={{ marginTop: 8 }}>{changeOrderSignedLine(words)}</p>
+        )}
+        {parentContract && (isCompletion || paymentSection === "one-payment") && (
           <p style={{ marginTop: 8 }}>
             {/* A certificate carries no money, so it is never "added to"
                 a schedule -- but signing it does make the rest of the
