@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.218.1",
+    date: "2026-10-06",
+    notes: [
+      "When you send a draft invoice by text and the text can't go out (for example, the customer has no mobile number), the invoice page now says so, so you know to reach them another way. It used to say nothing.",
+    ],
+  },
+  {
     version: "1.218.0",
     date: "2026-10-06",
     notes: [
