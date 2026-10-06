@@ -104,6 +104,9 @@ test("one send path for every bill, recorded after it goes out, never blocking t
   assert.match(billing, /requested_at: phase\.requested_at \?\? now/);
   // The send record is its own write, so a database without 0206 still bills.
   assert.match(billing, /\.update\(\{ sent_at: now, sent_via: via \}\)/);
+  // The greeting is to the person, as the estimate email's is -- never
+  // "Hi there" to a homeowner whose name is on file.
+  assert.match(billing, /customerName: personName\(lead\) \|\| null,/);
   // Emailed invoices carry the PDF; logged where the team already looks.
   assert.match(billing, /invoicePdfAttachment\(/);
   assert.match(billing, /from\("sms_messages"\)\.insert\(/);

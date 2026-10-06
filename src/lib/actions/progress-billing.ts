@@ -10,7 +10,7 @@ import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/porta
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getEmailForCompany } from "@/lib/email-company";
 import { sendEmail } from "@/lib/email-env";
-import { clientContactName } from "@/lib/data/client-name";
+import { personName } from "@/lib/data/client-name";
 import { paymentTermsLabel } from "@/lib/data/invoices";
 import { invoicePdfAttachment } from "@/lib/pdf/invoice-attachment";
 import {
@@ -202,7 +202,9 @@ export async function requestProgressPayment(
     const isInvoice = estimate.kind === "invoice";
     const mail = billEmail({
       companyName,
-      customerName: clientContactName(lead) || null,
+      // To the person, as the estimate email greets them ("Hi Josh
+      // Martinez"), whether or not the customer is a company.
+      customerName: personName(lead) || null,
       isInvoice,
       docNumber: estimate.doc_number,
       title: estimate.title,

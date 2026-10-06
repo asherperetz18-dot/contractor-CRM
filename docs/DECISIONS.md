@@ -1834,4 +1834,6 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Sending a bill again keeps the day it was first billed** (`requested_at` was reset on every re-send, which made a re-sent bill look new).
 - Everywhere a bill goes out offers the channel: New invoice, the draft editor, **Send again** on an issued invoice (which also says when it was last sent and how), and **Bill this phase** on a contract. "Issue without texting" and "Save, don't text" are now "without sending".
 
+**Follow-up (1.219.1):** the first version greeted with `clientContactName`, which names only a company's contact person, so homeowners got "Hi there". It now greets with `personName`, as the estimate email does.
+
 **Consequence:** a customer can be billed by email with a PDF of their invoice, and the record says what went out and when. Emails count against the company's monthly email limit like any other (#133). **Database step: 0206**, any time; until it runs, bills still go out and read Billed.
