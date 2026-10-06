@@ -20,15 +20,15 @@ export function PhoneLeadList({
   repById,
   onOpenLead,
   onLoadMore,
-  onNewLead,
+  onNewContact,
 }: {
   groups: { stage: string; items: BoardCard[]; count: number }[];
   stages: PipelineStageRow[];
   repById: Map<string, string>;
   onOpenLead: (card: BoardCard, tab?: "Texts") => void;
   onLoadMore: (stage: string) => void;
-  /** Null for someone who may not add leads: no button. */
-  onNewLead: (() => void) | null;
+  /** Null for someone who may not add contacts: no button. */
+  onNewContact: (() => void) | null;
 }) {
   const [picked, setPicked] = useState<string | null>(null);
   const stage = pickPhoneStage(groups, picked);
@@ -36,7 +36,7 @@ export function PhoneLeadList({
   const remaining = group ? Math.max(0, group.count - group.items.length) : 0;
 
   return (
-    <section className="phone-leads" aria-label="Leads" data-mtone="dispatch">
+    <section className="phone-leads" aria-label="Contacts" data-mtone="dispatch">
       <div className="pl-chips" role="group" aria-label="Stage">
         {groups.map((g) => (
           <button
@@ -54,7 +54,7 @@ export function PhoneLeadList({
       </div>
 
       {group && group.items.length === 0 ? (
-        <p className="pl-empty">No leads in {group.stage}.</p>
+        <p className="pl-empty">No contacts in {group.stage}.</p>
       ) : (
         group?.items.map((c) => {
           const name = leadDisplayName(c);
@@ -116,10 +116,10 @@ export function PhoneLeadList({
         </button>
       )}
 
-      {onNewLead && (
-        <button type="button" className="pl-fab" onClick={onNewLead}>
+      {onNewContact && (
+        <button type="button" className="pl-fab" onClick={onNewContact}>
           <MobileIcon name="plus" size={20} />
-          New lead
+          New contact
         </button>
       )}
     </section>

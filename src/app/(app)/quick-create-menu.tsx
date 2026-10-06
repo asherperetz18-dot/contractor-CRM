@@ -18,8 +18,12 @@ function groupsFor(l: QuickCreateLabels) {
   return [
     {
       label: "Pipeline",
+      // A contact is anyone (a bought-list name, a walk-in); a lead must
+      // come from a real lead source, so New Lead asks for one
+      // (DECISIONS #156).
       items: [
-        { label: "New Lead", href: "/pipeline?new=1" },
+        { label: "New Contact", href: "/pipeline?new=1" },
+        { label: "New Lead", href: "/pipeline?new=lead" },
         { label: l.appointment, href: "/schedule?new=1" },
       ],
     },
