@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.212.0",
+    date: "2026-10-06",
+    notes: [
+      "The Schedule opens faster: it loads only the dates you pick (Upcoming, Today, Past and so on) and the rep you choose, 200 appointments at a time, with Show more at the bottom for the rest. Past and All now list the newest first.",
+    ],
+  },
+  {
     version: "1.211.1",
     date: "2026-10-06",
     notes: [

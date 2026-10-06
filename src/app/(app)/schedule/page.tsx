@@ -2,16 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
-import type {
-  CalendarRow,
-  LinkedEstimate,
-  Event,
-  Job,
-  Lead,
-  LeadNote,
-  LeadTask,
-  PipelineStageRow,
-} from "@/lib/data/types";
+import type { CalendarRow, Event, Job, PipelineStageRow } from "@/lib/data/types";
 import {
   canDeleteAppointments,
   canEditSchedule,
@@ -19,50 +10,39 @@ import {
   isDispatchScoped,
 } from "@/lib/data/types";
 import { getAppointmentHolders, getLeadsBehindAppointments } from "@/lib/actions/dispatcher";
+import { loadAppointmentContext } from "@/lib/data/appointment-context";
+import { newestFirst, parseScheduleQuery, serverWindow } from "@/lib/schedule-window";
 import { ScheduleList } from "./schedule-list";
 
-type LeadWithEvents = Lead & { events?: unknown };
-
-/** Drops the join key so the client receives a plain Lead. */
-function withoutJoin(rows: LeadWithEvents[] | null): Lead[] {
-  return (rows ?? []).map((row) => {
-    const lead = { ...row };
-    delete lead.events;
-    return lead as Lead;
-  });
-}
-
-export default async function SchedulePage() {
+export default async function SchedulePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; from?: string; to?: string; rep?: string; limit?: string }>;
+}) {
+  const query = parseScheduleQuery(await searchParams);
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canEditSchedule(profile);
   const companyId = profile?.company_id ?? "";
-  // See the calendar page: resolved server-side so the appointment
-  // window is locked on the first frame rather than a beat later.
-  const appointmentHolders = await getAppointmentHolders();
-  // Leads standing behind appointments that RLS hides from this viewer,
-  // so the appointment window's Photos/Notes/Result tabs exist for the
-  // rep actually assigned to the visit. Empty for unscoped viewers.
-  const behindAppointments = await getLeadsBehindAppointments();
 
-  const [
-    events,
-    jobs,
-    allReps,
-    leads,
-    { data: stages },
-    leadTasks,
-    leadNotes,
-    { data: estimates },
-    { data: calendars },
-  ] = await Promise.all([
-    // selectAll: a bare select stops at 1000 rows in silence, and a
-    // schedule that quietly drops the newest appointments once the
-    // history passes a thousand is exactly the page nobody would
-    // suspect.
-    selectAll<Event>((f, t) =>
-      supabase.from("events").select("*").eq("company_id", companyId).range(f, t)
-    ),
+  // Only the window the list is showing (DECISIONS #143): the range and
+  // rep in the address, a page at a time, newest first for history. This
+  // page used to load every appointment the company ever booked, and
+  // every task and note in the company, then filter in the browser.
+  const bounds = serverWindow(query, new Date().toISOString().slice(0, 10));
+  const ascending = !newestFirst(query.range);
+  let events = supabase.from("events").select("*").eq("company_id", companyId);
+  if (bounds.lo) events = events.gte("date", bounds.lo);
+  if (bounds.hi) events = events.lte("date", bounds.hi);
+  if (query.rep) events = events.or(`assigned_to.eq.${query.rep},second_assigned_to.eq.${query.rep}`);
+
+  const [eventsResult, jobs, allReps, { data: stages }, { data: calendars }] = await Promise.all([
+    // One more than a page, to know whether there is more.
+    events
+      .order("date", { ascending })
+      .order("time", { ascending, nullsFirst: ascending })
+      .order("id", { ascending })
+      .range(0, query.limit),
     selectAll<Job>((f, t) =>
       supabase
         .from("jobs")
@@ -72,61 +52,44 @@ export default async function SchedulePage() {
         .range(f, t)
     ),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
-    // Only the contacts an appointment actually points at, matching the
-    // calendar. This page was loading every lead in the company and
-    // sending them all to the browser to render a list of appointments;
-    // the only thing that reads them is the appointment window, looking
-    // up the one contact its own visit belongs to.
-    //
-    // An inner join on events rather than a list of ids, so it stays one
-    // query and cannot outgrow the request URL as the appointment
-    // history builds up. The embedded events are the filter, not data
-    // anyone reads, and are dropped below.
-    selectAll<LeadWithEvents>((f, t) =>
-      supabase
-        .from("leads")
-        .select("*, events!inner(id)")
-        .eq("company_id", companyId)
-        .range(f, t)
-    ),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
-    selectAll<LeadTask>((f, t) =>
-      supabase
-        .from("lead_tasks")
-        .select("id, lead_id, title, due_date, completed_at, assigned_to, created_by, created_at")
-        .eq("company_id", companyId)
-        .range(f, t)
-    ),
-    selectAll<LeadNote>((f, t) =>
-      supabase
-        .from("lead_notes")
-        .select("*")
-        .eq("company_id", companyId)
-        .order("created_at", { ascending: false })
-        .range(f, t)
-    ),
-    // The estimates table, not the legacy documents one -- see the note
-    // on the calendar page.
-    supabase
-      .from("estimates")
-      .select("id, lead_id, doc_number, title, status, total_cents, issued_at, created_at")
-      .eq("company_id", companyId)
-      .order("created_at", { ascending: false }),
     supabase.from("calendars").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);
+  const rows = (eventsResult.data ?? []) as Event[];
+  const loaded = rows.slice(0, query.limit);
+  const hasMore = rows.length > query.limit;
+
+  // The dates the page loaded, for the two service-role lookups behind
+  // the appointment window: who holds each lead (resolved here so the
+  // window is locked on the first frame), and the leads RLS hides from
+  // this viewer, so the Photos/Notes/Result tabs exist for the rep
+  // actually assigned to the visit.
+  const dates = loaded.map((e) => e.date).sort();
+  const span = dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null;
+  const [appointmentHolders, behindAppointments] = span
+    ? await Promise.all([getAppointmentHolders(span), getLeadsBehindAppointments(span)])
+    : [{}, { leads: [], notes: [] }];
+
+  // Only the contacts these appointments point at, with their tasks,
+  // notes and estimates -- the appointment window's, for its own contact.
+  const { leads, leadTasks, leadNotes, estimates } = await loadAppointmentContext(supabase, companyId, loaded);
+
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
   return (
     <ScheduleList
-      events={events}
+      query={query}
+      events={loaded}
+      hasMore={hasMore}
+      loadFailed={!!eventsResult.error}
       jobs={jobs}
       reps={reps}
       allMembers={allReps}
-      leads={[...withoutJoin(leads), ...behindAppointments.leads]}
+      leads={[...leads, ...behindAppointments.leads]}
       stages={(stages as PipelineStageRow[]) ?? []}
       leadTasks={leadTasks}
       leadNotes={[...leadNotes, ...behindAppointments.notes]}
-      estimates={(estimates as LinkedEstimate[]) ?? []}
+      estimates={estimates}
       calendars={(calendars as CalendarRow[]) ?? []}
       canWrite={canWrite}
       canDeleteEvents={canDeleteAppointments(profile)}
