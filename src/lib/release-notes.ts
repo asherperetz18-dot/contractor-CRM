@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.214.1",
+    date: "2026-10-06",
+    notes: [
+      "After a customer signs a change order that has its own payment stages, the thank-you message says it's billed in those stages. It used to send them to the contract to pay. A change order without stages still points to the contract.",
+    ],
+  },
+  {
     version: "1.214.0",
     date: "2026-10-06",
     notes: [

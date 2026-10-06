@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   changeOrderOnePaymentLine,
   changeOrderScheduleNote,
+  changeOrderSignedLine,
   documentLabels,
   documentPaymentSection,
   depositDueLine,
@@ -131,6 +132,22 @@ test("a cancelled stage is not printed as owed", () => {
     scheduledPhases(phases).map((p) => p.id),
     ["a", "c"]
   );
+});
+
+test("a signed change order with its own stages says it's billed on them", () => {
+  // It used to send the customer to the contract to pay -- while the
+  // stages it is actually billed on sat right above the message.
+  assert.equal(changeOrderSignedLine(WORDS), "This amendment is billed in the stages above, as each one comes due.");
+});
+
+test("the signed message follows the document's own payment section", () => {
+  const actions = readFileSync(new URL("../app/portal/estimates/[id]/portal-estimate-actions.tsx", import.meta.url), "utf8");
+  assert.match(actions, /changeOrderSignedLine\(/);
+  assert.match(actions, /paymentSection === "schedule"/);
+  assert.match(actions, /paymentSection === "one-payment"/);
+  const page = readFileSync(new URL("../app/portal/estimates/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /documentPaymentSection\(/);
+  assert.match(page, /paymentSection=\{/);
 });
 
 test("a certificate and an invoice keep their own names", () => {
