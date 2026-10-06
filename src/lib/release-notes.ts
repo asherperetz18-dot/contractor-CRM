@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.214.0",
+    date: "2026-10-06",
+    notes: [
+      "The Estimates & Contracts list opens faster: it no longer downloads each contract's terms or the signature pictures, which the list never shows. The cards, totals, search and filters work as before.",
+    ],
+  },
+  {
     version: "1.213.0",
     date: "2026-10-06",
     notes: [

@@ -1748,3 +1748,15 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a customer who part-paid can finish online. Invoices benefit too — their one stage goes through the same checkout. Deposits are unchanged. No database step. **Worth one real test payment after deploy** (a small amount on a test job), since this changes what Stripe is asked to charge.
 
+
+## 145 — The Estimates list reads only the columns it draws
+
+**Date:** 2026-10-06
+
+**Context:** The Estimates list read every column of every document (`select("*")`) and of every signer. That is each contract's full terms, its notes, customer message and completion notes, and -- for every signed document -- each hand-drawn signature as a base64 PNG, plus the signer's IP and browser. The list shows none of it. Unlike the Calendar (#142) and Schedule (#143), the list can't simply load a page at a time: its funnel cards count and total every document (by card, rep, dates and search), and the search runs over all of them in the browser.
+
+**Decision:**
+- **Every document still comes, with only the columns the list draws**: `ESTIMATE_LIST_COLUMNS` and `ESTIMATE_LIST_SIGNER_COLUMNS` (`src/lib/data/estimate-list-rows.ts`). Each is built from one field list that also makes the row type, checked against `Estimate`/`EstimateSigner` with `satisfies`, so the select and the type can't drift apart.
+- **The list is typed on those rows** (`EstimateListRow`, `EstimateListSigner`), and every helper it calls already takes a `Pick` of what it reads, so a field the list starts reading without being added to the list fails the build instead of reading as blank.
+
+**Consequence:** a document costs the list a few hundred bytes instead of its terms and signature pictures; the cards, filters, search and rows are unchanged. The list still grows with the company's document history (TECH_DEBT): paging it would mean computing the cards in the database. No database step.

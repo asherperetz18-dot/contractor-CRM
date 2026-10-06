@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
-import { canCreateEstimates, canViewEstimates, type Estimate, type EstimateSigner } from "@/lib/data/types";
+import { canCreateEstimates, canViewEstimates } from "@/lib/data/types";
+import {
+  ESTIMATE_LIST_COLUMNS,
+  ESTIMATE_LIST_SIGNER_COLUMNS,
+  type EstimateListRow,
+  type EstimateListSigner,
+} from "@/lib/data/estimate-list-rows";
 import { EstimatesView, type EstimateLead, type EstimateRep } from "./estimates-view";
 import { staffPageLabel } from "@/lib/staff-words";
 import { getCompanyWordsCached } from "@/lib/data/company-chrome";
@@ -32,19 +38,24 @@ export default async function EstimatesPage() {
   // selectAll rather than a bare select: PostgREST silently truncates at
   // 1000 rows, which has already cost this app a broken search and a
   // broken dialer.
+  //
+  // Every document -- the cards' counts and totals and the search cover
+  // them all -- but only the columns the list draws (DECISIONS #145):
+  // not each contract's terms, notes and messages, nor the signature
+  // pictures, which it used to download for every signed document.
   const [estimates, signers, reps] = await Promise.all([
-    selectAll<Estimate>((from, to) =>
+    selectAll<EstimateListRow>((from, to) =>
       supabase
         .from("estimates")
-        .select("*")
+        .select(ESTIMATE_LIST_COLUMNS)
         .eq("company_id", profile.company_id)
         .order("created_at", { ascending: false })
         .range(from, to)
     ),
-    selectAll<EstimateSigner>((from, to) =>
+    selectAll<EstimateListSigner>((from, to) =>
       supabase
         .from("estimate_signers")
-        .select("*")
+        .select(ESTIMATE_LIST_SIGNER_COLUMNS)
         .eq("company_id", profile.company_id)
         .order("sort_order", { ascending: true })
         .range(from, to)

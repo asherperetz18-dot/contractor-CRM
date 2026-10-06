@@ -8,9 +8,8 @@ import {
   moneyCents,
   isSellableKind,
   signatureProgress,
-  type Estimate,
-  type EstimateSigner,
 } from "@/lib/data/types";
+import type { EstimateListRow, EstimateListSigner } from "@/lib/data/estimate-list-rows";
 import {
   effectiveEstimateStatus,
   funnelCardStats,
@@ -144,8 +143,9 @@ export function EstimatesView({
   title?: string;
   /** The company's words, for the count cards (DECISIONS #125). */
   words?: CompanyWords;
-  estimates: Estimate[];
-  signers: EstimateSigner[];
+  /** Every document, but only the columns the list draws (DECISIONS #145). */
+  estimates: EstimateListRow[];
+  signers: EstimateListSigner[];
   /** Only the leads these documents reference, not the whole book --
    *  the New Estimate dialog reaches everyone else server-side. */
   leads: EstimateLead[];
@@ -269,7 +269,7 @@ export function EstimatesView({
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r]));
-  const signersByEstimate = new Map<string, EstimateSigner[]>();
+  const signersByEstimate = new Map<string, EstimateListSigner[]>();
   for (const s of signers) {
     const list = signersByEstimate.get(s.estimate_id) ?? [];
     list.push(s);
@@ -283,8 +283,8 @@ export function EstimatesView({
   // customer's copy uses). The rest are the Sales team panel's seats --
   // a closer picking their own name finds the jobs they closed for
   // somebody else.
-  const seatsFor = (e: Estimate) => estimateSeats(e, leadById.get(e.lead_id));
-  const peopleFor = (e: Estimate) => seatsFor(e).map((s) => s.id);
+  const seatsFor = (e: EstimateListRow) => estimateSeats(e, leadById.get(e.lead_id));
+  const peopleFor = (e: EstimateListRow) => seatsFor(e).map((s) => s.id);
   const repName = (id: string) => {
     const rep = repById.get(id);
     return rep?.name || rep?.email || "Unnamed";
@@ -349,7 +349,7 @@ export function EstimatesView({
       matchesRepFilter(peopleFor(e), repFilter) &&
       (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
   );
-  const followUp = (e: Estimate) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
+  const followUp = (e: EstimateListRow) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
   // Each chip's count is what ticking it would leave, given everything
   // else already on -- so a chip reading 0 is not worth the click.
   const chipOptions = FOLLOW_UP_CHIPS[bucket].map((chip) => ({
@@ -375,7 +375,7 @@ export function EstimatesView({
   const sortArrow = (key: EstimateSortKey) =>
     sort.key === key ? (sort.dir === "asc" ? " ↑" : " ↓") : " ↕";
 
-  function customerName(e: Estimate) {
+  function customerName(e: EstimateListRow) {
     const lead = leadById.get(e.lead_id);
     if (!lead) return "Unknown customer";
     return clientName(lead) || "Unnamed lead";
