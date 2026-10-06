@@ -58,7 +58,11 @@ test("the address carries only what differs from the default, and reads back the
 });
 
 test("history reads newest first; everything else in date order", () => {
-  for (const r of SCHEDULE_RANGES) assert.equal(newestFirst(r), r === "past" || r === "all", r);
+  for (const r of SCHEDULE_RANGES) assert.equal(newestFirst(r, "2026-01-01"), r === "past" || r === "all", r);
+  // A custom range with no start yet is open at the old end, like Past and
+  // All: it reads newest first, never from the oldest appointment there is.
+  assert.equal(newestFirst("custom", null), true);
+  assert.equal(newestFirst("custom", "2026-01-01"), false);
 });
 
 const inside = (inner: { from: string | null; to: string | null }, outer: { lo: string | null; hi: string | null }) =>
@@ -98,6 +102,7 @@ test("the page reads one window of appointments, a page at a time, and only what
   assert.match(page, /const query = parseScheduleQuery\(await searchParams\);/);
   assert.match(page, /serverWindow\(query, /);
   assert.match(page, /\.range\(0, query\.limit\)/);
+  assert.match(page, /const ascending = !newestFirst\(query\.range, query\.from\);/);
   assert.doesNotMatch(page, /events!inner|from\("lead_notes"\)|from\("lead_tasks"\)/);
   assert.match(page, /loadAppointmentContext\(supabase, companyId, loaded\)/);
   // The service-role lookups cover only the dates the page loaded.
@@ -112,4 +117,5 @@ test("changing the range loads it in place, and the list keeps its own exact fil
   assert.match(list, /listWindow\(range, today, customFrom, customTo\)/);
   assert.match(list, /startWindow\(\(\) => router\.replace\(`\/schedule\$\{wantedQs\}`, \{ scroll: false \}\)\)/);
   assert.match(list, /Show more/);
+  assert.match(list, /newestFirst\(range, customFrom \|\| null\)/);
 });

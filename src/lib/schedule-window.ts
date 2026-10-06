@@ -73,9 +73,14 @@ function monthEnd(day: string): string {
   return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
 }
 
-/** History reads newest first -- "what happened lately", not a scroll back to the oldest appointment. */
-export function newestFirst(range: ScheduleRange): boolean {
-  return range === "past" || range === "all";
+/**
+ * History reads newest first -- "what happened lately", not a scroll back
+ * to the oldest appointment. So does a custom range with no start date
+ * yet: it is open at the old end too, and read oldest first a page at a
+ * time it would show the company's first appointments ever.
+ */
+export function newestFirst(range: ScheduleRange, from: string | null): boolean {
+  return range === "past" || range === "all" || (range === "custom" && !from);
 }
 
 /** The list's exact window on the browser's own "today" (inclusive ends; null is open). */

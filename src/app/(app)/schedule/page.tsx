@@ -30,7 +30,7 @@ export default async function SchedulePage({
   // page used to load every appointment the company ever booked, and
   // every task and note in the company, then filter in the browser.
   const bounds = serverWindow(query, new Date().toISOString().slice(0, 10));
-  const ascending = !newestFirst(query.range);
+  const ascending = !newestFirst(query.range, query.from);
   let events = supabase.from("events").select("*").eq("company_id", companyId);
   if (bounds.lo) events = events.gte("date", bounds.lo);
   if (bounds.hi) events = events.lte("date", bounds.hi);

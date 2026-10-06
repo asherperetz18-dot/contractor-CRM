@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.212.1",
+    date: "2026-10-06",
+    notes: [
+      "On the Schedule, choosing Custom range before picking a start date now lists the newest appointments first, like Past and All. It was starting from the oldest appointments ever booked.",
+    ],
+  },
+  {
     version: "1.212.0",
     date: "2026-10-06",
     notes: [
