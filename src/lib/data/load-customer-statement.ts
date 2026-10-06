@@ -2,7 +2,13 @@ import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { selectAll } from "./select-all";
 import { INVOICE_DOC_COLUMNS, INVOICE_DOC_FILTER, INVOICE_STAGE_COLUMNS, type InvoiceStageLite } from "./invoice-rows";
-import { buildStatement, type CustomerStatement, type StatementDoc, type StatementPayment } from "./customer-statement";
+import {
+  buildStatement,
+  type CustomerStatement,
+  type StatementCredit,
+  type StatementDoc,
+  type StatementPayment,
+} from "./customer-statement";
 
 /**
  * The rows behind one customer's statement (DECISIONS #153): their
@@ -41,7 +47,7 @@ export async function loadCustomerStatement(
       .range(f, t)
   );
   const ids = docs.map((d) => d.id);
-  const [stages, payments] = await Promise.all([
+  const [stages, payments, credits] = await Promise.all([
     forChunks(ids, (chunk) =>
       selectAll<InvoiceStageLite>((f, t) =>
         supabase
@@ -65,6 +71,18 @@ export async function loadCustomerStatement(
           .range(f, t)
       )
     ),
+    // Credits on their bills (0209, DECISIONS #154); none before it.
+    forChunks(ids, (chunk) =>
+      selectAll<StatementCredit>((f, t) =>
+        supabase
+          .from("bill_credits")
+          .select("estimate_payment_id, amount_cents, reason, created_at")
+          .eq("company_id", companyId)
+          .in("estimate_id", chunk)
+          .order("id")
+          .range(f, t)
+      )
+    ),
   ]);
-  return buildStatement(docs, stages, payments, opts);
+  return buildStatement(docs, stages, payments, opts, credits);
 }

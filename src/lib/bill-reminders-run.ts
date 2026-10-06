@@ -90,7 +90,7 @@ export async function runCompanyReminders(
   const stages = await selectAll<Stage>((f, t) =>
     admin
       .from("estimate_payments")
-      .select(`${INVOICE_STAGE_COLUMNS}, sent_at`)
+      .select(INVOICE_STAGE_COLUMNS)
       .eq("company_id", companyId)
       .not("requested_at", "is", null)
       .is("cancelled_at", null)

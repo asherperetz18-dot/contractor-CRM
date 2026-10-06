@@ -7,6 +7,7 @@ import {
   defaultDueDate,
   moneyCents,
   paidTotalCents,
+  phaseNetCents,
   phaseState,
   phaseStateLabel,
   type EstimatePayment,
@@ -145,8 +146,8 @@ export function PhaseBilling({
           chased for its remainder, not its face value. */}
       {settledOn > 0 && state !== "paid" && (
         <span className="est-phase-due-note">
-          {moneyCents(settledOn)} of {moneyCents(phase.amount_cents)} paid —{" "}
-          {moneyCents(Math.max(0, phase.amount_cents - settledOn))} still owed
+          {moneyCents(settledOn)} of {moneyCents(phaseNetCents(phase))} paid —{" "}
+          {moneyCents(Math.max(0, phaseNetCents(phase) - settledOn))} still owed
         </span>
       )}
 
@@ -196,6 +197,11 @@ export function PhaseBilling({
             {pending ? "…" : "Un-bill"}
           </button>
         </>
+      )}
+
+      {/* What has been credited off it (DECISIONS #154). */}
+      {(phase.credit_cents ?? 0) > 0 && (
+        <span className="est-phase-due-note">{moneyCents(phase.credit_cents ?? 0)} credited</span>
       )}
 
       {/* Automatic reminders on a billed stage still owed (DECISIONS #152). */}

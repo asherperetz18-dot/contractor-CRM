@@ -198,6 +198,19 @@ export async function getDispatcherCommissions(): Promise<{
     .eq("company_id", profile.company_id)
     .returns<DocRow[]>();
 
+  // Credits on the job's bills (0209, DECISIONS #154): the job is paid
+  // off once what's owed after them is in. Their own read -- a database
+  // without 0209 just has none.
+  const { data: creditRows } = await admin
+    .from("bill_credits")
+    .select("estimate_id, amount_cents")
+    .eq("company_id", profile.company_id)
+    .returns<{ estimate_id: string; amount_cents: number }[]>();
+  const creditByEstimate = new Map<string, number>();
+  for (const c of creditRows ?? []) {
+    creditByEstimate.set(c.estimate_id, (creditByEstimate.get(c.estimate_id) ?? 0) + c.amount_cents);
+  }
+
   const signed = (allDocs ?? []).filter(
     // Contracts only. Change orders and completion certificates are
     // signed estimates too; without this an extra would quietly enter the
@@ -286,11 +299,14 @@ export async function getDispatcherCommissions(): Promise<{
     const certificate = children.find((c) => c.kind === "completion") ?? null;
     const certificateSigned = certificate?.status === "Signed";
 
+    // Paid off means paid what's owed once credits are off (#154); the
+    // commission is still a share of the contract as sold.
+    const creditedOnJob = docIds.reduce((s, id) => s + (creditByEstimate.get(id) ?? 0), 0);
     const holds = commissionHolds({
       // Gross-based, so costs never gate it.
       hasCosts: true,
       collectedCents: collectedOnJob,
-      contractCents: jobValueCents,
+      contractCents: jobValueCents - creditedOnJob,
       certificateSigned,
     });
     return {

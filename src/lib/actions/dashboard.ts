@@ -146,7 +146,7 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
     selectAll<RollupInputs["billedPhases"][number] & { estimate_id: string }>((f, t) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id, amount_cents, requested_at, due_date")
+        .select("*")
         .eq("company_id", companyId)
         .not("requested_at", "is", null)
         .range(f, t)

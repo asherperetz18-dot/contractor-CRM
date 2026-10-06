@@ -34,6 +34,14 @@ export type StatementPayment = InvoicePaymentLite &
     stripe_payment_intent_id?: string | null;
   };
 
+/** A credit on one of the customer's bills (0209, DECISIONS #154). */
+export type StatementCredit = {
+  estimate_payment_id: string;
+  amount_cents: number;
+  reason: string | null;
+  created_at: string;
+};
+
 export type StatementLine = {
   /** The company's YYYY-MM-DD. */
   day: string;
@@ -75,7 +83,8 @@ export function buildStatement(
   docs: StatementDoc[],
   stages: InvoiceStageLite[],
   payments: StatementPayment[],
-  opts: { today: string; zone: string }
+  opts: { today: string; zone: string },
+  credits: StatementCredit[] = []
 ): CustomerStatement {
   const docById = new Map(docs.map((d) => [d.id, d]));
   const live = payments.filter(
@@ -146,6 +155,24 @@ export function buildStatement(
       docId: d.id,
       docNumber: d.doc_number,
       amountCents: p.amount_cents,
+    });
+  }
+
+  // Credits on the bills still on it (DECISIONS #154): the bill keeps
+  // its full amount, the credit comes off after it.
+  for (const c of credits) {
+    const label = billLabel.get(c.estimate_payment_id);
+    const row = rows.find((r) => r.id === c.estimate_payment_id);
+    if (!label || !row || c.amount_cents <= 0) continue;
+    entries.push({
+      at: c.created_at,
+      order: 1,
+      kind: "credit",
+      label: `Credit — ${label}`,
+      detail: c.reason?.trim() || "",
+      docId: row.docId,
+      docNumber: row.docNumber,
+      amountCents: -c.amount_cents,
     });
   }
 

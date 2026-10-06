@@ -2334,7 +2334,17 @@ export type EstimatePayment = {
    *  Billed phases are left alone -- the request genuinely went out, and
    *  erasing it would leave a later payment with nothing to settle. */
   cancelled_at?: string | null;
+  /** Credited off what is owed on it (0209, DECISIONS #154): a discount,
+   *  goodwill, or what's left when money is refunded and the customer no
+   *  longer owes it. The amount itself never changes -- it's what was
+   *  signed or sent. Absent before 0209, which reads as none. */
+  credit_cents?: number | null;
 };
+
+/** What a phase bills once its credits are off: its amount less them. */
+export function phaseNetCents(phase: { amount_cents: number; credit_cents?: number | null }): number {
+  return (phase.amount_cents || 0) - Math.max(0, phase.credit_cents ?? 0);
+}
 
 // ── Job costs ────────────────────────────────────────────────────────
 
@@ -2526,7 +2536,7 @@ export type ProjectRollup = {
  * so under this rule they never touch an invoice.
  */
 export function phaseReceivableCents(
-  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at">[],
+  phases: Pick<EstimatePayment, "id" | "amount_cents" | "requested_at" | "credit_cents">[],
   payments: Pick<PortalPayment, "estimate_payment_id" | "status" | "amount_cents">[]
 ): number {
   const paidByPhase = new Map<string, number>();
@@ -2542,9 +2552,23 @@ export function phaseReceivableCents(
     if (!ph.requested_at) continue;
     // Per phase, clamped per phase: an overpaid invoice does not lend
     // its surplus to a different unpaid one, same as Collect.
-    owed += Math.max(0, (ph.amount_cents || 0) - (paidByPhase.get(ph.id) ?? 0));
+    owed += Math.max(0, phaseNetCents(ph) - (paidByPhase.get(ph.id) ?? 0));
   }
   return owed;
+}
+
+/**
+ * What was credited on the bills of some documents (DECISIONS #154):
+ * money a job no longer earns. Taken off what was sold or invoiced, so a
+ * credited job reads paid in full once the rest is in -- for the
+ * project's % collected and the commission's paid-in-full hold alike.
+ */
+export function creditedCents(
+  phases: Pick<EstimatePayment, "estimate_id" | "credit_cents">[],
+  estimateIds: Iterable<string>
+): number {
+  const ids = new Set(estimateIds);
+  return phases.reduce((s, p) => s + (ids.has(p.estimate_id) ? Math.max(0, p.credit_cents ?? 0) : 0), 0);
 }
 
 export function computeProjectRollup(input: {
@@ -2804,16 +2828,19 @@ export type PhaseState = "unbilled" | "billed" | "partial" | "overdue" | "cleari
  * remainder hides nothing: the phase stays billed and can turn overdue.
  */
 export function phaseState(
-  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "due_date">,
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "due_date" | "credit_cents">,
   payments: Pick<PortalPayment, "status" | "amount_cents">[],
   today = new Date()
 ): PhaseState {
-  const amount = phase.amount_cents || 0;
+  // What it bills once credits are off (DECISIONS #154); a bill credited
+  // in full is as settled as one paid in full.
+  const amount = phaseNetCents(phase);
+  const credited = (phase.credit_cents ?? 0) > 0;
   const settled = paidTotalCents(payments);
   const pending = payments
     .filter((p) => p.status === "pending")
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
-  if (payments.some((p) => p.status === "succeeded") && settled >= amount) return "paid";
+  if ((credited || payments.some((p) => p.status === "succeeded")) && settled >= amount) return "paid";
   if (pending > 0 && settled + pending >= amount) return "clearing";
   if (!phase.requested_at) return "unbilled";
   if (phase.due_date) {
@@ -2834,11 +2861,25 @@ export function phaseState(
  * money has not arrived.
  */
 export function phaseOwedCents(
-  phase: Pick<EstimatePayment, "amount_cents" | "requested_at">,
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "credit_cents">,
   payments: Pick<PortalPayment, "status" | "amount_cents">[]
 ): number {
   if (!phase.requested_at) return 0;
-  return Math.max(0, (phase.amount_cents || 0) - paidTotalCents(payments));
+  return Math.max(0, phaseNetCents(phase) - paidTotalCents(payments));
+}
+
+/**
+ * How much of a bill can be credited now (DECISIONS #154): what is still
+ * owed on it, less money already on its way. Nothing on a bill not
+ * billed yet -- that's the schedule's to change -- or on one settled.
+ */
+export function creditableCents(
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "credit_cents">,
+  payments: Pick<PortalPayment, "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id">[]
+): number {
+  // Money on its way counts as paid here, as give_bill_credit counts it:
+  // crediting what is about to land would leave the customer overpaid.
+  return phaseCheckoutCents(phase, payments);
 }
 
 /** Stripe refuses a card or bank charge under 50 cents. */
@@ -2853,14 +2894,14 @@ export const MIN_ONLINE_CHARGE_CENTS = 50;
  * nothing. Zero on an unbilled or covered phase.
  */
 export function phaseCheckoutCents(
-  phase: Pick<EstimatePayment, "amount_cents" | "requested_at">,
+  phase: Pick<EstimatePayment, "amount_cents" | "requested_at" | "credit_cents">,
   payments: Pick<PortalPayment, "status" | "amount_cents" | "stripe_session_id" | "stripe_payment_intent_id">[]
 ): number {
   if (!phase.requested_at) return 0;
   const inFlight = payments
     .filter((p) => p.status === "pending" && !isUnfinishedCheckout(p))
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
-  return Math.max(0, (phase.amount_cents || 0) - paidTotalCents(payments) - inFlight);
+  return Math.max(0, phaseNetCents(phase) - paidTotalCents(payments) - inFlight);
 }
 
 /** The customer's Pay button on a phase: the amount it charges, or null for none. */

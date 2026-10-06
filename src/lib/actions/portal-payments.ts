@@ -161,6 +161,8 @@ export type PortalPhase = {
   dueDate: string | null;
   state: PhaseState;
   paidAt: string | null;
+  /** Credited off it by the contractor (DECISIONS #154). */
+  creditCents: number;
 };
 
 /**
@@ -190,7 +192,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
   const [{ data: phases }, { data: payments }] = await Promise.all([
     admin
       .from("estimate_payments")
-      .select("id, estimate_id, sort_order, name, description, amount_cents, requested_at, due_date")
+      .select("*")
       .eq("estimate_id", estimateId)
       .order("sort_order")
       .returns<EstimatePayment[]>(),
@@ -231,6 +233,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         dueDate: p.due_date ?? null,
         state: phaseState(p, on),
         paidAt: settled?.paid_at ?? null,
+        creditCents: Math.max(0, p.credit_cents ?? 0),
       };
     });
 }
@@ -251,7 +254,7 @@ export async function startPhaseCheckout(
   const admin = createAdminClient();
   const { data: phase } = await admin
     .from("estimate_payments")
-    .select("id, estimate_id, company_id, name, amount_cents, requested_at, due_date")
+    .select("*")
     .eq("id", phaseId)
     .maybeSingle<{
       id: string;

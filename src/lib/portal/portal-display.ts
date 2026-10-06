@@ -75,8 +75,9 @@ export function billedPhaseDueCents(
 }
 
 /** An invoice (a permit fee billed back): what's still due, or paid. */
-export function invoiceMoneyChip(e: { totalCents: number; paidCents: number }): PortalChip {
-  const owed = Math.max(0, e.totalCents - e.paidCents);
+export function invoiceMoneyChip(e: { totalCents: number; paidCents: number; creditCents?: number }): PortalChip {
+  // Less what the contractor credited off it (DECISIONS #154).
+  const owed = Math.max(0, e.totalCents - (e.creditCents ?? 0) - e.paidCents);
   if (owed === 0) return { label: "Paid", tone: "green" };
   const due = (owed / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
   return { label: `${due} due`, tone: "amber" };

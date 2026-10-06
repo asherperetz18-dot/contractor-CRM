@@ -38,6 +38,8 @@ const ESTIMATE_CHILDREN = [
   "estimate_items",
   "estimate_signers",
   "estimate_payments",
+  // After the bills they're on (0209, DECISIONS #154).
+  "bill_credits",
   "estimate_views",
   "estimate_files",
   "project_checklist_items",

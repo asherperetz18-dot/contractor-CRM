@@ -107,6 +107,17 @@ export default async function EstimateDetailPage({
   const remindersOn = reminderSetting?.bill_reminders_enabled === true;
   const remindersSent = sentReminders ?? [];
 
+  // Credits given on this document's bills (0209, DECISIONS #154): their
+  // own read, so a database without 0209 just shows none.
+  const { data: creditRows } = await supabase
+    .from("bill_credits")
+    .select("id, estimate_payment_id, amount_cents, reason, created_at")
+    .eq("company_id", profile.company_id)
+    .eq("estimate_id", estimate.id)
+    .order("created_at")
+    .returns<{ id: string; estimate_payment_id: string; amount_cents: number; reason: string; created_at: string }[]>();
+  const credits = creditRows ?? [];
+
   // An invoice (a permit fee billed back) has nothing to build or send
   // for signature: its page is what was billed, what's come in, and the
   // Pay link / Record payment / Cancel that act on it.
@@ -163,6 +174,7 @@ export default async function EstimateDetailPage({
           costs={costs}
           canBill={canCreateEstimates(profile)}
           canRecord={canManageBills(profile)}
+          credits={credits}
         />
       </BillRemindersProvider>
     );

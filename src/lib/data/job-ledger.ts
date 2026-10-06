@@ -11,7 +11,7 @@
  * shows (as clearing) but counts nowhere, same as Collected.
  */
 import { contractChildDocs } from "./invoices.ts";
-import { paymentMethodLabel, type PortalPayment } from "./types.ts";
+import { paymentMethodLabel, phaseNetCents, type PortalPayment } from "./types.ts";
 
 export type JobLedgerInput = {
   contractId: string;
@@ -34,6 +34,8 @@ export type JobLedgerInput = {
     amount_cents: number;
     requested_at: string | null;
     due_date: string | null;
+    /** 0209; absent before it. */
+    credit_cents?: number | null;
   }[];
   payments: {
     id: string;
@@ -188,7 +190,8 @@ export function jobLedger(input: JobLedgerInput): {
   // Still owed: each billed phase's unpaid remainder.
   for (const ph of ownPhases) {
     if (!ph.requested_at) continue;
-    const owed = Math.max(0, ph.amount_cents - (paidByPhase.get(ph.id) ?? 0));
+    // Less what was credited off it (DECISIONS #154).
+    const owed = Math.max(0, phaseNetCents(ph) - (paidByPhase.get(ph.id) ?? 0));
     if (owed === 0) continue;
     const invoice = isInvoice(ph.estimate_id);
     entries.push({

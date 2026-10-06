@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.223.0",
+    date: "2026-10-06",
+    notes: [
+      "Credits: use Give credit on an invoice or a contract's billed payment stage to take something off what the customer owes, for a discount or goodwill, without money changing hands. The bill keeps its amount, the credit comes off what's owed, and the customer sees it with your reason on their statement and in their portal.",
+      "Sending a bill again now asks for what's still owed, not the full amount. For example, a $10,000 stage with $6,000 paid asks for $4,000.",
+    ],
+  },
+  {
     version: "1.222.0",
     date: "2026-10-06",
     notes: [

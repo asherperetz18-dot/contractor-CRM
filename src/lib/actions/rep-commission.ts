@@ -14,6 +14,7 @@ import {
   unassignedJobCosts,
   paidTotalCents,
   commissionHolds,
+  creditedCents,
   commissionQualifiedAt,
   type AppRole,
   type CommissionHold,
@@ -558,10 +559,12 @@ export async function getRepCommissions(opts?: {
         .in("id", leadIds)
         .range(from, to)
     ),
-    selectAll<{ id: string; estimate_id: string }>((from, to) =>
+    // Every column, so a credit (0209, DECISIONS #154) comes along where
+    // it exists without failing where it doesn't.
+    selectAll<{ id: string; estimate_id: string; credit_cents?: number | null }>((from, to) =>
       supabase
         .from("estimate_payments")
-        .select("id, estimate_id")
+        .select("*")
         .eq("company_id", profile.company_id)
         .range(from, to)
     ),
@@ -701,11 +704,15 @@ export async function getRepCommissions(opts?: {
     // Earned when the job sells; paid when the job is finished and
     // settled. One number would either promise a rep money the company
     // has not received, or hide what they have already earned.
-    const collectedPct = contractCents > 0 ? collectedCents / contractCents : 0;
+    // Paid in full means paid what's owed once credits are off (DECISIONS
+    // #154) -- otherwise a credited job holds its commission forever. The
+    // commission itself is still worked out on the full contract.
+    const owedOnJobCents = contractCents - creditedCents(phases, docIds);
+    const collectedPct = owedOnJobCents > 0 ? collectedCents / owedOnJobCents : 0;
     const holds = commissionHolds({
       hasCosts: counted > 0,
       collectedCents,
-      contractCents,
+      contractCents: owedOnJobCents,
       certificateSigned,
     });
     const qualifiedAt = commissionQualifiedAt({

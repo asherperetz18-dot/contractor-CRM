@@ -64,7 +64,8 @@ export function PhasePayments({
       <div className="pp-phases">
         {phases.map((p) => {
           const due = dueLabel(p.dueDate);
-          // Money landed but short of the amount.
+          // Money landed (or a credit given) but short of the amount.
+          const received = p.amountCents - p.creditCents - p.owedCents;
           const partlyPaid = p.owedCents > 0 && p.owedCents < p.amountCents;
           // The button charges what is left, never the face amount on top
           // of what was already paid; none when there is nothing to take.
@@ -80,7 +81,12 @@ export function PhasePayments({
                     : p.state === "clearing"
                       ? "Bank transfer in progress — nothing more to do."
                       : partlyPaid
-                        ? `${moneyCents(p.amountCents - p.owedCents)} received — ${moneyCents(p.owedCents)} still due${
+                        ? `${[
+                            received > 0 ? `${moneyCents(received)} received` : null,
+                            p.creditCents > 0 ? `${moneyCents(p.creditCents)} credited` : null,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")} — ${moneyCents(p.owedCents)} still due${
                             p.state === "overdue" ? `, was due ${due}` : due ? `, due ${due}` : ""
                           }`
                         : p.state === "overdue"
@@ -93,7 +99,7 @@ export function PhasePayments({
               <div className="pp-phase-side">
                 <div className="pp-phase-amount mono">
                   {moneyCents(
-                    p.state === "paid" || p.state === "clearing" ? p.amountCents : p.owedCents
+                    p.state === "paid" || p.state === "clearing" ? p.amountCents - p.creditCents : p.owedCents
                   )}
                 </div>
                 {p.state === "paid" ? (

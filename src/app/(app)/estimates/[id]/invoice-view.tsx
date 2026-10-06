@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReceiptThumb } from "@/components/ui/receipt-peek";
 import {
+  creditableCents,
   moneyCents,
   paidTotalCents,
   paymentMethodLabel,
@@ -23,6 +24,7 @@ import { clearInvoiceNote, peekInvoiceNote } from "./invoice-note";
 import { SendChannelSelect, defaultBillChannel, sendLabel } from "@/components/invoices/send-channel-select";
 import { sentViaLabel, type BillChannel } from "@/lib/bill-email";
 import { RemindersSent, RemindersToggle } from "@/components/invoices/reminders-toggle";
+import { GiveCredit } from "@/components/invoices/give-credit";
 
 const BADGE: Record<string, string> = {
   paid: "signed",
@@ -66,6 +68,7 @@ export function InvoiceView({
   costs,
   canBill,
   canRecord,
+  credits = [],
 }: {
   invoice: Estimate;
   items: EstimateItem[];
@@ -77,6 +80,8 @@ export function InvoiceView({
   costs: Record<string, InvoiceLineCost>;
   canBill: boolean;
   canRecord: boolean;
+  /** Credits given on it (0209, DECISIONS #154), oldest first. */
+  credits?: { id: string; amount_cents: number; reason: string; created_at: string }[];
 }) {
   const router = useRouter();
   // What happened when it was sent from a draft, handed over by the
@@ -93,7 +98,9 @@ export function InvoiceView({
 
   const cancelled = invoice.status === "Void";
   const settled = paidTotalCents(paid);
-  const owed = Math.max(0, invoice.total_cents - settled);
+  // Credits come off what's owed; the invoice keeps its amount (#154).
+  const credited = Math.max(0, phase?.credit_cents ?? 0);
+  const owed = Math.max(0, invoice.total_cents - credited - settled);
   const state = phase ? phaseState(phase, paid.filter((p) => p.estimate_payment_id === phase.id)) : null;
   const moneyIn = settled > 0 || paid.some((p) => p.status === "pending");
 
@@ -190,6 +197,12 @@ export function InvoiceView({
           <div className="stat-value mono inv-in">{moneyCents(settled)}</div>
           <div className="stat-label">Paid</div>
         </div>
+        {credited > 0 && (
+          <div className="stat-card stat-static">
+            <div className="stat-value mono">{moneyCents(credited)}</div>
+            <div className="stat-label">Credited</div>
+          </div>
+        )}
         <div className="stat-card stat-static">
           <div className="stat-value mono">{cancelled ? "—" : moneyCents(owed)}</div>
           <div className="stat-label">Still owed</div>
@@ -302,6 +315,32 @@ export function InvoiceView({
         </div>
       )}
 
+      {credits.length > 0 && (
+        <>
+          <h2 className="inv-h2">Credits</h2>
+          <div className="table-scroll inv-table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Why</th>
+                  <th className="right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {credits.map((c) => (
+                  <tr key={c.id}>
+                    <td>{fmtDay(c.created_at)}</td>
+                    <td>{c.reason}</td>
+                    <td className="right mono">-{moneyCents(c.amount_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       {!cancelled && (
         <div className="inv-actions">
           {canBill && phase && owed > 0 && (
@@ -313,6 +352,14 @@ export function InvoiceView({
               {/* Automatic reminders on this invoice (DECISIONS #152). */}
               <RemindersToggle phaseId={phase.id} paused={(phase as { reminders_paused?: boolean }).reminders_paused} />
             </>
+          )}
+          {/* Take something off what's owed, without money moving (#154).
+              Only once 0209 has given the bill its credit. */}
+          {canRecord && phase && owed > 0 && phase.credit_cents !== undefined && (
+            <GiveCredit
+              phaseId={phase.id}
+              maxCents={creditableCents(phase, paid.filter((p) => p.estimate_payment_id === phase.id))}
+            />
           )}
           {canRecord && owed > 0 && (
             <RecordPayment

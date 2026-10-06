@@ -11,6 +11,7 @@ import {
   redistributePhases,
   scheduleBalance,
   splitEvenlyCents,
+  creditableCents,
   depositPayment,
   pendingPayment,
   paymentMethodLabel,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/data/change-order-rollup";
 import { PhaseBilling } from "./phase-billing";
 import { RecordPayment } from "./record-payment";
+import { GiveCredit } from "@/components/invoices/give-credit";
 import { depositRuleSentence } from "@/lib/deposit-rule";
 
 type Row = {
@@ -457,6 +459,18 @@ export const PaymentSchedule = memo(function PaymentSchedule({
                           signed={locked}
                           rollup={rollup}
                         />
+                        {/* Take something off what's owed on a billed stage,
+                            without money moving (DECISIONS #154); only once
+                            0209 has given the stage its credit. */}
+                        {!rollup && payments[i].credit_cents !== undefined && (
+                          <GiveCredit
+                            phaseId={payments[i].id}
+                            maxCents={creditableCents(
+                              payments[i],
+                              paid.filter((p) => p.estimate_payment_id === payments[i].id)
+                            )}
+                          />
+                        )}
                         {!rollup &&
                           !paid.some(
                             (p) =>

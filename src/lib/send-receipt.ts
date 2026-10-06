@@ -98,7 +98,7 @@ export async function sendPaymentReceipt(
     payment.estimate_payment_id
       ? admin
           .from("estimate_payments")
-          .select("id, name, sort_order, amount_cents, requested_at")
+          .select("*")
           .eq("id", payment.estimate_payment_id)
           .eq("company_id", companyId)
           .maybeSingle<{ id: string; name: string | null; sort_order: number; amount_cents: number; requested_at: string | null }>()
