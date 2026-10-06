@@ -21,6 +21,8 @@ import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments"
 import { loadCompanyWords } from "@/lib/load-company-words";
 import { word } from "@/lib/company-words";
 import { documentPaymentSection, scheduledPhases } from "@/lib/document-words";
+import { readFinancing, showFinancingOffer } from "@/lib/financing";
+import { FinancingOffer } from "./financing-offer";
 
 export const dynamic = "force-dynamic";
 
@@ -157,11 +159,32 @@ export default async function PortalEstimatePage({
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);
   const isExpired = estimateExpired(estimate);
-  const phases = await getPortalPhases(id);
+  const [phases, depositState, { data: financingRow }] = await Promise.all([
+    getPortalPhases(id),
+    getDepositState(id),
+    // The company's lender (0214, DECISIONS #161), read on its own: a
+    // database without those columns shows no offer, not a broken page.
+    admin
+      .from("company_profile")
+      .select("financing_provider, financing_url")
+      .eq("company_id", estimate.company_id)
+      .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>(),
+  ]);
   // A payment waiting on the customer goes above the contract, not under
   // it: the "Pay here" text lands on this page, and a Pay button at the
   // foot of a long document is one the customer never scrolls to.
   const owing = phases.some((p) => p.state !== "paid" && p.state !== "clearing");
+  // Financing, while there's still something to pay for (#161).
+  const depositDue = depositState.amountCents > 0 && !depositState.paid;
+  const financing = readFinancing(financingRow);
+  const offerFinancing =
+    !!financing &&
+    showFinancingOffer({
+      kind: estimate.kind,
+      status: estimate.status,
+      expired: isExpired,
+      settled: !owing && !depositDue && (phases.length > 0 || depositState.paid),
+    });
   // The company by name, and in its own words (DECISIONS #121) -- the
   // customer is dealing with Summit Builders Co, not "your contractor".
   const companyName = company?.name || "us";
@@ -209,7 +232,7 @@ export default async function PortalEstimatePage({
       <DepositPayment
         estimateId={id}
         kind={estimate.kind}
-        state={await getDepositState(id)}
+        state={depositState}
         justPaid={paid === "1"}
         companyName={companyName}
         words={words}
@@ -217,6 +240,9 @@ export default async function PortalEstimatePage({
       {/* Receipts for progress payments sit below the deposit: the
           deposit comes first in time, so it comes first on the page. */}
       {!owing && phaseCard}
+      {offerFinancing && financing && (
+        <FinancingOffer provider={financing.provider} url={financing.url} companyName={companyName} />
+      )}
       <PortalEstimateActions
         estimateId={id}
         status={estimate.status}
