@@ -13251,6 +13251,16 @@ textarea.est-item-desc:disabled {
   padding: 8px 0 10px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--line);
+  /* The detail row spans a table that scrolls sideways on a phone: held
+     to the screen's width so Approve and Reopen are always in reach. */
+  position: sticky;
+  left: 0;
+  max-width: calc(100vw - 48px);
+  white-space: normal;
+}
+.tc-approval .tc-line {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .tc-history {
   font-size: 12.5px;
