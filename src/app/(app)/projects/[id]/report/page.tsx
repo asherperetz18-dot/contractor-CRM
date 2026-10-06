@@ -323,7 +323,8 @@ export default async function ProjectReportPage({
   const settled = paid
     .filter((p) => p.status === "succeeded")
     .sort((a, b) => (a.paid_at ?? a.created_at).localeCompare(b.paid_at ?? b.created_at));
-  const pending = paid.filter((p) => p.status === "pending");
+  // Money on its way in -- a refund still going out isn't (#155).
+  const pending = paid.filter((p) => p.status === "pending" && p.amount_cents > 0);
 
   const completionSigned = changeOrders.some(
     (e) => (e.kind ?? "") === "completion" && e.status === "Signed"
@@ -548,15 +549,17 @@ export default async function ProjectReportPage({
                     {ledger.entries.map((e) => (
                       <tr key={e.id}>
                         <td>{shortDate(e.date)}</td>
-                        <td>{LEDGER_TYPE[e.kind]}</td>
+                        <td>{e.kind === "in" && e.amountCents < 0 ? "Refund" : LEDGER_TYPE[e.kind]}</td>
                         <td>
                           {e.title}
                           {e.detail && <div className="estdoc-muted">{e.detail}</div>}
                           {e.billedOn && <div className="estdoc-muted">Billed to the customer on {e.billedOn}</div>}
                         </td>
                         <td className="estdoc-num mono">
-                          {e.kind === "in" ? "+" : e.kind === "out" ? "−" : ""}
-                          {moneyCents(e.amountCents)}
+                          {/* A refund (#155) is money in with a minus. */}
+                          {e.kind === "in" && e.amountCents < 0
+                            ? `−${moneyCents(-e.amountCents)}`
+                            : `${e.kind === "in" ? "+" : e.kind === "out" ? "−" : ""}${moneyCents(e.amountCents)}`}
                         </td>
                       </tr>
                     ))}
@@ -585,7 +588,10 @@ export default async function ProjectReportPage({
                 {settled.map((p) => (
                   <tr key={p.id}>
                     <td>{shortDate(p.paid_at ?? p.created_at)}</td>
-                    <td>{p.kind === "deposit" ? "Deposit" : "Progress payment"}</td>
+                    <td>
+                      {/* Money given back (#155) is a negative row. */}
+                      {p.amount_cents < 0 ? "Refund" : p.kind === "deposit" ? "Deposit" : "Progress payment"}
+                    </td>
                     {/* The cheque number rides with the method — "check
                         #1042" — so the statement is enough to reconcile
                         against the bank without opening the app. */}

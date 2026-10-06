@@ -49,6 +49,8 @@ export async function sendPaymentReceipt(
   // A receipt says the money arrived. A cheque not yet banked, or a bank
   // transfer still clearing, hasn't.
   if (payment.status !== "succeeded") return { error: "Only a payment that has arrived gets a receipt." };
+  // A refund is money going back, not a payment received (#155).
+  if (payment.amount_cents <= 0) return { error: "A refund doesn't get a payment receipt." };
 
   // Paused while the company's subscription is locked (DECISIONS #131).
   const locked = await lockedServicesError(companyId);

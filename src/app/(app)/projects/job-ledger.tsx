@@ -35,10 +35,17 @@ const monthLabel = (day: string) =>
 const shortDay = (day: string) =>
   day ? new Date(`${day}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "2-digit" }) : "—";
 
+// A refund (#155) is money in with a minus: it reads as going out.
 const signed = (e: LedgerEntry) =>
-  e.kind === "in" ? `+${moneyCents(e.amountCents)}` : e.kind === "out" ? `−${moneyCents(e.amountCents)}` : moneyCents(e.amountCents);
+  e.kind === "in" && e.amountCents < 0
+    ? `−${moneyCents(-e.amountCents)}`
+    : e.kind === "in"
+      ? `+${moneyCents(e.amountCents)}`
+      : e.kind === "out"
+        ? `−${moneyCents(e.amountCents)}`
+        : moneyCents(e.amountCents);
 const amountClass = (e: LedgerEntry) =>
-  e.kind === "in" ? "jl-amt-in" : e.kind === "out" ? "jl-amt-out" : "jl-amt-owed";
+  e.kind === "in" && e.amountCents >= 0 ? "jl-amt-in" : e.kind === "out" || e.kind === "in" ? "jl-amt-out" : "jl-amt-owed";
 
 /**
  * Every dollar on one job -- paid in, paid out, still owed -- opened

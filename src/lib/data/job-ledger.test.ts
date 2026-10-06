@@ -156,3 +156,18 @@ test("opening a row's list: a click opens it on that filter, the same click agai
   open = toggleLedger({ "job-2": "all" }, "job-1", "all");
   assert.deepEqual(open, { "job-2": "all", "job-1": "all" });
 });
+
+test("a refund (DECISIONS #155) is its own line, comes off Collected, and says what it gave back", () => {
+  const input = base();
+  input.payments.push({ id: "p-ref", estimate_id: CONTRACT, estimate_payment_id: "ph-1", kind: "progress", amount_cents: -250_000, status: "succeeded", method: "check", reference: "2210", paid_at: "2026-07-01T18:00:00Z", created_at: "2026-07-01T18:00:00Z" });
+  input.payments.push({ id: "p-ref2", estimate_id: CONTRACT, estimate_payment_id: "ph-1", kind: "progress", amount_cents: -10_000, status: "pending", method: "card", reference: null, paid_at: null, created_at: "2026-07-02T18:00:00Z" });
+  const before = jobLedger(base()).totals.collectedCents;
+  const { entries, totals } = jobLedger(input);
+  const line = entries.find((e) => e.id === "pay-p-ref")!;
+  assert.equal(line.title, "Refund — Phase 1 · Excavation");
+  assert.equal(line.kind, "in");
+  assert.equal(line.amountCents, -250_000);
+  assert.equal(totals.collectedCents, before - 250_000);
+  // Still going through: shown, counted nowhere.
+  assert.equal(entries.find((e) => e.id === "pay-p-ref2")!.detail, "Card · going through");
+});

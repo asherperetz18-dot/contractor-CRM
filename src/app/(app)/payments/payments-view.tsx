@@ -13,6 +13,7 @@ import { matchesClientRep, paymentsSummary } from "./payment-filters";
 import { ManualPaymentTools } from "./manual-payment-tools";
 import { ReceiptButton } from "./receipt-button";
 import { EditManualPayment } from "./edit-manual-payment";
+import { DecideRefund, RefundPayment } from "./refund-payment";
 
 /**
  * The stat cards and three tables on the Payments page, behind one set
@@ -84,6 +85,15 @@ export type PaymentHistoryRow = {
   manual: boolean;
   /** When the customer was last emailed a receipt for it (DECISIONS #151). */
   receiptSentAt: string | null;
+  /** Money given back (DECISIONS #155): a negative amount. */
+  isRefund: boolean;
+  /** On a refund made in Stripe, nobody has said yet whether the customer
+   *  still owes it. */
+  refundUndecided: boolean;
+  /** On a payment: what's left to give back (0 on a refund). */
+  refundableCents: number;
+  /** Paid against a bill rather than a deposit. */
+  onBill: boolean;
 };
 
 function statusBadge(status: string) {
@@ -120,6 +130,8 @@ export function PaymentsView({
   // Which history row is open for editing. Only hand-recorded rows open:
   // a Stripe row's method and amount are Stripe's record, not ours.
   const [editing, setEditing] = useState<string | null>(null);
+  // Which payment has its Refund form open (DECISIONS #155).
+  const [refunding, setRefunding] = useState<string | null>(null);
   // Client and rep live in the URL (?client=<leadId>&rep=<name>) — the
   // same shape as Money to Collect — so a filtered view can be
   // bookmarked or pasted to a teammate.
@@ -443,7 +455,8 @@ export function PaymentsView({
             </thead>
             <tbody>
               {shownHistory.map((r) => {
-                const editable = r.manual && showTools;
+                // A refund isn't edited: it's removed and recorded again.
+                const editable = r.manual && showTools && !r.isRefund;
                 return (
                   <Fragment key={r.id}>
                     <tr
@@ -484,12 +497,24 @@ export function PaymentsView({
                       {/* Only hand-recorded rows can be settled or removed
                           here. Stripe rows settle by webhook and are
                           refunded in Stripe. Any payment that has arrived
-                          can be receipted (DECISIONS #151). */}
+                          can be receipted (DECISIONS #151), and refunded
+                          (#155) -- a refund itself, neither. */}
                       {showTools && (
                         <td>
-                          {r.status === "succeeded" && (
+                          {r.status === "succeeded" && !r.isRefund && (
                             <ReceiptButton paymentId={r.id} sentAt={r.receiptSentAt} />
                           )}
+                          {r.refundableCents > 0 && (
+                            <button
+                              className="btn-ghost est-record-btn"
+                              type="button"
+                              title="Record money given back on this payment"
+                              onClick={() => setRefunding(refunding === r.id ? null : r.id)}
+                            >
+                              Refund
+                            </button>
+                          )}
+                          {r.refundUndecided && r.status === "succeeded" && <DecideRefund refundId={r.id} />}
                           {r.manual && (
                             <ManualPaymentTools
                               paymentId={r.id}
@@ -500,6 +525,19 @@ export function PaymentsView({
                         </td>
                       )}
                     </tr>
+                    {refunding === r.id && showTools && r.refundableCents > 0 && (
+                      <tr>
+                        <td colSpan={showTools ? 9 : 8}>
+                          <RefundPayment
+                            paymentId={r.id}
+                            refundableCents={r.refundableCents}
+                            onBill={r.onBill}
+                            viaStripe={!r.manual}
+                            onClose={() => setRefunding(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
                     {editing === r.id && editable && (
                       <tr>
                         <td colSpan={showTools ? 9 : 8}>

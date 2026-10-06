@@ -3,12 +3,14 @@ import { zoneForCompany } from "@/lib/data/company-today";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
+import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
 import {
   paidTotalCents,
   socialHref,
   type Event,
   type PortalPayment,
   type SmsMessage,
+  withoutUndecidedRefunds,
 } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
 import { billedPhaseDueCents } from "@/lib/portal/portal-display";
@@ -54,7 +56,7 @@ export default async function PortalHomePage() {
     { data: messages },
     { data: company },
     { data: estimateRows },
-    { data: paymentRows },
+    { data: allPaymentRows },
     { data: docRows },
     { data: sharedNoteRows, error: sharedNotesError },
   ] = await Promise.all([
@@ -95,10 +97,11 @@ export default async function PortalHomePage() {
       .returns<EstimateRow[]>(),
     admin
       .from("portal_payments")
-      .select("estimate_id, estimate_payment_id, kind, status, amount_cents, stripe_session_id, stripe_payment_intent_id")
+      .select("id, estimate_id, estimate_payment_id, kind, status, amount_cents, stripe_session_id, stripe_payment_intent_id")
       .eq("lead_id", viewer.lead.id)
       .returns<
         {
+          id: string;
           estimate_id: string;
           estimate_payment_id: string | null;
           kind: string;
@@ -196,6 +199,12 @@ export default async function PortalHomePage() {
           }[]
         >()
     : { data: [] };
+  // A refund made in Stripe waits on the office's "still owed?" before
+  // the customer sees it (#155).
+  const paymentRows = withoutUndecidedRefunds(
+    allPaymentRows ?? [],
+    await undecidedRefundIds(admin, "lead_id", [viewer.lead.id])
+  );
   const invoices: PortalInvoice[] = (estimateRows ?? [])
     .filter((e) => e.kind === "invoice" && e.status === "Signed")
     .map((e) => ({
@@ -203,21 +212,21 @@ export default async function PortalHomePage() {
       doc_number: e.doc_number,
       title: e.title,
       totalCents: e.total_cents,
-      paidCents: paidTotalCents((paymentRows ?? []).filter((p) => p.estimate_id === e.id)),
+      paidCents: paidTotalCents(paymentRows.filter((p) => p.estimate_id === e.id)),
       creditCents: (phaseRows ?? [])
         .filter((p) => p.estimate_id === e.id)
         .reduce((sum, p) => sum + Math.max(0, p.credit_cents ?? 0), 0),
     }));
   const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
-    const depositPaid = (paymentRows ?? []).some(
-      (p) => p.estimate_id === e.id && p.kind === "deposit" && p.status === "succeeded"
-    );
+    // Paid while any of it is kept -- a refund is a row too (#155).
+    const depositPaid =
+      paidTotalCents(paymentRows.filter((p) => p.estimate_id === e.id && p.kind === "deposit")) > 0;
     const owed = e.status === "Signed" && !depositPaid ? e.deposit_cents || 0 : 0;
     const phaseDueCents =
       e.status === "Signed"
         ? billedPhaseDueCents(
             (phaseRows ?? []).filter((p) => p.estimate_id === e.id),
-            (paymentRows ?? []).filter((p) => p.estimate_id === e.id)
+            paymentRows.filter((p) => p.estimate_id === e.id)
           )
         : 0;
     return { ...e, depositPaid, amountDueCents: owed, phaseDueCents };

@@ -10224,6 +10224,32 @@ textarea.est-item-desc:disabled {
     grid-template-columns: 1fr;
   }
 }
+/* Recording a refund (DECISIONS #155). It opens inside the history
+   table, which scrolls sideways on a phone: held to the screen's width
+   at the scroll's left edge, so the question reads without scrolling. */
+.refund-form {
+  position: sticky;
+  left: 0;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  /* The table's cells don't wrap; the form's sentences must. */
+  white-space: normal;
+}
+.refund-owed {
+  border: 0;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.refund-owed .est-record-check {
+  align-items: flex-start;
+  margin: 6px 0;
+}
+.refund-owed .est-record-check input {
+  margin-top: 3px;
+}
+.refund-decide .field-label {
+  margin-right: 4px;
+}
 
 /* Photos and video from a site visit */
 .visit-media-actions {

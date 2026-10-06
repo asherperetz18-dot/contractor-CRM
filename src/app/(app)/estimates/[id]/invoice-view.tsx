@@ -304,7 +304,18 @@ export function InvoiceView({
                         (p.status === "succeeded" ? "signed" : p.status === "pending" ? "sent" : "declined")
                       }
                     >
-                      {p.status === "succeeded" ? "Paid" : p.status === "pending" ? "Clearing" : p.status}
+                      {/* A refund (#155) is money going back: a negative row. */}
+                      {p.amount_cents < 0
+                        ? p.status === "succeeded"
+                          ? "Refunded"
+                          : p.status === "pending"
+                            ? "Refund going through"
+                            : p.status
+                        : p.status === "succeeded"
+                          ? "Paid"
+                          : p.status === "pending"
+                            ? "Clearing"
+                            : p.status}
                     </span>
                   </td>
                   <td className="right mono">{moneyCents(p.amount_cents)}</td>

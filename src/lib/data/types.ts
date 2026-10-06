@@ -2254,7 +2254,34 @@ export type PortalPayment = {
   stripe_payment_intent_id?: string | null;
   paid_at: string | null;
   created_at: string;
+  /** On a refund (0210, DECISIONS #155): the payment it returns. A
+   *  refund's amount is negative, so sums of money in net it. */
+  refund_of?: string | null;
+  /** On a refund: does the customer still owe it? null = not decided yet. */
+  refund_still_owed?: boolean | null;
+  stripe_refund_id?: string | null;
 };
+
+/** Money going back to the customer (DECISIONS #155): a negative row. */
+export function isRefund(p: Pick<PortalPayment, "amount_cents">): boolean {
+  return (p.amount_cents || 0) < 0;
+}
+
+/**
+ * How much of one payment can still be refunded: what arrived, less the
+ * refunds of it that went or are going through. Nothing on a refund, or
+ * on money not yet in.
+ */
+export function refundableCents(
+  payment: Pick<PortalPayment, "id" | "status" | "amount_cents">,
+  payments: Pick<PortalPayment, "status" | "amount_cents" | "refund_of">[]
+): number {
+  if (payment.status !== "succeeded" || payment.amount_cents <= 0) return 0;
+  const refunded = payments
+    .filter((p) => p.refund_of === payment.id && (p.status === "succeeded" || p.status === "pending"))
+    .reduce((sum, p) => sum - (p.amount_cents || 0), 0);
+  return Math.max(0, payment.amount_cents - refunded);
+}
 
 /**
  * A Stripe checkout the customer opened but never finished. The portal
@@ -2277,10 +2304,30 @@ export function paidTotalCents(payments: Pick<PortalPayment, "status" | "amount_
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
 }
 
+/**
+ * The payments as the customer sees them while refunds made in Stripe
+ * wait on the office's "still owed?" (DECISIONS #155): without those
+ * refunds, so the bill reads as it did before -- never owed again, with a
+ * Pay button, for money just given back to them. `undecided` is from
+ * `undecidedRefundIds`.
+ */
+export function withoutUndecidedRefunds<T extends { id?: string | null }>(payments: T[], undecided: Set<string>): T[] {
+  if (!undecided.size) return payments;
+  return payments.filter((p) => !(p.id && undecided.has(p.id)));
+}
+
+/** The deposit money that has arrived, less any refunded (DECISIONS #155). */
+export function depositNetCents(payments: Pick<PortalPayment, "kind" | "status" | "amount_cents">[]): number {
+  return paidTotalCents(payments.filter((p) => p.kind === "deposit"));
+}
+
+/** The deposit payment, while any of it is still kept -- never a refund
+ *  row, and none once it has all gone back. */
 export function depositPayment(
   payments: Pick<PortalPayment, "kind" | "status" | "paid_at" | "method" | "amount_cents">[]
 ) {
-  return payments.find((p) => p.kind === "deposit" && p.status === "succeeded") ?? null;
+  if (depositNetCents(payments) <= 0) return null;
+  return payments.find((p) => p.kind === "deposit" && p.status === "succeeded" && p.amount_cents > 0) ?? null;
 }
 
 export type SignedContract = {
@@ -2293,7 +2340,8 @@ export type SignedContract = {
 export function pendingPayment(
   payments: Pick<PortalPayment, "status" | "amount_cents" | "method">[]
 ) {
-  return payments.find((p) => p.status === "pending") ?? null;
+  // Money on its way in -- not a refund still going through (#155).
+  return payments.find((p) => p.status === "pending" && p.amount_cents > 0) ?? null;
 }
 
 /**
@@ -2837,8 +2885,9 @@ export function phaseState(
   const amount = phaseNetCents(phase);
   const credited = (phase.credit_cents ?? 0) > 0;
   const settled = paidTotalCents(payments);
+  // Money on its way in; a refund still going through isn't (#155).
   const pending = payments
-    .filter((p) => p.status === "pending")
+    .filter((p) => p.status === "pending" && (p.amount_cents || 0) > 0)
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
   if ((credited || payments.some((p) => p.status === "succeeded")) && settled >= amount) return "paid";
   if (pending > 0 && settled + pending >= amount) return "clearing";
@@ -2899,7 +2948,7 @@ export function phaseCheckoutCents(
 ): number {
   if (!phase.requested_at) return 0;
   const inFlight = payments
-    .filter((p) => p.status === "pending" && !isUnfinishedCheckout(p))
+    .filter((p) => p.status === "pending" && (p.amount_cents || 0) > 0 && !isUnfinishedCheckout(p))
     .reduce((sum, p) => sum + (p.amount_cents || 0), 0);
   return Math.max(0, phaseNetCents(phase) - paidTotalCents(payments) - inFlight);
 }

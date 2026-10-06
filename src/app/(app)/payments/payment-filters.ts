@@ -79,6 +79,7 @@ export function paymentsSummary(
     billedCents: owed(billed),
     outstandingCents: Math.max(0, contractValueCents - collectedCents),
     awaitingDepositCents: keep(rows.chase).reduce((s, r) => s + (r.depositCents || 0), 0),
-    clearingCents: sum(history.filter((r) => r.status === "pending")),
+    // Money on its way in -- not a refund still going out (#155).
+    clearingCents: sum(history.filter((r) => r.status === "pending" && r.amountCents > 0)),
   };
 }

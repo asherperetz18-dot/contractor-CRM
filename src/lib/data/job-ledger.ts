@@ -164,11 +164,14 @@ export function jobLedger(input: JobLedgerInput): {
     }
     const phase = p.estimate_payment_id ? phaseById.get(p.estimate_payment_id) : undefined;
     const onContract = p.estimate_id === input.contractId;
-    const title = !onContract
+    const what = !onContract
       ? docLabel(p.estimate_id)
       : p.kind === "deposit"
         ? "Deposit"
         : phase?.name || "Payment";
+    // Money given back (#155): a negative row, netted from what came in.
+    const refund = p.amount_cents < 0;
+    const title = refund ? `Refund — ${what}` : what;
     const method = paymentMethodLabel(p.method);
     const how = method ? method.charAt(0).toUpperCase() + method.slice(1) : "";
     entries.push({
@@ -177,7 +180,7 @@ export function jobLedger(input: JobLedgerInput): {
       kind: p.status === "succeeded" ? "in" : "clearing",
       date: toDay(p.paid_at ?? p.created_at),
       title,
-      detail: [how + (p.reference ? ` #${p.reference}` : ""), p.status === "pending" ? "clearing" : ""]
+      detail: [how + (p.reference ? ` #${p.reference}` : ""), p.status === "pending" ? (refund ? "going through" : "clearing") : ""]
         .filter(Boolean)
         .join(" · "),
       amountCents: p.amount_cents,

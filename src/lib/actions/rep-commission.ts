@@ -652,7 +652,8 @@ export async function getRepCommissions(opts?: {
     const collectedCents = paidTotalCents(jobPayments);
     const lastPaymentAt =
       jobPayments
-        .filter((p) => p.status === "succeeded" && p.paid_at)
+        // When money last came in -- a refund (#155) isn't a payment.
+        .filter((p) => p.status === "succeeded" && p.paid_at && p.amount_cents > 0)
         .map((p) => p.paid_at as string)
         .sort()
         .at(-1) ?? null;

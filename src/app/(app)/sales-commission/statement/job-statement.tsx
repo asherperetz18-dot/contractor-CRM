@@ -180,7 +180,7 @@ export function JobStatement({
               <tr key={i}>
                 <td>{longDate(p.paidAt)}</td>
                 <td>
-                  {p.kind === "deposit" ? "Deposit" : "Payment"}
+                  {p.amountCents < 0 ? "Refund" : p.kind === "deposit" ? "Deposit" : "Payment"}
                   {p.method ? ` · ${p.method}` : ""}
                 </td>
                 <td className="estdoc-num">{moneyCents(p.amountCents)}</td>

@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.224.0",
+    date: "2026-10-06",
+    notes: [
+      "Refunds: on the Payments page, use Refund on a payment to record money you gave back by check, cash or transfer, with the reason. The CRM never sends money itself. On a bill it asks whether the customer still owes that amount: No adds a credit so the bill stays paid, and Yes makes the bill owed again (a bounced check, say).",
+      "Refunds you make in Stripe now show up by themselves. Answer the \"Still owed?\" question beside them on the Payments page. Until you do, the customer sees the bill as it was before the refund and no payment reminder goes out for it. To turn this on, add the charge.refunded and charge.refund.updated events to your Stripe webhook. Settings › Portal Payments shows if they're missing, and Sync payments from Stripe there picks up refunds from the last 180 days.",
+      "Refunds come off Collected and Paid everywhere, and appear on the customer's statement, the invoice page and the job's money list.",
+    ],
+  },
+  {
     version: "1.223.1",
     date: "2026-10-06",
     notes: [

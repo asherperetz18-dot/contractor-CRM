@@ -11,6 +11,11 @@ import { stripeConnectionState } from "@/lib/stripe/connection-state";
 import { portalBaseUrl } from "@/lib/portal/session";
 import { resolvePaymentMethod } from "@/lib/stripe-method";
 import { sendAutomaticReceipts } from "@/lib/send-receipt";
+import { syncStripeRefunds } from "@/lib/stripe/sync-refunds";
+
+/** How far back Sync payments from Stripe looks for refunds made in Stripe. */
+const REFUND_LOOKBACK_DAYS = 180;
+const MAX_REFUNDS_CHECKED = 500;
 
 export type EndpointInfo = {
   url: string;
@@ -61,6 +66,9 @@ const REQUIRED_EVENTS = [
   "checkout.session.async_payment_succeeded",
   "checkout.session.async_payment_failed",
   "checkout.session.expired",
+  // Refunds made in the Stripe dashboard, recorded in the CRM (#155).
+  "charge.refunded",
+  "charge.refund.updated",
 ];
 
 async function requireAdmin() {
@@ -304,9 +312,72 @@ export async function reconcilePendingPayments(): Promise<{
     }
   }
 
+  // Refunds still going through at Stripe (DECISIONS #155) -- their own
+  // read, so a database without 0210 just has none.
+  const { data: pendingRefunds } = await admin
+    .from("portal_payments")
+    .select("id, stripe_refund_id")
+    .eq("company_id", profile.company_id)
+    .eq("status", "pending")
+    .not("stripe_refund_id", "is", null)
+    .returns<{ id: string; stripe_refund_id: string }[]>();
+  for (const r of pendingRefunds ?? []) {
+    try {
+      const refund = await stripe.refunds.retrieve(r.stripe_refund_id);
+      const status =
+        refund.status === "succeeded"
+          ? "succeeded"
+          : refund.status === "failed"
+            ? "failed"
+            : refund.status === "canceled"
+              ? "cancelled"
+              : null;
+      if (!status) continue;
+      // A failed one takes back the credit that came with it (0210).
+      const { error } = await admin.rpc("settle_refund", {
+        p_company: profile.company_id,
+        p_refund: r.id,
+        p_status: status,
+      });
+      if (!error) {
+        updated += 1;
+        notes.push(`Refund ${r.stripe_refund_id}: ${status === "succeeded" ? "went through" : status}.`);
+      }
+    } catch {
+      notes.push(`Refund ${r.stripe_refund_id}: not found at Stripe, left alone.`);
+    }
+  }
+
+  // Refunds made in Stripe the webhook never told us about -- an endpoint
+  // set up before the refund events, or a delivery Stripe gave up on: the
+  // account's refunds of the last 180 days, each recorded once against
+  // the payment it returns (DECISIONS #155).
+  try {
+    const since = Math.floor(Date.now() / 1000) - REFUND_LOOKBACK_DAYS * 86400;
+    const intents = new Set<string>();
+    let seen = 0;
+    for await (const refund of stripe.refunds.list({ created: { gte: since }, limit: 100 })) {
+      const intent = typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id;
+      if (intent) intents.add(intent);
+      if (++seen >= MAX_REFUNDS_CHECKED) {
+        notes.push(`Checked the latest ${MAX_REFUNDS_CHECKED} refunds in Stripe; run this again for older ones.`);
+        break;
+      }
+    }
+    for (const intent of intents) {
+      const synced = await syncStripeRefunds(admin, stripe, intent, profile.company_id, { lookUpCheckout: false });
+      updated += synced.recorded;
+      if (synced.recorded) notes.push(`Recorded ${synced.recorded} refund${synced.recorded === 1 ? "" : "s"} made in Stripe.`);
+      for (const why of synced.refused) if (!notes.includes(why)) notes.push(why);
+      if (!synced.ok && synced.error) notes.push(`Refunds: ${synced.error}`);
+    }
+  } catch (e) {
+    notes.push(`Couldn't read refunds from Stripe: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   revalidatePath("/payments");
   revalidatePath("/settings/portal-payments");
-  return { updated, checked: rows?.length ?? 0, notes };
+  return { updated, checked: (rows?.length ?? 0) + (pendingRefunds?.length ?? 0), notes };
 }
 
 /**

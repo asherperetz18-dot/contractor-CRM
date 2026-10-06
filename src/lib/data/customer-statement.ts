@@ -32,6 +32,10 @@ export type StatementPayment = InvoicePaymentLite &
     reference: string | null;
     stripe_session_id?: string | null;
     stripe_payment_intent_id?: string | null;
+    id?: string;
+    /** On a refund, why (DECISIONS #155) -- shown to the customer. A
+     *  payment's own note is the office's and never is. */
+    note?: string | null;
   };
 
 /** A credit on one of the customer's bills (0209, DECISIONS #154). */
@@ -45,12 +49,13 @@ export type StatementCredit = {
 export type StatementLine = {
   /** The company's YYYY-MM-DD. */
   day: string;
-  kind: "charge" | "credit" | "payment";
+  /** A refund (DECISIONS #155) is money back to them: it puts the balance up. */
+  kind: "charge" | "credit" | "payment" | "refund";
   label: string;
   detail: string;
   docId: string;
   docNumber: string;
-  /** Positive for a charge or a payment; negative for a credit. */
+  /** Positive for a charge, a payment or a refund; negative for a credit. */
   amountCents: number;
   /** What is owed after this line. */
   balanceCents: number;
@@ -137,8 +142,12 @@ export function buildStatement(
   const clearing = { cents: 0, count: 0 };
   for (const p of live) {
     if (p.status === "pending") {
-      clearing.cents += p.amount_cents;
-      clearing.count += 1;
+      // Money on its way in. A refund still going through isn't on the
+      // statement until it has (DECISIONS #155).
+      if (p.amount_cents > 0) {
+        clearing.cents += p.amount_cents;
+        clearing.count += 1;
+      }
       continue;
     }
     if (p.status !== "succeeded") continue;
@@ -146,15 +155,16 @@ export function buildStatement(
     const forWhat =
       (p.estimate_payment_id ? billLabel.get(p.estimate_payment_id) : depositLabel.get(p.estimate_id)) ??
       (p.estimate_payment_id ? d.doc_number : `Deposit — ${d.doc_number}`);
+    const refund = p.amount_cents < 0;
     entries.push({
       at: p.paid_at ?? p.created_at,
       order: 1,
-      kind: "payment",
-      label: `Payment — ${forWhat}`,
-      detail: paidBy(p),
+      kind: refund ? "refund" : "payment",
+      label: `${refund ? "Refund" : "Payment"} — ${forWhat}`,
+      detail: refund ? [paidBy(p), p.note?.trim()].filter(Boolean).join(" · ") : paidBy(p),
       docId: d.id,
       docNumber: d.doc_number,
-      amountCents: p.amount_cents,
+      amountCents: Math.abs(p.amount_cents),
     });
   }
 
@@ -186,6 +196,10 @@ export function buildStatement(
     if (e.kind === "payment") {
       paid += e.amountCents;
       balance -= e.amountCents;
+    } else if (e.kind === "refund") {
+      // Money back out: what they've paid comes down, what they owe goes up.
+      paid -= e.amountCents;
+      balance += e.amountCents;
     } else {
       billed += e.amountCents;
       balance += e.amountCents;
