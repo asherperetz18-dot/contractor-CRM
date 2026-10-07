@@ -56,6 +56,8 @@ export const BACKUP_TABLES = [
   "bill_credits",
   // Where each estimate's financing stands, step by step (0215, #162).
   "estimate_financing_events",
+  // Contracts switched to financing, and who signed it (0217, #166).
+  "contract_payment_changes",
   "contract_templates",
   "scope_templates",
   "company_documents",

@@ -23,6 +23,8 @@ import { word } from "@/lib/company-words";
 import { documentPaymentSection, scheduledPhases } from "@/lib/document-words";
 import { readFinancing, showFinancingOffer } from "@/lib/financing";
 import { FinancingOffer } from "./financing-offer";
+import { PaymentChangeCard } from "./payment-change-card";
+import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
 
 export const dynamic = "force-dynamic";
 
@@ -159,7 +161,7 @@ export default async function PortalEstimatePage({
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);
   const isExpired = estimateExpired(estimate);
-  const [phases, depositState, { data: financingRow }] = await Promise.all([
+  const [phases, depositState, { data: financingRow }, { data: changeRows }] = await Promise.all([
     getPortalPhases(id),
     getDepositState(id),
     // The company's lender (0214, DECISIONS #161), read on its own: a
@@ -169,7 +171,19 @@ export default async function PortalEstimatePage({
       .select("financing_provider, financing_url")
       .eq("company_id", estimate.company_id)
       .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>(),
+    // A payment change to sign, or one in force (0217, DECISIONS #166).
+    // Before 0217, none.
+    admin
+      .from("contract_payment_changes")
+      .select("*")
+      .eq("estimate_id", id)
+      .eq("company_id", estimate.company_id)
+      .returns<PaymentChangeRow[]>(),
   ]);
+  const paymentChange = estimate.status === "Signed" ? openPaymentChange(changeRows ?? []) : null;
+  // Paying with financing: the lender pays what's left, so nothing asks
+  // the customer for it.
+  const financedBy = paymentChange?.status === "signed" ? paymentChange.lender : null;
   // A payment waiting on the customer goes above the contract, not under
   // it: the "Pay here" text lands on this page, and a Pay button at the
   // foot of a long document is one the customer never scrolls to.
@@ -194,6 +208,7 @@ export default async function PortalEstimatePage({
       phases={phases}
       invoicedSeparately={viewer.lead.portal_payments_disabled === true}
       companyName={companyName}
+      financedBy={financedBy}
     />
   );
 
@@ -205,6 +220,24 @@ export default async function PortalEstimatePage({
       <div className="estdoc-print-bar">
         <PrintButton label="Print / Save as PDF" title={documentTitle(estimate.doc_number)} />
       </div>
+      {paymentChange && (
+        <PaymentChangeCard
+          estimateId={id}
+          docNumber={estimate.doc_number}
+          companyName={companyName}
+          signedOn={estimate.signed_at ?? null}
+          change={{
+            status: paymentChange.status as "sent" | "signed",
+            lender: paymentChange.lender,
+            totalCents: paymentChange.total_cents,
+            paidCents: paymentChange.paid_cents,
+            financeCents: paymentChange.finance_cents,
+            signedName: paymentChange.signed_name,
+            signedAt: paymentChange.signed_at,
+          }}
+          applyUrl={financing?.url ?? null}
+        />
+      )}
       {owing && phaseCard}
       <EstimateDocument
         estimate={estimate}
@@ -236,6 +269,7 @@ export default async function PortalEstimatePage({
         justPaid={paid === "1"}
         companyName={companyName}
         words={words}
+        financedBy={financedBy}
       />
       {/* Receipts for progress payments sit below the deposit: the
           deposit comes first in time, so it comes first on the page. */}

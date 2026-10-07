@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { centsFromInput, moneyCents } from "@/lib/data/types";
 import { recordFinancingStatus, sendFinancingLink } from "@/lib/actions/financing";
+import { cancelPaymentChange, revertPaymentChange, sendPaymentChange } from "@/lib/actions/payment-change";
+import { paymentChangeFigures } from "@/lib/payment-change";
 import {
   FINANCING_STATUSES,
   FINANCING_STATUS_LABEL,
@@ -39,7 +41,23 @@ export type FinancingPanelData = {
    *  payout (DECISIONS #163). */
   canRecordPayment: boolean;
   /** What's on the contract, to show where a payout would go. */
-  loan: Omit<Parameters<typeof splitFundedLoan>[0], "amountCents"> | null;
+  loan: Parameters<typeof paymentChangeFigures>[0] | null;
+  /** Switching a signed contract to financing (DECISIONS #166). */
+  paymentChange?: {
+    /** 0217 has run. */
+    ready: boolean;
+    /** A signed contract, with a lender link set. */
+    canSwitch: boolean;
+    /** The change waiting for a signature or in force. */
+    change: {
+      status: "sent" | "signed";
+      lender: string;
+      financeCents: number;
+      sentAt: string;
+      signedName: string | null;
+      signedAt: string | null;
+    } | null;
+  };
 };
 
 const localToday = () => {
@@ -276,6 +294,10 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         </div>
       )}
 
+      {data.canWork && data.paymentChange?.ready && (
+        <SwitchToFinancing estimateId={estimateId} data={data} remindInDays={remindInDays} />
+      )}
+
       {error && <p className="error-note">{error}</p>}
       {message && <p className="hint-note">{message}</p>}
 
@@ -298,5 +320,201 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         </ul>
       )}
     </section>
+  );
+}
+
+const PAYMENT_CHANGE_BADGE: Record<"paid" | "billed" | "open", { label: string; cls: string }> = {
+  paid: { label: "Paid · stays", cls: "signed" },
+  billed: { label: "Reminders pause", cls: "financing" },
+  open: { label: "Not billed", cls: "financing" },
+};
+
+/**
+ * The customer signed to pay directly and would rather finance the rest
+ * (DECISIONS #166). Not switched: what would be financed, line by line,
+ * and a payment change to text or email them to sign. Sent: waiting on
+ * their signature. Signed: paying with financing, and the way back.
+ */
+function SwitchToFinancing({
+  estimateId,
+  data,
+  remindInDays,
+}: {
+  estimateId: string;
+  data: FinancingPanelData;
+  remindInDays: number | null;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [withApply, setWithApply] = useState(true);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const pc = data.paymentChange!;
+  const change = pc.change;
+  const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  function run(action: () => Promise<{ error?: string; sentBy?: string; warning?: string }>, done: string) {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await action();
+      if (res.error) return setError(res.error);
+      setMessage(res.warning ?? done);
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  function send(channel: "text" | "email") {
+    if (!window.confirm(`${channel === "text" ? "Text" : "Email"} the customer the payment change to sign?`)) return;
+    run(
+      () => sendPaymentChange({ estimateId, channel, withApplyLink: !change && withApply, remindInDays }),
+      `Sent by ${channel}. It's on their customer page to sign.`
+    );
+  }
+
+  const sendButtons = (again: boolean) => (
+    <div className="est-pay-actions">
+      <button
+        type="button"
+        className={again ? "btn-ghost" : "btn-primary"}
+        disabled={pending || !data.hasPhone}
+        title={data.hasPhone ? undefined : "This customer has no phone number on file"}
+        onClick={() => send("text")}
+      >
+        {again ? "Text it again" : "Text it to sign"}
+      </button>
+      <button
+        type="button"
+        className="btn-ghost"
+        disabled={pending || !data.hasEmail}
+        title={data.hasEmail ? undefined : "This customer has no email address on file"}
+        onClick={() => send("email")}
+      >
+        {again ? "Email it again" : "Email it to sign"}
+      </button>
+    </div>
+  );
+
+  let body: React.ReactNode = null;
+  if (change?.status === "signed") {
+    body = (
+      <div className="payment-change">
+        <h3>
+          Paying with financing <span className="est-badge est-badge-financing">{change.lender}</span>
+        </h3>
+        <p className="est-tax-note">
+          {change.signedName && change.signedAt
+            ? `${change.signedName} signed the payment change on ${day(change.signedAt)}: `
+            : "The payment change is signed: "}
+          {moneyCents(change.financeCents)} to be paid through {change.lender}. No bills or reminders go to the
+          customer for it.
+        </p>
+        <div className="est-pay-actions">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={pending}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "Put this contract back on its original payment schedule? Billing and reminders pick up where they were."
+                )
+              )
+                return;
+              run(() => revertPaymentChange(estimateId), "Back on the original schedule.");
+            }}
+          >
+            Back to the original schedule
+          </button>
+        </div>
+        <p className="est-tax-note">For a decline, or if the customer changes their mind.</p>
+      </div>
+    );
+  } else if (change?.status === "sent") {
+    body = (
+      <div className="payment-change">
+        <h3>Payment change sent {day(change.sentAt)}</h3>
+        <p className="est-tax-note">
+          Waiting for the customer to sign it on their customer page: {moneyCents(change.financeCents)} to be paid
+          through {change.lender}. Until then, the original schedule stands.
+        </p>
+        {sendButtons(true)}
+        <div className="est-pay-actions">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("Take back the payment change? The customer won't be able to sign it.")) return;
+              run(() => cancelPaymentChange(estimateId), "Taken back.");
+            }}
+          >
+            Take it back
+          </button>
+        </div>
+      </div>
+    );
+  } else if (pc.canSwitch && data.loan && data.provider) {
+    const f = paymentChangeFigures(data.loan);
+    if (f.financeCents > 0) {
+      body = !open ? (
+        <div className="est-pay-actions">
+          <button type="button" className="btn-ghost" onClick={() => setOpen(true)} disabled={pending}>
+            Switch to financing…
+          </button>
+        </div>
+      ) : (
+        <div className="payment-change">
+          <h3>Switch to financing with {data.provider}</h3>
+          <p className="est-tax-note">
+            This contract was signed to be paid directly. If the customer would rather finance what&apos;s left,
+            they sign a one-page payment change; the price doesn&apos;t change.
+          </p>
+          <div className="est-tax-note">Amount to finance (what&apos;s left to pay)</div>
+          <div className="payment-change-amount">{moneyCents(f.financeCents)}</div>
+          <div className="est-tax-note">
+            {moneyCents(f.totalCents)} total · {moneyCents(f.paidCents)} already paid
+            {f.creditCents > 0 ? ` · ${moneyCents(f.creditCents)} credited` : ""}
+          </div>
+          <table className="payment-change-lines">
+            <tbody>
+              {f.rows.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.label}</td>
+                  <td className="mono">{moneyCents(r.state === "paid" ? r.cents : r.owedCents)}</td>
+                  <td>
+                    <span className={`est-badge est-badge-${PAYMENT_CHANGE_BADGE[r.state].cls}`}>
+                      {PAYMENT_CHANGE_BADGE[r.state].label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <label className="est-record-check">
+            <input type="checkbox" checked={withApply} onChange={(e) => setWithApply(e.target.checked)} disabled={pending} />
+            <span>Also send the link to apply with {data.provider}</span>
+          </label>
+          <p className="est-tax-note">If {data.provider} says no, one click puts the original schedule back.</p>
+          {sendButtons(false)}
+          <div className="est-pay-actions">
+            <button type="button" className="btn-ghost" onClick={() => setOpen(false)} disabled={pending}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  if (!body && !error && !message) return null;
+  return (
+    <>
+      {body}
+      {error && <p className="error-note">{error}</p>}
+      {message && <p className="hint-note">{message}</p>}
+    </>
   );
 }

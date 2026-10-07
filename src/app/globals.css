@@ -8188,6 +8188,15 @@ a.portal-header-stars:hover {
   background: #f6e7e7;
   color: #a03b3b;
 }
+/* Paid through the company's lender (DECISIONS #166). */
+.est-badge-financing {
+  background: #e8eff6;
+  color: var(--blueprint);
+}
+.est-pay-title .est-badge-financing {
+  margin-left: 10px;
+  vertical-align: middle;
+}
 
 /* Builder */
 .est-header-actions {
@@ -13715,6 +13724,71 @@ textarea.est-item-desc:disabled {
   border-left: 3px solid var(--line);
   padding-left: 12px;
 }
+/* Switching a signed contract to financing (DECISIONS #166). */
+.payment-change {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blueprint);
+  border-radius: 6px;
+  padding: 12px;
+  background: #fbfaf7;
+}
+.payment-change h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.payment-change-amount {
+  font-family: var(--font-data);
+  font-size: 22px;
+  font-weight: 500;
+}
+.payment-change-lines {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.payment-change-lines td {
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
+.payment-change-lines td + td {
+  padding-left: 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+.payment-change-card .payment-change-figures {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 14px;
+}
+.payment-change-figures td,
+.payment-change-figures th {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+.payment-change-figures td + td,
+.payment-change-figures th + th {
+  text-align: right;
+  padding-left: 8px;
+  white-space: nowrap;
+}
+.payment-change-card {
+  margin-bottom: 16px;
+}
+.payment-change-card .field {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+.payment-change-card a {
+  color: var(--blueprint);
+  font-weight: 600;
+}
+
 /* Follow-up reminders (DECISIONS #164): one line that wraps on a phone. */
 .financing-remind {
   display: flex;

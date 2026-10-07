@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
+import { financedLender } from "@/lib/data/financed-contracts";
 import { stripeClient } from "@/lib/stripe-env";
 import { getStripeForCompany } from "@/lib/stripe-company";
 import { leftoverCheckoutAction } from "@/lib/stripe/checkout-reuse";
@@ -298,6 +299,9 @@ export async function startPhaseCheckout(
     return { error: "That payment isn't available." };
   }
   if (estimate.status !== "Signed") return { error: "This contract isn't signed." };
+  // Paying with financing (DECISIONS #166): the lender pays it.
+  const lender = await financedLender(admin, estimate.id);
+  if (lender) return { error: `This is being paid through ${lender}.` };
 
   // What is left to pay, not the face amount: a phase part-paid by
   // cheque is charged only the rest, and money already on its way is
@@ -435,6 +439,9 @@ export async function startDepositCheckout(
   if (estimate.status !== "Signed") {
     return { error: "The deposit is due once the estimate is signed." };
   }
+  // Paying with financing (DECISIONS #166): the lender pays it.
+  const lender = await financedLender(admin, estimate.id);
+  if (lender) return { error: `This is being paid through ${lender}.` };
 
   // The contractor's own Stripe account, not the platform's -- a
   // customer of one business must never pay into another's.

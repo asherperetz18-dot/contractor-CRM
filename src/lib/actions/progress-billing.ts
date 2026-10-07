@@ -9,6 +9,7 @@ import { lockedServicesError } from "@/lib/billing/company-lock";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
+import { financedBillingError } from "@/lib/data/financed-contracts";
 import { getEmailForCompany } from "@/lib/email-company";
 import { sendEmail } from "@/lib/email-env";
 import { personName } from "@/lib/data/client-name";
@@ -119,6 +120,10 @@ export async function requestProgressPayment(
   if (estimate.status !== "Signed") {
     return { error: "This contract isn't signed yet, so there's nothing to bill against." };
   }
+  // Paying with financing (DECISIONS #166): the lender pays it, so the
+  // customer isn't billed for it.
+  const financed = await financedBillingError(admin, estimate.id);
+  if (financed) return { error: financed };
 
   // What is still owed: the amount, less credits (DECISIONS #154) and
   // the money settled on it. That's what the bill asks for -- a bill
@@ -405,6 +410,10 @@ export async function markProgressPaymentBilled(
   if (estimate.status !== "Signed") {
     return { error: "This contract isn't signed yet, so there's nothing to bill against." };
   }
+  // Paying with financing (DECISIONS #166): the lender pays it, so the
+  // customer isn't billed for it.
+  const financed = await financedBillingError(admin, estimate.id);
+  if (financed) return { error: financed };
 
   // Money kept on it, not "a paid row exists": a refund is a row too,
   // and one refunded in full can be billed again (#155).

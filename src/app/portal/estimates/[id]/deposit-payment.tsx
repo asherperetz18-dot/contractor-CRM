@@ -14,6 +14,7 @@ export function DepositPayment({
   companyName,
   kind,
   words = STANDARD_WORDS,
+  financedBy = null,
 }: {
   estimateId: string;
   /** A change order's deposit is due on signing it, not to schedule the job. */
@@ -24,6 +25,9 @@ export function DepositPayment({
   companyName: string;
   /** The company's own words (DECISIONS #121). */
   words?: CompanyWords;
+  /** The lender paying the rest (DECISIONS #166): an unpaid deposit is
+   *  paid through it, so there's no Pay button. */
+  financedBy?: string | null;
 }) {
   const deposit = word(words, "deposit");
   const project = word(words, "project", { lower: true });
@@ -55,6 +59,10 @@ export function DepositPayment({
       </div>
     );
   }
+
+  // Paying with financing (#166): the lender pays it. Said on the payment
+  // change card above, so nothing more here.
+  if (financedBy) return null;
 
   // This client pays through the contractor's own invoicing (e.g.
   // QuickBooks), so the portal says so once, plainly, instead of

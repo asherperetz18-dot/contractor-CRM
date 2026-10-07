@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canManageBills } from "@/lib/data/types";
+import { financedBillingError } from "@/lib/data/financed-contracts";
 
 /**
  * Bills a phase: stamps it requested with a one-week due date. The
@@ -28,6 +29,17 @@ export async function requestPhaseNow(phaseId: string): Promise<{ error?: string
   // not document editing, and it is exactly this page's job. The
   // company scope stays explicit.
   const admin = createAdminClient();
+  // Paying with financing (DECISIONS #166): the lender pays it, so the
+  // customer isn't billed for it.
+  const { data: phase } = await admin
+    .from("estimate_payments")
+    .select("estimate_id")
+    .eq("id", phaseId)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ estimate_id: string }>();
+  const financed = await financedBillingError(admin, phase?.estimate_id);
+  if (financed) return { error: financed };
+
   const { data, error } = await admin
     .from("estimate_payments")
     .update({

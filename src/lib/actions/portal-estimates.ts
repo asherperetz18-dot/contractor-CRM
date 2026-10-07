@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
+import { signedNameMatches } from "@/lib/payment-change";
 import {
   computeEstimateTotals,
   depositCents,
@@ -360,4 +361,67 @@ export async function declineEstimateAsCustomer(
 
   revalidatePath("/estimates");
   return {};
+}
+
+/**
+ * The customer signs the payment change on their signed contract
+ * (DECISIONS #166): the rest of it is paid through the company's lender.
+ * Typed, in the name the contract was signed in (any of its signers').
+ * Signed once: only a change still waiting takes the signature.
+ */
+export async function signPaymentChange(
+  estimateId: string,
+  typedName: string
+): Promise<{ error?: string; ok?: boolean }> {
+  const loaded = await loadForViewer(estimateId);
+  if ("error" in loaded) return loaded;
+  const { estimate } = loaded;
+  if (estimate.status !== "Signed") return { error: "This contract isn't signed." };
+
+  const admin = createAdminClient();
+  const [{ data: change }, { data: signerRows }] = await Promise.all([
+    admin
+      .from("contract_payment_changes")
+      .select("id, status")
+      .eq("estimate_id", estimate.id)
+      .eq("company_id", estimate.company_id)
+      .eq("status", "sent")
+      .maybeSingle<{ id: string; status: string }>(),
+    admin
+      .from("estimate_signers")
+      .select("party, name, signature_name")
+      .eq("estimate_id", estimate.id)
+      .returns<Pick<EstimateSigner, "party" | "name" | "signature_name">[]>(),
+  ]);
+  if (!change) return { error: "There's no payment change waiting for your signature." };
+
+  const names = (signerRows ?? [])
+    .filter((s) => s.party === "customer")
+    .map((s) => s.signature_name || s.name)
+    .filter((n): n is string => !!n?.trim());
+  const ok = names.length ? names.some((n) => signedNameMatches(typedName, n)) : signedNameMatches(typedName, null);
+  if (!ok) {
+    return {
+      error: names.length ? "Type your full name as it's on the contract." : "Type your full name to sign.",
+    };
+  }
+
+  const evidence = collectSignatureEvidence(await headers(), new Date().toISOString());
+  const { data: signed, error } = await admin
+    .from("contract_payment_changes")
+    .update({
+      status: "signed",
+      signed_name: typedName.trim().replace(/\s+/g, " "),
+      signed_at: evidence.signedAt,
+      signed_ip: evidence.ip ? evidence.ip.slice(0, 64) : null,
+    })
+    .eq("id", change.id)
+    .eq("status", "sent")
+    .select("id");
+  if (error) return { error: error.message };
+  if (!signed?.length) return { error: "This payment change was already signed or taken back." };
+
+  revalidatePath(`/portal/estimates/${estimate.id}`);
+  revalidatePath(`/estimates/${estimate.id}`);
+  return { ok: true };
 }
