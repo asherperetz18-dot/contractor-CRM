@@ -1,6 +1,6 @@
 import { AdminGate } from "@/components/admin-gate";
 import { getFinancingSettings } from "@/lib/actions/financing";
-import { FinancingForm } from "./financing-form";
+import { FinancingForm, FinancingOfferForm } from "./financing-form";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,8 @@ export default async function CustomerFinancingPage() {
         </div>
       </div>
       {settings && <FinancingForm initial={settings} />}
+      {/* Who sees it, and what it costs (DECISIONS #169). */}
+      {settings && <FinancingOfferForm initial={settings.offer} />}
     </AdminGate>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { centsFromInput, moneyCents } from "@/lib/data/types";
-import { recordFinancingStatus, sendFinancingLink, setFinancingLender } from "@/lib/actions/financing";
+import { recordFinancingStatus, sendFinancingLink, setFinancingLender, setFinancingOffered } from "@/lib/actions/financing";
 import { cancelPaymentChange, revertPaymentChange, sendPaymentChange } from "@/lib/actions/payment-change";
 import { paymentChangeFigures } from "@/lib/payment-change";
 import {
@@ -11,6 +11,8 @@ import {
   FINANCING_STATUS_LABEL,
   FOLLOW_UP_DAYS,
   currentFinancing,
+  feePercentLabel,
+  lenderFeeCents,
   remindsFor,
   splitFundedLoan,
   type FinancingEvent,
@@ -42,6 +44,8 @@ export type FinancingPanelData = {
   };
   /** The company's lender: its name, and whether its link works. */
   company?: { name: string | null; ready: boolean };
+  /** Offering financing to this customer, and what it costs (0219, #169). */
+  offer?: { ready: boolean; offered: boolean; feeBp: number | null; totalCents: number };
   steps: FinancingStep[];
   /** 0215 has run. */
   ready: boolean;
@@ -104,6 +108,9 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const [asPayment, setAsPayment] = useState(true);
   const [paidOn, setPaidOn] = useState(localToday);
   const [loanRef, setLoanRef] = useState("");
+  // What the lender kept (#169): the company's percent of the payout
+  // until someone types what it actually kept.
+  const [feeText, setFeeText] = useState<string | null>(null);
   // Follow-ups (#164): a link sent or an application in puts a task on
   // the list of whoever did it.
   const [remind, setRemind] = useState(true);
@@ -123,6 +130,10 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const payout = status === "funded" && data.canRecordPayment && !!data.loan && asPayment;
   const amountCents = amount.trim() ? centsFromInput(amount) : 0;
   const split = data.loan ? splitFundedLoan({ ...data.loan, amountCents }) : null;
+  const suggestedFee = lenderFeeCents(amountCents, data.offer?.feeBp) ?? 0;
+  const feeCents = feeText === null ? suggestedFee : feeText.trim() ? centsFromInput(feeText) : 0;
+  // Offered to this customer (#169): before 0219, always.
+  const offered = data.offer?.ready ? data.offer.offered : true;
   const remindInDays = data.followUpsReady && remind ? remindDays : null;
   const steps = [...data.steps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -147,14 +158,15 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         status,
         amountCents: withAmount && amount.trim() ? centsFromInput(amount) : null,
         note,
-        payment: payout ? { receivedOn: paidOn, reference: loanRef } : null,
+        payment: payout ? { receivedOn: paidOn, reference: loanRef, feeCents: data.own ? 0 : feeCents } : null,
         remindInDays: remindsFor(status) ? remindInDays : null,
       });
       if (res.error) return setError(res.error);
       setMessage(
-        `Saved.${res.paidCents ? ` ${moneyCents(res.paidCents)} recorded as payments on the contract.` : ""}${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}${followUpLine(res.followUpOn)}`
+        `Saved.${res.paidCents ? ` ${moneyCents(res.paidCents)} recorded as payments on the contract.` : ""}${res.feeCents ? ` ${moneyCents(res.feeCents)} lender's fee saved as a job cost.` : ""}${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}${followUpLine(res.followUpOn)}${res.warning ? ` ${res.warning}` : ""}`
       );
       setLoanRef("");
+      setFeeText(null);
       setAmount("");
       setNote("");
       router.refresh();
@@ -180,7 +192,9 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
             ? "Not financing. If the customer finances this job after all, pick who above."
             : data.provider && data.own
               ? `The customer is financing through ${data.provider}, their own lender. Record what they tell you here; a customer who applies or is approved moves to Pending Finance.`
-              : data.provider
+              : data.provider && !offered
+                ? `Financing isn't offered to this customer (see the switch below). If they ask about it, record what ${data.provider} tells you here; a customer who applies or is approved moves to Pending Finance.`
+                : data.provider
                 ? `The customer can apply with ${data.provider} from their customer page, or you can send them the link. Record what ${data.provider} tells you here; a customer who applies or is approved moves to Pending Finance.`
                 : `There's no lender link set up (Settings › Customer Financing), so this only keeps track of where the customer's financing stands.${data.choice?.ready ? " Or pick the customer's own lender above." : ""}`}
         </p>
@@ -213,7 +227,11 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         </div>
       )}
 
-      {data.canWork && data.ready && data.provider && !data.own && !notFinancing && (
+      {data.canWork && data.ready && data.offer?.ready && data.provider && !data.own && !notFinancing && !quiet && (
+        <OfferSwitch estimateId={estimateId} provider={data.provider} offer={data.offer} />
+      )}
+
+      {data.canWork && data.ready && data.provider && !data.own && !notFinancing && offered && (
         <div className="est-pay-actions">
           <button
             type="button"
@@ -274,6 +292,30 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
               </label>
               {asPayment && (
                 <>
+                  {!data.own && (
+                    <div className="financing-record">
+                      <label className="field">
+                        <span className="field-label">Lender kept a fee</span>
+                        <input
+                          className="est-item-price"
+                          inputMode="decimal"
+                          value={feeText ?? (suggestedFee ? (suggestedFee / 100).toFixed(2) : "")}
+                          onChange={(e) => setFeeText(e.target.value)}
+                          placeholder="0.00"
+                          disabled={pending}
+                        />
+                      </label>
+                      <p className="est-tax-note financing-fee-note">
+                        {data.offer?.feeBp !== null && data.offer?.feeBp !== undefined && feeText === null
+                          ? `${feePercentLabel(data.offer.feeBp)} of the payout, from Settings; change it to what the lender actually kept. `
+                          : ""}
+                        Saved as a job cost on this job, so its profit is right.
+                        {amountCents > 0 && feeCents > 0
+                          ? ` The loan brings in ${moneyCents(Math.max(0, amountCents - feeCents))}.`
+                          : ""}
+                      </p>
+                    </div>
+                  )}
                   <div className="financing-record">
                     <label className="field">
                       <span className="field-label">Paid out on</span>
@@ -298,7 +340,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
                         : `It pays ${split.parts.map((p) => `${p.label} ${moneyCents(p.cents)}`).join(", ")}. ${
                             split.leftCents > 0 ? `${moneyCents(split.leftCents)} will still be owed.` : "Nothing will be left to pay."
                           }`}{" "}
-                    If the lender keeps a fee, add it as a job cost. Paid out in draws? Record each draw as Funded
+                    Paid out in draws? Record each draw as Funded
                     with its amount: it goes on the next payment still owed, and the rest stays open for the next draw.
                   </p>
                 </>
@@ -400,7 +442,13 @@ function SwitchToFinancing({
   function send(channel: "text" | "email") {
     if (!window.confirm(`${channel === "text" ? "Text" : "Email"} the customer the payment change to sign?`)) return;
     run(
-      () => sendPaymentChange({ estimateId, channel, withApplyLink: !change && withApply && !data.own, remindInDays }),
+      () =>
+        sendPaymentChange({
+          estimateId,
+          channel,
+          withApplyLink: !change && withApply && !data.own && (data.offer?.ready ? data.offer.offered : true),
+          remindInDays,
+        }),
       `Sent by ${channel}. It's on their customer page to sign.`
     );
   }
@@ -525,7 +573,7 @@ function SwitchToFinancing({
             </tbody>
           </table>
           {/* Only the company's lender has a link to apply with (#168). */}
-          {!data.own && (
+          {!data.own && (data.offer?.ready ? data.offer.offered : true) && (
             <label className="est-record-check">
               <input type="checkbox" checked={withApply} onChange={(e) => setWithApply(e.target.checked)} disabled={pending} />
               <span>Also send the link to apply with {data.provider}</span>
@@ -662,5 +710,72 @@ function LenderChoice({ estimateId, data, compact }: { estimateId: string; data:
       </label>
       {error && <p className="error-note">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * Offer financing to this customer, or not (DECISIONS #169): the lender
+ * keeps a fee from every loan, so it's offered where it's worth it. Off:
+ * no Apply card on their page and no link to send. With the fee set, what
+ * it would cost on the whole estimate.
+ */
+function OfferSwitch({
+  estimateId,
+  provider,
+  offer,
+}: {
+  estimateId: string;
+  provider: string;
+  offer: NonNullable<FinancingPanelData["offer"]>;
+}) {
+  const router = useRouter();
+  const [on, setOn] = useState(offer.offered);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const fee = lenderFeeCents(offer.totalCents, offer.feeBp);
+
+  function flip() {
+    const next = !on;
+    setOn(next);
+    setError(null);
+    startTransition(async () => {
+      const res = await setFinancingOffered({ estimateId, offered: next });
+      if (res.error) {
+        setOn(!next);
+        return setError(res.error);
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <>
+      <div className="offer-switch">
+        <div>
+          <strong>Offer financing to this customer</strong>
+          <div className="est-tax-note">
+            {on
+              ? `On: they see "Apply for financing" on their page.`
+              : `Off: they don't see "Apply for financing", and there are no link buttons.`}
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label="Offer financing to this customer"
+          className={"offer-toggle" + (on ? " is-on" : "")}
+          onClick={flip}
+          disabled={pending}
+        />
+      </div>
+      {fee !== null && offer.totalCents > 0 && offer.feeBp !== null && (
+        <p className="offer-cost">
+          If they finance the full {moneyCents(offer.totalCents)}, {provider} keeps about {moneyCents(fee)} (
+          {feePercentLabel(offer.feeBp)}). You&apos;d get {moneyCents(offer.totalCents - fee)}.
+        </p>
+      )}
+      {error && <p className="error-note">{error}</p>}
+    </>
   );
 }

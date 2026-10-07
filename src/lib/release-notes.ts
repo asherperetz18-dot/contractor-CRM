@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.239.0",
+    date: "2026-10-07",
+    notes: [
+      "Offer financing only where it's worth it: each estimate's Financing section has an \"Offer financing to this customer\" switch. Off, they don't see \"Apply for financing\" and there are no link buttons. Settings › Customer Financing sets where new estimates start (on, or off until you turn it on) and your lender's fee, so each estimate shows what financing would cost you.",
+      "When a loan pays out, \"Lender kept a fee\" is filled in from your fee and saved as a job cost, so the job's profit is what the loan really brought in.",
+    ],
+  },
+  {
     version: "1.238.0",
     date: "2026-10-07",
     notes: [

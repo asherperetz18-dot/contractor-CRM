@@ -2121,3 +2121,22 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Draws:** a lender that pays the contractor in draws is recorded as Funded once per draw, with that draw's amount. It goes on the next payments still owed, and the rest stays open.
 
 **Consequence:** a customer's own bank is tracked, paused for and paid out like the company's lender, under its own name. Needs 0218; without it everything works as before (the company's lender only).
+
+## 169 — Offering financing per customer, and the lender's fee as a job cost
+
+**Date:** 2026-10-07
+
+**Context:** The company's lender keeps a fee from every loan it funds, close to 10% of the amount financed for this company. Every financed job earns that much less, but the CRM offered financing on every estimate and never showed or recorded the fee. The office had to remember to add it as a job cost by hand.
+
+**Decision:**
+- **The company sets where new estimates start** (Settings › Customer Financing, Office/Admin). "Offer financing on new estimates" is either on for every customer or off until turned on (`company_profile.financing_offer_default`, true as before). The setting also holds **the lender's fee** as a percent of the amount financed (`financing_fee_bp`), which is never shown to customers.
+- **Each estimate has its own switch**, "Offer financing to this customer" (`estimates.financing_offered`; none set follows the company's default). It shows when the company's lender is the one chosen (#168), along with what financing the whole estimate would cost with the fee set. When it's off:
+  - the customer page shows no Apply card;
+  - there's no Text link / Email link, and the server refuses to send one;
+  - a payment change goes without the lender's link.
+
+  The office can still record financing if the customer asks.
+- **The fee is a job cost when a loan pays out.** When Funded records the payout (#163), "Lender kept a fee" is filled in from the company's percent of the payout. The office can change it to what the lender actually kept, but never to more than the payout. It's saved as a job cost on the job (category "Financing fee", with the lender as vendor), so the job's profit is what the loan brought in. A customer's own loan (#168) has no fee for the company, so none is recorded for it.
+- **The CRM never sets prices.** Whether to price the fee in is the company's call, within its dealer agreement.
+
+**Consequence:** financing is offered where it pays, its cost is in view before it's offered, and a financed job's profit is right without anyone remembering the fee. Needs 0219; without it financing is offered as before and no fee is shown.

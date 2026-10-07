@@ -97,10 +97,11 @@ test("the company's link: stored checked, set by Office or Admin, read without b
   assert.match(actions, /isAdminRole\(profile\)/);
   assert.match(actions, /financingSettingsError\(/);
 
-  // The portal reads the two columns on their own, so a database without
-  // 0214 shows no offer instead of failing the page.
+  // The portal reads the lender on its own (every column since 0219, for
+  // the offer default), so a database without 0214 shows no offer
+  // instead of failing the page.
   const portal = source("../app/portal/estimates/[id]/page.tsx");
-  assert.match(portal, /\.select\("financing_provider, financing_url"\)/);
+  assert.match(portal, /\.from\("company_profile"\)\s*\.select\("(financing_provider, financing_url|\*)"\)/);
   assert.match(portal, /showFinancingOffer\(/);
   assert.match(portal, /<FinancingOffer/);
 });

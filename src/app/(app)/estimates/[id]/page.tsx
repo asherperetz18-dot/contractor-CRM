@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { depositCents, paidTotalCents, type BillCreditRow } from "@/lib/data/types";
-import { estimateLender, readFinancing } from "@/lib/financing";
+import { estimateLender, financingOffered, readFinancing } from "@/lib/financing";
 import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import type { FinancingPanelData, FinancingStep } from "./financing-panel";
@@ -313,11 +313,18 @@ export default async function EstimateDetailPage({
       { error: followUpError },
       { data: changeRows, error: changeError },
     ] = await Promise.all([
+      // Every column: the offer default and the lender's fee (0219, #169)
+      // where they exist.
       supabase
         .from("company_profile")
-        .select("financing_provider, financing_url")
+        .select("*")
         .eq("company_id", profile.company_id)
-        .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>(),
+        .maybeSingle<{
+          financing_provider: string | null;
+          financing_url: string | null;
+          financing_offer_default?: boolean | null;
+          financing_fee_bp?: number | null;
+        }>(),
       supabase
         .from("estimate_financing_events")
         .select("*")
@@ -381,6 +388,16 @@ export default async function EstimateDetailPage({
           ready: choiceReady,
         },
         company: { name: financingRow?.financing_provider?.trim() || null, ready: !!companyLender },
+        // Offering it to this customer, and what it would cost (#169).
+        offer: {
+          ready: "financing_offered" in choiceRow,
+          offered: financingOffered(
+            (choiceRow as { financing_offered?: boolean | null }).financing_offered,
+            financingRow?.financing_offer_default
+          ),
+          feeBp: typeof financingRow?.financing_fee_bp === "number" ? financingRow.financing_fee_bp : null,
+          totalCents: estimate.total_cents,
+        },
         steps: steps.map((s) => ({
           id: s.id,
           status: s.status,

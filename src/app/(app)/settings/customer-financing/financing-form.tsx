@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveFinancingSettings, type FinancingSettings } from "@/lib/actions/financing";
+import { saveFinancingOffer, saveFinancingSettings, type FinancingSettings } from "@/lib/actions/financing";
 
 /**
  * The company's lender and its application link (DECISIONS #161). Empty
@@ -120,6 +120,78 @@ export function FinancingForm({ initial }: { initial: FinancingSettings }) {
             </button>
           </>
         )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Whether new estimates offer financing, and the lender's fee (DECISIONS
+ * #169). A lender keeps a fee from every loan it funds, so financing can
+ * be off by default and turned on customer by customer; the fee shows
+ * what it would cost and is recorded as a job cost when a loan pays out.
+ */
+export function FinancingOfferForm({ initial }: { initial: FinancingSettings["offer"] }) {
+  const router = useRouter();
+  const [byDefault, setByDefault] = useState(initial.byDefault);
+  const [fee, setFee] = useState(initial.feeBp === null ? "" : String(Number((initial.feeBp / 100).toFixed(2))));
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  function save() {
+    setError(null);
+    setSaved(false);
+    startTransition(async () => {
+      const res = await saveFinancingOffer({ offerByDefault: byDefault, feePercent: fee });
+      if (res.error) return setError(res.error);
+      setSaved(true);
+      router.refresh();
+    });
+  }
+
+  return (
+    <section className="est-pay">
+      <h2 className="est-pay-title">Who sees it, and what it costs you</h2>
+      {!initial.ready && (
+        <p className="error-note">This needs a database update first: run 0219_financing_offer.sql in Supabase.</p>
+      )}
+      <div className="field" style={{ marginTop: 10 }}>
+        <span className="field-label">Offer financing on new estimates</span>
+        <label className="lender-choice-option">
+          <input type="radio" name="offer-default" checked={byDefault} onChange={() => setByDefault(true)} disabled={pending || !initial.ready} />
+          <span>On for every customer</span>
+        </label>
+        <label className="lender-choice-option">
+          <input type="radio" name="offer-default" checked={!byDefault} onChange={() => setByDefault(false)} disabled={pending || !initial.ready} />
+          <span>Off: I&apos;ll turn it on for the customers I choose</span>
+        </label>
+        <span className="est-tax-note">Each estimate has its own switch in its Financing section; this is where new ones start.</span>
+      </div>
+      <label className="field" style={{ maxWidth: 360, marginTop: 12 }}>
+        <span className="field-label">Your lender&apos;s fee</span>
+        <span className="offer-fee-input">
+          <input
+            inputMode="decimal"
+            value={fee}
+            onChange={(e) => setFee(e.target.value)}
+            placeholder="e.g. 9.9"
+            maxLength={6}
+            disabled={pending || !initial.ready}
+          />
+          <span>% of the amount financed</span>
+        </span>
+        <span className="est-tax-note">
+          From your dealer agreement. Used to show what financing costs you and to record the fee when a loan pays out.
+          It&apos;s never shown to customers.
+        </span>
+      </label>
+      {error && <p className="error-note">{error}</p>}
+      {saved && <p className="hint-note">Saved.</p>}
+      <div className="est-pay-actions" style={{ marginTop: 12 }}>
+        <button className="btn-primary" onClick={save} disabled={pending || !initial.ready}>
+          {pending ? "Saving…" : "Save"}
+        </button>
       </div>
     </section>
   );

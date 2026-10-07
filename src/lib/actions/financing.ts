@@ -21,6 +21,8 @@ import {
   financingSettingsError,
   financingText,
   estimateLender,
+  feeBpFromPercent,
+  financingOffered,
   followUpDue,
   lenderChoiceError,
   followUpTitle,
@@ -47,6 +49,8 @@ export type FinancingSettings = {
   /** What's wrong with the link as saved, so customers aren't being shown
    *  the offer (#161: a lender's page that turns them away). */
   problem: string | null;
+  /** Offering financing per customer, and the lender's fee (0219, #169). */
+  offer: { ready: boolean; byDefault: boolean; feeBp: number | null };
 };
 
 export async function getFinancingSettings(): Promise<FinancingSettings | null> {
@@ -65,7 +69,56 @@ export async function getFinancingSettings(): Promise<FinancingSettings | null> 
     url,
     ready: !error,
     problem: url ? financingSettingsError({ provider, url }) : null,
+    offer: await offerSettings(supabase, profile.company_id),
   };
+}
+
+/** The company's default and fee (0219), read on their own: every column,
+ *  so a database without them reads as before (offered, no fee). */
+async function offerSettings(
+  db: { from: Admin["from"] } | Awaited<ReturnType<typeof createClient>>,
+  companyId: string
+): Promise<FinancingSettings["offer"]> {
+  const { data } = await (db as Admin)
+    .from("company_profile")
+    .select("*")
+    .eq("company_id", companyId)
+    .maybeSingle<Record<string, unknown>>();
+  const ready = !!data && "financing_fee_bp" in data;
+  return {
+    ready,
+    byDefault: ready ? data!.financing_offer_default !== false : true,
+    feeBp: ready && typeof data!.financing_fee_bp === "number" ? (data!.financing_fee_bp as number) : null,
+  };
+}
+
+const NEEDS_0219 = "This needs a database update first: run 0219_financing_offer.sql in Supabase.";
+
+/**
+ * Whether new estimates offer financing, and the lender's fee (DECISIONS
+ * #169). Office or Admin, like the rest of the company's settings.
+ */
+export async function saveFinancingOffer(input: {
+  offerByDefault: boolean;
+  feePercent: string;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+  const fee = feeBpFromPercent(input.feePercent ?? "");
+  if ("error" in fee) return { error: fee.error };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("company_profile")
+    .update({ financing_offer_default: input.offerByDefault === true, financing_fee_bp: fee.bp })
+    .eq("company_id", profile.company_id)
+    .select("company_id");
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0219 : error.message };
+  if (!data?.length) return { error: "That change couldn't be saved." };
+
+  revalidatePath("/settings/customer-financing");
+  return {};
 }
 
 export async function saveFinancingSettings(input: { provider: string; url: string }): Promise<{ error?: string }> {
@@ -142,25 +195,64 @@ const NEEDS_0218 = "Choosing the customer's own lender needs a database update f
 
 /** Who the step, the payout and the follow-up are with. `ready`: 0218
  *  has run, so a step can carry the lender's name. */
-type Who = { chosen: EstimateLender | null; ready: boolean; companyName: string | null };
+type Who = {
+  chosen: EstimateLender | null;
+  ready: boolean;
+  companyName: string | null;
+  /** Financing is offered to this customer (#169). */
+  offered: boolean;
+  /** The lender's fee, hundredths of a percent, when set (#169). */
+  feeBp: number | null;
+};
 
 async function lenderOf(admin: Admin, doc: FinancingDoc): Promise<Who> {
   const [{ data: row }, { data: company }] = await Promise.all([
     // Every column, so the choice comes along where 0218 has run and
     // nothing breaks where it hasn't.
     admin.from("estimates").select("*").eq("id", doc.id).eq("company_id", doc.company_id).maybeSingle<Record<string, unknown>>(),
+    // Every column too: the offer default and fee (0219) where they exist.
     admin
       .from("company_profile")
-      .select("name, financing_provider, financing_url")
+      .select("*")
       .eq("company_id", doc.company_id)
-      .maybeSingle<{ name: string | null; financing_provider: string | null; financing_url: string | null }>(),
+      .maybeSingle<{
+        name: string | null;
+        financing_provider: string | null;
+        financing_url: string | null;
+        financing_offer_default?: boolean | null;
+        financing_fee_bp?: number | null;
+      }>(),
   ]);
   const ready = !!row && "financing_source" in row;
   const chosen = estimateLender(
     { source: (row?.financing_source as string | null) ?? null, lender: (row?.financing_lender as string | null) ?? null },
     readFinancing(company)
   );
-  return { chosen, ready, companyName: company?.name ?? null };
+  return {
+    chosen,
+    ready,
+    companyName: company?.name ?? null,
+    offered: financingOffered(row?.financing_offered as boolean | null | undefined, company?.financing_offer_default),
+    feeBp: typeof company?.financing_fee_bp === "number" ? company.financing_fee_bp : null,
+  };
+}
+
+/** Offers financing to this customer, or stops (DECISIONS #169). */
+export async function setFinancingOffered(input: { estimateId: string; offered: boolean }): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
+  const admin = createAdminClient();
+  const found = await financingDoc(admin, input.estimateId, profile.company_id);
+  if ("error" in found) return { error: found.error };
+  const { error } = await admin
+    .from("estimates")
+    .update({ financing_offered: input.offered === true })
+    .eq("id", found.doc.id)
+    .eq("company_id", found.doc.company_id);
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0219 : error.message };
+  revalidatePath(`/estimates/${found.doc.id}`);
+  return {};
 }
 
 /**
@@ -318,11 +410,21 @@ export async function recordFinancingStatus(input: {
   status: string;
   amountCents?: number | null;
   note?: string | null;
-  /** Funded: also record the payout as payments on the contract (#163). */
-  payment?: { receivedOn?: string | null; reference?: string | null } | null;
+  /** Funded: also record the payout as payments on the contract (#163),
+   *  and what the lender kept as a job cost (#169). */
+  payment?: { receivedOn?: string | null; reference?: string | null; feeCents?: number | null } | null;
   /** Sent or Applied: a follow-up task this many days out (#164). */
   remindInDays?: number | null;
-}): Promise<{ error?: string; ok?: boolean; movedTo?: string; paidCents?: number; followUpOn?: string }> {
+}): Promise<{
+  error?: string;
+  ok?: boolean;
+  movedTo?: string;
+  paidCents?: number;
+  /** What the lender kept, saved as a job cost (#169). */
+  feeCents?: number;
+  warning?: string;
+  followUpOn?: string;
+}> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
@@ -344,6 +446,8 @@ export async function recordFinancingStatus(input: {
   // Financing payments, like any payment recorded by hand. Before the
   // step, so a payout that can't be recorded records no Funded.
   let paidCents = 0;
+  let feeRecorded = 0;
+  let feeWarning: string | undefined;
   if (input.payment) {
     if (status !== "funded") return { error: "Only a funded loan is recorded as a payment." };
     if (!canManageBills(profile)) {
@@ -354,6 +458,8 @@ export async function recordFinancingStatus(input: {
     }
     const amountCents = input.amountCents ?? 0;
     if (amountCents <= 0) return { error: "Enter the amount the lender paid out." };
+    const feeCents = Math.round(Number(input.payment.feeCents ?? 0)) || 0;
+    if (feeCents < 0 || feeCents > amountCents) return { error: "The lender's fee can't be more than the payout." };
 
     const [{ data: stages }, { data: payments }] = await Promise.all([
       admin
@@ -417,6 +523,28 @@ export async function recordFinancingStatus(input: {
       return { error: payError?.message || "The payment couldn't be recorded." };
     }
     paidCents = amountCents;
+
+    // What the lender kept (#169): a cost of this job, so its profit is
+    // what the loan really brought in. Not for the customer's own loan --
+    // their bank charges them, not the company.
+    if (feeCents > 0 && !who.chosen?.own) {
+      const { error: feeError } = await admin
+        .from("job_expenses")
+        .insert({
+          company_id: doc.company_id,
+          lead_id: doc.lead_id,
+          estimate_payment_id: null,
+          vendor: lender || null,
+          category: "Financing fee",
+          description: `${lender ? `${lender} dealer fee` : "Lender's fee"} on ${doc.doc_number}`,
+          amount_cents: feeCents,
+          spent_on: day ?? (await companyToday()),
+          source: "manual",
+          created_by: profile.id,
+        });
+      if (feeError) feeWarning = `The payment was recorded, but the lender's fee wasn't saved as a job cost: ${feeError.message}`;
+      else feeRecorded = feeCents;
+    }
   }
 
   const note = [input.note?.trim(), paidCents ? "Recorded as a payment on the contract." : null].filter(Boolean).join(" ");
@@ -463,7 +591,15 @@ export async function recordFinancingStatus(input: {
     revalidatePath("/invoices");
     revalidatePath("/collect");
   }
-  return { ok: true, movedTo, paidCents: paidCents || undefined, followUpOn: saved.followUpOn };
+  if (feeRecorded) revalidatePath("/profit-loss");
+  return {
+    ok: true,
+    movedTo,
+    paidCents: paidCents || undefined,
+    feeCents: feeRecorded || undefined,
+    warning: feeWarning,
+    followUpOn: saved.followUpOn,
+  };
 }
 
 export async function sendFinancingLink(input: {
@@ -511,6 +647,10 @@ export async function sendFinancingLink(input: {
         ? "This customer is financing through their own lender, so there's no link to send."
         : "Add your lender's link under Settings › Customer Financing first.",
     };
+  }
+  // Not offered to this customer (#169): turned on first, on purpose.
+  if (!who.offered) {
+    return { error: "Financing isn't offered to this customer. Turn on \"Offer financing to this customer\" first." };
   }
   const financing = { provider: chosen.name, url: chosen.applyUrl };
   if (!lead) return { error: "Customer not found." };

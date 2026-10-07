@@ -254,6 +254,41 @@ export function lenderChoiceError(input: { source: string; lender?: string | nul
   return null;
 }
 
+// Offering financing per customer (DECISIONS #169): the lender keeps a
+// fee from every loan it funds, so each estimate can offer financing or
+// not (estimates.financing_offered, 0219), following the company's
+// default when it doesn't say; and the fee (company_profile.
+// financing_fee_bp, hundredths of a percent) shows what it would cost.
+
+/** Whether this estimate offers financing to the customer. */
+export function financingOffered(
+  estimateOffered: boolean | null | undefined,
+  companyDefault: boolean | null | undefined
+): boolean {
+  return estimateOffered ?? companyDefault ?? true;
+}
+
+/** The lender's fee on an amount financed, or null with no fee set. */
+export function lenderFeeCents(amountCents: number, feeBp: number | null | undefined): number | null {
+  if (feeBp === null || feeBp === undefined) return null;
+  return Math.round((Math.max(0, amountCents) * feeBp) / 10_000);
+}
+
+/** The fee as typed in Settings ("9.9"), in hundredths of a percent. */
+export function feeBpFromPercent(text: string): { bp: number | null } | { error: string } {
+  const t = text.trim().replace(/%$/, "").trim();
+  if (!t) return { bp: null };
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return { error: "Enter the fee as a percent, like 9.9." };
+  const bp = Math.round(Number(t) * 100);
+  if (bp > 5000) return { error: "Enter a fee from 0% to 50%." };
+  return { bp };
+}
+
+/** 990 -> "9.9%". */
+export function feePercentLabel(bp: number): string {
+  return `${Number((bp / 100).toFixed(2))}%`;
+}
+
 // Follow-ups (DECISIONS #164): a link sent or an application in puts a
 // task on the list of whoever recorded it, a few days out, so the
 // customer isn't left waiting on nobody. The next step closes it.
