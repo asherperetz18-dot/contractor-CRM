@@ -56,7 +56,33 @@ test("the offer shows on an estimate or contract still to be paid for, never on 
   assert.equal(showFinancingOffer({ ...open, kind: "completion" }), false);
 });
 
+test("a lender's application page is refused: it only opens for a browser that came through the dealer's link", () => {
+  // Service Finance: /embedded is the form itself. A customer arriving
+  // from the CRM gets "Access Denied"; the link to give them is the one
+  // that opens it.
+  for (const url of [
+    "https://apply.svcfin.com/embedded",
+    "https://APPLY.svcfin.com/Embedded/",
+    "https://apply.svcfin.com/Home/denied",
+  ]) {
+    assert.match(financingSettingsError({ provider: "Service Finance", url })!, /dealerAuthentication/, url);
+    // Already saved before this check: customers aren't sent there.
+    assert.equal(readFinancing({ financing_provider: "Service Finance", financing_url: url }), null, url);
+  }
+  const real = "https://apply.svcfin.com/home/dealerAuthentication?id=400000000&key=1234567890";
+  assert.equal(financingSettingsError({ provider: "Service Finance", url: real }), null);
+  assert.deepEqual(readFinancing({ financing_provider: "Service Finance", financing_url: real }), { provider: "Service Finance", url: real });
+});
+
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("the settings page says to try the link as a customer would, and flags a saved link customers can't use", () => {
+  const form = source("../app/(app)/settings/customer-financing/financing-form.tsx");
+  assert.match(form, /private/i);
+  assert.match(form, /initial\.problem/);
+  const actions = source("./actions/financing.ts");
+  assert.match(actions, /problem: url \? financingSettingsError\(\{ provider, url \}\) : null/);
+});
 
 test("the company's link: stored checked, set by Office or Admin, read without breaking before 0214", () => {
   const sql = source("../../supabase/migrations/0214_customer_financing.sql");

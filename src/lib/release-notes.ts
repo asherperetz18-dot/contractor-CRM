@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.232.2",
+    date: "2026-10-07",
+    notes: [
+      "Customer Financing settings now catch a lender link customers can't open, such as Service Finance's application page copied from your own browser (customers got \"Access Denied\"). The page says which link to use instead, and to try it in a private window before saving.",
+    ],
+  },
+  {
     version: "1.232.1",
     date: "2026-10-06",
     notes: [
