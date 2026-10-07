@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.234.0",
+    date: "2026-10-07",
+    notes: [
+      "Financing follow-ups: when you text or email a customer the lender's link, or mark them Applied, a follow-up task goes on your Tasks a few days out (3 by default; change it or untick it in the estimate's Financing panel). The next step you record on that estimate closes it.",
+    ],
+  },
+  {
     version: "1.233.1",
     date: "2026-10-07",
     notes: [

@@ -44,7 +44,8 @@ const ESTIMATE_CHILDREN = [
   "estimate_views",
   "estimate_files",
   "project_checklist_items",
-  // Financing steps on an estimate (0215, DECISIONS #162).
+  // Financing steps on an estimate (0215, DECISIONS #162). Restored
+  // after the follow-up tasks they point at (0216, #164).
   "estimate_financing_events",
 ] as const;
 
@@ -146,7 +147,7 @@ export async function restoreSnapshot(
   );
   await put("estimates", estimates);
   for (const table of ESTIMATE_CHILDREN) {
-    if (table !== "bill_credits") await put(table, payload.children[table]);
+    if (table !== "bill_credits" && table !== "estimate_financing_events") await put(table, payload.children[table]);
   }
   for (const table of LEAD_CHILDREN) {
     // A refund points at the payment it returns (refund_of, 0210), so
@@ -157,8 +158,10 @@ export async function restoreSnapshot(
         : payload.children[table];
     await put(table, rows);
   }
-  // A credit can point at the refund it came with.
+  // A credit can point at the refund it came with, and a financing step
+  // at its follow-up task.
   await put("bill_credits", payload.children.bill_credits);
+  await put("estimate_financing_events", payload.children.estimate_financing_events);
   await put("lead_duplicate_dismissals", payload.children.lead_duplicate_dismissals);
 
   for (const { table, column } of RELINK_TABLES) {

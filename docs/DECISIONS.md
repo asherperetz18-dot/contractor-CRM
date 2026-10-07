@@ -2033,3 +2033,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The lender's fee isn't recorded.** The full amount the loan covers settles the contract; a fee the lender keeps is a job cost the office adds. The panel says so.
 
 **Consequence:** a funded job reads paid wherever the CRM shows money, from one click. No database step.
+
+## 164 — Financing follow-ups: a task when the link goes out or the customer applies
+
+**Date:** 2026-10-07
+
+**Context:** Financing waits on other people. The customer has the lender's link but may not apply; once they apply, the lender takes days to decide. Nothing in the CRM reminded anyone to check, so a customer could sit at "Link sent" or "Applied" with nobody following up, and the sale stalls.
+
+**Decision:**
+- **A follow-up task, on by default.** The estimate's Financing panel has **Remind me to follow up in [3 days] when the link goes out or they apply** (1, 2, 3, 5 or 7 days). Texting or emailing the link, or recording Link sent or Applied, puts a task on the list of the person who did it, on the contact, due that many days out on the company's calendar. "Financing on EST-1047: did they apply with Service Finance?" after a link; "…: has Service Finance decided?" after an application. It shows on the Tasks page and the dashboard like any other task. Untick it for none.
+- **The next step closes it.** Each step remembers its task (`estimate_financing_events.follow_up_task_id`, 0216). Any later step on that estimate (applied, approved, declined, funded, or the link sent again) marks the earlier open follow-ups done, so nobody chases a customer who already answered. A task someone finished or removed by hand is left as it is; removing a task leaves its step.
+- **Nothing half-done.** The reminder is checked before anything is sent or paid. A step that can't be saved removes the task it made. A link that went out but whose step couldn't be saved says so.
+- **To the team, not the customer.** The reminder is a task for the person; the CRM sends the customer nothing more. Approved, Declined and Funded don't remind: there's nothing left to wait on.
+- **The panel shows each step's follow-up**: due when, or done.
+- **Trash** puts financing steps back after the contact's tasks, which they point at.
+
+**Consequence:** a customer in the middle of financing always has a follow-up on someone's list until the lender answers. Needs 0216; without it the panel offers no reminder and works as before.

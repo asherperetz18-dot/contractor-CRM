@@ -7,13 +7,21 @@ import { recordFinancingStatus, sendFinancingLink } from "@/lib/actions/financin
 import {
   FINANCING_STATUSES,
   FINANCING_STATUS_LABEL,
+  FOLLOW_UP_DAYS,
   currentFinancing,
+  remindsFor,
   splitFundedLoan,
   type FinancingEvent,
   type FinancingStatus,
 } from "@/lib/financing";
 
-export type FinancingStep = FinancingEvent & { id: string; channel: string | null; by: string | null };
+export type FinancingStep = FinancingEvent & {
+  id: string;
+  channel: string | null;
+  by: string | null;
+  /** The follow-up task the step put on someone's list (#164). */
+  followUp?: { due: string; done: boolean } | null;
+};
 
 export type FinancingPanelData = {
   /** The company's lender, when it has a link set (0214). */
@@ -21,6 +29,8 @@ export type FinancingPanelData = {
   steps: FinancingStep[];
   /** 0215 has run. */
   ready: boolean;
+  /** 0216 has run: a step can put a follow-up task on the list (#164). */
+  followUpsReady: boolean;
   /** Works estimates or records payments. */
   canWork: boolean;
   hasPhone: boolean;
@@ -40,6 +50,12 @@ const localToday = () => {
 const fmtDay = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
+/** A plain YYYY-MM-DD, as the day it is wherever it's read. */
+const fmtDue = (isoDay: string) =>
+  new Date(`${isoDay}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+const followUpLine = (due?: string) => (due ? ` A follow-up task is on your Tasks for ${fmtDue(due)}.` : "");
+
 const SENT_BY: Record<string, string> = { text: "by text", email: "by email", both: "by text and email" };
 
 /**
@@ -56,6 +72,10 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const [asPayment, setAsPayment] = useState(true);
   const [paidOn, setPaidOn] = useState(localToday);
   const [loanRef, setLoanRef] = useState("");
+  // Follow-ups (#164): a link sent or an application in puts a task on
+  // the list of whoever did it.
+  const [remind, setRemind] = useState(true);
+  const [remindDays, setRemindDays] = useState(3);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -65,6 +85,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const payout = status === "funded" && data.canRecordPayment && !!data.loan && asPayment;
   const amountCents = amount.trim() ? centsFromInput(amount) : 0;
   const split = data.loan ? splitFundedLoan({ ...data.loan, amountCents }) : null;
+  const remindInDays = data.followUpsReady && remind ? remindDays : null;
   const steps = [...data.steps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   function send(channel: "text" | "email") {
@@ -72,8 +93,8 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
     setError(null);
     setMessage(null);
     startTransition(async () => {
-      const res = await sendFinancingLink({ estimateId, channel });
-      if (res.sentBy) setMessage(`Sent by ${res.sentBy}.`);
+      const res = await sendFinancingLink({ estimateId, channel, remindInDays });
+      if (res.sentBy) setMessage(`Sent by ${res.sentBy}.${followUpLine(res.followUpOn)}`);
       if (res.error) setError(res.error);
       router.refresh();
     });
@@ -89,10 +110,11 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         amountCents: withAmount && amount.trim() ? centsFromInput(amount) : null,
         note,
         payment: payout ? { receivedOn: paidOn, reference: loanRef } : null,
+        remindInDays: remindsFor(status) ? remindInDays : null,
       });
       if (res.error) return setError(res.error);
       setMessage(
-        `Saved.${res.paidCents ? ` ${moneyCents(res.paidCents)} recorded as payments on the contract.` : ""}${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}`
+        `Saved.${res.paidCents ? ` ${moneyCents(res.paidCents)} recorded as payments on the contract.` : ""}${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}${followUpLine(res.followUpOn)}`
       );
       setLoanRef("");
       setAmount("");
@@ -120,6 +142,28 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         <p className="error-note">
           Financing tracking needs a database update first: run 0215_estimate_financing.sql in Supabase.
         </p>
+      )}
+
+      {data.canWork && data.ready && data.followUpsReady && (
+        <div className="financing-remind">
+          <label className="est-record-check">
+            <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} disabled={pending} />
+            <span>Remind me to follow up in</span>
+          </label>
+          <select
+            aria-label="Days until the follow-up"
+            value={remindDays}
+            onChange={(e) => setRemindDays(Number(e.target.value))}
+            disabled={pending || !remind}
+          >
+            {FOLLOW_UP_DAYS.map((d) => (
+              <option key={d} value={d}>
+                {d === 1 ? "1 day" : `${d} days`}
+              </option>
+            ))}
+          </select>
+          <span className="financing-remind-when">when the link goes out or they apply</span>
+        </div>
       )}
 
       {data.canWork && data.ready && data.provider && (
@@ -243,6 +287,11 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
               {s.status === "sent" && s.channel ? ` ${SENT_BY[s.channel] ?? ""}` : ""}
               {s.amount_cents ? ` · ${moneyCents(s.amount_cents)}` : ""} · {fmtDay(s.created_at)}
               {s.by ? ` · ${s.by}` : ""}
+              {s.followUp ? (
+                <span className="financing-step-note">
+                  {s.followUp.done ? "Follow-up task done." : `Follow-up task due ${fmtDue(s.followUp.due)}.`}
+                </span>
+              ) : null}
               {s.note ? <span className="financing-step-note">{s.note}</span> : null}
             </li>
           ))}
