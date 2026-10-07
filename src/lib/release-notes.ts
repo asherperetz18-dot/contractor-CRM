@@ -21,10 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.239.1",
+    version: "1.240.1",
     date: "2026-10-07",
     notes: [
       "A job's printed report now takes commission paid out of Net cash, with a \"Commission paid\" line, so it matches the job's row on Projects. The client copy still never shows pay.",
+    ],
+  },
+  {
+    version: "1.240.0",
+    date: "2026-10-07",
+    notes: [
+      "Time Clock: \"Your weeks\" shows whether the office approved each of your last few weeks, who approved it and when, and the hours as approved. A reopened week says why. It appears once the office starts approving your weeks on Timesheets.",
     ],
   },
   {

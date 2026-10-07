@@ -10,6 +10,9 @@ import type { ClockCheck } from "@/lib/time-clock/geo";
 
 export type VisitRow = { id: string; label: string; arrived_at: string; left_at: string | null };
 
+/** One of the person's own weeks (myWeekLine), newest first. */
+export type WeekLine = { label: string; hours: string | null; note: string; tone: "good" | "warn" | "soft" };
+
 // Where each of today's punches started and ended (0185); empty before
 // that migration runs.
 export type PunchStampRow = {
@@ -61,6 +64,7 @@ export function TimeClockView({
   stamps,
   visits,
   appointments,
+  weeks,
 }: {
   zone: string;
   usesClock: boolean;
@@ -70,6 +74,8 @@ export function TimeClockView({
   stamps: PunchStampRow[];
   visits: VisitRow[];
   appointments: { id: string; title: string; start: string | null }[];
+  /** Empty until the office approves this person's weeks. */
+  weeks: WeekLine[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -306,6 +312,25 @@ export function TimeClockView({
               <span className="tc-mono">{a.start ? clock(a.start, zone) : "—"}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Whether the office approved each week (DECISIONS #157). */}
+      {weeks.length > 0 && (
+        <div className="tc-card">
+          <div className="tc-caps">Your weeks</div>
+          {weeks.map((w) => (
+            <div key={w.label} className={`tc-week tc-week-${w.tone}`}>
+              <div className="tc-line">
+                <strong>{w.label}</strong>
+                {w.hours && <span className="tc-mono">{w.hours}</span>}
+              </div>
+              <div className="tc-week-note">{w.note}</div>
+            </div>
+          ))}
+          <p className="tc-soft">
+            Once a week is approved its hours can&apos;t change. If something&apos;s wrong, ask the office to reopen it.
+          </p>
         </div>
       )}
     </div>

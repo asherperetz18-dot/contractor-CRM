@@ -397,7 +397,7 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Net cash on Projects means "cash in minus cash out" all the way through — a job reads negative only when more money has actually left than arrived. The trade: a finished job whose commission is due but unpaid shows full net cash here until the payment is recorded; recording it (Sales Commission → Record payment, tied to the job) is what moves both pages at once.
 
-**Follow-up (1.239.1):** the single-job report (`/projects/[id]/report`) now takes the same figure on its office copy: payouts and advances recorded against the contract, a "Commission paid" line when there is any, and Net cash labelled "(collected − spent − commission paid)". It had stayed commission-free because the page also has a client copy, so the owner saw two different net cash figures for one job. The client copy still never prints pay, and the payout read is skipped for it, so pay can't reach a customer through a saved page or a print dialog.
+**Follow-up (1.240.1):** the single-job report (`/projects/[id]/report`) now takes the same figure on its office copy: payouts and advances recorded against the contract, a "Commission paid" line when there is any, and Net cash labelled "(collected − spent − commission paid)". It had stayed commission-free because the page also has a client copy, so the owner saw two different net cash figures for one job. The client copy still never prints pay, and the payout read is skipped for it, so pay can't reach a customer through a saved page or a print dialog.
 
 ## 036 — Projects shows both bases: net cash beside net accrual, and the red fires on accrual
 
@@ -1949,6 +1949,8 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **What payroll sees:** the CSV gains Approved by and Approved on; the bar says how many of the week's people are approved. The approval also records the week's total and overtime as approved.
 
 **Consequence:** a week that went to payroll stays as it was paid until someone reopens it, with a reason. **Database step: 0212**, any time; until it runs, Approve says to run it and the page is as before.
+
+**Follow-up (1.240.0):** the person whose week it is now sees it on their Time Clock page, under **Your weeks**: this week and the four before it, each "Approved by … · date. These hours are locked for payroll." with the hours as approved, "Reopened by … · date: reason. Waiting to be approved again.", "Not approved yet." or "No hours." It reads only their own approvals (0212 already lets a person read theirs). The list shows only once the office has approved or reopened one of those weeks, so a company that doesn't approve weeks sees no change, and no worker is shown "Not approved yet" on every week. Before, they had to ask the office.
 
 ## 158 — Refund notice: the customer is told when money goes back, when the office asks
 
