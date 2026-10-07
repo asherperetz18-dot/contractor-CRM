@@ -68,6 +68,8 @@ export type PortalEstimate = {
   amountDueCents: number;
   /** Billed progress phases not yet paid (completion, rough-in...). */
   phaseDueCents: number;
+  /** The lender paying what's left, when it's paying with financing (#167). */
+  financedBy?: string | null;
 };
 
 /** A bill for an extra on the job (a permit fee). */

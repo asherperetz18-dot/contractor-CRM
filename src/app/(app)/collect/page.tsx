@@ -46,7 +46,7 @@ export default async function CollectPage() {
   const companyId = profile.company_id;
   const today = await companyToday();
 
-  const [{ rows, docs, leadById }, unbilled, members] = await Promise.all([
+  const [{ rows, docs, leadById, financed }, unbilled, members] = await Promise.all([
     loadInvoiceRows(supabase, companyId, today),
     // Stages nobody has billed yet, for Billable Now.
     selectAll<Pick<EstimatePayment, "id" | "estimate_id" | "sort_order" | "name" | "amount_cents">>((f, t) =>
@@ -73,9 +73,10 @@ export default async function CollectPage() {
 
   // Billable Now is unbilled stages on signed contracts and issued
   // invoices -- not a change order's own, whose amount the contract
-  // already carries as one line.
+  // already carries as one line, and not a contract paying with
+  // financing, whose lender pays it (DECISIONS #166, #167).
   const contractById = new Map(docs.filter((e) => collectsOnDocument(e)).map((e) => [e.id, e]));
-  const billableStages = unbilled.filter((ph) => contractById.has(ph.estimate_id));
+  const billableStages = unbilled.filter((ph) => contractById.has(ph.estimate_id) && !financed.has(ph.estimate_id));
   // Only the customers these rows name -- not the company's whole
   // contact book (same cure as Estimates, #019/#020).
   const missing = billableStages
@@ -106,6 +107,7 @@ export default async function CollectPage() {
       requestedAt: r.billedAt,
       dueDate: r.dueDate,
       remainingCents: r.owedCents,
+      financedBy: r.financedBy ?? null,
       ...label(r.leadId),
     }));
 
@@ -122,10 +124,13 @@ export default async function CollectPage() {
     };
   });
 
-  // Most overdue first: by due date, a bill with none after those with one.
+  // Most overdue first: by due date, a bill with none after those with
+  // one, and those the lender pays after all of them.
   unpaid.sort(
     (a, b) =>
-      (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.requestedAt.localeCompare(b.requestedAt)
+      Number(!!a.financedBy) - Number(!!b.financedBy) ||
+      (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") ||
+      a.requestedAt.localeCompare(b.requestedAt)
   );
   billable.sort((a, b) => a.customer.localeCompare(b.customer));
 

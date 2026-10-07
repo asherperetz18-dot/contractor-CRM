@@ -251,6 +251,7 @@ test("both pages read the same rows; Money to Collect ages them by due date", ()
     assert.doesNotMatch(src, /\.select\("\*"\)/, page);
   }
   const view = source("../../app/(app)/collect/collect-view.tsx");
-  assert.match(view, /agingBucket\(r\.dueDate, today\)/);
+  // By due date -- a bill the lender pays (DECISIONS #167) has none to age by.
+  assert.match(view, /agingBucket\((r\.financedBy \? null : )?r\.dueDate, today\)/);
   assert.doesNotMatch(view, /ageDays\(r\.requestedAt\)/);
 });

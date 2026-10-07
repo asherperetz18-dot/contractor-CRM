@@ -50,6 +50,8 @@ const STATUS_COLOR: Record<InvoiceStatus, string> = {
   paid: "#2F855A",
   void: "#8A8F98",
   credit: "#6B46C1",
+  // Paid through the company's lender (DECISIONS #167).
+  financing: "#2D5F8A",
 };
 
 const fmt = (iso: string | null) =>

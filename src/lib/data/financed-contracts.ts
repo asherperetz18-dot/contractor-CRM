@@ -1,5 +1,6 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import type { createClient } from "@/lib/supabase/server";
 import { financedBillingMessage } from "@/lib/payment-change";
 
 /**
@@ -10,6 +11,8 @@ import { financedBillingMessage } from "@/lib/payment-change";
  */
 
 type Admin = ReturnType<typeof createAdminClient>;
+/** The service client, or the signed-in person's (narrowed by their access). */
+type Db = Admin | Awaited<ReturnType<typeof createClient>>;
 
 /** The lender a contract is paying through, or null. */
 export async function financedLender(admin: Admin, estimateId: string | null | undefined): Promise<string | null> {
@@ -27,7 +30,7 @@ export async function financedLender(admin: Admin, estimateId: string | null | u
 
 /** Every contract of the company paying with financing, by estimate id,
  *  with its lender. */
-export async function financedContracts(admin: Admin, companyId: string): Promise<Map<string, string>> {
+export async function financedContracts(admin: Db, companyId: string): Promise<Map<string, string>> {
   const { data, error } = await admin
     .from("contract_payment_changes")
     .select("estimate_id, lender")

@@ -32,12 +32,16 @@ export function estimateMoneyChip(
     depositPaid: boolean;
     amountDueCents: number;
     phaseDueCents?: number;
+    /** The lender paying what's left (DECISIONS #166, #167). */
+    financedBy?: string | null;
   },
   /** The company's word for a deposit (DECISIONS #121). */
   deposit = "Deposit"
 ): PortalChip | null {
   const phaseDue = e.phaseDueCents ?? 0;
   const owed = e.amountDueCents + phaseDue;
+  // Paying with financing: nothing for the customer to pay here.
+  if (owed > 0 && e.financedBy) return { label: `Financing · ${e.financedBy}`, tone: "blue" };
   if (owed > 0) {
     const due = (owed / 100).toLocaleString("en-US", {
       style: "currency",

@@ -24,6 +24,9 @@ export type ReceivableRow = {
   requestedAt: string;
   dueDate: string | null;
   remainingCents: number;
+  /** The lender paying it, when its contract is paying with financing
+   *  (DECISIONS #167): not late, whatever its date. */
+  financedBy?: string | null;
   customer: string;
   address: string | null;
   rep: string | null;
@@ -116,8 +119,9 @@ export function CollectView({
   // Aged by how late each bill is, not how long ago it went out: a bill
   // sent last week on 30-day terms is not "on track to be a problem"
   // (DECISIONS #148).
+  // A bill the lender pays isn't late, whatever its date (#167).
   const inBucket = (b: ReturnType<typeof agingBucket>) =>
-    scopedUnpaid.filter((r) => agingBucket(r.dueDate, today) === b);
+    scopedUnpaid.filter((r) => agingBucket(r.financedBy ? null : r.dueDate, today) === b);
   const buckets = {
     notDue: inBucket("not_due"),
     late: inBucket("late_1_30"),
@@ -298,7 +302,7 @@ export function CollectView({
               </thead>
               <tbody>
                 {shownUnpaid.map((r) => {
-                  const late = daysLate(r.dueDate, today);
+                  const late = r.financedBy ? 0 : daysLate(r.dueDate, today);
                   return (
                     <tr key={r.phaseId}>
                       <td>{r.rep ?? "—"}</td>
@@ -322,7 +326,9 @@ export function CollectView({
                             "est-tax-note" + (late > 30 ? " proj-check-overdue" : "")
                           }
                         >
-                          {!r.dueDate
+                          {r.financedBy
+                            ? `Financing · ${r.financedBy}`
+                            : !r.dueDate
                             ? `Billed ${fmt(r.requestedAt)}`
                             : late > 0
                               ? `${late}d late`

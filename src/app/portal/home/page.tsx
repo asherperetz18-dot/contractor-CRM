@@ -14,6 +14,7 @@ import {
 } from "@/lib/data/types";
 import { isExpired } from "@/lib/data/company-docs";
 import { billedPhaseDueCents } from "@/lib/portal/portal-display";
+import { financedContracts } from "@/lib/data/financed-contracts";
 import { portalStaffIds, toPortalStaff } from "@/lib/portal/portal-staff";
 import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
@@ -217,6 +218,9 @@ export default async function PortalHomePage() {
         .filter((p) => p.estimate_id === e.id)
         .reduce((sum, p) => sum + Math.max(0, p.credit_cents ?? 0), 0),
     }));
+  // Contracts paying with financing (DECISIONS #166): what's left is the
+  // lender's to pay, so it isn't shown as due (#167).
+  const financed = signedIds.length ? await financedContracts(admin, viewer.companyId) : new Map<string, string>();
   const estimates: PortalEstimate[] = (estimateRows ?? []).filter((e) => e.kind !== "invoice").map((e) => {
     // Paid while any of it is kept -- a refund is a row too (#155).
     const depositPaid =
@@ -229,7 +233,7 @@ export default async function PortalHomePage() {
             paymentRows.filter((p) => p.estimate_id === e.id)
           )
         : 0;
-    return { ...e, depositPaid, amountDueCents: owed, phaseDueCents };
+    return { ...e, depositPaid, amountDueCents: owed, phaseDueCents, financedBy: financed.get(e.id) ?? null };
   });
 
   // Certificates lapse on the company's calendar, not the server's UTC

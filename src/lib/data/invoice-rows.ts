@@ -22,7 +22,10 @@ export type InvoiceStatus =
   | "clearing"
   | "paid"
   | "void"
-  | "credit";
+  | "credit"
+  /** Owed, but paid through the company's lender: the contract was
+   *  switched to financing (DECISIONS #166, #167). Never overdue. */
+  | "financing";
 
 export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   draft: "Draft",
@@ -35,6 +38,7 @@ export const INVOICE_STATUS_LABEL: Record<InvoiceStatus, string> = {
   paid: "Paid",
   void: "Void",
   credit: "Credit",
+  financing: "Financing",
 };
 
 export type InvoiceDocLite = {
@@ -99,6 +103,8 @@ export type InvoiceRow = {
   status: InvoiceStatus;
   /** When the customer last opened it since it was billed. */
   viewedAt: string | null;
+  /** The lender paying it, when its contract is paying with financing. */
+  financedBy?: string;
 };
 
 /**
@@ -108,7 +114,9 @@ export type InvoiceRow = {
  * `today` is the company's own YYYY-MM-DD, so "overdue" turns over at the
  * office's midnight, not the server's. `sentByStage` is when each bill
  * was last sent to the customer (DECISIONS #150): a bill billed without
- * a send reads Billed, one sent reads Sent.
+ * a send reads Billed, one sent reads Sent. `financed` is each contract
+ * paying with financing (DECISIONS #166), by id, with its lender: what's
+ * still owed on its bills reads Financing (#167).
  */
 export function buildInvoiceRows(
   docs: InvoiceDocLite[],
@@ -116,7 +124,8 @@ export function buildInvoiceRows(
   payments: InvoicePaymentLite[],
   lastViewByDoc: Map<string, string>,
   today: string,
-  sentByStage: Map<string, string> = new Map()
+  sentByStage: Map<string, string> = new Map(),
+  financed: ReadonlyMap<string, string> = new Map()
 ): InvoiceRow[] {
   const docById = new Map(docs.map((d) => [d.id, d]));
   const paymentsByStage = new Map<string, InvoicePaymentLite[]>();
@@ -164,6 +173,12 @@ export function buildInvoiceRows(
     const lastView = lastViewByDoc.get(d.id) ?? null;
     const viewedAt = lastView && lastView >= s.requested_at ? lastView : null;
     const state = phaseState(s, paid, at);
+    // Paying with financing: owed by the lender, never late (#167).
+    const lender = financed.get(d.id);
+    if (lender && state !== "paid" && state !== "clearing") {
+      rows.push({ ...base, owedCents: phaseOwedCents(s, paid), status: "financing", viewedAt, financedBy: lender });
+      continue;
+    }
     const status: InvoiceStatus =
       state === "billed" || state === "unbilled"
         ? viewedAt
@@ -201,7 +216,7 @@ export function buildInvoiceRows(
 export const INVOICE_STATUS_GROUPS = ["open", "overdue", "paid", "draft", "void", "all"] as const;
 export type InvoiceStatusGroup = (typeof INVOICE_STATUS_GROUPS)[number];
 
-const OPEN: InvoiceStatus[] = ["billed", "sent", "viewed", "partial", "overdue", "clearing"];
+const OPEN: InvoiceStatus[] = ["billed", "sent", "viewed", "partial", "overdue", "clearing", "financing"];
 
 /** Whether a row's status belongs to a filter. Open is everything still owed. */
 export function inStatusGroup(status: InvoiceStatus, group: InvoiceStatusGroup): boolean {
