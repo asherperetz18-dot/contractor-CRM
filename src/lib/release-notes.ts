@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.233.1",
+    date: "2026-10-07",
+    notes: [
+      "Recording a funded loan: the \"It pays…\" preview no longer counts an online payment the customer started and never finished, so it matches what gets recorded.",
+    ],
+  },
+  {
     version: "1.233.0",
     date: "2026-10-07",
     notes: [
