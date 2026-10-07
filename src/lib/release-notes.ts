@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.242.0",
+    date: "2026-10-08",
+    notes: [
+      "QuickBooks, step 1: Settings › QuickBooks connects your QuickBooks Online (you sign in on Intuit's page) and lets you match your \"paid from\" accounts and cost categories to your QuickBooks accounts. Nothing is sent to QuickBooks yet; bills and payments come next.",
+    ],
+  },
+  {
     version: "1.241.1",
     date: "2026-10-07",
     notes: [

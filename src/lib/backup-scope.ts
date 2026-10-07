@@ -60,6 +60,8 @@ export const BACKUP_TABLES = [
   "contract_payment_changes",
   // The lenders a company offers financing through (0220, #170).
   "financing_lenders",
+  // Which QuickBooks account each cost category lands in (0221, #172).
+  "quickbooks_expense_accounts",
   "contract_templates",
   "scope_templates",
   "company_documents",
@@ -108,6 +110,7 @@ export const BACKUP_LEFT_OUT: Record<string, string> = {
   screen_shares: "a live screen-share's one-time token",
   google_drive_connection: "a Google sign-in, not data",
   google_calendar_connections: "a Google sign-in, not data",
+  quickbooks_connections: "a QuickBooks sign-in, not data: connecting again takes one click",
   meta_secrets_legacy: "an old Facebook key kept only for a rollback",
   user_devices: "which phones and browsers signed in",
   notification_reads: "which alerts a person has seen",

@@ -2177,3 +2177,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **A PR check (`ios-app.yml`)** archives the app unsigned on every `mobile/` PR, so a broken iOS build shows before the release run.
 
 **Consequence:** no Admin key sits in the repo's secrets. Two more secrets exist (`IOS_SIGNING_PASSWORD`, `IOS_DISTRIBUTION_CERTIFICATE`) and the certificate expires after a year: when it does, revoke it in developer.apple.com and rerun the create-once workflow with *Replace*. Renaming `ios-testflight.yml` resets `github.run_number`, and App Store Connect refuses a repeated build number for the same version, so keep the file name. If the owner ever prefers automatic cloud signing instead, it needs an **Admin** API key, and the certificate secrets go away.
+
+## 172 — QuickBooks, step 1: connect with Intuit's sign-in, match accounts, write nothing
+
+**Date:** 2026-10-08
+
+**Context:** QuickBooks sync is on the website's "Next up", and bills and their payments have carried everything a QuickBooks Bill and Bill Payment needs since 0176, but there was no way to connect a company's QuickBooks. Earlier groundwork pointed two ways: 0077 imagined job costs imported from QuickBooks, 0176 bills sent to it. The owner approved a four-step plan with a mockup, starting with the connection.
+
+**Decision:**
+- **One way, from the CRM to QuickBooks.** The CRM now records the bills, invoices and payments itself, so it sends them; it never changes or deletes what was entered in QuickBooks. Each record will go once and be marked Synced. Steps: 1 connect and match (this), 2 bills and bill payments, 3 customers, invoices and customer payments, 4 job costs.
+- **Each company connects its own QuickBooks Online** through Intuit's sign-in (OAuth 2.0, the accounting scope), with AI Build Pros' one Intuit app (`QUICKBOOKS_CLIENT_ID`, `QUICKBOOKS_CLIENT_SECRET`). Office or Admin only. The state and the company ride in short-lived cookies and are checked against the signed-in person, as the Google flows do (`oauthTargetAllowed`).
+- **The login is a secret.** The access and refresh tokens are stored encrypted with `APP_ENCRYPTION_KEY`, like the Stripe and Twilio keys, in `quickbooks_connections`: RLS on, no policies, no rights for anon or authenticated, left out of backups. Without the key, connecting is refused rather than storing them in plain text. The settings page is never sent them. The access token is refreshed when it's within five minutes of running out; Intuit may rotate the refresh token, and the new one is kept. One Intuit refuses is shown with **Connect again**.
+- **Read only in this step:** the QuickBooks company's name and its active accounts, kept on the connection so the page doesn't call Intuit on every load (**Refresh accounts** reads them again).
+- **Matching.** Each "paid from" account (`payment_accounts.qb_account_id`, 0176) matches a QuickBooks Bank or Credit Card account, filled in on connecting only where one clearly fits (same name, or the only one carrying its last four digits; a card never matches a bank account). Job costs land in a default expense or cost account, or one matched per category (`quickbooks_expense_accounts`, 0221). Vendors will be matched by name when bills go.
+- **Disconnect** withdraws the CRM's access at Intuit and forgets the login; nothing in QuickBooks changes. The matches stay for the same QuickBooks company; connecting a different one clears them.
+- **Practice companies first.** `QUICKBOOKS_ENVIRONMENT` is sandbox (Intuit's practice companies) until set to production, so the whole flow can be tried before real books are touched.
+
+**Consequence:** a company can connect QuickBooks and say which account is which; the next step sends bills and their payments. Needs 0221, the Intuit app's keys in Vercel, and the callback `https://<domain>/api/oauth/quickbooks/callback` registered with Intuit. Without the keys the page says QuickBooks isn't set up yet.
