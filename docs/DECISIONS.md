@@ -1948,6 +1948,8 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a week that went to payroll stays as it was paid until someone reopens it, with a reason. **Database step: 0212**, any time; until it runs, Approve says to run it and the page is as before.
 
+**Follow-up (1.240.0):** the person whose week it is now sees it on their Time Clock page, under **Your weeks**: this week and the four before it, each "Approved by … · date. These hours are locked for payroll." with the hours as approved, "Reopened by … · date: reason. Waiting to be approved again.", "Not approved yet." or "No hours." It reads only their own approvals (0212 already lets a person read theirs). The list shows only once the office has approved or reopened one of those weeks, so a company that doesn't approve weeks sees no change, and no worker is shown "Not approved yet" on every week. Before, they had to ask the office.
+
 ## 158 — Refund notice: the customer is told when money goes back, when the office asks
 
 **Date:** 2026-10-06

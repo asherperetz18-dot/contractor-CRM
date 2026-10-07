@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.240.0",
+    date: "2026-10-07",
+    notes: [
+      "Time Clock: \"Your weeks\" shows whether the office approved each of your last few weeks, who approved it and when, and the hours as approved. A reopened week says why. It appears once the office starts approving your weeks on Timesheets.",
+    ],
+  },
+  {
     version: "1.239.0",
     date: "2026-10-07",
     notes: [
