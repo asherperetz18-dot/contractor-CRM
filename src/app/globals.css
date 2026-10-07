@@ -13789,6 +13789,44 @@ textarea.est-item-desc:disabled {
   font-weight: 600;
 }
 
+/* Who is financing this job (DECISIONS #168). */
+.lender-choice {
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+  font-size: 13.5px;
+}
+.lender-choice-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.lender-choice-option {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 6px 0;
+}
+.lender-choice-option input {
+  margin-top: 3px;
+}
+.lender-choice-hint {
+  color: var(--ink-soft);
+}
+.lender-choice-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 6px 24px;
+}
+.lender-choice-name input {
+  flex: 1 1 200px;
+  max-width: 320px;
+}
+
 /* Follow-up reminders (DECISIONS #164): one line that wraps on a phone. */
 .financing-remind {
   display: flex;

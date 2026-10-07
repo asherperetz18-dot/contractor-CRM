@@ -33,6 +33,8 @@ export function PaymentChangeCard({
     financeCents: number;
     signedName: string | null;
     signedAt: string | null;
+    /** Paid through the customer's own loan (DECISIONS #168). */
+    ownLender?: boolean;
   };
   /** The lender's application page, when the company has one set. */
   applyUrl: string | null;
@@ -42,18 +44,23 @@ export function PaymentChangeCard({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  // Their own loan: no lender of ours deciding, and no link to apply.
+  const own = !!change.ownLender;
+  const through = own ? `your loan from ${change.lender}` : change.lender;
+  const ifNot = own
+    ? "If your loan doesn't come through, the original payment schedule applies."
+    : `${change.lender} decides on your application and sets its terms. If it isn't approved, the original payment schedule applies.`;
 
   if (change.status === "signed") {
     return (
       <div className="portal-card estdoc-result payment-change-card">
         <strong>
-          The rest of {docNumber}, {moneyCents(change.financeCents)}, is being paid through {change.lender}.
+          The rest of {docNumber}, {moneyCents(change.financeCents)}, is being paid through {through}.
         </strong>{" "}
         {change.signedName && change.signedAt
           ? `${change.signedName} signed the payment change on ${day(change.signedAt)}.`
           : null}{" "}
-        {change.lender} decides on your application and sets its terms. If it isn&apos;t approved, the original
-        payment schedule applies.
+        {ifNot}
       </div>
     );
   }
@@ -73,7 +80,7 @@ export function PaymentChangeCard({
       <p className="estdoc-muted">
         You signed {docNumber}
         {signedOn ? ` on ${day(signedOn)}` : ""} to pay {companyName} directly. You&apos;d like to pay the rest
-        through financing instead. The work and the price stay the same.
+        through {own ? through : "financing"} instead. The work and the price stay the same.
       </p>
       <table className="payment-change-figures">
         <tbody>
@@ -91,11 +98,8 @@ export function PaymentChangeCard({
           </tr>
         </tbody>
       </table>
-      <p className="est-tax-note">
-        {change.lender} decides on your application and sets its terms. If it isn&apos;t approved, the original
-        payment schedule applies.
-      </p>
-      {applyUrl && (
+      <p className="est-tax-note">{ifNot}</p>
+      {applyUrl && !own && (
         <p className="estdoc-muted">
           Haven&apos;t applied yet?{" "}
           <a href={applyUrl} target="_blank" rel="noopener noreferrer">

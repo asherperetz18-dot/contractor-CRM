@@ -2094,3 +2094,30 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Nothing is stored: it's read from the payment change each time, so going back to the original schedule puts every list back at once.
 
 **Consequence:** the office sees what the lender owes apart from what's late. The dashboard's overdue-money card and the customer statement's "past due" still count it; see TECH_DEBT. No database step.
+
+## 168 — Financing through the customer's own lender
+
+**Date:** 2026-10-07
+
+**Context:** Financing (#161–#167) knew one lender: the company's own. Some customers finance the job themselves, through their own bank or credit union, so the CRM had no way to track their application, pause their bills while the loan closed, or label the payout. And with no working company link, the whole Financing section was hidden, even for a customer with their own bank.
+
+**Decision:**
+- **Each estimate says who is financing it** (`estimates.financing_source`, 0218):
+  - **the company's lender**, which is also what an estimate with nothing set means;
+  - **the customer's own lender**, with its name typed (`financing_lender`);
+  - **not financing.**
+
+  The office picks it in the Financing section ("Who is financing this job?"), for people who work estimates or record payments. It can't be changed while a payment change is waiting or in force, because that change is worded for the lender it was sent with.
+- **Everything built so far uses the chosen lender:**
+  - each step records who it was with (`estimate_financing_events.lender`), shown on the step and on the pipeline card's hover;
+  - the follow-up task names it;
+  - "Switch to financing with …" and the payout ("Funded loan from …") use it.
+- **Only the company's lender has a link.** For a customer's own lender:
+  - there's no Text link / Email link;
+  - there's no Apply card on the customer page;
+  - the payment change reads "through your loan from …" with no link to apply (`contract_payment_changes.own_lender`);
+  - it says "if your loan doesn't come through" rather than that the lender decides.
+- **Always there.** Once 0218 has run, the Financing section shows on every sent estimate, contract and change order. With no company lender and nothing chosen, it's one question ("Is the customer financing this job?"), so a company that doesn't do financing isn't shown a form. The company option needs a working link and says so when it has none.
+- **Draws:** a lender that pays the contractor in draws is recorded as Funded once per draw, with that draw's amount. It goes on the next payments still owed, and the rest stays open.
+
+**Consequence:** a customer's own bank is tracked, paused for and paid out like the company's lender, under its own name. Needs 0218; without it everything works as before (the company's lender only).

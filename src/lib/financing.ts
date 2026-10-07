@@ -161,14 +161,20 @@ export function movesToPendingFinance(status: FinancingStatus, stageKey: string 
 // -- and how long it's been there, so a stuck application stands out.
 
 /** Where a lead's financing stands. */
-export type LeadFinancing = { status: FinancingStatus; at: string; docNumber: string };
+export type LeadFinancing = {
+  status: FinancingStatus;
+  at: string;
+  docNumber: string;
+  /** Who the step was with (0218, DECISIONS #168), when known. */
+  lender?: string;
+};
 
 /** By lead id: the newest step on each lead's live estimates (not a
  *  draft, a void or declined one, or an invoice). Steps on estimates
  *  not in `estimates` -- one the person can't see -- count for nothing. */
 export function leadFinancing(
   estimates: { id: string; lead_id: string | null; status: string; kind: string | null; doc_number: string }[],
-  events: { estimate_id: string; status: string; created_at: string }[]
+  events: { estimate_id: string; status: string; created_at: string; lender?: string | null }[]
 ): Record<string, LeadFinancing> {
   const live = new Map<string, { lead_id: string; doc_number: string }>();
   for (const e of estimates) {
@@ -182,7 +188,12 @@ export function leadFinancing(
     if (!doc || !(FINANCING_STATUSES as readonly string[]).includes(ev.status)) continue;
     const now = out[doc.lead_id];
     if (now && new Date(now.at).getTime() >= new Date(ev.created_at).getTime()) continue;
-    out[doc.lead_id] = { status: ev.status as FinancingStatus, at: ev.created_at, docNumber: doc.doc_number };
+    out[doc.lead_id] = {
+      status: ev.status as FinancingStatus,
+      at: ev.created_at,
+      docNumber: doc.doc_number,
+      ...(ev.lender?.trim() ? { lender: ev.lender.trim() } : {}),
+    };
   }
   return out;
 }
@@ -197,9 +208,50 @@ export function financingChip(
   const days = Math.max(0, daysAgo);
   return {
     text: `Financing: ${label} · ${days === 0 ? "today" : `${days}d`}`,
-    title: `${f.docNumber}: ${label} ${days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`}`,
+    title: `${f.docNumber}: ${label} ${days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`}${f.lender ? ` · ${f.lender}` : ""}`,
     tone: f.status === "declined" ? "bad" : f.status === "approved" || f.status === "funded" ? "good" : "waiting",
   };
+}
+
+// Who is financing a job (DECISIONS #168): the company's own lender,
+// the customer's own bank or credit union, or nobody. Each estimate says
+// (estimates.financing_source, 0218); one that doesn't means the
+// company's lender, as before. Only the company's lender has a link for
+// the customer to apply with.
+
+export const FINANCING_SOURCES = ["company", "customer", "none"] as const;
+export type FinancingSource = (typeof FINANCING_SOURCES)[number];
+
+export type EstimateLender = {
+  name: string;
+  /** The customer's own lender, not the company's. */
+  own: boolean;
+  /** Where the customer applies: the company's lender only. */
+  applyUrl: string | null;
+};
+
+/** The lender financing an estimate, or null for none (not financing,
+ *  or the company's lender with no working link). */
+export function estimateLender(
+  choice: { source: string | null | undefined; lender: string | null | undefined },
+  company: CompanyFinancing | null
+): EstimateLender | null {
+  if (choice.source === "none") return null;
+  if (choice.source === "customer") {
+    const name = choice.lender?.trim() ?? "";
+    return name ? { name, own: true, applyUrl: null } : null;
+  }
+  return company ? { name: company.provider, own: false, applyUrl: company.url } : null;
+}
+
+/** What's wrong with a choice of who is financing, or null. */
+export function lenderChoiceError(input: { source: string; lender?: string | null }): string | null {
+  if (!(FINANCING_SOURCES as readonly string[]).includes(input.source)) return "Pick who is financing this job.";
+  if (input.source !== "customer") return null;
+  const name = input.lender?.trim() ?? "";
+  if (!name) return "Type the name of the customer's lender.";
+  if (name.length > MAX_PROVIDER) return "That lender name is too long.";
+  return null;
 }
 
 // Follow-ups (DECISIONS #164): a link sent or an application in puts a

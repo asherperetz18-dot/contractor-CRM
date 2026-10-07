@@ -77,11 +77,12 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
     // Financing steps (0215), for the pipeline card's financing line
     // (DECISIONS #165). As small as the estimates: only the documents
     // with financing have any. Before 0215, none.
+    // Every column: who each step was with (0218, #168) where it exists.
     supabase
       .from("estimate_financing_events")
-      .select("estimate_id, status, created_at")
+      .select("*")
       .eq("company_id", profile.company_id)
-      .returns<{ estimate_id: string; status: string; created_at: string }[]>(),
+      .returns<{ estimate_id: string; status: string; created_at: string; lender?: string | null }[]>(),
   ]);
 
   const rows = estimates ?? [];

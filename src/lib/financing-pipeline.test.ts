@@ -86,7 +86,7 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 
 test("loaded with the estimates the pipeline already has, and shown on both boards", () => {
   const index = source("./data/lead-estimate-index.ts");
-  assert.match(index, /\.from\("estimate_financing_events"\)\s*\.select\("estimate_id, status, created_at"\)\s*\.eq\("company_id", profile\.company_id\)/);
+  assert.match(index, /\.from\("estimate_financing_events"\)\s*\.select\("\*"\)\s*\.eq\("company_id", profile\.company_id\)/);
   assert.match(index, /leadFinancing\(/);
   assert.match(index, /financing\?: LeadFinancing/);
 
