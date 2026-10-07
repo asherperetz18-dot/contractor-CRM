@@ -849,6 +849,34 @@ button.stat-card {
   font-size: 10.5px;
   font-weight: 600;
 }
+/* Where the customer's financing stands (DECISIONS #165), in the
+   estimate badges' colors: waiting on someone, good news, bad news. */
+.lead-card-financing,
+.pl-fin {
+  display: inline-block;
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.pl-fin {
+  font-size: 12px;
+  margin-top: 0;
+}
+.lead-card-financing-waiting {
+  background: #fdf3d8;
+  color: #8a6400;
+}
+.lead-card-financing-good {
+  background: #e3f5e9;
+  color: #1a7f45;
+}
+.lead-card-financing-bad {
+  background: #f6e7e7;
+  color: #a03b3b;
+}
 /* Rain-forecast alert (rain-alerts cron writes rain_alert_pop). Amber at
    50%+, red at 70%+ -- same two-tier convention as the pipeline's
    attention/urgent digest, so a light chance and a real storm don't

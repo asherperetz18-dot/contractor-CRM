@@ -6,6 +6,7 @@ import {
   paidTotalCents,
   type EstimateStatus,
 } from "@/lib/data/types";
+import { leadFinancing, type LeadFinancing } from "@/lib/financing";
 
 export type LeadEstimateSummaryRow = {
   id: string;
@@ -17,7 +18,15 @@ export type LeadEstimateSummaryRow = {
 
 export type LeadEstimateIndex = {
   /** Keyed by lead id. Absent means the lead has none. */
-  byLead: Record<string, { estimates: LeadEstimateSummaryRow[]; paidCents: number }>;
+  byLead: Record<
+    string,
+    {
+      estimates: LeadEstimateSummaryRow[];
+      paidCents: number;
+      /** Where the customer's financing stands (DECISIONS #165). */
+      financing?: LeadFinancing;
+    }
+  >;
   canView: boolean;
   canCreate: boolean;
 };
@@ -53,7 +62,7 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
   // Both are scoped by company_id alone -- the payments query never
   // needed an estimate id from the first result, so awaiting one before
   // asking for the other only ever cost a round trip.
-  const [{ data: estimates }, { data: payments }] = await Promise.all([
+  const [{ data: estimates }, { data: payments }, { data: steps }] = await Promise.all([
     supabase
       .from("estimates")
       .select("id, lead_id, doc_number, title, status, total_cents, kind")
@@ -65,6 +74,14 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
       .select("estimate_id, amount_cents, status")
       .eq("company_id", profile.company_id)
       .returns<{ estimate_id: string; amount_cents: number; status: string }[]>(),
+    // Financing steps (0215), for the pipeline card's financing line
+    // (DECISIONS #165). As small as the estimates: only the documents
+    // with financing have any. Before 0215, none.
+    supabase
+      .from("estimate_financing_events")
+      .select("estimate_id, status, created_at")
+      .eq("company_id", profile.company_id)
+      .returns<{ estimate_id: string; status: string; created_at: string }[]>(),
   ]);
 
   const rows = estimates ?? [];
@@ -92,6 +109,10 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
       status: e.status,
       total_cents: e.total_cents,
     });
+  }
+
+  for (const [leadId, financing] of Object.entries(leadFinancing(rows, steps ?? []))) {
+    if (byLead[leadId]) byLead[leadId].financing = financing;
   }
 
   return { byLead, canView: true, canCreate: canCreateEstimates(profile) };
