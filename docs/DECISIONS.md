@@ -2079,3 +2079,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The table is read by the company's people and written only by the server, carries the subscription lock, and goes with the contract to Trash and backups.
 
 **Consequence:** a customer can move from paying directly to financing with a signed record, without the CRM chasing them for money the lender will pay. Needs 0217; without it the panel offers no switch. Gaps are in TECH_DEBT.
+
+## 167 — A financed contract's bills read "Financing", not Overdue
+
+**Date:** 2026-10-07
+
+**Context:** Once a contract is paying with financing (#166), the customer isn't billed or reminded. But a stage billed before the switch still sat on Invoices and Money to Collect as Overdue, aged into the late buckets, and rang the bell's overdue alert. The customer's home page also still said "$… due". The office was told to chase money the lender is paying.
+
+**Decision:**
+- **A new bill status, Financing** (`invoice-rows.ts`). While its contract has a signed payment change, a bill with money still owed reads Financing, with the lender's name, whatever its due date. Paid, clearing and cancelled bills keep their own status. Financing is open money, since it's still owed (by the lender), so it counts in Outstanding. It's never Overdue, and the reminder job never picks it.
+- **Invoices and Money to Collect** read it from their one shared loader. Money to Collect shows "Financing · {lender}" in the Due column, doesn't age it as late, lists it after the late bills, and leaves the contract's stages out of Billable Now (billing them is refused anyway).
+- **The bell** rings no overdue alert for it.
+- **The customer's home page** shows "Financing · {lender}" instead of an amount due (their contract page already did, #166).
+- Nothing is stored: it's read from the payment change each time, so going back to the original schedule puts every list back at once.
+
+**Consequence:** the office sees what the lender owes apart from what's late. The dashboard's overdue-money card and the customer statement's "past due" still count it; see TECH_DEBT. No database step.

@@ -16,6 +16,7 @@ import {
   type PortalPayment,
 } from "@/lib/data/types";
 import { seesOnlyOwnDocuments } from "@/lib/data/document-news-scope";
+import { financedContracts } from "@/lib/data/financed-contracts";
 import type { PopupKind } from "@/lib/popup-shape";
 import { clientNoteAlert, seesClientNoteAlert, type SharedNoteKind } from "@/lib/data/shared-notes";
 
@@ -249,7 +250,10 @@ export async function getNotifications(): Promise<{ error?: string; data?: BellD
     rain_alert_sent_at: string | null;
   };
 
-  const phases = (duePhases.data ?? []) as Phase[];
+  // A contract paying with financing is owed by its lender, not late
+  // (DECISIONS #167): no overdue alert for it.
+  const financed = seesMoney && duePhases.data?.length ? await financedContracts(supabase, companyId) : new Map<string, string>();
+  const phases = ((duePhases.data ?? []) as Phase[]).filter((p) => !financed.has(p.estimate_id));
   const paid = (paidRecent.data ?? []) as Paid[];
   const views = (viewsRecent.data ?? []) as View[];
   const signed = (signedRecent.data ?? []) as Signed[];

@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.237.0",
+    date: "2026-10-07",
+    notes: [
+      "A contract paying with financing now reads \"Financing\" on Invoices and Money to Collect instead of Overdue: it isn't counted as late, it sits below the late bills, and it isn't offered under Billable Now. No overdue alert rings for it, and the customer's home page says \"Financing\" with your lender instead of an amount due.",
+    ],
+  },
+  {
     version: "1.236.0",
     date: "2026-10-07",
     notes: [

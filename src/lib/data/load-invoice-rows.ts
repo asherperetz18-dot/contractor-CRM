@@ -1,6 +1,7 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { selectAll } from "./select-all";
+import { financedContracts } from "./financed-contracts";
 import {
   INVOICE_DOC_COLUMNS,
   INVOICE_DOC_FILTER,
@@ -53,8 +54,10 @@ export async function loadInvoiceRows(
   docs: InvoiceDocLite[];
   payments: InvoicePaymentLite[];
   leadById: Map<string, InvoiceLead>;
+  /** Contracts paying with financing (DECISIONS #166), with their lender. */
+  financed: Map<string, string>;
 }> {
-  const [docs, stages, payments] = await Promise.all([
+  const [docs, stages, payments, financed] = await Promise.all([
     selectAll<InvoiceDocLite>((f, t) =>
       supabase
         .from("estimates")
@@ -82,6 +85,8 @@ export async function loadInvoiceRows(
         .order("id")
         .range(f, t)
     ),
+    // Their bills read Financing, not Overdue (#167). Before 0217, none.
+    financedContracts(supabase, companyId),
   ]);
 
   // When each bill was last sent (0206, DECISIONS #150), for the Invoices
@@ -102,7 +107,7 @@ export async function loadInvoiceRows(
     for (const s of sends) sentByStage.set(s.id, s.sent_at);
   }
 
-  let rows = buildInvoiceRows(docs, stages, payments, new Map(), today, sentByStage);
+  let rows = buildInvoiceRows(docs, stages, payments, new Map(), today, sentByStage, financed);
 
   // Whether the customer has opened a bill since it went out -- asked
   // only about the documents with a bill still waiting on that answer.
@@ -125,12 +130,12 @@ export async function loadInvoiceRows(
       );
       const lastView = new Map<string, string>();
       for (const v of views) if (!lastView.has(v.estimate_id)) lastView.set(v.estimate_id, v.viewed_at);
-      if (lastView.size) rows = buildInvoiceRows(docs, stages, payments, lastView, today, sentByStage);
+      if (lastView.size) rows = buildInvoiceRows(docs, stages, payments, lastView, today, sentByStage, financed);
     }
   }
 
   const leads = await loadInvoiceLeads(supabase, companyId, rows.map((r) => r.leadId));
-  return { rows, docs, payments, leadById: new Map(leads.map((l) => [l.id, l])) };
+  return { rows, docs, payments, leadById: new Map(leads.map((l) => [l.id, l])), financed };
 }
 
 /** The customers a set of bills names: only those, never the whole book. */
