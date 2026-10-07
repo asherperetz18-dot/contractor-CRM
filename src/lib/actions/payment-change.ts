@@ -12,7 +12,7 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { personName } from "@/lib/data/client-name";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
-import { estimateLender, readFinancing } from "@/lib/financing";
+import { estimateLender, financingOffered, readFinancing } from "@/lib/financing";
 import {
   openPaymentChange,
   paymentChangeEmail,
@@ -52,6 +52,8 @@ type ContractRow = {
   /** Who is financing it (0218, DECISIONS #168); absent before 0218. */
   financing_source?: string | null;
   financing_lender?: string | null;
+  /** Offered to this customer (0219, #169); absent before 0219. */
+  financing_offered?: boolean | null;
 };
 
 async function loadContract(admin: Admin, estimateId: string, companyId: string) {
@@ -142,10 +144,16 @@ export async function sendPaymentChange(input: {
 
   const [{ data: company }, { data: lead }, changes] = await Promise.all([
     admin
+      // Every column: the offer default (0219) where it exists.
       .from("company_profile")
-      .select("name, financing_provider, financing_url")
+      .select("*")
       .eq("company_id", profile.company_id)
-      .maybeSingle<{ name: string | null; financing_provider: string | null; financing_url: string | null }>(),
+      .maybeSingle<{
+        name: string | null;
+        financing_provider: string | null;
+        financing_url: string | null;
+        financing_offer_default?: boolean | null;
+      }>(),
     admin
       .from("leads")
       .select("id, company_id, contact_type, first_name, last_name, email, phone")
@@ -226,11 +234,15 @@ export async function sendPaymentChange(input: {
   const issued = await createLoginToken(lead.id, lead.company_id);
   const companyName = company?.name || "Your contractor";
   let problem: string | null = null;
+  let sentApplyLink = false;
   if (!issued.token) {
     problem = issued.error || "the sign-in link couldn't be made";
   } else {
     const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(issued.token)}&next=${encodeURIComponent(`/portal/estimates/${doc.id}`)}`;
-    const applyUrl = input.withApplyLink ? financing.applyUrl : null;
+    // The lender's link only goes to a customer it's offered to (#169).
+    const offered = financingOffered(doc.financing_offered, company?.financing_offer_default);
+    const applyUrl = input.withApplyLink && offered ? financing.applyUrl : null;
+    sentApplyLink = !!applyUrl;
     const words = {
       companyName,
       docNumber: doc.doc_number,
@@ -298,7 +310,7 @@ export async function sendPaymentChange(input: {
   // The lender's link went with it: a step on the estimate (#162), with
   // its follow-up (#164). Best effort -- the payment change already went.
   let warning: string | undefined;
-  if (input.withApplyLink && financing.applyUrl) {
+  if (sentApplyLink) {
     const step = await recordFinancingStatus({
       estimateId: doc.id,
       status: "sent",

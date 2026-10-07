@@ -21,7 +21,7 @@ import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments"
 import { loadCompanyWords } from "@/lib/load-company-words";
 import { word } from "@/lib/company-words";
 import { documentPaymentSection, scheduledPhases } from "@/lib/document-words";
-import { readFinancing, showFinancingOffer } from "@/lib/financing";
+import { financingOffered, readFinancing, showFinancingOffer } from "@/lib/financing";
 import { FinancingOffer } from "./financing-offer";
 import { PaymentChangeCard } from "./payment-change-card";
 import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
@@ -166,11 +166,13 @@ export default async function PortalEstimatePage({
     getDepositState(id),
     // The company's lender (0214, DECISIONS #161), read on its own: a
     // database without those columns shows no offer, not a broken page.
+    // Every column: whether financing is offered by default (0219, #169)
+    // where that exists.
     admin
       .from("company_profile")
-      .select("financing_provider, financing_url")
+      .select("*")
       .eq("company_id", estimate.company_id)
-      .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>(),
+      .maybeSingle<{ financing_provider: string | null; financing_url: string | null; financing_offer_default?: boolean | null }>(),
     // A payment change to sign, or one in force (0217, DECISIONS #166).
     // Before 0217, none.
     admin
@@ -196,6 +198,12 @@ export default async function PortalEstimatePage({
   const offerFinancing =
     !!financing &&
     (estimate as { financing_source?: string | null }).financing_source !== "customer" &&
+    // Offered to this customer: their estimate's switch, else the
+    // company's default (DECISIONS #169).
+    financingOffered(
+      (estimate as { financing_offered?: boolean | null }).financing_offered,
+      financingRow?.financing_offer_default
+    ) &&
     showFinancingOffer({
       kind: estimate.kind,
       status: estimate.status,
