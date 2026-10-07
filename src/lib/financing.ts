@@ -1,3 +1,5 @@
+import { isUnfinishedCheckout, phaseNetCents } from "./data/types.ts";
+
 /**
  * Customer financing, step 1 (DECISIONS #161). A company pastes in the
  * application link from its own lender's dashboard (Wisetack, Hearth,
@@ -201,4 +203,88 @@ export function financingEmail(p: {
     `</div>`,
   ].join("");
   return { subject, text, html };
+}
+
+// ---------------------------------------------------------------------
+// A funded loan, recorded as the money it is (DECISIONS #163). The
+// lender pays the contractor; the customer now owes the lender. So the
+// payout settles what's left on the contract, as Financing payments.
+
+export type LoanPart = {
+  /** The stage it pays, or null for the deposit. */
+  phaseId: string | null;
+  label: string;
+  cents: number;
+};
+
+type LoanStage = {
+  id: string;
+  name: string;
+  sort_order: number;
+  amount_cents: number;
+  credit_cents?: number | null;
+  cancelled_at?: string | null;
+};
+
+type LoanPayment = {
+  estimate_payment_id: string | null;
+  kind: string;
+  status: string;
+  amount_cents: number;
+  stripe_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+};
+
+/**
+ * Where a payout goes: the deposit first, then each stage in schedule
+ * order -- billed yet or not, since the loan pays for the whole job --
+ * each up to what's still to pay on it: its amount less credits, money
+ * settled and money on its way (a checkout opened and left is nothing).
+ * Never a cancelled stage. More than is still owed comes back as
+ * `overCents` and isn't split.
+ */
+export function splitFundedLoan(input: {
+  amountCents: number;
+  /** The contract's deposit, as its rule makes it. */
+  depositDueCents: number;
+  stages: LoanStage[];
+  payments: LoanPayment[];
+}): { parts: LoanPart[]; openCents: number; leftCents: number; overCents: number } {
+  const counted = input.payments.filter(
+    (p) =>
+      p.status === "succeeded" ||
+      (p.status === "pending" &&
+        p.amount_cents > 0 &&
+        !isUnfinishedCheckout({
+          status: p.status,
+          stripe_session_id: p.stripe_session_id ?? null,
+          stripe_payment_intent_id: p.stripe_payment_intent_id ?? null,
+        }))
+  );
+  const onIt = (phaseId: string | null) =>
+    counted
+      .filter((p) => (phaseId ? p.estimate_payment_id === phaseId : !p.estimate_payment_id && p.kind === "deposit"))
+      .reduce((sum, p) => sum + p.amount_cents, 0);
+
+  const open: LoanPart[] = [];
+  const depositOpen = Math.max(0, input.depositDueCents - onIt(null));
+  if (depositOpen > 0) open.push({ phaseId: null, label: "Deposit", cents: depositOpen });
+  for (const st of [...input.stages].filter((x) => !x.cancelled_at).sort((a, b) => a.sort_order - b.sort_order)) {
+    const left = Math.max(0, phaseNetCents(st) - onIt(st.id));
+    if (left > 0) open.push({ phaseId: st.id, label: st.name || "Stage", cents: left });
+  }
+
+  const openCents = open.reduce((sum, p) => sum + p.cents, 0);
+  const amount = Math.max(0, Math.round(input.amountCents));
+  if (amount > openCents) return { parts: [], openCents, leftCents: openCents, overCents: amount - openCents };
+
+  const parts: LoanPart[] = [];
+  let rest = amount;
+  for (const o of open) {
+    if (rest <= 0) break;
+    const cents = Math.min(rest, o.cents);
+    parts.push({ ...o, cents });
+    rest -= cents;
+  }
+  return { parts, openCents, leftCents: openCents - amount, overCents: 0 };
 }

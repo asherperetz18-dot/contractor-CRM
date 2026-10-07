@@ -8,6 +8,7 @@ import {
   FINANCING_STATUSES,
   FINANCING_STATUS_LABEL,
   currentFinancing,
+  splitFundedLoan,
   type FinancingEvent,
   type FinancingStatus,
 } from "@/lib/financing";
@@ -24,6 +25,16 @@ export type FinancingPanelData = {
   canWork: boolean;
   hasPhone: boolean;
   hasEmail: boolean;
+  /** Records payments, on a signed contract: Funded can also record the
+   *  payout (DECISIONS #163). */
+  canRecordPayment: boolean;
+  /** What's on the contract, to show where a payout would go. */
+  loan: Omit<Parameters<typeof splitFundedLoan>[0], "amountCents"> | null;
+};
+
+const localToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
 const fmtDay = (iso: string) =>
@@ -41,12 +52,19 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const [status, setStatus] = useState<FinancingStatus>("applied");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  // Funded: the payout recorded as payments on the contract (#163).
+  const [asPayment, setAsPayment] = useState(true);
+  const [paidOn, setPaidOn] = useState(localToday);
+  const [loanRef, setLoanRef] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const now = currentFinancing(data.steps);
   const withAmount = status === "approved" || status === "funded";
+  const payout = status === "funded" && data.canRecordPayment && !!data.loan && asPayment;
+  const amountCents = amount.trim() ? centsFromInput(amount) : 0;
+  const split = data.loan ? splitFundedLoan({ ...data.loan, amountCents }) : null;
   const steps = [...data.steps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   function send(channel: "text" | "email") {
@@ -70,9 +88,13 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         status,
         amountCents: withAmount && amount.trim() ? centsFromInput(amount) : null,
         note,
+        payment: payout ? { receivedOn: paidOn, reference: loanRef } : null,
       });
       if (res.error) return setError(res.error);
-      setMessage(`Saved.${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}`);
+      setMessage(
+        `Saved.${res.paidCents ? ` ${moneyCents(res.paidCents)} recorded as payments on the contract.` : ""}${res.movedTo ? ` The lead moved to ${res.movedTo}.` : ""}`
+      );
+      setLoanRef("");
       setAmount("");
       setNote("");
       router.refresh();
@@ -137,7 +159,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
           </label>
           {withAmount && (
             <label className="field">
-              <span className="field-label">Amount (optional)</span>
+              <span className="field-label">{payout ? "Amount the loan covers" : "Amount (optional)"}</span>
               <input
                 className="est-item-price"
                 inputMode="decimal"
@@ -147,6 +169,49 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
                 disabled={pending}
               />
             </label>
+          )}
+          {status === "funded" && data.canRecordPayment && data.loan && (
+            <div className="financing-payout">
+              <label className="est-record-check">
+                <input
+                  type="checkbox"
+                  checked={asPayment}
+                  onChange={(e) => setAsPayment(e.target.checked)}
+                  disabled={pending}
+                />
+                <span>Also record it as a payment{data.provider ? ` from ${data.provider}` : ""} on this contract</span>
+              </label>
+              {asPayment && (
+                <>
+                  <div className="financing-record">
+                    <label className="field">
+                      <span className="field-label">Paid out on</span>
+                      <input type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} disabled={pending} />
+                    </label>
+                    <label className="field">
+                      <span className="field-label">Loan or application # (optional)</span>
+                      <input
+                        className="est-item-name"
+                        value={loanRef}
+                        onChange={(e) => setLoanRef(e.target.value)}
+                        maxLength={80}
+                        disabled={pending}
+                      />
+                    </label>
+                  </div>
+                  <p className="est-tax-note">
+                    {!split || !amountCents
+                      ? `Still to pay on this contract: ${moneyCents(split?.openCents ?? 0)}. Enter the full amount the loan covers.`
+                      : split.overCents > 0
+                        ? `That's more than the ${moneyCents(split.openCents)} still to pay on this contract.`
+                        : `It pays ${split.parts.map((p) => `${p.label} ${moneyCents(p.cents)}`).join(", ")}. ${
+                            split.leftCents > 0 ? `${moneyCents(split.leftCents)} will still be owed.` : "Nothing will be left to pay."
+                          }`}{" "}
+                    If the lender keeps a fee, add it as a job cost.
+                  </p>
+                </>
+              )}
+            </div>
           )}
           <label className="field financing-note">
             <span className="field-label">Note (optional)</span>

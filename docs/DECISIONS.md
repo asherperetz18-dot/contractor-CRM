@@ -2018,3 +2018,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Applied or Approved moves the lead to Pending Finance**, by its tag (under whatever the company calls it), unless the lead is already there or further along (Close to Sale, Won), or is do-not-contact. A note on the contact says so. Sent, Declined and Funded never move the lead.
 
 **Consequence:** the office sees on each estimate where its financing stands, and the pipeline's Pending Finance stage fills from it. A funded loan is still recorded as a payment by hand (TECH_DEBT). **Database step: 0215**, any time after 0214; until it runs, the panel says to run it.
+
+## 163 — A funded loan, recorded as the payment it is
+
+**Date:** 2026-10-07
+
+**Context:** When a customer's loan funds, the lender pays the contractor and the customer now owes the lender. The office marked the estimate Funded (#162), then had to record the same money again, bill by bill, on the contract. Otherwise the CRM went on showing it as owed: on Invoices, Money to Collect, reminders, the customer's statement and the commission holds.
+
+**Decision:**
+- **Funded can record the payout.** On a signed contract, for the people who record payments (Bookkeeping, Office, Admin), marking Funded offers **Also record it as a payment from {lender} on this contract**. It's ticked by default, with the day it was paid out and an optional loan or application number.
+- **Where the money goes** (`splitFundedLoan`, pure and tested): the deposit first, then each stage in schedule order, billed yet or not, since the loan pays for the whole job. Each gets up to what's still to pay on it: its amount less credits, money settled and money on its way. A checkout opened and left counts for nothing, and a cancelled stage gets nothing. More than is still owed is refused, with the amount owed. The panel shows the split before it's saved.
+- **Payments like any other recorded by hand:** `portal_payments` rows with method **Financing** (new, listed with the other methods), source manual, who recorded it, the loan number as the reference, and "Funded loan from {lender}" as the office's note. The customer's statement and receipts read "Financing". No receipt is sent: the customer paid nobody.
+- **The payments go in before the Funded step**, so a payout that can't be recorded records no Funded. The step's note says it was recorded as a payment.
+- **The lender's fee isn't recorded.** The full amount the loan covers settles the contract; a fee the lender keeps is a job cost the office adds. The panel says so.
+
+**Consequence:** a funded job reads paid wherever the CRM shows money, from one click. No database step.

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile, type Profile } from "@/lib/data/profile";
-import { canCreateEstimates, canManageBills, isAdminRole } from "@/lib/data/types";
+import { canCreateEstimates, canManageBills, depositCents, isAdminRole, moneyCents } from "@/lib/data/types";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import { lockedServicesError } from "@/lib/billing/company-lock";
 import { getEmailForCompany } from "@/lib/email-company";
@@ -21,6 +21,7 @@ import {
   financingText,
   movesToPendingFinance,
   readFinancing,
+  splitFundedLoan,
   type FinancingStatus,
 } from "@/lib/financing";
 
@@ -99,6 +100,9 @@ type FinancingDoc = {
   title: string | null;
   kind: string | null;
   status: string;
+  total_cents: number;
+  deposit_percent_bp: number;
+  deposit_cap_cents: number;
 };
 
 /** The estimate, if it's this company's and one financing goes with:
@@ -107,7 +111,7 @@ type FinancingDoc = {
 async function financingDoc(admin: ReturnType<typeof createAdminClient>, estimateId: string, companyId: string) {
   const { data } = await admin
     .from("estimates")
-    .select("id, company_id, lead_id, doc_number, title, kind, status")
+    .select("id, company_id, lead_id, doc_number, title, kind, status, total_cents, deposit_percent_bp, deposit_cap_cents")
     .eq("id", estimateId)
     .eq("company_id", companyId)
     .maybeSingle<FinancingDoc>();
@@ -124,7 +128,9 @@ export async function recordFinancingStatus(input: {
   status: string;
   amountCents?: number | null;
   note?: string | null;
-}): Promise<{ error?: string; ok?: boolean; movedTo?: string }> {
+  /** Funded: also record the payout as payments on the contract (#163). */
+  payment?: { receivedOn?: string | null; reference?: string | null } | null;
+}): Promise<{ error?: string; ok?: boolean; movedTo?: string; paidCents?: number }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
@@ -137,15 +143,105 @@ export async function recordFinancingStatus(input: {
   if ("error" in found) return { error: found.error };
   const doc = found.doc;
 
+  // Funded, and recorded as the money it is (DECISIONS #163): the lender
+  // paid the contractor, so the payout settles what's left on the
+  // contract -- the deposit first, then each stage in order -- as
+  // Financing payments, like any payment recorded by hand. Before the
+  // step, so a payout that can't be recorded records no Funded.
+  let paidCents = 0;
+  if (input.payment) {
+    if (status !== "funded") return { error: "Only a funded loan is recorded as a payment." };
+    if (!canManageBills(profile)) {
+      return { error: "Only Bookkeeping, Office or Admin users can record a payment." };
+    }
+    if (doc.status !== "Signed") {
+      return { error: "The contract isn't signed yet, so there's nothing to pay against." };
+    }
+    const amountCents = input.amountCents ?? 0;
+    if (amountCents <= 0) return { error: "Enter the amount the lender paid out." };
+
+    const [{ data: stages }, { data: payments }, { data: company }] = await Promise.all([
+      admin
+        .from("estimate_payments")
+        .select("*")
+        .eq("estimate_id", doc.id)
+        .eq("company_id", profile.company_id)
+        .returns<
+          { id: string; name: string; sort_order: number; amount_cents: number; credit_cents?: number | null; cancelled_at?: string | null }[]
+        >(),
+      admin
+        .from("portal_payments")
+        .select("estimate_payment_id, kind, status, amount_cents, stripe_session_id, stripe_payment_intent_id")
+        .eq("estimate_id", doc.id)
+        .returns<
+          {
+            estimate_payment_id: string | null;
+            kind: string;
+            status: string;
+            amount_cents: number;
+            stripe_session_id: string | null;
+            stripe_payment_intent_id: string | null;
+          }[]
+        >(),
+      admin
+        .from("company_profile")
+        .select("financing_provider")
+        .eq("company_id", profile.company_id)
+        .maybeSingle<{ financing_provider: string | null }>(),
+    ]);
+    const split = splitFundedLoan({
+      amountCents,
+      depositDueCents: depositCents(doc.total_cents, doc.deposit_percent_bp, doc.deposit_cap_cents),
+      stages: stages ?? [],
+      payments: payments ?? [],
+    });
+    if (split.overCents > 0) {
+      return { error: `That's more than is still owed on this contract (${moneyCents(split.openCents)}).` };
+    }
+
+    const day = input.payment.receivedOn && /^\d{4}-\d{2}-\d{2}$/.test(input.payment.receivedOn) ? input.payment.receivedOn : null;
+    const receivedAt = day ? new Date(`${day}T12:00:00`).toISOString() : new Date().toISOString();
+    const lender = company?.financing_provider?.trim();
+    const { data: inserted, error: payError } = await admin
+      .from("portal_payments")
+      .insert(
+        split.parts.map((part) => ({
+          company_id: doc.company_id,
+          estimate_id: doc.id,
+          estimate_payment_id: part.phaseId,
+          lead_id: doc.lead_id,
+          kind: part.phaseId ? "progress" : "deposit",
+          amount_cents: part.cents,
+          status: "succeeded",
+          method: "financing",
+          source: "manual",
+          recorded_by: profile.id,
+          reference: input.payment?.reference?.trim() || null,
+          note: lender ? `Funded loan from ${lender}` : "Funded loan",
+          paid_at: receivedAt,
+          created_at: receivedAt,
+        }))
+      )
+      .select("id");
+    if (payError || (inserted?.length ?? 0) !== split.parts.length) {
+      return { error: payError?.message || "The payment couldn't be recorded." };
+    }
+    paidCents = amountCents;
+  }
+
+  const note = [input.note?.trim(), paidCents ? "Recorded as a payment on the contract." : null].filter(Boolean).join(" ");
   const { error } = await admin.from("estimate_financing_events").insert({
     company_id: profile.company_id,
     estimate_id: doc.id,
     status,
     amount_cents: input.amountCents ?? null,
-    note: input.note?.trim() || null,
+    note: note || null,
     created_by: profile.id,
   });
-  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0215 : error.message };
+  if (error) {
+    const why = isMissingSchemaError(error) ? NEEDS_0215 : error.message;
+    return { error: paidCents ? `The payment was recorded, but the Funded step wasn't saved: ${why}` : why };
+  }
 
   // Applied or approved: the lead is at Pending Finance (by its tag, so
   // under whatever this company calls it), unless it's further along.
@@ -171,7 +267,12 @@ export async function recordFinancingStatus(input: {
 
   revalidatePath(`/estimates/${doc.id}`);
   revalidatePath("/pipeline");
-  return { ok: true, movedTo };
+  if (paidCents) {
+    revalidatePath("/payments");
+    revalidatePath("/invoices");
+    revalidatePath("/collect");
+  }
+  return { ok: true, movedTo, paidCents: paidCents || undefined };
 }
 
 export async function sendFinancingLink(input: {

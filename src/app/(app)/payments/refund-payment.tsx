@@ -15,6 +15,7 @@ const METHOD_LABEL: Record<ManualPaymentMethod, string> = {
   check: "Check",
   zelle: "Zelle",
   wire: "Wire transfer",
+  financing: "Financing",
   other: "Other",
 };
 
