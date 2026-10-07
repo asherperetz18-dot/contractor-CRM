@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.239.1",
+    date: "2026-10-07",
+    notes: [
+      "A job's printed report now takes commission paid out of Net cash, with a \"Commission paid\" line, so it matches the job's row on Projects. The client copy still never shows pay.",
+    ],
+  },
+  {
     version: "1.239.0",
     date: "2026-10-07",
     notes: [

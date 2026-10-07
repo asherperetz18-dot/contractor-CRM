@@ -56,3 +56,14 @@ export function changeOrderBillingFromPayments(
     };
   });
 }
+
+/**
+ * The office copy's Net cash label. It names commission once some was
+ * paid against the job, because the figure then takes it out, the same
+ * way the Projects list does (DECISIONS #035).
+ */
+export function reportNetCashLabel(commissionCents: number | null | undefined): string {
+  return commissionCents && commissionCents > 0
+    ? "Net cash (collected − spent − commission paid)"
+    : "Net cash (collected − spent)";
+}

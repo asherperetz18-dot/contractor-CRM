@@ -397,6 +397,8 @@ Two things were verified directly rather than assumed, both load-bearing for how
 
 **Consequence:** Net cash on Projects means "cash in minus cash out" all the way through — a job reads negative only when more money has actually left than arrived. The trade: a finished job whose commission is due but unpaid shows full net cash here until the payment is recorded; recording it (Sales Commission → Record payment, tied to the job) is what moves both pages at once.
 
+**Follow-up (1.239.1):** the single-job report (`/projects/[id]/report`) now takes the same figure on its office copy: payouts and advances recorded against the contract, a "Commission paid" line when there is any, and Net cash labelled "(collected − spent − commission paid)". It had stayed commission-free because the page also has a client copy, so the owner saw two different net cash figures for one job. The client copy still never prints pay, and the payout read is skipped for it, so pay can't reach a customer through a saved page or a print dialog.
+
 ## 036 — Projects shows both bases: net cash beside net accrual, and the red fires on accrual
 
 **Date:** 2026-09-17

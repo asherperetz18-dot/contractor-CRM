@@ -30,8 +30,10 @@ import {
 } from "@/lib/data/types";
 import {
   changeOrderBillingFromPayments,
+  reportNetCashLabel,
   reportPhaseStatus,
 } from "@/lib/data/report-schedule";
+import { paidCommissionByEstimate } from "@/lib/data/commission-payouts";
 import { PrintButton } from "@/components/print-button";
 import { reportTitle } from "@/lib/tab-title";
 
@@ -192,6 +194,7 @@ export default async function ProjectReportPage({
     { data: billsRaw },
     billPaymentsRaw,
     { data: repProfile },
+    { data: commissionRows },
   ] = await Promise.all([
     supabase
       .from("estimate_payments")
@@ -223,6 +226,17 @@ export default async function ProjectReportPage({
     lead?.assigned_to
       ? supabase.from("profiles").select("name").eq("id", lead.assigned_to).maybeSingle()
       : Promise.resolve({ data: null }),
+    // Commission paid or advanced against this job (the 0158 ledger), the
+    // figure the Projects list takes out of net cash (#035). Office copy
+    // only: pay never prints for a customer, so the client copy doesn't
+    // fetch it. Before 0158 the read errors and nothing is taken out.
+    clientView
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from("rep_commission_payouts")
+          .select("estimate_id, amount_cents")
+          .eq("company_id", companyId)
+          .eq("estimate_id", contract.id),
   ]);
 
   const phases = ((phasesRaw as EstimatePayment[] | null) ?? []).sort(
@@ -278,6 +292,13 @@ export default async function ProjectReportPage({
   ).length;
   const soleContract = signedContractsForLead <= 1;
 
+  const payoutRows = (commissionRows as { estimate_id: string | null; amount_cents: number }[] | null) ?? [];
+  const commissionCents = clientView
+    ? null
+    : (paidCommissionByEstimate(
+        payoutRows.map((p) => ({ estimateId: p.estimate_id, amountCents: p.amount_cents }))
+      ).get(contract.id) ?? 0);
+
   // Less what was credited on their bills (DECISIONS #154).
   const rollup = computeProjectRollup({
     contractTotalCents: contract.total_cents - creditedCents(phases, [contract.id]),
@@ -295,6 +316,7 @@ export default async function ProjectReportPage({
     filedCostCents: filedExpenses.reduce((s, e) => s + e.amount_cents, 0),
     unfiledCostCents: unfiledExpenses.reduce((s, e) => s + e.amount_cents, 0),
     ownsUnfiledCosts: soleContract,
+    commissionCents,
   });
 
   // The costs this report may honestly list: filed ones always, unfiled
@@ -689,8 +711,14 @@ export default async function ProjectReportPage({
                     <span className="mono">{moneyCents(unpaidBillsCents)}</span>
                   </div>
                 )}
+                {!!rollup.commissionCents && (
+                  <div className="estdoc-total-row">
+                    <span>Commission paid</span>
+                    <span className="mono">{moneyCents(rollup.commissionCents)}</span>
+                  </div>
+                )}
                 <div className="estdoc-total-row estdoc-grand">
-                  <span>Net cash (collected − spent)</span>
+                  <span>{reportNetCashLabel(rollup.commissionCents)}</span>
                   <span className="mono">{moneyCents(rollup.netCashCents)}</span>
                 </div>
               </>
@@ -744,7 +772,8 @@ export default async function ProjectReportPage({
               <p>
                 Collected counts only settled payments. Owed to you is what has been billed
                 and not yet paid. Spent is recorded job costs; unpaid vendor bills sit beside
-                it because that money has not left yet. Net cash is collected less spent.
+                it because that money has not left yet. Net cash is collected less spent
+                {rollup.commissionCents ? ", and less commission paid on this job" : ""}.
               </p>
             )}
           </div>
