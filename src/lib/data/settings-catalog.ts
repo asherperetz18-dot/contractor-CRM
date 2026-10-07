@@ -291,7 +291,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
         icon: "🏦",
         href: "/settings/payment-accounts",
       },
-      { title: "QuickBooks Integration", desc: "Connect QuickBooks, map fields, configure sync, matching rules", icon: "🔗" },
+      {
+        title: "QuickBooks",
+        desc: "Connect QuickBooks Online and match your accounts, ready for bills and payments to go to your books",
+        icon: "🔗",
+        href: "/settings/quickbooks",
+      },
       {
         title: "Portal Payments",
         desc: "Connect Stripe so customers can pay deposits on the portal by card or ACH",

@@ -37,8 +37,8 @@ export function PaymentAccountsView({
           <h1 className="module-title">Payment Accounts</h1>
           <p className="module-sub">
             The bank accounts, cards and cash that bills are paid from &mdash; the &ldquo;Paid
-            from&rdquo; on every bill payment. When QuickBooks is connected, each one is matched to
-            its QuickBooks account.
+            from&rdquo; on every bill payment. Each one is matched to its QuickBooks account under
+            Settings › QuickBooks.
           </p>
         </div>
         {canEdit && !draft && (
@@ -130,7 +130,7 @@ export function PaymentAccountsView({
                   <td>{PAYMENT_ACCOUNT_KIND_LABEL[a.kind]}</td>
                   <td className="mono">{a.last4 ?? "—"}</td>
                   <td className="est-tax-note">
-                    {a.qb_account_id ? "Linked" : "Linked when QuickBooks is connected"}
+                    {a.qb_account_id ? "Matched" : "Match it in Settings › QuickBooks"}
                   </td>
                   {canEdit && (
                     <td className="right">

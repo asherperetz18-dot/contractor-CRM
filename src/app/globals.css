@@ -13996,6 +13996,79 @@ textarea.est-item-desc:disabled {
   margin: 4px 0 8px;
 }
 
+/* Settings › QuickBooks (DECISIONS #171). */
+.qb-connect {
+  display: inline-block;
+  padding: 9px 16px;
+  border-radius: 6px;
+  background: #2ca01c;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.qb-connect.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.qb-status {
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #b9e0c6;
+  border-radius: 8px;
+  background: #f1faf4;
+  font-size: 13.5px;
+  max-width: 560px;
+}
+.qb-subhead {
+  margin: 16px 0 6px;
+  font-size: 14px;
+}
+.qb-rules {
+  list-style: disc;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  max-width: 720px;
+}
+.qb-rules li,
+.qb-plan li {
+  margin: 4px 0;
+}
+.qb-plan {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.qb-plan li.is-now {
+  font-weight: 600;
+}
+.qb-table {
+  width: 100%;
+  max-width: 720px;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 6px 0 8px;
+}
+.qb-table th {
+  text-align: left;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.qb-table td {
+  padding: 7px 4px;
+  border-bottom: 1px solid #eee9de;
+  vertical-align: middle;
+}
+.qb-select {
+  width: 100%;
+  max-width: 320px;
+}
+
 /* Follow-up reminders (DECISIONS #164): one line that wraps on a phone. */
 .financing-remind {
   display: flex;
