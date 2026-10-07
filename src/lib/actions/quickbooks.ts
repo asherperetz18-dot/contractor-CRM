@@ -12,7 +12,7 @@ import { quickBooksAccess, readQbAccounts, readQuickBooksConnection } from "@/li
 import { accountChoices, categoryKey, costCategories, type QbAccount } from "@/lib/quickbooks/accounts";
 
 /**
- * QuickBooks, step 1 (DECISIONS #171): the connection and the account
+ * QuickBooks, step 1 (DECISIONS #172): the connection and the account
  * matches, for Settings › QuickBooks. Office or Admin, like the rest of
  * the company's settings. Nothing here writes to QuickBooks.
  */

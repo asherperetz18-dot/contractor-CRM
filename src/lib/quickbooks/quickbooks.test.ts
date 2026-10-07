@@ -13,7 +13,7 @@ import {
 import { accountChoices, costCategories, parseQbAccounts, suggestPaymentMatch } from "./accounts.ts";
 
 /**
- * QuickBooks, step 1 (DECISIONS #171): each company connects its own
+ * QuickBooks, step 1 (DECISIONS #172): each company connects its own
  * QuickBooks Online through Intuit's sign-in, and matches its "paid from"
  * accounts and cost categories to QuickBooks accounts. Nothing is written
  * to QuickBooks yet: the CRM only reads the company's name and its list

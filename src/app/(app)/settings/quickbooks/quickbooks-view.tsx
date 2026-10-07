@@ -14,7 +14,7 @@ const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { mo
 const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card", cash: "Cash" };
 
 /**
- * Settings › QuickBooks (DECISIONS #171): connect the company's
+ * Settings › QuickBooks (DECISIONS #172): connect the company's
  * QuickBooks Online, then match its accounts. This step writes nothing to
  * QuickBooks; the next ones send bills, then invoices and payments.
  */

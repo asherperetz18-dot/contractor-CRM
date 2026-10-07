@@ -6,7 +6,7 @@ import { encryptionAvailable } from "@/lib/crypto/secrets";
 import { quickbooksAuthorizeUrl, quickbooksCredentials } from "@/lib/quickbooks/oauth";
 
 /**
- * Starts Intuit's sign-in for the company's QuickBooks (DECISIONS #171).
+ * Starts Intuit's sign-in for the company's QuickBooks (DECISIONS #172).
  * Office or Admin only. The CSRF state and the company ride in short-
  * lived cookies because the callback is its own request, as the Google
  * flows do.

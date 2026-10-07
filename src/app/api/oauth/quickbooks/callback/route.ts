@@ -11,7 +11,7 @@ import { suggestPaymentMatch } from "@/lib/quickbooks/accounts";
 
 /**
  * Intuit sends the person back here with a code for the QuickBooks
- * company they picked (DECISIONS #171). The code becomes a login, kept
+ * company they picked (DECISIONS #172). The code becomes a login, kept
  * encrypted; the company's name and its accounts are read; and "paid
  * from" accounts whose QuickBooks account is clear are matched. Nothing
  * is written to QuickBooks.

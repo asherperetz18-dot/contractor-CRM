@@ -1,4 +1,4 @@
--- 0221: connecting QuickBooks Online, step 1 (DECISIONS #171).
+-- 0221: connecting QuickBooks Online, step 1 (DECISIONS #172).
 --
 -- Each company connects its own QuickBooks Online through Intuit's
 -- sign-in, then matches its accounts to QuickBooks' -- the "paid from"
@@ -44,7 +44,7 @@ create table if not exists public.quickbooks_connections (
 );
 
 comment on table public.quickbooks_connections is
-  'Each company''s QuickBooks Online connection (DECISIONS #171). Tokens encrypted; server only.';
+  'Each company''s QuickBooks Online connection (DECISIONS #172). Tokens encrypted; server only.';
 
 alter table public.quickbooks_connections enable row level security;
 revoke all on public.quickbooks_connections from anon, authenticated;
@@ -61,7 +61,7 @@ create table if not exists public.quickbooks_expense_accounts (
 );
 
 comment on table public.quickbooks_expense_accounts is
-  'The QuickBooks account each job cost category lands in (DECISIONS #171); category_key '''' is the default.';
+  'The QuickBooks account each job cost category lands in (DECISIONS #172); category_key '''' is the default.';
 
 alter table public.quickbooks_expense_accounts enable row level security;
 drop policy if exists quickbooks_expense_accounts_select on public.quickbooks_expense_accounts;

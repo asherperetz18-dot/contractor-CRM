@@ -60,7 +60,7 @@ export const BACKUP_TABLES = [
   "contract_payment_changes",
   // The lenders a company offers financing through (0220, #170).
   "financing_lenders",
-  // Which QuickBooks account each cost category lands in (0221, #171).
+  // Which QuickBooks account each cost category lands in (0221, #172).
   "quickbooks_expense_accounts",
   "contract_templates",
   "scope_templates",

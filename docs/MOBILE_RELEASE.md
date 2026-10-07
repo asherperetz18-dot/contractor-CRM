@@ -1,6 +1,6 @@
 # Getting the phone app into the App Store and Google Play
 
-The app itself lives in `mobile/` (decision #074). What's left for the stores is two developer accounts, which only the owner can open: they need the company's identity and payment. After that, the builds run on GitHub. **No Mac is needed**: GitHub's Mac machines can build and upload the iPhone app.
+The app itself lives in `mobile/` (decision #074). Both developer accounts are open. The builds run on GitHub. **No Mac is needed**: GitHub's Mac machines build and upload the iPhone app.
 
 ## 1. Before either account: a D-U-N-S number (free)
 
@@ -10,16 +10,60 @@ A personal account skips this step, but then the store shows your own name as th
 
 ## 2. Apple Developer Program ($99 / year)
 
-1. Enroll at <https://developer.apple.com/programs/enroll/> as an **Organization** with the D-U-N-S number. Approval takes a day to a couple of weeks.
-2. Once approved, in **App Store Connect → Users and Access → Integrations → App Store Connect API**, create a key with the **App Manager** role. Download the `.p8` file (it can only be downloaded once) and note the **Key ID** and **Issuer ID**.
-3. Add them as GitHub secrets. In the repo, go to **Settings → Secrets and variables → Actions → New repository secret**:
-   - `APP_STORE_CONNECT_KEY_ID`
-   - `APP_STORE_CONNECT_ISSUER_ID`
-   - `APP_STORE_CONNECT_KEY`: the whole text of the `.p8` file
-   - `APPLE_TEAM_ID`: from **Membership details** on developer.apple.com
+The account is open as an **Organization: AI Build Pros LLC** (team ID `7U97978GD3`). The bundle ID `com.aibuildpros.crm` is registered and the app exists in App Store Connect. Everything below happens on developer.apple.com, App Store Connect, the repo's GitHub settings, or GitHub's Actions tab. You don't need a Mac or Xcode.
 
-   Never paste these into a chat or a PR.
-4. Tell Claude it's done. The next step is a GitHub workflow that builds the iPhone app and sends it to **TestFlight**, Apple's test app, for installing on your iPhone before release.
+### 2a. The API key ✅
+
+Done: an App Store Connect **Team** API key with the **App Manager** role (*Users and Access → Integrations → App Store Connect API*), saved as four repository secrets (*Settings → Secrets and variables → Actions*):
+
+- `APP_STORE_CONNECT_KEY_ID`
+- `APP_STORE_CONNECT_ISSUER_ID`
+- `APP_STORE_CONNECT_KEY`: the whole text of the `.p8` file, including the `BEGIN`/`END` lines
+- `APPLE_TEAM_ID`: `7U97978GD3`
+
+Never paste these into a chat or a PR. App Manager is enough: the workflows sign the app themselves instead of using Xcode's "cloud" signing, which would need an **Admin** key (decision #171).
+
+### 2b. Make the signing certificate (once a year)
+
+Every iPhone build is signed with an **Apple Distribution certificate**. GitHub makes it, Apple issues it, and it is stored locked with your password, the same way as the Android key.
+
+1. **Make up a password of at least 20 characters** (four or more random words works) and save it in your password manager.
+2. **GitHub → Settings → Secrets and variables → Actions → New repository secret.** Name: `IOS_SIGNING_PASSWORD`. Value: the password.
+3. **Actions tab → "iPhone signing certificate (create once)" → Run workflow.**
+4. When it's green, open the run and download **ios-distribution-certificate-locked** under *Artifacts*. Unzip it, open `IOS_DISTRIBUTION_CERTIFICATE.txt`, copy **all** of its text, and save it as a secret named `IOS_DISTRIBUTION_CERTIFICATE`.
+5. **Keep that zip with the password** in your password manager, then **delete the artifact** on the run page (trash icon).
+
+The certificate lasts a year. It shows in developer.apple.com → *Certificates* as "Apple Distribution", with the serial number in the zip's `certificate.txt`. When it expires, or if it is ever revoked, revoke the old one there and run the workflow again with **Replace** ticked. Without that tick the workflow refuses to make a second one, because Apple allows only a few per team. If a run fails after Apple issued the certificate but before the artifact was saved, revoke that certificate in developer.apple.com before running it again.
+
+### 2c. Send a build to TestFlight
+
+**Actions tab → "iPhone App (TestFlight)" → Run workflow**, on `main`. It builds from `main` only, and takes roughly 15 to 30 minutes. It:
+
+1. installs the app's packages and syncs the Capacitor project,
+2. unlocks the certificate into a keychain of its own,
+3. reuses (or makes) the App Store profile **AI Build Pros CRM App Store** for `com.aibuildpros.crm`,
+4. builds and signs the app (version **1.0.N**, build **N**, where N is the run number, so Apple never sees the same build twice),
+5. uploads it to App Store Connect, and removes the keychain and key file.
+
+It never submits anything for App Store review. If a secret is missing, the first step names it and stops.
+
+Like Android, you only need a new build when something *native* changes: a plugin, a permission, the icon. Ordinary CRM updates reach the app on their own (decision #074).
+
+### 2d. Install it from TestFlight
+
+1. After the run is green, Apple processes the build for **5 to 30 minutes**, and emails the account when it's ready.
+2. **App Store Connect → Apps → AI Build Pros CRM → TestFlight.** The build appears under *iOS Builds*.
+3. **Internal testing** (no Apple review): under *Internal Testing* click **+**, make a group (for example *Team*), and add testers. Internal testers must be users of the App Store Connect account (*Users and Access*), up to 100. Turn on automatic distribution so each new build reaches the group.
+4. Each tester installs **TestFlight** from the App Store on their iPhone, opens the invitation email (or the TestFlight app) with the same Apple ID, and taps **Install**. A TestFlight build works for 90 days.
+5. *External testing* (people outside the account, up to 10,000 by link) needs a short Apple beta review of the first build and the test information Apple asks for. Not needed to start.
+
+### 2e. Before the App Store (not yet)
+
+- **A reviewer login**, same as Play (3e.4): a Field user in a demo company with sample data.
+- **Background location:** Apple reviews `Always` location closely. The reason shown on the iPhone ("While you're clocked in, your location keeps being shared with the phone locked...") must match what the reviewer sees: clock in, lock the phone, and the Team Map keeps the dot moving.
+- **Privacy:** App Store Connect's *App Privacy* answers are the same data as Play's Data safety (3f). The privacy policy and account deletion pages in section 4 cover Apple's rules too.
+- **iPad:** the app runs on iPad too, so the listing needs iPad screenshots as well as iPhone ones.
+- **Speaker button:** on iPhone the dialer has no Speaker button yet (decision #171); it needs a small Swift plugin like Android's. Test calls on the TestFlight build to see how the audio routes.
 
 ## 3. Google Play Console ($25 once)
 
@@ -86,6 +130,7 @@ The account is an Organization, so Play's 12-tester, 14-day closed test (a rule 
 
 - The app, background location, and the "On the clock" notification (`mobile/`).
 - The app icon and splash screen from the AI Build Pros logo (`mobile/assets/`, generated with `npx capacitor-assets generate`).
+- The iPhone TestFlight workflow, the one-time certificate workflow, and an unsigned **iPhone App (test build)** check on every PR that touches `mobile/` (decision #171).
 - An installable Android test build on every PR that touches `mobile/`: the **Android App (test build)** check. It also compiles the release bundle, so a PR can't break the Play build unnoticed.
 - The signed Play build (**Android App (Play release)**) and the one-time key workflow (**Android upload key (create once)**), decision #086.
 - The app needs Android 7 (API 24) or newer, which Play's automatic protection requires; it refused the first upload at API 23.

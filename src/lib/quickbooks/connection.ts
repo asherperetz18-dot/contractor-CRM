@@ -6,7 +6,7 @@ import { QB_MINOR_VERSION, needsRefresh, qbApiBase, quickbooksCredentials, refre
 import { parseQbAccounts, type QbAccount } from "./accounts";
 
 /**
- * A company's QuickBooks connection, on the server only (DECISIONS #171).
+ * A company's QuickBooks connection, on the server only (DECISIONS #172).
  * The login Intuit gave is stored encrypted in quickbooks_connections,
  * which no CRM user can read; this file is the one place that decrypts
  * it, refreshes it before it runs out, and asks QuickBooks for things.

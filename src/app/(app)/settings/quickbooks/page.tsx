@@ -4,7 +4,7 @@ import { QuickBooksView } from "./quickbooks-view";
 
 export const dynamic = "force-dynamic";
 
-/** Connecting QuickBooks Online, and matching accounts (DECISIONS #171). */
+/** Connecting QuickBooks Online, and matching accounts (DECISIONS #172). */
 export default async function QuickBooksPage({
   searchParams,
 }: {

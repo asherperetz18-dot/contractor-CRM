@@ -1,5 +1,5 @@
 /**
- * Matching the CRM's accounts to QuickBooks' (DECISIONS #171). A bill
+ * Matching the CRM's accounts to QuickBooks' (DECISIONS #172). A bill
  * payment goes to QuickBooks from the bank or card account it was paid
  * from, and its cost lands in an expense account, so before anything is
  * sent each company says which QuickBooks account is which. Pure.
