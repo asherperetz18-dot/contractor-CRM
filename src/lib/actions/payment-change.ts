@@ -12,7 +12,7 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { personName } from "@/lib/data/client-name";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
-import { readFinancing } from "@/lib/financing";
+import { estimateLender, readFinancing } from "@/lib/financing";
 import {
   openPaymentChange,
   paymentChangeEmail,
@@ -49,12 +49,16 @@ type ContractRow = {
   total_cents: number;
   deposit_percent_bp: number;
   deposit_cap_cents: number;
+  /** Who is financing it (0218, DECISIONS #168); absent before 0218. */
+  financing_source?: string | null;
+  financing_lender?: string | null;
 };
 
 async function loadContract(admin: Admin, estimateId: string, companyId: string) {
+  // Every column, so the lender choice (0218) comes along where it exists.
   const { data } = await admin
     .from("estimates")
-    .select("id, company_id, lead_id, doc_number, kind, status, total_cents, deposit_percent_bp, deposit_cap_cents")
+    .select("*")
     .eq("id", estimateId)
     .eq("company_id", companyId)
     .maybeSingle<ContractRow>();
@@ -159,8 +163,20 @@ export async function sendPaymentChange(input: {
     changesOf(admin, doc.id),
   ]);
   if ("error" in changes) return { error: changes.error };
-  const financing = readFinancing(company);
-  if (!financing) return { error: "Add your lender's link under Settings › Customer Financing first." };
+  // The lender this job is financed through (#168): the company's, or the
+  // customer's own -- which has no link to apply with.
+  const financing = estimateLender(
+    { source: doc.financing_source ?? null, lender: doc.financing_lender ?? null },
+    readFinancing(company)
+  );
+  if (!financing) {
+    return {
+      error:
+        doc.financing_source === "none"
+          ? "This job is marked as not financing. Pick who is financing it first."
+          : "Add your lender's link under Settings › Customer Financing first, or pick the customer's own lender.",
+    };
+  }
   if (!lead) return { error: "Customer not found." };
   if (input.channel === "text" && !lead.phone) return { error: "This customer has no phone number on file." };
   if (input.channel === "email" && !lead.email) return { error: "This customer has no email address on file." };
@@ -173,7 +189,7 @@ export async function sendPaymentChange(input: {
   // What the customer is asked to sign, as it stands now. Sending again
   // brings a change still waiting up to date.
   const terms = {
-    lender: financing.provider,
+    lender: financing.name,
     total_cents: figures.totalCents,
     paid_cents: figures.paidCents,
     finance_cents: figures.financeCents,
@@ -187,7 +203,15 @@ export async function sendPaymentChange(input: {
   } else {
     const { data: made, error } = await admin
       .from("contract_payment_changes")
-      .insert({ company_id: doc.company_id, estimate_id: doc.id, status: "sent", created_by: profile.id, ...terms })
+      .insert({
+        company_id: doc.company_id,
+        estimate_id: doc.id,
+        status: "sent",
+        created_by: profile.id,
+        ...terms,
+        // Only when it is: a database without 0218 has no such column.
+        ...(financing.own ? { own_lender: true } : {}),
+      })
       .select("id")
       .single<{ id: string }>();
     if (error || !made) {
@@ -206,14 +230,15 @@ export async function sendPaymentChange(input: {
     problem = issued.error || "the sign-in link couldn't be made";
   } else {
     const link = `${portalBaseUrl()}/portal/verify?token=${encodeURIComponent(issued.token)}&next=${encodeURIComponent(`/portal/estimates/${doc.id}`)}`;
-    const applyUrl = input.withApplyLink ? financing.url : null;
+    const applyUrl = input.withApplyLink ? financing.applyUrl : null;
     const words = {
       companyName,
       docNumber: doc.doc_number,
-      lender: financing.provider,
+      lender: financing.name,
       financeCents: figures.financeCents,
       link,
       applyUrl,
+      ownLender: financing.own,
     };
     if (input.channel === "email") {
       const mail = paymentChangeEmail({ ...words, customerName: personName(lead) || null });
@@ -273,7 +298,7 @@ export async function sendPaymentChange(input: {
   // The lender's link went with it: a step on the estimate (#162), with
   // its follow-up (#164). Best effort -- the payment change already went.
   let warning: string | undefined;
-  if (input.withApplyLink) {
+  if (input.withApplyLink && financing.applyUrl) {
     const step = await recordFinancingStatus({
       estimateId: doc.id,
       status: "sent",

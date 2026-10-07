@@ -191,8 +191,11 @@ export default async function PortalEstimatePage({
   // Financing, while there's still something to pay for (#161).
   const depositDue = depositState.amountCents > 0 && !depositState.paid;
   const financing = readFinancing(financingRow);
+  // A customer financing through their own lender (DECISIONS #168) isn't
+  // offered the company's.
   const offerFinancing =
     !!financing &&
+    (estimate as { financing_source?: string | null }).financing_source !== "customer" &&
     showFinancingOffer({
       kind: estimate.kind,
       status: estimate.status,
@@ -234,6 +237,7 @@ export default async function PortalEstimatePage({
             financeCents: paymentChange.finance_cents,
             signedName: paymentChange.signed_name,
             signedAt: paymentChange.signed_at,
+            ownLender: (paymentChange as { own_lender?: boolean }).own_lender === true,
           }}
           applyUrl={financing?.url ?? null}
         />

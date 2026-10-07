@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { depositCents, paidTotalCents, type BillCreditRow } from "@/lib/data/types";
-import { readFinancing } from "@/lib/financing";
+import { estimateLender, readFinancing } from "@/lib/financing";
 import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import type { FinancingPanelData, FinancingStep } from "./financing-panel";
@@ -324,7 +324,7 @@ export default async function EstimateDetailPage({
         .eq("company_id", profile.company_id)
         .eq("estimate_id", estimate.id)
         .order("created_at")
-        .returns<(FinancingStep & { created_by: string | null; follow_up_task_id?: string | null })[]>(),
+        .returns<(FinancingStep & { created_by: string | null; follow_up_task_id?: string | null; lender?: string | null })[]>(),
       // Follow-up reminders (DECISIONS #164) need 0216.
       supabase.from("estimate_financing_events").select("follow_up_task_id").limit(0),
       // Switched to financing after signing (0217, DECISIONS #166).
@@ -336,10 +336,20 @@ export default async function EstimateDetailPage({
         .order("created_at")
         .returns<PaymentChangeRow[]>(),
     ]);
-    const lender = readFinancing(financingRow);
+    const companyLender = readFinancing(financingRow);
+    // Who is financing this job (0218, DECISIONS #168): the company's
+    // lender unless the estimate says the customer's own, or none.
+    const choiceRow = estimate as typeof estimate & { financing_source?: string | null; financing_lender?: string | null };
+    const choiceReady = "financing_source" in choiceRow;
+    const lender = estimateLender(
+      { source: choiceRow.financing_source ?? null, lender: choiceRow.financing_lender ?? null },
+      companyLender
+    );
     const steps = stepRows ?? [];
     const openChange = openPaymentChange(changeRows ?? []);
-    if (lender || steps.length || openChange) {
+    // Always there once 0218 has run, so the customer's own lender can be
+    // picked even when the company has none; before it, as before.
+    if (choiceReady || lender || steps.length || openChange) {
       const ids = [...new Set(steps.map((s) => s.created_by).filter((x): x is string => !!x))];
       const { data: people } = ids.length
         ? await supabase.from("profiles").select("id, name, email").in("id", ids).returns<{ id: string; name: string | null; email: string | null }[]>()
@@ -363,7 +373,14 @@ export default async function EstimateDetailPage({
         return t ? { due: t.due_date, done: !!t.completed_at } : null;
       };
       financingPanel = {
-        provider: lender?.provider ?? null,
+        provider: lender?.name ?? null,
+        own: !!lender?.own,
+        choice: {
+          source: (["company", "customer", "none"] as const).find((x) => x === choiceRow.financing_source) ?? null,
+          lender: choiceRow.financing_lender ?? null,
+          ready: choiceReady,
+        },
+        company: { name: financingRow?.financing_provider?.trim() || null, ready: !!companyLender },
         steps: steps.map((s) => ({
           id: s.id,
           status: s.status,
@@ -373,6 +390,7 @@ export default async function EstimateDetailPage({
           channel: s.channel,
           by: nameOf(s.created_by),
           followUp: followUpOf(s.follow_up_task_id),
+          lender: s.lender ?? null,
         })),
         ready: !isMissingSchemaError(stepError),
         followUpsReady: !followUpError,

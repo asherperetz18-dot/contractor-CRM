@@ -20,12 +20,15 @@ import {
   financingEventError,
   financingSettingsError,
   financingText,
+  estimateLender,
   followUpDue,
+  lenderChoiceError,
   followUpTitle,
   movesToPendingFinance,
   readFinancing,
   remindsFor,
   splitFundedLoan,
+  type EstimateLender,
   type FinancingStatus,
 } from "@/lib/financing";
 
@@ -132,6 +135,83 @@ async function financingDoc(admin: Admin, estimateId: string, companyId: string)
   return { doc: data };
 }
 
+// Who is financing it (DECISIONS #168): the company's lender, the
+// customer's own, or nobody -- chosen on the estimate (0218).
+
+const NEEDS_0218 = "Choosing the customer's own lender needs a database update first: run 0218_customer_own_lender.sql in Supabase.";
+
+/** Who the step, the payout and the follow-up are with. `ready`: 0218
+ *  has run, so a step can carry the lender's name. */
+type Who = { chosen: EstimateLender | null; ready: boolean; companyName: string | null };
+
+async function lenderOf(admin: Admin, doc: FinancingDoc): Promise<Who> {
+  const [{ data: row }, { data: company }] = await Promise.all([
+    // Every column, so the choice comes along where 0218 has run and
+    // nothing breaks where it hasn't.
+    admin.from("estimates").select("*").eq("id", doc.id).eq("company_id", doc.company_id).maybeSingle<Record<string, unknown>>(),
+    admin
+      .from("company_profile")
+      .select("name, financing_provider, financing_url")
+      .eq("company_id", doc.company_id)
+      .maybeSingle<{ name: string | null; financing_provider: string | null; financing_url: string | null }>(),
+  ]);
+  const ready = !!row && "financing_source" in row;
+  const chosen = estimateLender(
+    { source: (row?.financing_source as string | null) ?? null, lender: (row?.financing_lender as string | null) ?? null },
+    readFinancing(company)
+  );
+  return { chosen, ready, companyName: company?.name ?? null };
+}
+
+/**
+ * Says who is financing this job: the company's lender, the customer's
+ * own (named), or nobody. Not while a payment change is waiting or in
+ * force: it's worded for the lender it was sent with.
+ */
+export async function setFinancingLender(input: {
+  estimateId: string;
+  source: string;
+  lender?: string | null;
+}): Promise<{ error?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
+  const why = lenderChoiceError(input);
+  if (why) return { error: why };
+
+  const admin = createAdminClient();
+  const found = await financingDoc(admin, input.estimateId, profile.company_id);
+  if ("error" in found) return { error: found.error };
+  const doc = found.doc;
+
+  const { data: open } = await admin
+    .from("contract_payment_changes")
+    .select("id")
+    .eq("estimate_id", doc.id)
+    .eq("company_id", doc.company_id)
+    .in("status", ["sent", "signed"])
+    .limit(1);
+  if (open?.length) {
+    return {
+      error: "A payment change is waiting or in force on this contract. Take it back, or put the original schedule back, first.",
+    };
+  }
+
+  const { error } = await admin
+    .from("estimates")
+    .update({
+      financing_source: input.source,
+      financing_lender: input.source === "customer" ? input.lender!.trim() : null,
+    })
+    .eq("id", doc.id)
+    .eq("company_id", doc.company_id);
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0218 : error.message };
+
+  revalidatePath(`/estimates/${doc.id}`);
+  revalidatePath("/pipeline");
+  return {};
+}
+
 // Follow-ups (DECISIONS #164): a link sent or an application in can put
 // a task on the list of whoever recorded it, a few days out. The step
 // remembers its task (0216), so the next step can close it.
@@ -148,19 +228,16 @@ async function startFollowUp(
   doc: FinancingDoc,
   profileId: string,
   status: "sent" | "applied",
-  days: number
+  days: number,
+  /** Who it's with (#168), for the task's wording. */
+  lenderName: string | null
 ): Promise<{ id: string; due: string } | { error: string }> {
-  const { data: company } = await admin
-    .from("company_profile")
-    .select("financing_provider")
-    .eq("company_id", doc.company_id)
-    .maybeSingle<{ financing_provider: string | null }>();
   const due = followUpDue(await companyToday(), days);
   const { data, error } = await admin
     .from("lead_tasks")
     .insert({
       lead_id: doc.lead_id,
-      title: followUpTitle(status, doc.doc_number, company?.financing_provider?.trim() || null),
+      title: followUpTitle(status, doc.doc_number, lenderName),
       due_date: due,
       assigned_to: profileId,
       created_by: profileId,
@@ -202,11 +279,19 @@ async function saveStep(
   doc: FinancingDoc,
   profileId: string,
   step: { status: FinancingStatus; amount_cents?: number | null; note?: string | null; channel?: string | null },
-  remindInDays: number | null | undefined
+  remindInDays: number | null | undefined,
+  who: Who
 ): Promise<{ error?: string; followUpOn?: string }> {
   let followUp: { id: string; due: string } | null = null;
   if (remindInDays && remindsFor(step.status)) {
-    const started = await startFollowUp(admin, doc, profileId, step.status as "sent" | "applied", remindInDays);
+    const started = await startFollowUp(
+      admin,
+      doc,
+      profileId,
+      step.status as "sent" | "applied",
+      remindInDays,
+      who.chosen?.name ?? null
+    );
     if ("error" in started) return { error: started.error };
     followUp = started;
   }
@@ -217,6 +302,8 @@ async function saveStep(
     created_by: profileId,
     // Only with a task, so a company that hasn't run 0216 can still save.
     ...(followUp ? { follow_up_task_id: followUp.id } : {}),
+    // Who it was with (#168), where 0218 has run.
+    ...(who.ready ? { lender: who.chosen?.name ?? null } : {}),
   });
   if (error) {
     if (followUp) await admin.from("lead_tasks").delete().eq("id", followUp.id).eq("company_id", doc.company_id);
@@ -249,6 +336,7 @@ export async function recordFinancingStatus(input: {
   const doc = found.doc;
   const remindInDays = remindsFor(status) ? input.remindInDays : null;
   if (remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
+  const who = await lenderOf(admin, doc);
 
   // Funded, and recorded as the money it is (DECISIONS #163): the lender
   // paid the contractor, so the payout settles what's left on the
@@ -267,7 +355,7 @@ export async function recordFinancingStatus(input: {
     const amountCents = input.amountCents ?? 0;
     if (amountCents <= 0) return { error: "Enter the amount the lender paid out." };
 
-    const [{ data: stages }, { data: payments }, { data: company }] = await Promise.all([
+    const [{ data: stages }, { data: payments }] = await Promise.all([
       admin
         .from("estimate_payments")
         .select("*")
@@ -290,11 +378,6 @@ export async function recordFinancingStatus(input: {
             stripe_payment_intent_id: string | null;
           }[]
         >(),
-      admin
-        .from("company_profile")
-        .select("financing_provider")
-        .eq("company_id", profile.company_id)
-        .maybeSingle<{ financing_provider: string | null }>(),
     ]);
     const split = splitFundedLoan({
       amountCents,
@@ -308,7 +391,7 @@ export async function recordFinancingStatus(input: {
 
     const day = input.payment.receivedOn && /^\d{4}-\d{2}-\d{2}$/.test(input.payment.receivedOn) ? input.payment.receivedOn : null;
     const receivedAt = day ? new Date(`${day}T12:00:00`).toISOString() : new Date().toISOString();
-    const lender = company?.financing_provider?.trim();
+    const lender = who.chosen?.name;
     const { data: inserted, error: payError } = await admin
       .from("portal_payments")
       .insert(
@@ -342,7 +425,8 @@ export async function recordFinancingStatus(input: {
     doc,
     profile.id,
     { status, amount_cents: input.amountCents ?? null, note: note || null },
-    remindInDays
+    remindInDays,
+    who
   );
   if (saved.error) {
     const why = saved.error.charAt(0).toUpperCase() + saved.error.slice(1);
@@ -403,12 +487,8 @@ export async function sendFinancingLink(input: {
   // Before anything goes out, so a reminder asked for isn't silently lost.
   if (input.remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
 
-  const [{ data: company }, { data: lead }] = await Promise.all([
-    admin
-      .from("company_profile")
-      .select("name, financing_provider, financing_url")
-      .eq("company_id", profile.company_id)
-      .maybeSingle<{ name: string | null; financing_provider: string | null; financing_url: string | null }>(),
+  const [who, { data: lead }] = await Promise.all([
+    lenderOf(admin, doc),
     admin
       .from("leads")
       .select("id, contact_type, first_name, last_name, email, phone")
@@ -423,10 +503,18 @@ export async function sendFinancingLink(input: {
         phone: string | null;
       }>(),
   ]);
-  const financing = readFinancing(company);
-  if (!financing) return { error: "Add your lender's link under Settings › Customer Financing first." };
+  // Only the company's lender has a link to apply with (#168).
+  const chosen = who.chosen;
+  if (!chosen?.applyUrl) {
+    return {
+      error: chosen?.own
+        ? "This customer is financing through their own lender, so there's no link to send."
+        : "Add your lender's link under Settings › Customer Financing first.",
+    };
+  }
+  const financing = { provider: chosen.name, url: chosen.applyUrl };
   if (!lead) return { error: "Customer not found." };
-  const companyName = company?.name || "Your contractor";
+  const companyName = who.companyName || "Your contractor";
 
   const wantText = input.channel !== "email";
   const wantEmail = input.channel !== "text";
@@ -507,7 +595,8 @@ export async function sendFinancingLink(input: {
     doc,
     profile.id,
     { status: "sent", channel: went.length === 2 ? "both" : went[0] },
-    input.remindInDays
+    input.remindInDays,
+    who
   );
   if (saved.error) problems.push(`it isn't on the estimate's financing steps: ${saved.error}`);
 

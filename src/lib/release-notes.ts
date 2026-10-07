@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.238.0",
+    date: "2026-10-07",
+    notes: [
+      "Customers who finance through their own bank or credit union: in an estimate's Financing section, answer \"Who is financing this job?\" with \"The customer's own lender\" and type its name. Tracking (applied, approved, funded), the pipeline card, the payment change they sign and the payout all use that name, and there's no link to apply since they apply with their own bank. A lender that pays you in draws: record each draw as Funded with its amount.",
+    ],
+  },
+  {
     version: "1.237.0",
     date: "2026-10-07",
     notes: [

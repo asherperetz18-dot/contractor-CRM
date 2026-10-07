@@ -119,9 +119,13 @@ export function paymentChangeSms(p: {
   link: string;
   /** The lender's application link, when the office ticked it. */
   applyUrl?: string | null;
+  /** Paid through the customer's own loan (DECISIONS #168): said so,
+   *  and never a link to apply. */
+  ownLender?: boolean;
 }): string {
-  const ask = `${p.companyName}: please review and sign a payment change for ${p.docNumber} - the rest, ${moneyCents(p.financeCents)}, to be paid through ${p.lender} instead of to us directly:\n${p.link}`;
-  return p.applyUrl ? `${ask}\n\nApply with ${p.lender} here:\n${p.applyUrl}` : ask;
+  const through = p.ownLender ? `your loan from ${p.lender}` : p.lender;
+  const ask = `${p.companyName}: please review and sign a payment change for ${p.docNumber} - the rest, ${moneyCents(p.financeCents)}, to be paid through ${through} instead of to us directly:\n${p.link}`;
+  return p.applyUrl && !p.ownLender ? `${ask}\n\nApply with ${p.lender} here:\n${p.applyUrl}` : ask;
 }
 
 const escapeHtml = (value: string) =>
@@ -138,21 +142,27 @@ export function paymentChangeEmail(p: {
   financeCents: number;
   link: string;
   applyUrl?: string | null;
+  /** Paid through the customer's own loan (DECISIONS #168). */
+  ownLender?: boolean;
 }): { subject: string; html: string; text: string } {
   const subject = `Payment change to sign for ${p.docNumber}`;
   const hello = p.customerName ? `Hi ${p.customerName},` : "Hello,";
+  const through = p.ownLender ? `your loan from ${p.lender}` : p.lender;
   const lines = [
-    `You asked to pay the rest of ${p.docNumber} through ${p.lender} instead of paying ${p.companyName} directly. The work and the price stay the same.`,
-    `To be paid through ${p.lender}: ${moneyCents(p.financeCents)}.`,
-    `${p.lender} decides on your application and sets its terms. If it isn't approved, the original payment schedule applies.`,
+    `You asked to pay the rest of ${p.docNumber} through ${through} instead of paying ${p.companyName} directly. The work and the price stay the same.`,
+    `To be paid through ${through}: ${moneyCents(p.financeCents)}.`,
+    p.ownLender
+      ? "If your loan doesn't come through, the original payment schedule applies."
+      : `${p.lender} decides on your application and sets its terms. If it isn't approved, the original payment schedule applies.`,
   ];
+  const applyUrl = p.ownLender ? null : p.applyUrl;
   const text = [
     hello,
     "",
     ...lines,
     "",
     `Review and sign the payment change: ${p.link}`,
-    ...(p.applyUrl ? ["", `Apply with ${p.lender}: ${p.applyUrl}`] : []),
+    ...(applyUrl ? ["", `Apply with ${p.lender}: ${applyUrl}`] : []),
     "",
     p.companyName,
   ].join("\n");
@@ -160,9 +170,7 @@ export function paymentChangeEmail(p: {
     `<p>${escapeHtml(hello)}</p>`,
     ...lines.map((l) => `<p>${escapeHtml(l)}</p>`),
     `<p><a href="${escapeHtml(p.link)}" style="display:inline-block;padding:10px 18px;background:#c7691b;color:#fff;border-radius:6px;text-decoration:none;font-weight:600">Review and sign</a></p>`,
-    ...(p.applyUrl
-      ? [`<p><a href="${escapeHtml(p.applyUrl)}">Apply with ${escapeHtml(p.lender)}</a></p>`]
-      : []),
+    ...(applyUrl ? [`<p><a href="${escapeHtml(applyUrl)}">Apply with ${escapeHtml(p.lender)}</a></p>`] : []),
     `<p>${escapeHtml(p.companyName)}</p>`,
   ].join("\n");
   return { subject, html, text };

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { centsFromInput, moneyCents } from "@/lib/data/types";
-import { recordFinancingStatus, sendFinancingLink } from "@/lib/actions/financing";
+import { recordFinancingStatus, sendFinancingLink, setFinancingLender } from "@/lib/actions/financing";
 import { cancelPaymentChange, revertPaymentChange, sendPaymentChange } from "@/lib/actions/payment-change";
 import { paymentChangeFigures } from "@/lib/payment-change";
 import {
@@ -23,11 +23,25 @@ export type FinancingStep = FinancingEvent & {
   by: string | null;
   /** The follow-up task the step put on someone's list (#164). */
   followUp?: { due: string; done: boolean } | null;
+  /** Who the step was with (0218, #168). */
+  lender?: string | null;
 };
 
 export type FinancingPanelData = {
-  /** The company's lender, when it has a link set (0214). */
+  /** The lender financing this job (#168): the company's (when it has a
+   *  working link) or the customer's own; null for none. */
   provider: string | null;
+  /** The customer's own lender: no link to send them. */
+  own?: boolean;
+  /** Who is financing this job, as chosen on the estimate (0218, #168). */
+  choice?: {
+    source: "company" | "customer" | "none" | null;
+    lender: string | null;
+    /** 0218 has run. */
+    ready: boolean;
+  };
+  /** The company's lender: its name, and whether its link works. */
+  company?: { name: string | null; ready: boolean };
   steps: FinancingStep[];
   /** 0215 has run. */
   ready: boolean;
@@ -99,6 +113,12 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   const [pending, startTransition] = useTransition();
 
   const now = currentFinancing(data.steps);
+  // Who is financing it (#168). Nothing chosen, no lender of ours and
+  // nothing recorded: just the question, so a company that doesn't do
+  // financing isn't shown a form on every estimate.
+  const notFinancing = data.choice?.source === "none";
+  const quiet =
+    !data.provider && !data.steps.length && !data.paymentChange?.change && !data.choice?.source && !notFinancing;
   const withAmount = status === "approved" || status === "funded";
   const payout = status === "funded" && data.canRecordPayment && !!data.loan && asPayment;
   const amountCents = amount.trim() ? centsFromInput(amount) : 0;
@@ -151,18 +171,27 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
           </span>
         )}
       </h2>
-      <p className="est-tax-note">
-        {data.provider
-          ? `The customer can apply with ${data.provider} from their customer page, or you can send them the link. Record what ${data.provider} tells you here; a customer who applies or is approved moves to Pending Finance.`
-          : "There's no lender link set up (Settings › Customer Financing), so this only keeps track of where the customer's financing stands."}
-      </p>
+      {data.canWork && data.choice?.ready && (
+        <LenderChoice estimateId={estimateId} data={data} compact={quiet} />
+      )}
+      {!quiet && (
+        <p className="est-tax-note">
+          {notFinancing
+            ? "Not financing. If the customer finances this job after all, pick who above."
+            : data.provider && data.own
+              ? `The customer is financing through ${data.provider}, their own lender. Record what they tell you here; a customer who applies or is approved moves to Pending Finance.`
+              : data.provider
+                ? `The customer can apply with ${data.provider} from their customer page, or you can send them the link. Record what ${data.provider} tells you here; a customer who applies or is approved moves to Pending Finance.`
+                : `There's no lender link set up (Settings › Customer Financing), so this only keeps track of where the customer's financing stands.${data.choice?.ready ? " Or pick the customer's own lender above." : ""}`}
+        </p>
+      )}
       {!data.ready && (
         <p className="error-note">
           Financing tracking needs a database update first: run 0215_estimate_financing.sql in Supabase.
         </p>
       )}
 
-      {data.canWork && data.ready && data.followUpsReady && (
+      {data.canWork && data.ready && data.followUpsReady && !quiet && !notFinancing && (
         <div className="financing-remind">
           <label className="est-record-check">
             <input type="checkbox" checked={remind} onChange={(e) => setRemind(e.target.checked)} disabled={pending} />
@@ -184,7 +213,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         </div>
       )}
 
-      {data.canWork && data.ready && data.provider && (
+      {data.canWork && data.ready && data.provider && !data.own && !notFinancing && (
         <div className="est-pay-actions">
           <button
             type="button"
@@ -207,7 +236,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         </div>
       )}
 
-      {data.canWork && data.ready && (
+      {data.canWork && data.ready && !quiet && !notFinancing && (
         <div className="financing-record">
           <label className="field">
             <span className="field-label">Where it stands</span>
@@ -269,7 +298,8 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
                         : `It pays ${split.parts.map((p) => `${p.label} ${moneyCents(p.cents)}`).join(", ")}. ${
                             split.leftCents > 0 ? `${moneyCents(split.leftCents)} will still be owed.` : "Nothing will be left to pay."
                           }`}{" "}
-                    If the lender keeps a fee, add it as a job cost.
+                    If the lender keeps a fee, add it as a job cost. Paid out in draws? Record each draw as Funded
+                    with its amount: it goes on the next payment still owed, and the rest stays open for the next draw.
                   </p>
                 </>
               )}
@@ -309,6 +339,7 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
               {s.status === "sent" && s.channel ? ` ${SENT_BY[s.channel] ?? ""}` : ""}
               {s.amount_cents ? ` · ${moneyCents(s.amount_cents)}` : ""} · {fmtDay(s.created_at)}
               {s.by ? ` · ${s.by}` : ""}
+              {s.lender ? <span className="financing-step-note">{s.lender}</span> : null}
               {s.followUp ? (
                 <span className="financing-step-note">
                   {s.followUp.done ? "Follow-up task done." : `Follow-up task due ${fmtDue(s.followUp.due)}.`}
@@ -369,7 +400,7 @@ function SwitchToFinancing({
   function send(channel: "text" | "email") {
     if (!window.confirm(`${channel === "text" ? "Text" : "Email"} the customer the payment change to sign?`)) return;
     run(
-      () => sendPaymentChange({ estimateId, channel, withApplyLink: !change && withApply, remindInDays }),
+      () => sendPaymentChange({ estimateId, channel, withApplyLink: !change && withApply && !data.own, remindInDays }),
       `Sent by ${channel}. It's on their customer page to sign.`
     );
   }
@@ -493,11 +524,18 @@ function SwitchToFinancing({
               ))}
             </tbody>
           </table>
-          <label className="est-record-check">
-            <input type="checkbox" checked={withApply} onChange={(e) => setWithApply(e.target.checked)} disabled={pending} />
-            <span>Also send the link to apply with {data.provider}</span>
-          </label>
-          <p className="est-tax-note">If {data.provider} says no, one click puts the original schedule back.</p>
+          {/* Only the company's lender has a link to apply with (#168). */}
+          {!data.own && (
+            <label className="est-record-check">
+              <input type="checkbox" checked={withApply} onChange={(e) => setWithApply(e.target.checked)} disabled={pending} />
+              <span>Also send the link to apply with {data.provider}</span>
+            </label>
+          )}
+          <p className="est-tax-note">
+            {data.own
+              ? "Bills and reminders pause once the customer signs. If their loan doesn't come through, one click puts the original schedule back."
+              : `If ${data.provider} says no, one click puts the original schedule back.`}
+          </p>
           {sendButtons(false)}
           <div className="est-pay-actions">
             <button type="button" className="btn-ghost" onClick={() => setOpen(false)} disabled={pending}>
@@ -516,5 +554,113 @@ function SwitchToFinancing({
       {error && <p className="error-note">{error}</p>}
       {message && <p className="hint-note">{message}</p>}
     </>
+  );
+}
+
+/**
+ * Who is financing this job (DECISIONS #168): the company's lender (with
+ * a link the customer applies with), the customer's own bank or credit
+ * union (named here), or nobody. Saved on the estimate; the steps, the
+ * payment change and the payout use it.
+ */
+function LenderChoice({ estimateId, data, compact }: { estimateId: string; data: FinancingPanelData; compact: boolean }) {
+  const router = useRouter();
+  const saved = data.choice?.source ?? (data.company?.ready ? "company" : null);
+  const [source, setSource] = useState<string | null>(saved);
+  const [name, setName] = useState(data.choice?.lender ?? "");
+  const [open, setOpen] = useState(!compact);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const companyName = data.company?.name || "Your lender";
+
+  function save(next: string, lender?: string) {
+    setError(null);
+    startTransition(async () => {
+      const res = await setFinancingLender({ estimateId, source: next, lender });
+      if (res.error) {
+        setError(res.error);
+        setSource(saved);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  if (!open) {
+    return (
+      <div className="est-pay-actions">
+        <button type="button" className="btn-ghost" onClick={() => setOpen(true)}>
+          Is the customer financing this job?
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="lender-choice">
+      <div className="lender-choice-title">Who is financing this job?</div>
+      <label className="lender-choice-option">
+        <input
+          type="radio"
+          name={`lender-${estimateId}`}
+          checked={source === "company"}
+          disabled={pending || !data.company?.ready}
+          onChange={() => {
+            setSource("company");
+            save("company");
+          }}
+        />
+        <span>
+          {companyName}{" "}
+          <span className="lender-choice-hint">
+            {data.company?.ready
+              ? "(your lender: you can text or email the link to apply)"
+              : "(add a working link under Settings › Customer Financing)"}
+          </span>
+        </span>
+      </label>
+      <label className="lender-choice-option">
+        <input
+          type="radio"
+          name={`lender-${estimateId}`}
+          checked={source === "customer"}
+          disabled={pending}
+          onChange={() => setSource("customer")}
+        />
+        <span>The customer&apos;s own lender</span>
+      </label>
+      {source === "customer" && (
+        <div className="lender-choice-name">
+          <input
+            className="est-item-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. their bank or credit union"
+            maxLength={60}
+            disabled={pending}
+            aria-label="The customer's lender"
+          />
+          {(saved !== "customer" || name.trim() !== (data.choice?.lender ?? "")) && (
+            <button type="button" className="btn-primary" disabled={pending || !name.trim()} onClick={() => save("customer", name)}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          )}
+        </div>
+      )}
+      <label className="lender-choice-option">
+        <input
+          type="radio"
+          name={`lender-${estimateId}`}
+          checked={source === "none"}
+          disabled={pending}
+          onChange={() => {
+            setSource("none");
+            save("none");
+          }}
+        />
+        <span>Not financing</span>
+      </label>
+      {error && <p className="error-note">{error}</p>}
+    </div>
   );
 }
