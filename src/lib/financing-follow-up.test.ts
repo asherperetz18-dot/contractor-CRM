@@ -56,19 +56,25 @@ test("the task is linked to its step, made by the server, and closed by the next
     const end = [next, nextExport].filter((i) => i > 0);
     return actions.slice(from, end.length ? Math.min(...end) : undefined);
   };
-  // Both ways a link goes out or an application is recorded can remind,
-  // and both check for 0216 before anything is sent or paid.
-  for (const name of ["export async function recordFinancingStatus(", "export async function sendFinancingLink("]) {
+  // Every way a link goes out or an application is recorded can remind,
+  // and each checks for 0216 before anything is sent or paid. Sending a
+  // link -- by itself, or to the next lender after a no (#170) -- checks,
+  // then hands over to the one function that sends it and saves the step.
+  const record = fn("export async function recordFinancingStatus(");
+  assert.match(record, /remindInDays/);
+  assert.match(record, /await followUpsReady\(admin\)\)\) return \{ error: NEEDS_0216 \}/);
+  assert.match(record, /await saveStep\(/);
+  assert.ok(record.indexOf("followUpsReady") < record.indexOf("await saveStep("));
+  assert.ok(record.indexOf("followUpsReady") < record.indexOf('.from("portal_payments")'));
+  for (const name of ["export async function sendFinancingLink(", "export async function tryNextLender("]) {
     const body = fn(name);
     assert.match(body, /remindInDays/, name);
     assert.match(body, /await followUpsReady\(admin\)\)\) return \{ error: NEEDS_0216 \}/, name);
-    assert.match(body, /await saveStep\(/, name);
-    assert.ok(body.indexOf("followUpsReady") < body.indexOf("await saveStep("), name);
+    assert.ok(body.indexOf("followUpsReady") < body.indexOf("deliverFinancingLink("), name);
   }
-  const record = fn("export async function recordFinancingStatus(");
-  assert.ok(record.indexOf("followUpsReady") < record.indexOf('.from("portal_payments")'));
-  const send = fn("export async function sendFinancingLink(");
-  assert.ok(send.indexOf("followUpsReady") < send.indexOf("sendEmail("));
+  const deliver = fn("async function deliverFinancingLink(");
+  assert.match(deliver, /await saveStep\(/);
+  assert.ok(deliver.indexOf("sendEmail(") < deliver.indexOf("await saveStep("));
 
   const start = fn("async function startFollowUp(");
   assert.match(start, /\.from\("lead_tasks"\)\s*\.insert\(/);

@@ -14,6 +14,7 @@ import { getTwilioForSending } from "@/lib/twilio-company";
 import { personName } from "@/lib/data/client-name";
 import { advanceStageOnFinancing } from "@/lib/pipeline/advance-stage";
 import { companyToday } from "@/lib/data/company-today";
+import { companyLenders } from "@/lib/data/financing-lenders";
 import {
   FINANCING_STATUS_LABEL,
   financingEmail,
@@ -25,11 +26,15 @@ import {
   financingOffered,
   followUpDue,
   lenderChoiceError,
+  lenderSettingsError,
   followUpTitle,
   movesToPendingFinance,
-  readFinancing,
+  nextLender,
   remindsFor,
+  reorderLenders,
   splitFundedLoan,
+  usableLenders,
+  type CompanyLender,
   type EstimateLender,
   type FinancingStatus,
 } from "@/lib/financing";
@@ -51,6 +56,9 @@ export type FinancingSettings = {
   problem: string | null;
   /** Offering financing per customer, and the lender's fee (0219, #169). */
   offer: { ready: boolean; byDefault: boolean; feeBp: number | null };
+  /** The company's lenders, in order (0220, #170). `ready`: the list can
+   *  be added to; before 0220 it's the one lender above. */
+  lenders: { ready: boolean; list: (CompanyLender & { problem: string | null })[] };
 };
 
 export async function getFinancingSettings(): Promise<FinancingSettings | null> {
@@ -64,12 +72,17 @@ export async function getFinancingSettings(): Promise<FinancingSettings | null> 
     .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>();
   const provider = data?.financing_provider ?? "";
   const url = data?.financing_url ?? "";
+  const lenders = await companyLenders(supabase, profile.company_id);
   return {
     provider,
     url,
     ready: !error,
     problem: url ? financingSettingsError({ provider, url }) : null,
     offer: await offerSettings(supabase, profile.company_id),
+    lenders: {
+      ready: lenders.ready,
+      list: lenders.lenders.map((l) => ({ ...l, problem: financingSettingsError({ provider: l.name, url: l.url }) })),
+    },
   };
 }
 
@@ -100,18 +113,19 @@ const NEEDS_0219 = "This needs a database update first: run 0219_financing_offer
  */
 export async function saveFinancingOffer(input: {
   offerByDefault: boolean;
-  feePercent: string;
+  /** Left out once each lender has its own fee (0220, #170). */
+  feePercent?: string;
 }): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
-  const fee = feeBpFromPercent(input.feePercent ?? "");
-  if ("error" in fee) return { error: fee.error };
+  const fee = typeof input.feePercent === "string" ? feeBpFromPercent(input.feePercent) : null;
+  if (fee && "error" in fee) return { error: fee.error };
 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("company_profile")
-    .update({ financing_offer_default: input.offerByDefault === true, financing_fee_bp: fee.bp })
+    .update({ financing_offer_default: input.offerByDefault === true, ...(fee ? { financing_fee_bp: fee.bp } : {}) })
     .eq("company_id", profile.company_id)
     .select("company_id");
   if (error) return { error: isMissingSchemaError(error) ? NEEDS_0219 : error.message };
@@ -141,6 +155,113 @@ export async function saveFinancingSettings(input: { provider: string; url: stri
 
   revalidatePath("/settings/customer-financing");
   return {};
+}
+
+// Several lenders (DECISIONS #170): the list, in the order they're tried.
+// Office or Admin, like the rest of the company's settings; the server
+// writes it (0220 has no write policies).
+
+const NEEDS_0220 = "Several lenders need a database update first: run 0220_financing_lenders.sql in Supabase.";
+
+async function settingsAdmin(): Promise<{ error: string } | { profile: Profile; admin: Admin }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!isAdminRole(profile)) return { error: "Only Office or Admin users can change this." };
+  return { profile, admin: createAdminClient() };
+}
+
+function lenderSaved(error: { code?: string; message: string } | null): { error?: string } {
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0220 : error.message };
+  revalidatePath("/settings/customer-financing");
+  return {};
+}
+
+/** Adds a lender at the end of the list, on. */
+export async function addFinancingLender(input: { name: string; url: string; feePercent: string }): Promise<{ error?: string }> {
+  const who = await settingsAdmin();
+  if ("error" in who) return { error: who.error };
+  const why = lenderSettingsError(input);
+  if (why) return { error: why };
+  const fee = feeBpFromPercent(input.feePercent ?? "");
+  const { ready, lenders } = await companyLenders(who.admin, who.profile.company_id);
+  if (!ready) return { error: NEEDS_0220 };
+  if (lenders.some((l) => l.name.toLowerCase() === input.name.trim().toLowerCase())) {
+    return { error: "That lender is already on the list. Edit it instead." };
+  }
+  const { error } = await who.admin.from("financing_lenders").insert({
+    company_id: who.profile.company_id,
+    name: input.name.trim(),
+    apply_url: input.url.trim(),
+    fee_bp: "bp" in fee ? fee.bp : null,
+    sort_order: lenders.length ? Math.max(...lenders.map((l) => l.sortOrder)) + 1 : 0,
+  });
+  return lenderSaved(error);
+}
+
+/** Changes a lender's name, link or fee. */
+export async function updateFinancingLender(input: {
+  id: string;
+  name: string;
+  url: string;
+  feePercent: string;
+}): Promise<{ error?: string }> {
+  const who = await settingsAdmin();
+  if ("error" in who) return { error: who.error };
+  const why = lenderSettingsError(input);
+  if (why) return { error: why };
+  const fee = feeBpFromPercent(input.feePercent ?? "");
+  // Steps keep a lender by name, so two can't share one.
+  const { lenders } = await companyLenders(who.admin, who.profile.company_id);
+  if (lenders.some((l) => l.id !== input.id && l.name.toLowerCase() === input.name.trim().toLowerCase())) {
+    return { error: "Another lender on the list has that name." };
+  }
+  const { data, error } = await who.admin
+    .from("financing_lenders")
+    .update({
+      name: input.name.trim(),
+      apply_url: input.url.trim(),
+      fee_bp: "bp" in fee ? fee.bp : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.id)
+    .eq("company_id", who.profile.company_id)
+    .select("id");
+  if (!error && !data?.length) return { error: "That lender is no longer on the list." };
+  return lenderSaved(error);
+}
+
+/** Turns a lender off (never offered to a customer) or back on. */
+export async function setFinancingLenderActive(input: { id: string; active: boolean }): Promise<{ error?: string }> {
+  const who = await settingsAdmin();
+  if ("error" in who) return { error: who.error };
+  const { data, error } = await who.admin
+    .from("financing_lenders")
+    .update({ active: input.active === true, updated_at: new Date().toISOString() })
+    .eq("id", input.id)
+    .eq("company_id", who.profile.company_id)
+    .select("id");
+  if (!error && !data?.length) return { error: "That lender is no longer on the list." };
+  return lenderSaved(error);
+}
+
+/** Moves a lender up or down a place in the order they're tried. */
+export async function moveFinancingLender(input: { id: string; direction: "up" | "down" }): Promise<{ error?: string }> {
+  const who = await settingsAdmin();
+  if ("error" in who) return { error: who.error };
+  if (input.direction !== "up" && input.direction !== "down") return { error: "Pick up or down." };
+  const { ready, lenders } = await companyLenders(who.admin, who.profile.company_id);
+  if (!ready) return { error: NEEDS_0220 };
+  const was = new Map(lenders.map((l) => [l.id, l.sortOrder]));
+  for (const l of reorderLenders(lenders, input.id, input.direction)) {
+    if (!l.id || was.get(l.id) === l.sortOrder) continue;
+    const { error } = await who.admin
+      .from("financing_lenders")
+      .update({ sort_order: l.sortOrder })
+      .eq("id", l.id)
+      .eq("company_id", who.profile.company_id);
+    if (error) return lenderSaved(error);
+  }
+  return lenderSaved(null);
 }
 
 // ---------------------------------------------------------------------
@@ -201,39 +322,43 @@ type Who = {
   companyName: string | null;
   /** Financing is offered to this customer (#169). */
   offered: boolean;
-  /** The lender's fee, hundredths of a percent, when set (#169). */
+  /** The chosen lender's fee, hundredths of a percent, when set (#169). */
   feeBp: number | null;
+  /** The company's lenders, in order (#170); `lendersReady`: 0220 has run. */
+  lenders: CompanyLender[];
+  lendersReady: boolean;
 };
 
 async function lenderOf(admin: Admin, doc: FinancingDoc): Promise<Who> {
-  const [{ data: row }, { data: company }] = await Promise.all([
+  const [{ data: row }, { data: company }, lenders] = await Promise.all([
     // Every column, so the choice comes along where 0218 has run and
     // nothing breaks where it hasn't.
     admin.from("estimates").select("*").eq("id", doc.id).eq("company_id", doc.company_id).maybeSingle<Record<string, unknown>>(),
-    // Every column too: the offer default and fee (0219) where they exist.
+    // Every column too: the offer default (0219) where it exists.
     admin
       .from("company_profile")
       .select("*")
       .eq("company_id", doc.company_id)
-      .maybeSingle<{
-        name: string | null;
-        financing_provider: string | null;
-        financing_url: string | null;
-        financing_offer_default?: boolean | null;
-        financing_fee_bp?: number | null;
-      }>(),
+      .maybeSingle<{ name: string | null; financing_offer_default?: boolean | null }>(),
+    companyLenders(admin, doc.company_id),
   ]);
   const ready = !!row && "financing_source" in row;
   const chosen = estimateLender(
-    { source: (row?.financing_source as string | null) ?? null, lender: (row?.financing_lender as string | null) ?? null },
-    readFinancing(company)
+    {
+      source: (row?.financing_source as string | null) ?? null,
+      lender: (row?.financing_lender as string | null) ?? null,
+      lenderId: (row?.financing_lender_id as string | null) ?? null,
+    },
+    lenders.lenders
   );
   return {
     chosen,
     ready,
     companyName: company?.name ?? null,
     offered: financingOffered(row?.financing_offered as boolean | null | undefined, company?.financing_offer_default),
-    feeBp: typeof company?.financing_fee_bp === "number" ? company.financing_fee_bp : null,
+    feeBp: chosen?.feeBp ?? null,
+    lenders: lenders.lenders,
+    lendersReady: lenders.ready,
   };
 }
 
@@ -255,15 +380,32 @@ export async function setFinancingOffered(input: { estimateId: string; offered: 
   return {};
 }
 
+/** A payment change waiting or in force is worded for the lender it was
+ *  sent with, so the lender can't change under it. */
+async function openChangeError(admin: Admin, doc: FinancingDoc): Promise<string | null> {
+  const { data: open } = await admin
+    .from("contract_payment_changes")
+    .select("id")
+    .eq("estimate_id", doc.id)
+    .eq("company_id", doc.company_id)
+    .in("status", ["sent", "signed"])
+    .limit(1);
+  return open?.length
+    ? "A payment change is waiting or in force on this contract. Take it back, or put the original schedule back, first."
+    : null;
+}
+
 /**
- * Says who is financing this job: the company's lender, the customer's
- * own (named), or nobody. Not while a payment change is waiting or in
- * force: it's worded for the lender it was sent with.
+ * Says who is financing this job: one of the company's lenders (#170),
+ * the customer's own (named), or nobody. Not while a payment change is
+ * waiting or in force: it's worded for the lender it was sent with.
  */
 export async function setFinancingLender(input: {
   estimateId: string;
   source: string;
   lender?: string | null;
+  /** Which of the company's lenders (0220, #170). */
+  lenderId?: string | null;
 }): Promise<{ error?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
@@ -276,17 +418,14 @@ export async function setFinancingLender(input: {
   if ("error" in found) return { error: found.error };
   const doc = found.doc;
 
-  const { data: open } = await admin
-    .from("contract_payment_changes")
-    .select("id")
-    .eq("estimate_id", doc.id)
-    .eq("company_id", doc.company_id)
-    .in("status", ["sent", "signed"])
-    .limit(1);
-  if (open?.length) {
-    return {
-      error: "A payment change is waiting or in force on this contract. Take it back, or put the original schedule back, first.",
-    };
+  const blocked = await openChangeError(admin, doc);
+  if (blocked) return { error: blocked };
+
+  // One of the company's lenders, and one that's on.
+  const { ready: lendersReady, lenders } = await companyLenders(admin, doc.company_id);
+  const lenderId = input.source === "company" && lendersReady ? (input.lenderId ?? null) : null;
+  if (lenderId && !usableLenders(lenders).some((l) => l.id === lenderId)) {
+    return { error: "That lender is turned off, or its link doesn't work, under Settings › Customer Financing." };
   }
 
   const { error } = await admin
@@ -294,6 +433,7 @@ export async function setFinancingLender(input: {
     .update({
       financing_source: input.source,
       financing_lender: input.source === "customer" ? input.lender!.trim() : null,
+      ...(lendersReady ? { financing_lender_id: lenderId } : {}),
     })
     .eq("id", doc.id)
     .eq("company_id", doc.company_id);
@@ -619,33 +759,122 @@ export async function sendFinancingLink(input: {
   const admin = createAdminClient();
   const found = await financingDoc(admin, input.estimateId, profile.company_id);
   if ("error" in found) return { error: found.error };
-  const doc = found.doc;
   // Before anything goes out, so a reminder asked for isn't silently lost.
   if (input.remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
+  const who = await lenderOf(admin, found.doc);
+  return deliverFinancingLink(admin, profile, found.doc, who, input.channel, input.remindInDays ?? null, null);
+}
 
-  const [who, { data: lead }] = await Promise.all([
-    lenderOf(admin, doc),
-    admin
-      .from("leads")
-      .select("id, contact_type, first_name, last_name, email, phone")
-      .eq("id", doc.lead_id)
-      .eq("company_id", profile.company_id)
-      .maybeSingle<{
-        id: string;
-        contact_type: string | null;
-        first_name: string | null;
-        last_name: string | null;
-        email: string | null;
-        phone: string | null;
-      }>(),
-  ]);
-  // Only the company's lender has a link to apply with (#168).
+/**
+ * After a lender says no (DECISIONS #170): moves the estimate to the next
+ * of the company's lenders, in their order, that hasn't already said no
+ * on it, and sends the customer that lender's link -- a step of its own,
+ * noting the lender it moved from.
+ */
+export async function tryNextLender(input: {
+  estimateId: string;
+  channel: "text" | "email";
+  remindInDays?: number | null;
+}): Promise<{ error?: string; sentBy?: string; followUpOn?: string; lender?: string }> {
+  const profile = await getCurrentProfile();
+  if (!profile) return { error: "Not signed in." };
+  if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
+  if (input.channel !== "text" && input.channel !== "email") return { error: "Pick text or email." };
+  const locked = await lockedServicesError(profile.company_id);
+  if (locked) return { error: locked };
+
+  const admin = createAdminClient();
+  const found = await financingDoc(admin, input.estimateId, profile.company_id);
+  if ("error" in found) return { error: found.error };
+  const doc = found.doc;
+  if (input.remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
+
+  const who = await lenderOf(admin, doc);
+  if (!who.lendersReady) return { error: NEEDS_0220 };
+  if (who.chosen?.own) return { error: "This customer is financing through their own lender." };
+  if (!who.offered) {
+    return { error: "Financing isn't offered to this customer. Turn on \"Offer financing to this customer\" first." };
+  }
+  const blocked = await openChangeError(admin, doc);
+  if (blocked) return { error: blocked };
+
+  // Who has already said no on this estimate, by the name each step kept.
+  const { data: steps } = await admin
+    .from("estimate_financing_events")
+    .select("status, lender")
+    .eq("estimate_id", doc.id)
+    .eq("company_id", doc.company_id)
+    .eq("status", "declined")
+    .returns<{ status: string; lender: string | null }[]>();
+  const declined = (steps ?? []).map((st) => st.lender ?? "").filter(Boolean);
+  const next = nextLender(who.lenders, who.chosen?.id ?? null, declined);
+  if (!next || !next.id) {
+    return { error: "There's no other lender to try. Add one under Settings › Customer Financing." };
+  }
+
+  const { error } = await admin
+    .from("estimates")
+    .update({ financing_source: "company", financing_lender: null, financing_lender_id: next.id })
+    .eq("id", doc.id)
+    .eq("company_id", doc.company_id);
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0220 : error.message };
+
+  const moved: Who = {
+    ...who,
+    chosen: { name: next.name, own: false, applyUrl: next.url, id: next.id, feeBp: next.feeBp },
+    feeBp: next.feeBp,
+  };
+  const from = who.chosen?.name;
+  const sent = await deliverFinancingLink(
+    admin,
+    profile,
+    doc,
+    moved,
+    input.channel,
+    input.remindInDays ?? null,
+    from ? `Moved from ${from}.` : null
+  );
+  revalidatePath(`/estimates/${doc.id}`);
+  if (!sent.sentBy) return { lender: next.name, error: `This estimate is now with ${next.name}, but ${lowerFirst(sent.error ?? "the link wasn't sent.")}` };
+  return { ...sent, lender: next.name };
+}
+
+const lowerFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
+/** Texts and/or emails the customer the chosen lender's link, and records
+ *  it as a step with its follow-up. */
+async function deliverFinancingLink(
+  admin: Admin,
+  profile: Profile,
+  doc: FinancingDoc,
+  who: Who,
+  channel: "text" | "email" | "both",
+  remindInDays: number | null,
+  note: string | null
+): Promise<{ error?: string; sentBy?: string; followUpOn?: string }> {
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, contact_type, first_name, last_name, email, phone")
+    .eq("id", doc.lead_id)
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{
+      id: string;
+      contact_type: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      email: string | null;
+      phone: string | null;
+    }>();
+  // Only the company's lender has a link to apply with (#168), and only
+  // while it's on (#170).
   const chosen = who.chosen;
   if (!chosen?.applyUrl) {
     return {
       error: chosen?.own
         ? "This customer is financing through their own lender, so there's no link to send."
-        : "Add your lender's link under Settings › Customer Financing first.",
+        : chosen
+          ? `${chosen.name} is turned off, or its link doesn't work, under Settings › Customer Financing.`
+          : "Add your lender's link under Settings › Customer Financing first.",
     };
   }
   // Not offered to this customer (#169): turned on first, on purpose.
@@ -656,8 +885,8 @@ export async function sendFinancingLink(input: {
   if (!lead) return { error: "Customer not found." };
   const companyName = who.companyName || "Your contractor";
 
-  const wantText = input.channel !== "email";
-  const wantEmail = input.channel !== "text";
+  const wantText = channel !== "email";
+  const wantEmail = channel !== "text";
   if (wantText && !lead.phone) return { error: "This customer has no phone number on file." };
   if (wantEmail && !lead.email) return { error: "This customer has no email address on file." };
 
@@ -734,8 +963,8 @@ export async function sendFinancingLink(input: {
     admin,
     doc,
     profile.id,
-    { status: "sent", channel: went.length === 2 ? "both" : went[0] },
-    input.remindInDays,
+    { status: "sent", channel: went.length === 2 ? "both" : went[0], ...(note ? { note } : {}) },
+    remindInDays,
     who
   );
   if (saved.error) problems.push(`it isn't on the estimate's financing steps: ${saved.error}`);

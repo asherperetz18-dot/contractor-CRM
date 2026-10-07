@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.241.0",
+    date: "2026-10-07",
+    notes: [
+      "Several lenders: Settings › Customer Financing lists every lender you offer (Service Finance, Synchrony or another), each with its link, your fee and an On/Off switch, in the order you want them tried. Each estimate picks one (or starts on your first), and the customer sees only that lender's Apply button.",
+      "When a lender says no, the estimate's Financing section offers \"Try <next lender> next\": one click moves the estimate to your next lender and texts (or emails) the customer its link.",
+    ],
+  },
+  {
     version: "1.240.1",
     date: "2026-10-07",
     notes: [

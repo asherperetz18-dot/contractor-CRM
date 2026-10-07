@@ -58,6 +58,8 @@ export const BACKUP_TABLES = [
   "estimate_financing_events",
   // Contracts switched to financing, and who signed it (0217, #166).
   "contract_payment_changes",
+  // The lenders a company offers financing through (0220, #170).
+  "financing_lenders",
   "contract_templates",
   "scope_templates",
   "company_documents",

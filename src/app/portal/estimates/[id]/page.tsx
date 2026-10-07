@@ -21,7 +21,8 @@ import { getDepositState, getPortalPhases } from "@/lib/actions/portal-payments"
 import { loadCompanyWords } from "@/lib/load-company-words";
 import { word } from "@/lib/company-words";
 import { documentPaymentSection, scheduledPhases } from "@/lib/document-words";
-import { financingOffered, readFinancing, showFinancingOffer } from "@/lib/financing";
+import { estimateLender, financingOffered, showFinancingOffer } from "@/lib/financing";
+import { companyLenders } from "@/lib/data/financing-lenders";
 import { FinancingOffer } from "./financing-offer";
 import { PaymentChangeCard } from "./payment-change-card";
 import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
@@ -161,18 +162,16 @@ export default async function PortalEstimatePage({
   const signerRows = (signers ?? []) as EstimateSigner[];
   const mine = signerRows.find((s) => s.party === "customer" && !s.signed_at);
   const isExpired = estimateExpired(estimate);
-  const [phases, depositState, { data: financingRow }, { data: changeRows }] = await Promise.all([
+  const [phases, depositState, { data: financingRow }, { data: changeRows }, lenders] = await Promise.all([
     getPortalPhases(id),
     getDepositState(id),
-    // The company's lender (0214, DECISIONS #161), read on its own: a
-    // database without those columns shows no offer, not a broken page.
-    // Every column: whether financing is offered by default (0219, #169)
-    // where that exists.
+    // Whether financing is offered by default (0219, #169), read with
+    // every column: a database without it shows the offer as before.
     admin
       .from("company_profile")
       .select("*")
       .eq("company_id", estimate.company_id)
-      .maybeSingle<{ financing_provider: string | null; financing_url: string | null; financing_offer_default?: boolean | null }>(),
+      .maybeSingle<{ financing_offer_default?: boolean | null }>(),
     // A payment change to sign, or one in force (0217, DECISIONS #166).
     // Before 0217, none.
     admin
@@ -181,6 +180,8 @@ export default async function PortalEstimatePage({
       .eq("estimate_id", id)
       .eq("company_id", estimate.company_id)
       .returns<PaymentChangeRow[]>(),
+    // The company's lenders (0214, 0220; DECISIONS #161, #170).
+    companyLenders(admin, estimate.company_id),
   ]);
   const paymentChange = estimate.status === "Signed" ? openPaymentChange(changeRows ?? []) : null;
   // Paying with financing: the lender pays what's left, so nothing asks
@@ -192,7 +193,15 @@ export default async function PortalEstimatePage({
   const owing = phases.some((p) => p.state !== "paid" && p.state !== "clearing");
   // Financing, while there's still something to pay for (#161).
   const depositDue = depositState.amountCents > 0 && !depositState.paid;
-  const financing = readFinancing(financingRow);
+  // The one lender this estimate is with (DECISIONS #170): the one picked
+  // on it, else the company's first that's on. Only that one is offered,
+  // so the customer never applies twice.
+  const choice = estimate as { financing_source?: string | null; financing_lender?: string | null; financing_lender_id?: string | null };
+  const lender = estimateLender(
+    { source: choice.financing_source ?? null, lender: choice.financing_lender ?? null, lenderId: choice.financing_lender_id ?? null },
+    lenders.lenders
+  );
+  const financing = lender && !lender.own && lender.applyUrl ? { provider: lender.name, url: lender.applyUrl } : null;
   // A customer financing through their own lender (DECISIONS #168) isn't
   // offered the company's.
   const offerFinancing =

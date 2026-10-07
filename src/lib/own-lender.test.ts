@@ -12,21 +12,28 @@ import { paymentChangeEmail, paymentChangeSms } from "./payment-change.ts";
  * link to apply.
  */
 
-const company = { provider: "Service Finance", url: "https://apply.example.com/dealer?id=1" };
+// The company's lenders as a list since 0220 (DECISIONS #170); here, one.
+const company = [
+  { id: "sf", name: "Service Finance", url: "https://apply.example.com/dealer?id=1", feeBp: null, active: true, sortOrder: 0 },
+];
 
 test("who is financing: the company's lender by default, the customer's own when named, or nobody", () => {
   assert.deepEqual(estimateLender({ source: null, lender: null }, company), {
     name: "Service Finance",
     own: false,
-    applyUrl: company.url,
+    applyUrl: company[0].url,
+    id: "sf",
+    feeBp: null,
   });
   assert.deepEqual(estimateLender({ source: "company", lender: "ignored" }, company)?.name, "Service Finance");
   // No working company link: nothing to finance through by default.
-  assert.equal(estimateLender({ source: null, lender: null }, null), null);
-  assert.deepEqual(estimateLender({ source: "customer", lender: "  Harbor Credit Union " }, null), {
+  assert.equal(estimateLender({ source: null, lender: null }, []), null);
+  assert.deepEqual(estimateLender({ source: "customer", lender: "  Harbor Credit Union " }, []), {
     name: "Harbor Credit Union",
     own: true,
     applyUrl: null,
+    id: null,
+    feeBp: null,
   });
   assert.equal(estimateLender({ source: "customer", lender: "" }, company), null);
   assert.equal(estimateLender({ source: "none", lender: null }, company), null);
@@ -94,8 +101,10 @@ test("the actions use the estimate's lender; the customer's own has no link to s
   const set = actions.slice(actions.indexOf("export async function setFinancingLender("));
   assert.match(set, /lenderChoiceError\(/);
   // Not while a payment change is waiting or in force with another lender.
-  assert.match(set, /\.from\("contract_payment_changes"\)/);
-  assert.match(set, /\.in\("status", \["sent", "signed"\]\)/);
+  assert.match(set, /await openChangeError\(admin, doc\)/);
+  const open = actions.slice(actions.indexOf("async function openChangeError("));
+  assert.match(open, /\.from\("contract_payment_changes"\)/);
+  assert.match(open, /\.in\("status", \["sent", "signed"\]\)/);
   const record = actions.slice(actions.indexOf("export async function recordFinancingStatus("));
   assert.match(record, /lenderOf\(admin, doc\)/);
   assert.match(record, /Funded loan from \$\{lender\}/);

@@ -226,22 +226,136 @@ export type EstimateLender = {
   name: string;
   /** The customer's own lender, not the company's. */
   own: boolean;
-  /** Where the customer applies: the company's lender only. */
+  /** Where the customer applies: the company's lender, while it's on
+   *  and its link works. */
   applyUrl: string | null;
+  /** Which of the company's lenders (financing_lenders, 0220); null for
+   *  the customer's own, or the one lender a company had before 0220. */
+  id: string | null;
+  /** That lender's fee, hundredths of a percent (#169), when set. */
+  feeBp: number | null;
 };
 
-/** The lender financing an estimate, or null for none (not financing,
- *  or the company's lender with no working link). */
+/**
+ * The lender financing an estimate, or null for none (not financing, or
+ * no lender of the company's that's on). The company's: the one picked on
+ * the estimate (#170) -- kept even once it's turned off, since a payout
+ * still comes from it, but with no link for the customer -- else the
+ * first one that's on.
+ */
 export function estimateLender(
-  choice: { source: string | null | undefined; lender: string | null | undefined },
-  company: CompanyFinancing | null
+  choice: { source: string | null | undefined; lender: string | null | undefined; lenderId?: string | null },
+  lenders: CompanyLender[]
 ): EstimateLender | null {
   if (choice.source === "none") return null;
   if (choice.source === "customer") {
     const name = choice.lender?.trim() ?? "";
-    return name ? { name, own: true, applyUrl: null } : null;
+    return name ? { name, own: true, applyUrl: null, id: null, feeBp: null } : null;
   }
-  return company ? { name: company.provider, own: false, applyUrl: company.url } : null;
+  const usable = usableLenders(lenders);
+  const picked = (choice.lenderId && lenders.find((l) => l.id === choice.lenderId)) || usable[0];
+  if (!picked) return null;
+  return {
+    name: picked.name,
+    own: false,
+    applyUrl: usable.includes(picked) ? picked.url : null,
+    id: picked.id,
+    feeBp: picked.feeBp,
+  };
+}
+
+// Several lenders (DECISIONS #170): a company lists every lender it works
+// with (financing_lenders, 0220) in the order it wants them tried. Each
+// customer is offered one at a time -- applying usually means a credit
+// check, and the company pays a different fee to each -- and a lender
+// that says no can be swapped for the next.
+
+/** One of the company's lenders. */
+export type CompanyLender = {
+  /** null for the one lender a company had before 0220 (company_profile). */
+  id: string | null;
+  name: string;
+  url: string;
+  /** Its fee, hundredths of a percent of the amount financed. */
+  feeBp: number | null;
+  /** Off: never offered to a customer. */
+  active: boolean;
+  sortOrder: number;
+};
+
+/** A row of financing_lenders (0220). */
+export type LenderRow = {
+  id: string;
+  name: string;
+  apply_url: string;
+  fee_bp: number | null;
+  active: boolean;
+  sort_order: number;
+  created_at?: string | null;
+};
+
+/** The company's lenders, in the order they're tried. */
+export function lendersFromRows(rows: LenderRow[]): CompanyLender[] {
+  return [...rows]
+    .sort((a, b) => a.sort_order - b.sort_order || (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+    .map((r) => ({
+      id: r.id,
+      name: r.name.trim(),
+      url: r.apply_url.trim(),
+      feeBp: typeof r.fee_bp === "number" ? r.fee_bp : null,
+      active: r.active !== false,
+      sortOrder: r.sort_order,
+    }));
+}
+
+/** Before 0220: the company's one lender (0214) and its fee (0219). */
+export function lendersFromProfile(
+  row: { financing_provider?: string | null; financing_url?: string | null; financing_fee_bp?: number | null } | null
+): CompanyLender[] {
+  const one = readFinancing(row);
+  if (!one) return [];
+  const feeBp = typeof row?.financing_fee_bp === "number" ? row.financing_fee_bp : null;
+  return [{ id: null, name: one.provider, url: one.url, feeBp, active: true, sortOrder: 0 }];
+}
+
+/** The lenders a customer can be offered: on, with a link that works. */
+export function usableLenders(lenders: CompanyLender[]): CompanyLender[] {
+  return lenders.filter((l) => l.active && !!l.name && !financingSettingsError({ provider: l.name, url: l.url }));
+}
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** After a no: the first lender in order that's on, isn't the one that
+ *  just said no, and hasn't already said no on this estimate. */
+export function nextLender(lenders: CompanyLender[], currentId: string | null, declined: string[]): CompanyLender | null {
+  return (
+    usableLenders(lenders).find((l) => l.id !== currentId && !declined.some((name) => sameName(name, l.name))) ?? null
+  );
+}
+
+/** What's wrong with a lender being added or edited, or null. */
+export function lenderSettingsError(input: { name: string; url: string; feePercent: string }): string | null {
+  const name = input.name.trim();
+  const url = input.url.trim();
+  if (!name) return "Say which lender it is: customers see the name.";
+  if (!url) return "Paste the application link your lender gave you.";
+  const why = financingSettingsError({ provider: name, url });
+  if (why) return why;
+  const fee = feeBpFromPercent(input.feePercent ?? "");
+  return "error" in fee ? fee.error : null;
+}
+
+/** The list after moving one lender up or down a place, numbered from 0. */
+export function reorderLenders<T extends { id: string | null; sortOrder: number }>(
+  lenders: T[],
+  id: string,
+  direction: "up" | "down"
+): T[] {
+  const list = [...lenders].sort((a, b) => a.sortOrder - b.sortOrder);
+  const i = list.findIndex((l) => l.id === id);
+  const j = direction === "up" ? i - 1 : i + 1;
+  if (i >= 0 && j >= 0 && j < list.length) [list[i], list[j]] = [list[j], list[i]];
+  return list.map((l, n) => ({ ...l, sortOrder: n }));
 }
 
 /** What's wrong with a choice of who is financing, or null. */

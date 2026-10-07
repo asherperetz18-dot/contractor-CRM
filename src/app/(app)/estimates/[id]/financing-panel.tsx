@@ -3,7 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { centsFromInput, moneyCents } from "@/lib/data/types";
-import { recordFinancingStatus, sendFinancingLink, setFinancingLender, setFinancingOffered } from "@/lib/actions/financing";
+import {
+  recordFinancingStatus,
+  sendFinancingLink,
+  setFinancingLender,
+  setFinancingOffered,
+  tryNextLender,
+} from "@/lib/actions/financing";
 import { cancelPaymentChange, revertPaymentChange, sendPaymentChange } from "@/lib/actions/payment-change";
 import { paymentChangeFigures } from "@/lib/payment-change";
 import {
@@ -39,11 +45,18 @@ export type FinancingPanelData = {
   choice?: {
     source: "company" | "customer" | "none" | null;
     lender: string | null;
+    /** Which of the company's lenders it's with (0220, #170). */
+    lenderId?: string | null;
     /** 0218 has run. */
     ready: boolean;
   };
-  /** The company's lender: its name, and whether its link works. */
+  /** The company's first lender that's on: its name, and whether there is one. */
   company?: { name: string | null; ready: boolean };
+  /** The company's lenders that can be picked, in order (#170): the ones
+   *  that are on, and the one this estimate is with even if it's off. */
+  lenders?: { id: string | null; name: string; feeBp: number | null; usable: boolean }[];
+  /** After a no: the next lender to try (#170). */
+  next?: { name: string; feeBp: number | null } | null;
   /** Offering financing to this customer, and what it costs (0219, #169). */
   offer?: { ready: boolean; offered: boolean; feeBp: number | null; totalCents: number };
   steps: FinancingStep[];
@@ -135,6 +148,18 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
   // Offered to this customer (#169): before 0219, always.
   const offered = data.offer?.ready ? data.offer.offered : true;
   const remindInDays = data.followUpsReady && remind ? remindDays : null;
+  // After a no, the next lender is offered (#170) in place of resending
+  // the link of the one that said no.
+  const tryNext =
+    data.canWork &&
+    data.ready &&
+    !!data.next &&
+    !!data.provider &&
+    !data.own &&
+    !notFinancing &&
+    offered &&
+    now?.status === "declined" &&
+    !data.paymentChange?.change;
   const steps = [...data.steps].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   function send(channel: "text" | "email") {
@@ -231,7 +256,11 @@ export function FinancingPanel({ estimateId, data }: { estimateId: string; data:
         <OfferSwitch estimateId={estimateId} provider={data.provider} offer={data.offer} />
       )}
 
-      {data.canWork && data.ready && data.provider && !data.own && !notFinancing && offered && (
+      {tryNext && now && (
+        <TryNextLender estimateId={estimateId} data={data} declinedOn={now.created_at} remindInDays={remindInDays} />
+      )}
+
+      {data.canWork && data.ready && data.provider && !data.own && !notFinancing && offered && !tryNext && (
         <div className="est-pay-actions">
           <button
             type="button"
@@ -613,18 +642,28 @@ function SwitchToFinancing({
  */
 function LenderChoice({ estimateId, data, compact }: { estimateId: string; data: FinancingPanelData; compact: boolean }) {
   const router = useRouter();
-  const saved = data.choice?.source ?? (data.company?.ready ? "company" : null);
+  // A company lender is picked as "company:<its id>" (#170); before 0220
+  // its one lender has no id.
+  const lenders = data.lenders?.length
+    ? data.lenders
+    : data.company?.ready
+      ? [{ id: null, name: data.company.name || "Your lender", feeBp: null, usable: true }]
+      : [];
+  const firstId = lenders.find((l) => l.usable)?.id ?? null;
+  const companyKey = (id: string | null) => `company:${id ?? ""}`;
+  const savedSource = data.choice?.source ?? (data.company?.ready ? "company" : null);
+  const saved = savedSource === "company" ? companyKey(data.choice?.lenderId ?? firstId) : savedSource;
   const [source, setSource] = useState<string | null>(saved);
   const [name, setName] = useState(data.choice?.lender ?? "");
   const [open, setOpen] = useState(!compact);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const companyName = data.company?.name || "Your lender";
 
   function save(next: string, lender?: string) {
     setError(null);
+    const [kind, id] = next.split(":");
     startTransition(async () => {
-      const res = await setFinancingLender({ estimateId, source: next, lender });
+      const res = await setFinancingLender({ estimateId, source: kind, lender, lenderId: kind === "company" ? id || null : null });
       if (res.error) {
         setError(res.error);
         setSource(saved);
@@ -647,26 +686,32 @@ function LenderChoice({ estimateId, data, compact }: { estimateId: string; data:
   return (
     <div className="lender-choice">
       <div className="lender-choice-title">Who is financing this job?</div>
-      <label className="lender-choice-option">
-        <input
-          type="radio"
-          name={`lender-${estimateId}`}
-          checked={source === "company"}
-          disabled={pending || !data.company?.ready}
-          onChange={() => {
-            setSource("company");
-            save("company");
-          }}
-        />
-        <span>
-          {companyName}{" "}
-          <span className="lender-choice-hint">
-            {data.company?.ready
-              ? "(your lender: you can text or email the link to apply)"
-              : "(add a working link under Settings › Customer Financing)"}
+      {lenders.map((l) => (
+        <label key={l.id ?? "lender"} className="lender-choice-option">
+          <input
+            type="radio"
+            name={`lender-${estimateId}`}
+            checked={source === companyKey(l.id)}
+            disabled={pending || !l.usable}
+            onChange={() => {
+              setSource(companyKey(l.id));
+              save(companyKey(l.id));
+            }}
+          />
+          <span>
+            {l.name}{" "}
+            <span className="lender-choice-hint">{lenderHint(l, l.id === firstId, lenders.length)}</span>
           </span>
-        </span>
-      </label>
+        </label>
+      ))}
+      {!lenders.length && (
+        <label className="lender-choice-option">
+          <input type="radio" name={`lender-${estimateId}`} checked={false} disabled />
+          <span>
+            Your lender <span className="lender-choice-hint">(add one under Settings › Customer Financing)</span>
+          </span>
+        </label>
+      )}
       <label className="lender-choice-option">
         <input
           type="radio"
@@ -709,6 +754,89 @@ function LenderChoice({ estimateId, data, compact }: { estimateId: string; data:
         <span>Not financing</span>
       </label>
       {error && <p className="error-note">{error}</p>}
+    </div>
+  );
+}
+
+/** Beside a lender's name: which one is tried first, its fee, or that it's off. */
+function lenderHint(l: { usable: boolean; feeBp: number | null }, first: boolean, count: number): string {
+  if (!l.usable) return "(turned off, or its link doesn't work, under Settings › Customer Financing)";
+  const fee = l.feeBp !== null ? `fee ${feePercentLabel(l.feeBp)}` : null;
+  if (count === 1) return `(your lender: you can text or email the link to apply${fee ? `, ${fee}` : ""})`;
+  const parts = [first ? "your first lender" : null, fee].filter(Boolean);
+  return parts.length ? `(${parts.join(", ")})` : "";
+}
+
+/**
+ * After a lender says no (DECISIONS #170): move this estimate to the next
+ * lender and send the customer its link, in one click. By text, or by
+ * email instead.
+ */
+function TryNextLender({
+  estimateId,
+  data,
+  declinedOn,
+  remindInDays,
+}: {
+  estimateId: string;
+  data: FinancingPanelData;
+  declinedOn: string;
+  remindInDays: number | null;
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const next = data.next!;
+  const total = data.offer?.totalCents ?? 0;
+  const fee = lenderFeeCents(total, next.feeBp);
+
+  function go(channel: "text" | "email") {
+    if (!window.confirm(`Move this estimate to ${next.name} and ${channel === "text" ? "text" : "email"} the customer ${next.name}'s link?`)) {
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await tryNextLender({ estimateId, channel, remindInDays });
+      if (res.sentBy) setMessage(`Now with ${res.lender}. Sent by ${res.sentBy}.${followUpLine(res.followUpOn)}`);
+      if (res.error) setError(res.error);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="financing-next">
+      <strong>
+        {data.provider} declined on {fmtDay(declinedOn)}.
+      </strong>
+      <p className="est-tax-note">
+        Try your next lender: this estimate moves to {next.name}, and the customer gets {next.name}&apos;s link
+        {data.hasPhone ? " by text" : " by email"}.
+      </p>
+      {fee !== null && total > 0 && next.feeBp !== null && (
+        <p className="offer-cost">
+          With {next.name}, if they finance the full {moneyCents(total)}, {next.name} keeps about {moneyCents(fee)} (
+          {feePercentLabel(next.feeBp)}). You&apos;d get {moneyCents(total - fee)}.
+        </p>
+      )}
+      <div className="est-pay-actions">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={pending || (!data.hasPhone && !data.hasEmail)}
+          onClick={() => go(data.hasPhone ? "text" : "email")}
+        >
+          {pending ? "Sending…" : `Try ${next.name} next`}
+        </button>
+        {data.hasPhone && data.hasEmail && (
+          <button type="button" className="btn-ghost" disabled={pending} onClick={() => go("email")}>
+            Email it instead
+          </button>
+        )}
+      </div>
+      {error && <p className="error-note">{error}</p>}
+      {message && <p className="hint-note">{message}</p>}
     </div>
   );
 }

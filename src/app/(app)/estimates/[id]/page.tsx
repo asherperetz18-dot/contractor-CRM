@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { depositCents, paidTotalCents, type BillCreditRow } from "@/lib/data/types";
-import { estimateLender, financingOffered, readFinancing } from "@/lib/financing";
+import { currentFinancing, estimateLender, financingOffered, nextLender, usableLenders } from "@/lib/financing";
+import { companyLenders } from "@/lib/data/financing-lenders";
 import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import type { FinancingPanelData, FinancingStep } from "./financing-panel";
@@ -312,19 +313,14 @@ export default async function EstimateDetailPage({
       { data: stepRows, error: stepError },
       { error: followUpError },
       { data: changeRows, error: changeError },
+      lenderList,
     ] = await Promise.all([
-      // Every column: the offer default and the lender's fee (0219, #169)
-      // where they exist.
+      // Every column: the offer default (0219, #169) where it exists.
       supabase
         .from("company_profile")
         .select("*")
         .eq("company_id", profile.company_id)
-        .maybeSingle<{
-          financing_provider: string | null;
-          financing_url: string | null;
-          financing_offer_default?: boolean | null;
-          financing_fee_bp?: number | null;
-        }>(),
+        .maybeSingle<{ financing_offer_default?: boolean | null }>(),
       supabase
         .from("estimate_financing_events")
         .select("*")
@@ -342,17 +338,39 @@ export default async function EstimateDetailPage({
         .eq("estimate_id", estimate.id)
         .order("created_at")
         .returns<PaymentChangeRow[]>(),
+      // The company's lenders, in the order they're tried (0220, #170).
+      companyLenders(supabase, profile.company_id),
     ]);
-    const companyLender = readFinancing(financingRow);
-    // Who is financing this job (0218, DECISIONS #168): the company's
-    // lender unless the estimate says the customer's own, or none.
-    const choiceRow = estimate as typeof estimate & { financing_source?: string | null; financing_lender?: string | null };
+    const usable = usableLenders(lenderList.lenders);
+    const companyLender = usable[0] ?? null;
+    // Who is financing this job (0218, DECISIONS #168): one of the
+    // company's lenders unless the estimate says the customer's own, or
+    // none; which of them, the one picked (#170), else the first.
+    const choiceRow = estimate as typeof estimate & {
+      financing_source?: string | null;
+      financing_lender?: string | null;
+      financing_lender_id?: string | null;
+    };
     const choiceReady = "financing_source" in choiceRow;
     const lender = estimateLender(
-      { source: choiceRow.financing_source ?? null, lender: choiceRow.financing_lender ?? null },
-      companyLender
+      {
+        source: choiceRow.financing_source ?? null,
+        lender: choiceRow.financing_lender ?? null,
+        lenderId: choiceRow.financing_lender_id ?? null,
+      },
+      lenderList.lenders
     );
     const steps = stepRows ?? [];
+    // After a no: the next of the company's lenders that hasn't said no
+    // on this estimate (#170).
+    const next =
+      lender && !lender.own && lenderList.ready && currentFinancing(steps)?.status === "declined"
+        ? nextLender(
+            lenderList.lenders,
+            lender.id,
+            steps.filter((s) => s.status === "declined").map((s) => s.lender ?? "").filter(Boolean)
+          )
+        : null;
     const openChange = openPaymentChange(changeRows ?? []);
     // Always there once 0218 has run, so the customer's own lender can be
     // picked even when the company has none; before it, as before.
@@ -385,9 +403,16 @@ export default async function EstimateDetailPage({
         choice: {
           source: (["company", "customer", "none"] as const).find((x) => x === choiceRow.financing_source) ?? null,
           lender: choiceRow.financing_lender ?? null,
+          lenderId: lender && !lender.own ? lender.id : null,
           ready: choiceReady,
         },
-        company: { name: financingRow?.financing_provider?.trim() || null, ready: !!companyLender },
+        company: { name: companyLender?.name ?? null, ready: !!companyLender },
+        // Every lender of the company's that can be picked: the ones that
+        // are on, and the one this estimate is with even if it's off.
+        lenders: lenderList.lenders
+          .filter((l) => usable.includes(l) || (!!lender && !lender.own && l.id === lender.id))
+          .map((l) => ({ id: l.id, name: l.name, feeBp: l.feeBp, usable: usable.includes(l) })),
+        next: next ? { name: next.name, feeBp: next.feeBp } : null,
         // Offering it to this customer, and what it would cost (#169).
         offer: {
           ready: "financing_offered" in choiceRow,
@@ -395,7 +420,7 @@ export default async function EstimateDetailPage({
             (choiceRow as { financing_offered?: boolean | null }).financing_offered,
             financingRow?.financing_offer_default
           ),
-          feeBp: typeof financingRow?.financing_fee_bp === "number" ? financingRow.financing_fee_bp : null,
+          feeBp: lender?.feeBp ?? null,
           totalCents: estimate.total_cents,
         },
         steps: steps.map((s) => ({
