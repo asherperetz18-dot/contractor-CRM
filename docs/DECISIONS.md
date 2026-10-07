@@ -2001,6 +2001,8 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **No rate, no monthly payment, no credit-score promise.** Those are the lender's to state, with its own disclosures, and they differ by customer. The card only says the company offers financing through the lender, and that the lender decides and sets the terms.
 - **Read on its own.** The portal reads the two columns separately, so a database without 0214 shows no offer instead of failing the page.
 
+**Follow-up (1.232.2), from the first real link:** a company saved `https://apply.svcfin.com/embedded`, copied from its own address bar. That's Service Finance's application form, which opens only for a browser that already came through the dealer's link (the company's had), so customers clicking from the CRM got "Access Denied". Known lender pages that turn customers away are now refused, with which link to use instead (for Service Finance, the `/home/dealerAuthentication?id=…&key=…` one). A link already saved like that is no longer shown to customers, and the settings page says why. The page also tells companies to try the link in a private window before saving.
+
 **Consequence:** any company that already has a lender can offer financing today, with any lender. Nothing comes back from the lender yet (TECH_DEBT). Next: the office records financing status on an estimate. Later, with a partnership, a direct connection. **Database step: 0214**, any time; until it runs, the settings page says to run it and customers see nothing new.
 
 ## 162 — Financing on the estimate: send the link, and keep track by hand

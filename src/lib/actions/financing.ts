@@ -32,7 +32,14 @@ import {
 
 const NEEDS_0214 = "Financing needs a database update first: run 0214_customer_financing.sql in Supabase.";
 
-export type FinancingSettings = { provider: string; url: string; ready: boolean };
+export type FinancingSettings = {
+  provider: string;
+  url: string;
+  ready: boolean;
+  /** What's wrong with the link as saved, so customers aren't being shown
+   *  the offer (#161: a lender's page that turns them away). */
+  problem: string | null;
+};
 
 export async function getFinancingSettings(): Promise<FinancingSettings | null> {
   const profile = await getCurrentProfile();
@@ -43,10 +50,13 @@ export async function getFinancingSettings(): Promise<FinancingSettings | null> 
     .select("financing_provider, financing_url")
     .eq("company_id", profile.company_id)
     .maybeSingle<{ financing_provider: string | null; financing_url: string | null }>();
+  const provider = data?.financing_provider ?? "";
+  const url = data?.financing_url ?? "";
   return {
-    provider: data?.financing_provider ?? "",
-    url: data?.financing_url ?? "",
+    provider,
+    url,
     ready: !error,
+    problem: url ? financingSettingsError({ provider, url }) : null,
   };
 }
 

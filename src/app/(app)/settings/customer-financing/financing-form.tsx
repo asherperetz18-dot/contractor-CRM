@@ -41,6 +41,12 @@ export function FinancingForm({ initial }: { initial: FinancingSettings }) {
         terms. You&apos;ll hear from the lender, not from the CRM.
       </p>
       <p className="est-tax-note">
+        <strong>Check the link the way a customer would before you save it:</strong> open a private
+        (incognito) window and paste it there. It should open your lender&apos;s application. If it
+        says Access Denied or asks someone to sign in, it&apos;s not the link for customers. A link
+        copied from your own browser&apos;s address bar often isn&apos;t.
+      </p>
+      <p className="est-tax-note">
         The CRM never shows an interest rate or a monthly payment. Those have to come from the
         lender, with its own terms.
       </p>
@@ -77,6 +83,13 @@ export function FinancingForm({ initial }: { initial: FinancingSettings }) {
           disabled={pending || !initial.ready}
         />
       </label>
+      {/* The link as saved turns customers away (#161 follow-up): say so
+          next to it, and what to paste instead. */}
+      {initial.problem && url === initial.url && (
+        <p className="error-note" style={{ maxWidth: 560 }}>
+          Customers aren&apos;t seeing the offer right now. {initial.problem}
+        </p>
+      )}
       {error && <p className="error-note">{error}</p>}
       {saved && <p className="hint-note">Saved.</p>}
       <div className="est-pay-actions" style={{ marginTop: 14 }}>

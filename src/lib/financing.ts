@@ -12,6 +12,22 @@ export type CompanyFinancing = { provider: string; url: string };
 const MAX_URL = 500;
 const MAX_PROVIDER = 60;
 
+/**
+ * Addresses a company may copy from its own browser that aren't the link
+ * for customers: a lender's application form, which opens only for a
+ * browser that already came through the dealer's link (the company's
+ * did, so it "works" for them), and the page the lender shows when it
+ * refuses. Customers sent there get Access Denied.
+ */
+const NOT_THE_CUSTOMER_LINK: { host: string; paths: string[]; why: string }[] = [
+  {
+    host: "apply.svcfin.com",
+    paths: ["/embedded", "/home/denied"],
+    why:
+      "That's Service Finance's application page, not the link to it: it only opens in a browser that already used your dealer link, so customers get Access Denied. Paste your customer application link instead. It starts https://apply.svcfin.com/home/dealerAuthentication?id= and is in your Service Finance dealer portal, or ask their dealer line.",
+  },
+];
+
 /** Why this link can't be a lender's public application page, or null. */
 function linkError(raw: string): string | null {
   if (!/^https:\/\//i.test(raw)) return "The link must start with https://.";
@@ -26,6 +42,10 @@ function linkError(raw: string): string | null {
   if (!url.hostname.includes(".") || url.username || url.password) {
     return "That doesn't look like a lender's public link. Copy it from your lender's dashboard.";
   }
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase().replace(/\/+$/, "");
+  const known = NOT_THE_CUSTOMER_LINK.find((k) => k.host === host && k.paths.includes(path));
+  if (known) return known.why;
   return null;
 }
 
