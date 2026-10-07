@@ -13682,3 +13682,8 @@ textarea.est-item-desc:disabled {
   display: block;
   color: var(--ink-soft);
 }
+.financing-payout {
+  flex: 1 1 100%;
+  border-left: 3px solid var(--line);
+  padding-left: 12px;
+}

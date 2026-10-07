@@ -21,6 +21,8 @@ export function receiptMethodLabel(method: string | null | undefined): string | 
       return "Zelle";
     case "wire":
       return "Wire transfer";
+    case "financing":
+      return "Financing";
     default:
       return null;
   }

@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.233.0",
+    date: "2026-10-07",
+    notes: [
+      "A funded loan can be recorded as the payment it is: in an estimate's Financing panel, pick Funded, enter the amount, and leave \"Also record it as a payment\" ticked. The money goes on the deposit first, then each stage in order, and the job reads paid everywhere.",
+      "Financing is now one of the ways to record a payment by hand.",
+    ],
+  },
+  {
     version: "1.232.2",
     date: "2026-10-07",
     notes: [

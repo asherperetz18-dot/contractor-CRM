@@ -2352,7 +2352,8 @@ export function pendingPayment(
  * whole module at runtime -- and takes every page importing it down with
  * it. Nothing in the type check or the build catches that.
  */
-export const MANUAL_PAYMENT_METHODS = ["cash", "check", "zelle", "wire", "other"] as const;
+// "financing": a lender's payout on a funded loan (DECISIONS #163).
+export const MANUAL_PAYMENT_METHODS = ["cash", "check", "zelle", "wire", "financing", "other"] as const;
 export type ManualPaymentMethod = (typeof MANUAL_PAYMENT_METHODS)[number];
 
 export function paymentMethodLabel(method: string | null): string {
@@ -2364,6 +2365,7 @@ export function paymentMethodLabel(method: string | null): string {
   if (method === "check") return "check";
   if (method === "zelle") return "Zelle";
   if (method === "wire") return "wire transfer";
+  if (method === "financing") return "financing";
   if (method === "other") return "other";
   return method ?? "";
 }

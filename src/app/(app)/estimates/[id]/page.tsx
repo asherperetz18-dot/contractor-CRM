@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
-import { paidTotalCents, type BillCreditRow } from "@/lib/data/types";
+import { depositCents, paidTotalCents, type BillCreditRow } from "@/lib/data/types";
 import { readFinancing } from "@/lib/financing";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import type { FinancingPanelData, FinancingStep } from "./financing-panel";
@@ -346,6 +346,29 @@ export default async function EstimateDetailPage({
         canWork: canCreateEstimates(profile) || canManageBills(profile),
         hasPhone: !!lead?.phone,
         hasEmail: !!lead?.email,
+        // Funded can also record the payout (DECISIONS #163): for the people
+        // who record payments, on a signed contract.
+        canRecordPayment: canManageBills(profile) && estimate.status === "Signed",
+        loan:
+          estimate.status === "Signed"
+            ? {
+                depositDueCents: depositCents(estimate.total_cents, estimate.deposit_percent_bp, estimate.deposit_cap_cents),
+                stages: ((payments ?? []) as EstimatePayment[]).map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  sort_order: p.sort_order,
+                  amount_cents: p.amount_cents,
+                  credit_cents: p.credit_cents ?? 0,
+                  cancelled_at: (p as EstimatePayment & { cancelled_at?: string | null }).cancelled_at ?? null,
+                })),
+                payments: ((paidRows ?? []) as PortalPayment[]).map((p) => ({
+                  estimate_payment_id: p.estimate_payment_id ?? null,
+                  kind: p.kind,
+                  status: p.status,
+                  amount_cents: p.amount_cents,
+                })),
+              }
+            : null,
       };
     }
   }
