@@ -56,7 +56,7 @@ export default async function EstimateDetailPage({
       .order("sort_order", { ascending: true }),
     supabase
       .from("portal_payments")
-      .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at")
+      .select("id, estimate_id, estimate_payment_id, kind, amount_cents, status, method, paid_at, created_at, stripe_session_id, stripe_payment_intent_id")
       .eq("estimate_id", id)
       .order("created_at", { ascending: false }),
     supabase
@@ -361,11 +361,15 @@ export default async function EstimateDetailPage({
                   credit_cents: p.credit_cents ?? 0,
                   cancelled_at: (p as EstimatePayment & { cancelled_at?: string | null }).cancelled_at ?? null,
                 })),
+                // With the Stripe ids, so a checkout opened and left counts
+                // for nothing here too, as it does when it's recorded.
                 payments: ((paidRows ?? []) as PortalPayment[]).map((p) => ({
                   estimate_payment_id: p.estimate_payment_id ?? null,
                   kind: p.kind,
                   status: p.status,
                   amount_cents: p.amount_cents,
+                  stripe_session_id: p.stripe_session_id ?? null,
+                  stripe_payment_intent_id: p.stripe_payment_intent_id ?? null,
                 })),
               }
             : null,

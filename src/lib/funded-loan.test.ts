@@ -110,4 +110,9 @@ test("recording the payout: the people who record payments, on a signed contract
   assert.ok(fn.indexOf('.from("portal_payments")') < fn.indexOf('.from("estimate_financing_events").insert'));
   const panel = source("../app/(app)/estimates/[id]/financing-panel.tsx");
   assert.match(panel, /Also record it as a payment/);
+  // The page's preview counts payments the way the server does: it has
+  // the Stripe ids, so an abandoned checkout isn't taken as paid.
+  const page = source("../app/(app)/estimates/[id]/page.tsx");
+  assert.match(page, /stripe_session_id: p\.stripe_session_id \?\? null,\s*stripe_payment_intent_id: p\.stripe_payment_intent_id \?\? null,/);
+  assert.match(page, /\.from\("portal_payments"\)\s*\.select\("[^"]*stripe_session_id, stripe_payment_intent_id"\)/);
 });
