@@ -184,7 +184,7 @@ test("the places that look at single rows know a refund when they see one", () =
   // credit after the refund it came with.
   const trash = source("../lead-trash.ts");
   assert.match(trash, /\(a\.refund_of \? 1 : 0\) - \(b\.refund_of \? 1 : 0\)/);
-  assert.match(trash, /if \(table !== "bill_credits"\)/);
+  assert.match(trash, /if \(table !== "bill_credits"( && table !== "estimate_financing_events")?\)/);
   assert.match(trash, /await put\("bill_credits", payload\.children\.bill_credits\);/);
 });
 

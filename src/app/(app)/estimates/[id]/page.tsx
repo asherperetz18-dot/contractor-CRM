@@ -306,7 +306,7 @@ export default async function EstimateDetailPage({
     (estimate.kind === "contract" || estimate.kind === "change_order" || !estimate.kind) &&
     !["Draft", "Void", "Declined"].includes(estimate.status)
   ) {
-    const [{ data: financingRow }, { data: stepRows, error: stepError }] = await Promise.all([
+    const [{ data: financingRow }, { data: stepRows, error: stepError }, { error: followUpError }] = await Promise.all([
       supabase
         .from("company_profile")
         .select("financing_provider, financing_url")
@@ -318,7 +318,9 @@ export default async function EstimateDetailPage({
         .eq("company_id", profile.company_id)
         .eq("estimate_id", estimate.id)
         .order("created_at")
-        .returns<(FinancingStep & { created_by: string | null })[]>(),
+        .returns<(FinancingStep & { created_by: string | null; follow_up_task_id?: string | null })[]>(),
+      // Follow-up reminders (DECISIONS #164) need 0216.
+      supabase.from("estimate_financing_events").select("follow_up_task_id").limit(0),
     ]);
     const lender = readFinancing(financingRow);
     const steps = stepRows ?? [];
@@ -331,6 +333,20 @@ export default async function EstimateDetailPage({
         const p = (people ?? []).find((x) => x.id === id);
         return p ? p.name || p.email || null : null;
       };
+      // The follow-up tasks steps put on someone's list, to show when
+      // they're due and whether they're done.
+      const taskIds = steps.map((s) => s.follow_up_task_id).filter((x): x is string => !!x);
+      const { data: tasks } = taskIds.length
+        ? await supabase
+            .from("lead_tasks")
+            .select("id, due_date, completed_at")
+            .in("id", taskIds)
+            .returns<{ id: string; due_date: string; completed_at: string | null }[]>()
+        : { data: [] as { id: string; due_date: string; completed_at: string | null }[] };
+      const followUpOf = (id: string | null | undefined) => {
+        const t = id ? (tasks ?? []).find((x) => x.id === id) : null;
+        return t ? { due: t.due_date, done: !!t.completed_at } : null;
+      };
       financingPanel = {
         provider: lender?.provider ?? null,
         steps: steps.map((s) => ({
@@ -341,8 +357,10 @@ export default async function EstimateDetailPage({
           created_at: s.created_at,
           channel: s.channel,
           by: nameOf(s.created_by),
+          followUp: followUpOf(s.follow_up_task_id),
         })),
         ready: !isMissingSchemaError(stepError),
+        followUpsReady: !followUpError,
         canWork: canCreateEstimates(profile) || canManageBills(profile),
         hasPhone: !!lead?.phone,
         hasEmail: !!lead?.email,

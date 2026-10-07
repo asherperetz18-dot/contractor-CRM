@@ -13687,3 +13687,21 @@ textarea.est-item-desc:disabled {
   border-left: 3px solid var(--line);
   padding-left: 12px;
 }
+/* Follow-up reminders (DECISIONS #164): one line that wraps on a phone. */
+.financing-remind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.financing-remind .est-record-check {
+  margin: 0;
+}
+.financing-remind select {
+  width: auto;
+}
+.financing-remind-when {
+  color: var(--ink-soft);
+}

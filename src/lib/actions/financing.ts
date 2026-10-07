@@ -13,14 +13,18 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { personName } from "@/lib/data/client-name";
 import { advanceStageOnFinancing } from "@/lib/pipeline/advance-stage";
+import { companyToday } from "@/lib/data/company-today";
 import {
   FINANCING_STATUS_LABEL,
   financingEmail,
   financingEventError,
   financingSettingsError,
   financingText,
+  followUpDue,
+  followUpTitle,
   movesToPendingFinance,
   readFinancing,
+  remindsFor,
   splitFundedLoan,
   type FinancingStatus,
 } from "@/lib/financing";
@@ -90,7 +94,12 @@ export async function saveFinancingSettings(input: { provider: string; url: stri
 
 const NEEDS_0215 = "Financing tracking needs a database update first: run 0215_estimate_financing.sql in Supabase.";
 
+const NEEDS_0216 =
+  "Follow-up reminders need a database update first: run 0216_financing_follow_ups.sql in Supabase. Or untick the reminder.";
+
 const canWorkFinancing = (p: Profile) => canCreateEstimates(p) || canManageBills(p);
+
+type Admin = ReturnType<typeof createAdminClient>;
 
 type FinancingDoc = {
   id: string;
@@ -108,7 +117,7 @@ type FinancingDoc = {
 /** The estimate, if it's this company's and one financing goes with:
  *  an estimate, contract or change order that's out, not a draft or one
  *  closed. */
-async function financingDoc(admin: ReturnType<typeof createAdminClient>, estimateId: string, companyId: string) {
+async function financingDoc(admin: Admin, estimateId: string, companyId: string) {
   const { data } = await admin
     .from("estimates")
     .select("id, company_id, lead_id, doc_number, title, kind, status, total_cents, deposit_percent_bp, deposit_cap_cents")
@@ -123,6 +132,100 @@ async function financingDoc(admin: ReturnType<typeof createAdminClient>, estimat
   return { doc: data };
 }
 
+// Follow-ups (DECISIONS #164): a link sent or an application in can put
+// a task on the list of whoever recorded it, a few days out. The step
+// remembers its task (0216), so the next step can close it.
+
+/** 0216 has run: a step can remember its follow-up task. */
+async function followUpsReady(admin: Admin): Promise<boolean> {
+  const { error } = await admin.from("estimate_financing_events").select("follow_up_task_id").limit(0);
+  return !error;
+}
+
+/** The follow-up task for a step, on `profileId`'s list. */
+async function startFollowUp(
+  admin: Admin,
+  doc: FinancingDoc,
+  profileId: string,
+  status: "sent" | "applied",
+  days: number
+): Promise<{ id: string; due: string } | { error: string }> {
+  const { data: company } = await admin
+    .from("company_profile")
+    .select("financing_provider")
+    .eq("company_id", doc.company_id)
+    .maybeSingle<{ financing_provider: string | null }>();
+  const due = followUpDue(await companyToday(), days);
+  const { data, error } = await admin
+    .from("lead_tasks")
+    .insert({
+      lead_id: doc.lead_id,
+      title: followUpTitle(status, doc.doc_number, company?.financing_provider?.trim() || null),
+      due_date: due,
+      assigned_to: profileId,
+      created_by: profileId,
+      company_id: doc.company_id,
+    })
+    .select("id")
+    .single<{ id: string }>();
+  if (error || !data) return { error: `the follow-up task couldn't be made (${error?.message ?? "no task came back"})` };
+  return { id: data.id, due };
+}
+
+/** Closes the follow-ups earlier steps on this estimate left open, but
+ *  `keep`: the step they waited on has come. Best effort. */
+async function closeFollowUps(admin: Admin, doc: FinancingDoc, keep: string | null) {
+  const { data } = await admin
+    .from("estimate_financing_events")
+    .select("follow_up_task_id")
+    .eq("estimate_id", doc.id)
+    .eq("company_id", doc.company_id)
+    .not("follow_up_task_id", "is", null)
+    .returns<{ follow_up_task_id: string }[]>();
+  const open = (data ?? []).map((row) => row.follow_up_task_id).filter((id) => id !== keep);
+  if (!open.length) return;
+  await admin
+    .from("lead_tasks")
+    .update({ completed_at: new Date().toISOString() })
+    .in("id", open)
+    .eq("company_id", doc.company_id)
+    .is("completed_at", null);
+}
+
+/**
+ * A step on the estimate, with its follow-up task when one was asked for
+ * and the step is one to follow up. A step that can't be saved leaves no
+ * task behind. Then the earlier steps' follow-ups are closed.
+ */
+async function saveStep(
+  admin: Admin,
+  doc: FinancingDoc,
+  profileId: string,
+  step: { status: FinancingStatus; amount_cents?: number | null; note?: string | null; channel?: string | null },
+  remindInDays: number | null | undefined
+): Promise<{ error?: string; followUpOn?: string }> {
+  let followUp: { id: string; due: string } | null = null;
+  if (remindInDays && remindsFor(step.status)) {
+    const started = await startFollowUp(admin, doc, profileId, step.status as "sent" | "applied", remindInDays);
+    if ("error" in started) return { error: started.error };
+    followUp = started;
+  }
+  const { error } = await admin.from("estimate_financing_events").insert({
+    company_id: doc.company_id,
+    estimate_id: doc.id,
+    ...step,
+    created_by: profileId,
+    // Only with a task, so a company that hasn't run 0216 can still save.
+    ...(followUp ? { follow_up_task_id: followUp.id } : {}),
+  });
+  if (error) {
+    if (followUp) await admin.from("lead_tasks").delete().eq("id", followUp.id).eq("company_id", doc.company_id);
+    return { error: isMissingSchemaError(error) ? NEEDS_0215 : error.message };
+  }
+  await closeFollowUps(admin, doc, followUp?.id ?? null);
+  return { followUpOn: followUp?.due };
+}
+
 export async function recordFinancingStatus(input: {
   estimateId: string;
   status: string;
@@ -130,7 +233,9 @@ export async function recordFinancingStatus(input: {
   note?: string | null;
   /** Funded: also record the payout as payments on the contract (#163). */
   payment?: { receivedOn?: string | null; reference?: string | null } | null;
-}): Promise<{ error?: string; ok?: boolean; movedTo?: string; paidCents?: number }> {
+  /** Sent or Applied: a follow-up task this many days out (#164). */
+  remindInDays?: number | null;
+}): Promise<{ error?: string; ok?: boolean; movedTo?: string; paidCents?: number; followUpOn?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
@@ -142,6 +247,8 @@ export async function recordFinancingStatus(input: {
   const found = await financingDoc(admin, input.estimateId, profile.company_id);
   if ("error" in found) return { error: found.error };
   const doc = found.doc;
+  const remindInDays = remindsFor(status) ? input.remindInDays : null;
+  if (remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
 
   // Funded, and recorded as the money it is (DECISIONS #163): the lender
   // paid the contractor, so the payout settles what's left on the
@@ -230,17 +337,16 @@ export async function recordFinancingStatus(input: {
   }
 
   const note = [input.note?.trim(), paidCents ? "Recorded as a payment on the contract." : null].filter(Boolean).join(" ");
-  const { error } = await admin.from("estimate_financing_events").insert({
-    company_id: profile.company_id,
-    estimate_id: doc.id,
-    status,
-    amount_cents: input.amountCents ?? null,
-    note: note || null,
-    created_by: profile.id,
-  });
-  if (error) {
-    const why = isMissingSchemaError(error) ? NEEDS_0215 : error.message;
-    return { error: paidCents ? `The payment was recorded, but the Funded step wasn't saved: ${why}` : why };
+  const saved = await saveStep(
+    admin,
+    doc,
+    profile.id,
+    { status, amount_cents: input.amountCents ?? null, note: note || null },
+    remindInDays
+  );
+  if (saved.error) {
+    const why = saved.error.charAt(0).toUpperCase() + saved.error.slice(1);
+    return { error: paidCents ? `The payment was recorded, but the Funded step wasn't saved: ${saved.error}` : why };
   }
 
   // Applied or approved: the lead is at Pending Finance (by its tag, so
@@ -267,18 +373,21 @@ export async function recordFinancingStatus(input: {
 
   revalidatePath(`/estimates/${doc.id}`);
   revalidatePath("/pipeline");
+  if (saved.followUpOn) revalidatePath("/tasks");
   if (paidCents) {
     revalidatePath("/payments");
     revalidatePath("/invoices");
     revalidatePath("/collect");
   }
-  return { ok: true, movedTo, paidCents: paidCents || undefined };
+  return { ok: true, movedTo, paidCents: paidCents || undefined, followUpOn: saved.followUpOn };
 }
 
 export async function sendFinancingLink(input: {
   estimateId: string;
   channel: "text" | "email" | "both";
-}): Promise<{ error?: string; sentBy?: string }> {
+  /** A follow-up task this many days out (#164). */
+  remindInDays?: number | null;
+}): Promise<{ error?: string; sentBy?: string; followUpOn?: string }> {
   const profile = await getCurrentProfile();
   if (!profile) return { error: "Not signed in." };
   if (!canWorkFinancing(profile)) return { error: "Only people who work estimates or record payments can do this." };
@@ -291,6 +400,8 @@ export async function sendFinancingLink(input: {
   const found = await financingDoc(admin, input.estimateId, profile.company_id);
   if ("error" in found) return { error: found.error };
   const doc = found.doc;
+  // Before anything goes out, so a reminder asked for isn't silently lost.
+  if (input.remindInDays && !(await followUpsReady(admin))) return { error: NEEDS_0216 };
 
   const [{ data: company }, { data: lead }] = await Promise.all([
     admin
@@ -389,16 +500,20 @@ export async function sendFinancingLink(input: {
 
   if (!went.length) return { error: `The link wasn't sent: ${problems.join("; ")}.` };
 
-  // A step of its own on the estimate. Best effort: the link already went.
-  await admin.from("estimate_financing_events").insert({
-    company_id: profile.company_id,
-    estimate_id: doc.id,
-    status: "sent",
-    channel: went.length === 2 ? "both" : went[0],
-    created_by: profile.id,
-  });
+  // A step of its own on the estimate, with its follow-up. The link
+  // already went, so a step that can't be saved is said, not undone.
+  const saved = await saveStep(
+    admin,
+    doc,
+    profile.id,
+    { status: "sent", channel: went.length === 2 ? "both" : went[0] },
+    input.remindInDays
+  );
+  if (saved.error) problems.push(`it isn't on the estimate's financing steps: ${saved.error}`);
 
   revalidatePath(`/estimates/${doc.id}`);
+  if (saved.followUpOn) revalidatePath("/tasks");
   const sentBy = went.length === 2 ? "text and email" : went[0];
-  return problems.length ? { sentBy, error: `Sent by ${sentBy}, but ${problems.join("; ")}.` } : { sentBy };
+  const followUpOn = saved.followUpOn;
+  return problems.length ? { sentBy, followUpOn, error: `Sent by ${sentBy}, but ${problems.join("; ")}.` } : { sentBy, followUpOn };
 }

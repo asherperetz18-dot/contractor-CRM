@@ -107,7 +107,7 @@ test("recording the payout: the people who record payments, on a signed contract
   assert.match(fn, /source: "manual"/);
   assert.match(fn, /recorded_by: profile\.id/);
   // The payments go in before the step: a failed payout records no Funded.
-  assert.ok(fn.indexOf('.from("portal_payments")') < fn.indexOf('.from("estimate_financing_events").insert'));
+  assert.ok(fn.indexOf('.from("portal_payments")') < fn.indexOf("await saveStep("));
   const panel = source("../app/(app)/estimates/[id]/financing-panel.tsx");
   assert.match(panel, /Also record it as a payment/);
   // The page's preview counts payments the way the server does: it has

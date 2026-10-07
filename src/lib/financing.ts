@@ -1,3 +1,4 @@
+import { addDays } from "./company-clock.ts";
 import { isUnfinishedCheckout, phaseNetCents } from "./data/types.ts";
 
 /**
@@ -153,6 +154,32 @@ export function financingEventError(input: { status: string; amountCents?: numbe
 export function movesToPendingFinance(status: FinancingStatus, stageKey: string | null): boolean {
   if (status !== "applied" && status !== "approved") return false;
   return !["pending_finance", "close_to_sale", "won", "dnc"].includes(stageKey ?? "");
+}
+
+// Follow-ups (DECISIONS #164): a link sent or an application in puts a
+// task on the list of whoever recorded it, a few days out, so the
+// customer isn't left waiting on nobody. The next step closes it.
+
+/** The choices offered, in days. */
+export const FOLLOW_UP_DAYS = [1, 2, 3, 5, 7] as const;
+const DEFAULT_FOLLOW_UP_DAYS = 3;
+
+/** A step worth following up: the customer has the link, or has applied. */
+export function remindsFor(status: FinancingStatus): boolean {
+  return status === "sent" || status === "applied";
+}
+
+/** The day the follow-up is due: `days` after the company's today. */
+export function followUpDue(today: string, days: number): string {
+  const n = (FOLLOW_UP_DAYS as readonly number[]).includes(days) ? days : DEFAULT_FOLLOW_UP_DAYS;
+  return addDays(today, n);
+}
+
+/** The task, as it reads on the Tasks page. */
+export function followUpTitle(status: "sent" | "applied", docNumber: string, lender: string | null): string {
+  return status === "sent"
+    ? `Financing on ${docNumber}: did they apply with ${lender || "the lender"}?`
+    : `Financing on ${docNumber}: has ${lender || "the lender"} decided?`;
 }
 
 /** The text to the customer. A plain hyphen: an em dash re-encodes the
