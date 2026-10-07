@@ -1,0 +1,90 @@
+name: iPhone signing certificate (create once)
+
+# Creates the Apple Distribution certificate that signs every TestFlight
+# and App Store build -- run this ONCE, before the first release. Steps:
+# docs/MOBILE_RELEASE.md, section 2 (DECISIONS #171).
+#
+# This repo is public, so anyone signed in to GitHub can download a run's
+# artifacts and read its logs. The certificate's private key therefore
+# never leaves this job unencrypted: the artifact is the certificate locked
+# with the IOS_SIGNING_PASSWORD secret, and that locked text is what goes
+# into the IOS_DISTRIBUTION_CERTIFICATE secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      replace:
+        description: "Replace the existing certificate (only if it was revoked or has expired)"
+        type: boolean
+        default: false
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the secrets
+        env:
+          PASS: ${{ secrets.IOS_SIGNING_PASSWORD }}
+          EXISTING: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE }}
+          REPLACE: ${{ inputs.replace }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          if [ ${#PASS} -lt 20 ]; then
+            echo "::error::Add the IOS_SIGNING_PASSWORD secret first: at least 20 characters (four or more random words works). The locked certificate is only as strong as this password."
+            exit 1
+          fi
+          if [ -n "$EXISTING" ] && [ "$REPLACE" != "true" ]; then
+            echo "::error::A certificate already exists (the IOS_DISTRIBUTION_CERTIFICATE secret). Apple allows only a few per team, so tick Replace only if it was revoked or has expired."
+            exit 1
+          fi
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY" ]; then
+            echo "::error::The App Store Connect API key secrets aren't all set (docs/MOBILE_RELEASE.md, section 2)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Create the certificate
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+          PASS: ${{ secrets.IOS_SIGNING_PASSWORD }}
+        run: |
+          cd "$RUNNER_TEMP"
+          umask 077
+          openssl genrsa -out dist.key 2048
+          openssl req -new -key dist.key -out dist.csr \
+            -subj "/CN=AI Build Pros LLC/O=AI Build Pros LLC/C=US"
+          node "$GITHUB_WORKSPACE/mobile/release/app-store-connect.mjs" \
+            create-certificate --csr dist.csr --out dist.cer
+          openssl x509 -inform DER -in dist.cer -out dist.pem
+          # 3DES and a SHA-1 MAC: the PKCS#12 form macOS's keychain imports.
+          # The gpg lock below is what actually protects it.
+          openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12 \
+            -name "Apple Distribution: AI Build Pros LLC" \
+            -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 \
+            -passout env:PASS
+      - name: Lock the certificate
+        env:
+          PASS: ${{ secrets.IOS_SIGNING_PASSWORD }}
+        run: |
+          cd "$RUNNER_TEMP"
+          printf '%s' "$PASS" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --s2k-digest-algo SHA512 --s2k-count 65011712 \
+            -o dist.p12.gpg dist.p12
+          mkdir out
+          base64 -w0 dist.p12.gpg > out/IOS_DISTRIBUTION_CERTIFICATE.txt
+          # The serial and expiry are public, and match the certificate in
+          # developer.apple.com -> Certificates.
+          openssl x509 -in dist.pem -noout -serial -enddate | tee out/certificate.txt
+          rm -f dist.key dist.csr dist.cer dist.pem dist.p12 dist.p12.gpg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-distribution-certificate-locked
+          path: ${{ runner.temp }}/out/
+          retention-days: 1
