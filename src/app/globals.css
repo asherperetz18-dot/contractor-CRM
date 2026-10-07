@@ -13303,6 +13303,33 @@ textarea.est-item-desc:disabled {
   font-size: 12.5px;
   color: var(--ink-soft);
 }
+/* A person's own weeks on the Time Clock: approved, reopened or not yet. */
+.tc-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0 8px 10px;
+  border-left: 3px solid var(--line);
+}
+.tc-week .tc-line {
+  flex-wrap: wrap;
+}
+.tc-week-note {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.tc-week-good {
+  border-left-color: #2f9a6a;
+}
+.tc-week-good .tc-week-note {
+  color: #1a7f45;
+}
+.tc-week-warn {
+  border-left-color: #d9a441;
+}
+.tc-week-warn .tc-week-note {
+  color: #8a4a0c;
+}
 /* On phones the week table scrolls sideways; a punch's detail (stamps,
    the worker's reason, edit history) stays on screen and wraps there
    instead of running off under the edge. */
