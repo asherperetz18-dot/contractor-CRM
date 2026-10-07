@@ -2144,3 +2144,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The CRM never sets prices.** Whether to price the fee in is the company's call, within its dealer agreement.
 
 **Consequence:** financing is offered where it pays, its cost is in view before it's offered, and a financed job's profit is right without anyone remembering the fee. Needs 0219; without it financing is offered as before and no fee is shown.
+
+## 170 — Several lenders, one offered at a time per customer
+
+**Date:** 2026-10-07
+
+**Context:** The company works with more than one lender (Service Finance, and now Synchrony). The CRM held one lender per company (#161), so a second lender couldn't be offered, and a customer one lender turned down had nowhere to go from the estimate.
+
+**Decision:**
+- **A list, in order.** `financing_lenders` (0220) holds each lender: the name customers see, its customer application link, the company's fee (hundredths of a percent, as #169) and whether it's on. Settings › Customer Financing lists them; the order is the order they're tried. The lender a company already had, with its fee, is copied in as its first. The fee moves from the company (#169) to each lender.
+- **One lender per customer at a time.** Each estimate says which (`estimates.financing_lender_id`); none means the first that's on. The customer page shows only that lender's Apply card. Applying usually means a credit check, and each lender charges the company a different fee, so the customer isn't shown a choice of buttons.
+- **After a no, the next one, in one click.** When the newest step is Declined, the Financing section offers **Try <next> next**: the next lender in order that's on and hasn't already said no on this estimate. It moves the estimate there and sends that lender's link, recorded as a Link sent step that notes the lender it moved from. Not while a payment change is waiting or in force (#166), and only for a customer financing is offered to (#169).
+- **Turned off isn't forgotten.** A lender that's off is never offered to a new customer, and its link is never sent or shown. An estimate already with it keeps it as its lender, so a payout still records under its name and fee.
+- **Everything else follows the estimate's lender:** the follow-up task, the pipeline badge, the payment change, the payout and the fee saved as a job cost (#163, #164, #165, #166, #169).
+
+**Consequence:** a company can offer several lenders without customers applying twice, and a declined customer moves on to the next lender from the estimate. Needs 0220; until it runs, the one lender in company_profile works as before and Settings says to run it.
+

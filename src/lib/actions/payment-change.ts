@@ -12,7 +12,8 @@ import { sendTwilioSms } from "@/lib/twilio-env";
 import { getTwilioForSending } from "@/lib/twilio-company";
 import { personName } from "@/lib/data/client-name";
 import { createLoginToken, portalAccessExpiry, portalBaseUrl } from "@/lib/portal/session";
-import { estimateLender, financingOffered, readFinancing } from "@/lib/financing";
+import { estimateLender, financingOffered } from "@/lib/financing";
+import { companyLenders } from "@/lib/data/financing-lenders";
 import {
   openPaymentChange,
   paymentChangeEmail,
@@ -52,6 +53,8 @@ type ContractRow = {
   /** Who is financing it (0218, DECISIONS #168); absent before 0218. */
   financing_source?: string | null;
   financing_lender?: string | null;
+  /** Which of the company's lenders (0220, DECISIONS #170). */
+  financing_lender_id?: string | null;
   /** Offered to this customer (0219, #169); absent before 0219. */
   financing_offered?: boolean | null;
 };
@@ -142,18 +145,13 @@ export async function sendPaymentChange(input: {
   if ((doc.kind ?? "contract") !== "contract") return { error: "Only a contract can be switched to financing." };
   if (doc.status !== "Signed") return { error: "Only a signed contract can be switched to financing." };
 
-  const [{ data: company }, { data: lead }, changes] = await Promise.all([
+  const [{ data: company }, { data: lead }, changes, lenders] = await Promise.all([
     admin
       // Every column: the offer default (0219) where it exists.
       .from("company_profile")
       .select("*")
       .eq("company_id", profile.company_id)
-      .maybeSingle<{
-        name: string | null;
-        financing_provider: string | null;
-        financing_url: string | null;
-        financing_offer_default?: boolean | null;
-      }>(),
+      .maybeSingle<{ name: string | null; financing_offer_default?: boolean | null }>(),
     admin
       .from("leads")
       .select("id, company_id, contact_type, first_name, last_name, email, phone")
@@ -169,13 +167,15 @@ export async function sendPaymentChange(input: {
         phone: string | null;
       }>(),
     changesOf(admin, doc.id),
+    // The company's lenders (#170); the estimate says which.
+    companyLenders(admin, profile.company_id),
   ]);
   if ("error" in changes) return { error: changes.error };
   // The lender this job is financed through (#168): the company's, or the
   // customer's own -- which has no link to apply with.
   const financing = estimateLender(
-    { source: doc.financing_source ?? null, lender: doc.financing_lender ?? null },
-    readFinancing(company)
+    { source: doc.financing_source ?? null, lender: doc.financing_lender ?? null, lenderId: doc.financing_lender_id ?? null },
+    lenders.lenders
   );
   if (!financing) {
     return {

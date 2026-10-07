@@ -13920,6 +13920,82 @@ textarea.est-item-desc:disabled {
   max-width: 320px;
 }
 
+/* Several lenders (DECISIONS #170): the list in Settings, and trying the
+   next one after a no. */
+.lender-row {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+  max-width: 720px;
+}
+.lender-row-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lender-row-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 15px;
+  min-width: 0;
+}
+.lender-row-order {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lender-row-order button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.lender-row-order button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.lender-row-actions {
+  margin: 0;
+}
+.lender-row-meta {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+.lender-fields {
+  margin-top: 10px;
+  max-width: 560px;
+}
+.lender-add {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed #c9c2b2;
+  border-radius: 8px;
+  max-width: 720px;
+}
+.financing-next {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #e4b4b4;
+  border-radius: 8px;
+  background: #fdf6f6;
+}
+.financing-next .est-tax-note {
+  margin: 4px 0 8px;
+}
+
 /* Follow-up reminders (DECISIONS #164): one line that wraps on a phone. */
 .financing-remind {
   display: flex;
