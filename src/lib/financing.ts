@@ -156,6 +156,52 @@ export function movesToPendingFinance(status: FinancingStatus, stageKey: string 
   return !["pending_finance", "close_to_sale", "won", "dnc"].includes(stageKey ?? "");
 }
 
+// On the pipeline (DECISIONS #165): each card shows where its customer's
+// financing stands -- the newest step on any of the lead's live estimates
+// -- and how long it's been there, so a stuck application stands out.
+
+/** Where a lead's financing stands. */
+export type LeadFinancing = { status: FinancingStatus; at: string; docNumber: string };
+
+/** By lead id: the newest step on each lead's live estimates (not a
+ *  draft, a void or declined one, or an invoice). Steps on estimates
+ *  not in `estimates` -- one the person can't see -- count for nothing. */
+export function leadFinancing(
+  estimates: { id: string; lead_id: string | null; status: string; kind: string | null; doc_number: string }[],
+  events: { estimate_id: string; status: string; created_at: string }[]
+): Record<string, LeadFinancing> {
+  const live = new Map<string, { lead_id: string; doc_number: string }>();
+  for (const e of estimates) {
+    if (!e.lead_id || (e.kind ?? "contract") === "invoice") continue;
+    if (e.status === "Draft" || e.status === "Void" || e.status === "Declined") continue;
+    live.set(e.id, { lead_id: e.lead_id, doc_number: e.doc_number });
+  }
+  const out: Record<string, LeadFinancing> = {};
+  for (const ev of events) {
+    const doc = live.get(ev.estimate_id);
+    if (!doc || !(FINANCING_STATUSES as readonly string[]).includes(ev.status)) continue;
+    const now = out[doc.lead_id];
+    if (now && new Date(now.at).getTime() >= new Date(ev.created_at).getTime()) continue;
+    out[doc.lead_id] = { status: ev.status as FinancingStatus, at: ev.created_at, docNumber: doc.doc_number };
+  }
+  return out;
+}
+
+/** The card's line: the step, how long ago, and whether it's waiting on
+ *  someone, good news or bad. */
+export function financingChip(
+  f: LeadFinancing,
+  daysAgo: number
+): { text: string; title: string; tone: "waiting" | "good" | "bad" } {
+  const label = FINANCING_STATUS_LABEL[f.status];
+  const days = Math.max(0, daysAgo);
+  return {
+    text: `Financing: ${label} · ${days === 0 ? "today" : `${days}d`}`,
+    title: `${f.docNumber}: ${label} ${days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} ago`}`,
+    tone: f.status === "declined" ? "bad" : f.status === "approved" || f.status === "funded" ? "good" : "waiting",
+  };
+}
+
 // Follow-ups (DECISIONS #164): a link sent or an application in puts a
 // task on the list of whoever recorded it, a few days out, so the
 // customer isn't left waiting on nobody. The next step closes it.

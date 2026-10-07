@@ -2049,3 +2049,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Trash** puts financing steps back after the contact's tasks, which they point at.
 
 **Consequence:** a customer in the middle of financing always has a follow-up on someone's list until the lender answers. Needs 0216; without it the panel offers no reminder and works as before.
+
+## 165 — Financing on the pipeline card
+
+**Date:** 2026-10-07
+
+**Context:** Where a customer's financing stood (#162) was only on the estimate. To find stuck applications the office had to open each estimate, so a customer who applied a week ago and hadn't heard back was easy to miss.
+
+**Decision:**
+- **Each pipeline card shows one line**, on the board and in the phone list: "Financing: {step} · {days}", from the newest step on any of the lead's live estimates. A draft, a void or declined estimate, or an invoice doesn't count. Amber while waiting on someone (Link sent, Applied), green for Approved or Funded, red for Declined. Hovering shows the document and how long ago ("EST-1047: Applied 6 days ago").
+- **No new page load.** The board already loads every estimate in the company, grouped by lead (`getLeadEstimateIndex`, for the estimate chip). One more small read beside it, the company's financing steps, gives each lead its line (`leadFinancing`, pure and tested). It runs as the signed-in person, so it shows what they can see: no View Estimates, no line. A step on an estimate they can't see counts for nothing.
+- **The day count is the signal.** No separate "stuck" flag: the follow-up task (#164) nags the person, and the card shows everyone how long it's been.
+- Sending the link now refreshes the pipeline too, so the card changes at once.
+
+**Consequence:** the office can scan the board, Pending Finance especially, and see whose financing is moving and whose has stalled. No database step.

@@ -35,6 +35,7 @@ import { useQuickCreate } from "../use-quick-create";
 import { quickCreateContactKind } from "@/lib/data/quick-create";
 import { boughtListKeys, sourceTag } from "@/lib/lead-or-contact";
 import { PhoneLeadList } from "./phone-lead-list";
+import { financingChip } from "@/lib/financing";
 import { isClosedStageKey, isEndingStageKey } from "@/lib/pipeline/stage-keys";
 
 type StatusFilter = "Open" | "Won" | "Lost";
@@ -73,6 +74,7 @@ const PipelineColumn = memo(function PipelineColumn({
   draggedId,
   repById,
   boughtKeys,
+  byLead,
   onOpenLead,
   onLoadMore,
   onDragStartCard,
@@ -95,6 +97,8 @@ const PipelineColumn = memo(function PipelineColumn({
   repById: Map<string, string>;
   /** Bought-list source keys: which cards are leads (DECISIONS #156). */
   boughtKeys: string[];
+  /** Each lead's estimates, with where its financing stands (#165). */
+  byLead: LeadEstimateIndex["byLead"];
   onOpenLead: (card: BoardCard) => void;
   /** Ask the server for the column's next window of cards. */
   onLoadMore: (stage: string) => void;
@@ -208,6 +212,17 @@ const PipelineColumn = memo(function PipelineColumn({
                 </div>
               )}
               {l.project_type && <div className="lead-card-project">{l.project_type}</div>}
+              {(() => {
+                // Where the customer's financing stands (DECISIONS #165).
+                const f = byLead[l.id]?.financing;
+                if (!f) return null;
+                const chip = financingChip(f, daysSince(f.at));
+                return (
+                  <div className={`lead-card-financing lead-card-financing-${chip.tone}`} title={chip.title}>
+                    {chip.text}
+                  </div>
+                );
+              })()}
               <div className="lead-card-foot">
                 <span className="mono">{money(l.value)}</span>
                 <span>
@@ -1081,6 +1096,7 @@ export function PipelineBoard({
           groups={displayGroups}
           stages={stages}
           repById={repById}
+          byLead={estimateIndex.byLead}
           onOpenLead={openLead}
           onLoadMore={onLoadMore}
           onNewContact={canCreateLeads ? openNewContact : null}
@@ -1098,6 +1114,7 @@ export function PipelineBoard({
               draggedId={draggedId}
               repById={repById}
               boughtKeys={boughtKeys}
+              byLead={estimateIndex.byLead}
               onOpenLead={openLead}
               onLoadMore={onLoadMore}
               onDragStartCard={setDraggedId}

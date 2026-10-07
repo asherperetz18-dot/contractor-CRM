@@ -6,6 +6,8 @@ import { dialNumberOf } from "@/lib/data/phone-match";
 import type { BoardCard } from "@/lib/pipeline-board-types";
 import { leadCardMeta, pickPhoneStage } from "@/lib/phone-leads";
 import { MobileIcon } from "../mobile-icon";
+import type { LeadEstimateIndex } from "@/lib/data/lead-estimate-index";
+import { financingChip } from "@/lib/financing";
 
 /**
  * The Leads page at phone width (DECISIONS #091): the board's columns
@@ -18,6 +20,7 @@ export function PhoneLeadList({
   groups,
   stages,
   repById,
+  byLead,
   onOpenLead,
   onLoadMore,
   onNewContact,
@@ -25,6 +28,8 @@ export function PhoneLeadList({
   groups: { stage: string; items: BoardCard[]; count: number }[];
   stages: PipelineStageRow[];
   repById: Map<string, string>;
+  /** Each lead's estimates, with where its financing stands (#165). */
+  byLead: LeadEstimateIndex["byLead"];
   onOpenLead: (card: BoardCard, tab?: "Texts") => void;
   onLoadMore: (stage: string) => void;
   /** Null for someone who may not add contacts: no button. */
@@ -60,12 +65,19 @@ export function PhoneLeadList({
           const name = leadDisplayName(c);
           const phone = dialNumberOf(c);
           const meta = leadCardMeta(c, daysSince(c.date_received));
+          const fin = byLead[c.id]?.financing;
+          const chip = fin ? financingChip(fin, daysSince(fin.at)) : null;
           return (
             <article key={c.id} className="pl-card">
               <div className="pl-top">
                 <button type="button" className="pl-open" onClick={() => onOpenLead(c)}>
                   <span className="pl-name">{name}</span>
                   {c.address && <span className="pl-addr">{c.address}</span>}
+                  {chip && (
+                    <span className={`pl-fin lead-card-financing-${chip.tone}`} title={chip.title}>
+                      {chip.text}
+                    </span>
+                  )}
                 </button>
                 <span className="pl-rep">{(c.assigned_to && repById.get(c.assigned_to)) || "Unassigned"}</span>
               </div>

@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.235.0",
+    date: "2026-10-07",
+    notes: [
+      "Pipeline cards now show where a customer's financing stands, like \"Financing: Applied · 6d\": amber while you're waiting on the customer or the lender, green when approved or funded, red when declined. The day count makes a stuck application easy to spot. On phones too.",
+    ],
+  },
+  {
     version: "1.234.0",
     date: "2026-10-07",
     notes: [

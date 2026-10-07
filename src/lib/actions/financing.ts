@@ -512,6 +512,7 @@ export async function sendFinancingLink(input: {
   if (saved.error) problems.push(`it isn't on the estimate's financing steps: ${saved.error}`);
 
   revalidatePath(`/estimates/${doc.id}`);
+  revalidatePath("/pipeline");
   if (saved.followUpOn) revalidatePath("/tasks");
   const sentBy = went.length === 2 ? "text and email" : went[0];
   const followUpOn = saved.followUpOn;
