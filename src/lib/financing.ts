@@ -290,7 +290,7 @@ export type LoanPart = {
   cents: number;
 };
 
-type LoanStage = {
+export type LoanStage = {
   id: string;
   name: string;
   sort_order: number;
@@ -299,7 +299,7 @@ type LoanStage = {
   cancelled_at?: string | null;
 };
 
-type LoanPayment = {
+export type LoanPayment = {
   estimate_payment_id: string | null;
   kind: string;
   status: string;

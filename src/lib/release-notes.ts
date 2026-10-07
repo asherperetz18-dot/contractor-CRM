@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.236.0",
+    date: "2026-10-07",
+    notes: [
+      "Switch a signed contract to financing: when a customer who signed to pay you directly would rather finance the rest, open the contract's Financing panel and choose Switch to financing. They get a one-page payment change to sign on their customer page; the price doesn't change. Once signed, the unpaid payments read \"Financing\" and no bills or reminders go to the customer for them. When the lender pays, record Funded as usual. If the lender says no, \"Back to the original schedule\" puts everything back.",
+    ],
+  },
+  {
     version: "1.235.0",
     date: "2026-10-07",
     notes: [

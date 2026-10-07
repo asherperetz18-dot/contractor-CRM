@@ -47,6 +47,8 @@ const ESTIMATE_CHILDREN = [
   // Financing steps on an estimate (0215, DECISIONS #162). Restored
   // after the follow-up tasks they point at (0216, #164).
   "estimate_financing_events",
+  // Contracts switched to financing (0217, DECISIONS #166).
+  "contract_payment_changes",
 ] as const;
 
 // Tables that survive the delete but lose their pointer (on delete set

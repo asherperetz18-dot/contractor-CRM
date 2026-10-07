@@ -24,6 +24,7 @@ export function PhasePayments({
   phases,
   invoicedSeparately,
   companyName,
+  financedBy = null,
 }: {
   phases: PortalPhase[];
   /** Who the customer is paying, by name -- not "your contractor". */
@@ -32,6 +33,9 @@ export function PhasePayments({
    *  stay, Pay buttons don't. The one explanatory line lives on the
    *  deposit card above, so it is said once, not per phase. */
   invoicedSeparately?: boolean;
+  /** The lender paying the rest (DECISIONS #166): what's still owed
+   *  reads as being paid through it, with no Pay button. */
+  financedBy?: string | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -53,11 +57,12 @@ export function PhasePayments({
   }
 
   const owing = phases.filter((p) => p.state !== "paid" && p.state !== "clearing");
+  const financed = (p: PortalPhase) => !!financedBy && p.state !== "paid" && p.state !== "clearing";
 
   return (
     <div className="portal-card estdoc-sign">
       <h2 className="portal-card-title">
-        {owing.length > 0 ? "Payments due" : "Your payments"}
+        {owing.length > 0 && !financedBy ? "Payments due" : "Your payments"}
       </h2>
       {error && <p className="error-note">{error}</p>}
 
@@ -69,14 +74,16 @@ export function PhasePayments({
           const partlyPaid = p.owedCents > 0 && p.owedCents < p.amountCents;
           // The button charges what is left, never the face amount on top
           // of what was already paid; none when there is nothing to take.
-          const payCents = portalPayCents(p.state, p.payableCents, !!invoicedSeparately);
+          const payCents = financed(p) ? null : portalPayCents(p.state, p.payableCents, !!invoicedSeparately);
           return (
             <div key={p.id} className={"pp-phase pp-phase-" + p.state}>
               <div className="pp-phase-main">
                 <div className="estdoc-strong">{p.name || "Progress payment"}</div>
                 {p.description && <div className="estdoc-muted">{p.description}</div>}
                 <div className="estdoc-muted">
-                  {p.state === "paid"
+                  {financed(p)
+                    ? `Being paid through ${financedBy}`
+                    : p.state === "paid"
                     ? `Paid${p.paidAt ? " " + new Date(p.paidAt).toLocaleDateString("en-US") : ""}`
                     : p.state === "clearing"
                       ? "Bank transfer in progress — nothing more to do."
@@ -102,7 +109,9 @@ export function PhasePayments({
                     p.state === "paid" || p.state === "clearing" ? p.amountCents - p.creditCents : p.owedCents
                   )}
                 </div>
-                {p.state === "paid" ? (
+                {financed(p) ? (
+                  <span className="est-badge est-badge-financing">Financing</span>
+                ) : p.state === "paid" ? (
                   <span className="est-badge est-badge-signed">Paid</span>
                 ) : p.state === "clearing" ? (
                   <span className="est-badge est-badge-sent">Clearing</span>
@@ -125,7 +134,7 @@ export function PhasePayments({
         })}
       </div>
 
-      {owing.length > 0 && !invoicedSeparately && (
+      {owing.length > 0 && !invoicedSeparately && !financedBy && (
         <p className="est-tax-note">
           Payment is handled by Stripe on their secure page. Your card details are never seen or
           stored by {companyName}&apos;s system.

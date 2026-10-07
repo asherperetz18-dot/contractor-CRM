@@ -2063,3 +2063,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Sending the link now refreshes the pipeline too, so the card changes at once.
 
 **Consequence:** the office can scan the board, Pending Finance especially, and see whose financing is moving and whose has stalled. No database step.
+
+## 166 — Switching a signed contract to financing: a payment change the customer signs
+
+**Date:** 2026-10-07
+
+**Context:** A customer signs to pay the contractor directly, then asks to finance the rest. The CRM could already send the lender's link, track the application and record the payout (#161–#163). But nothing on the contract said the customer had agreed to pay through the lender, and billing and reminders kept asking them for the stages the loan would cover. The ways out were all bad: pressing Stop reminders on each bill, remembering not to bill, or making a new version of the contract, which splits the money history.
+
+**Decision:**
+- **The contract and its price stay as signed.** The customer signs a separate one-page **payment change**: total, paid so far, and what's to be paid through the lender. It says the lender decides and sets its terms, and that the original schedule applies if it isn't approved. No rate or monthly payment, ever.
+- **The office sends it** from the contract's Financing panel (**Switch to financing…**, for people who work estimates or record payments), by text or email, with the lender's link if ticked. That link is recorded as Link sent, with its follow-up (#164). Only a signed contract (not a change order), with a lender link set, and something left to pay. The amount is what's still to pay, by the same rule a funded loan settles (`paymentChangeFigures` over `splitFundedLoan`). If nothing reaches the customer, nothing is saved.
+- **The customer signs on their customer page**, at the top of the contract: their typed name, which must be the name the contract was signed in (any of its signers'), or any full name for a contract signed on paper; when, and the IP address. Signed once: only a change still waiting takes a signature.
+- **While it's signed, the lender pays what's left.** The contract's schedule reads **Paying with financing**, and its unpaid lines read **Financing**. Billing a stage is refused (Bill, Save don't send, Collect's Billable Now), a completion certificate bills nothing, the reminder job skips the contract, and the customer page shows no Pay buttons (its checkouts refuse too). Recording a payment by hand and credits still work. **Funded** settles it as before (#163).
+- **No stage is changed by the switch.** It's one row (`contract_payment_changes`, 0217) that everything checks (`lib/data/financed-contracts.ts`). **Back to the original schedule** (a decline, or a change of mind) just ends it, with a note on the contact, and billing, reminders and Pay buttons pick up where they were. A change not signed yet can be sent again (with today's figures) or **taken back**. One open change per contract, by the database.
+- The table is read by the company's people and written only by the server, carries the subscription lock, and goes with the contract to Trash and backups.
+
+**Consequence:** a customer can move from paying directly to financing with a signed record, without the CRM chasing them for money the lender will pay. Needs 0217; without it the panel offers no switch. Gaps are in TECH_DEBT.

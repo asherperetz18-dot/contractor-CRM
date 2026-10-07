@@ -45,6 +45,7 @@ export function PhaseBilling({
   payments,
   signed,
   rollup = null,
+  financedBy = null,
 }: {
   phase: EstimatePayment;
   payments: PortalPayment[];
@@ -54,6 +55,9 @@ export function PhaseBilling({
    *  controls stay off it: billing the full amount here would ask the
    *  customer a second time for money already taken over there. */
   rollup?: ChangeOrderRollup | null;
+  /** The lender paying what's left on the contract (DECISIONS #166):
+   *  what's owed here reads "Financing", with nothing to bill. */
+  financedBy?: string | null;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -95,6 +99,25 @@ export function PhaseBilling({
             </>
           )}
         </span>
+      </div>
+    );
+  }
+
+  // Paying with financing: the lender pays it. Billing, un-billing and
+  // reminders step aside; recording a payment and credits stay (they sit
+  // beside this, not in it).
+  if (financedBy && state !== "paid" && state !== "clearing") {
+    return (
+      <div className="est-phase-bill">
+        <span className="est-badge est-badge-financing">Financing</span>
+        <span className="est-phase-due-note">
+          {settledOn > 0
+            ? `${moneyCents(settledOn)} paid — the rest through ${financedBy}`
+            : `paid through ${financedBy}`}
+        </span>
+        {(phase.credit_cents ?? 0) > 0 && (
+          <span className="est-phase-due-note">{moneyCents(phase.credit_cents ?? 0)} credited</span>
+        )}
       </div>
     );
   }

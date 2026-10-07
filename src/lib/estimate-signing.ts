@@ -10,6 +10,7 @@ import { jobStatusOnSigning, productionJobRow } from "@/lib/production-job";
 import { sendEmail } from "@/lib/email-env";
 import { getEmailForCompany } from "@/lib/email-company";
 import type { EstimateStatus } from "@/lib/data/types";
+import { financedLender } from "@/lib/data/financed-contracts";
 
 export type SignableEstimate = {
   id: string;
@@ -174,16 +175,21 @@ export async function finalizeSignedEstimate(
     // No text goes out. Billing and telling them are separate acts, and
     // a pay link arriving while the contractor is still standing in
     // their kitchen reads as pushy.
-    const dueDate = addDays(await todayForCompany(admin, estimate.company_id), 7);
-    await admin
-      .from("estimate_payments")
-      .update({
-        requested_at: now,
-        due_date: dueDate,
-        updated_at: now,
-      })
-      .eq("estimate_id", estimate.parent_estimate_id)
-      .is("requested_at", null);
+    //
+    // Unless the contract is paying with financing (DECISIONS #166): the
+    // lender pays what's left, so nothing is billed to the customer.
+    if (!(await financedLender(admin, estimate.parent_estimate_id))) {
+      const dueDate = addDays(await todayForCompany(admin, estimate.company_id), 7);
+      await admin
+        .from("estimate_payments")
+        .update({
+          requested_at: now,
+          due_date: dueDate,
+          updated_at: now,
+        })
+        .eq("estimate_id", estimate.parent_estimate_id)
+        .is("requested_at", null);
+    }
 
     revalidatePath(`/estimates/${estimate.parent_estimate_id}`);
     revalidatePath("/payments");

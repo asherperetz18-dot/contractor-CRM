@@ -1325,6 +1325,8 @@ export function EstimateBuilder({
         onChanged={refreshPage}
         credits={credits}
         canRemoveCredits={canManageBills}
+        // Paying with financing (DECISIONS #166): the lender pays what's left.
+        financedBy={financing?.paymentChange?.change?.status === "signed" ? financing.paymentChange.change.lender : null}
       />
 
       {/* Financing (DECISIONS #162): send the lender's link, and keep

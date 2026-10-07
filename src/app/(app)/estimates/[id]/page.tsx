@@ -4,6 +4,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { canCreateEstimates, canDeleteLeads, canManageBills, canManageCosts, canSendEstimates, canViewEstimates, isAdminRole, isStrictAdmin, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type PortalPayment } from "@/lib/data/types";
 import { depositCents, paidTotalCents, type BillCreditRow } from "@/lib/data/types";
 import { readFinancing } from "@/lib/financing";
+import { openPaymentChange, type PaymentChangeRow } from "@/lib/payment-change";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import type { FinancingPanelData, FinancingStep } from "./financing-panel";
 import { closerHoldsSend, closerHoldMessage } from "@/lib/estimate-closer-gate";
@@ -306,7 +307,12 @@ export default async function EstimateDetailPage({
     (estimate.kind === "contract" || estimate.kind === "change_order" || !estimate.kind) &&
     !["Draft", "Void", "Declined"].includes(estimate.status)
   ) {
-    const [{ data: financingRow }, { data: stepRows, error: stepError }, { error: followUpError }] = await Promise.all([
+    const [
+      { data: financingRow },
+      { data: stepRows, error: stepError },
+      { error: followUpError },
+      { data: changeRows, error: changeError },
+    ] = await Promise.all([
       supabase
         .from("company_profile")
         .select("financing_provider, financing_url")
@@ -321,10 +327,19 @@ export default async function EstimateDetailPage({
         .returns<(FinancingStep & { created_by: string | null; follow_up_task_id?: string | null })[]>(),
       // Follow-up reminders (DECISIONS #164) need 0216.
       supabase.from("estimate_financing_events").select("follow_up_task_id").limit(0),
+      // Switched to financing after signing (0217, DECISIONS #166).
+      supabase
+        .from("contract_payment_changes")
+        .select("*")
+        .eq("company_id", profile.company_id)
+        .eq("estimate_id", estimate.id)
+        .order("created_at")
+        .returns<PaymentChangeRow[]>(),
     ]);
     const lender = readFinancing(financingRow);
     const steps = stepRows ?? [];
-    if (lender || steps.length) {
+    const openChange = openPaymentChange(changeRows ?? []);
+    if (lender || steps.length || openChange) {
       const ids = [...new Set(steps.map((s) => s.created_by).filter((x): x is string => !!x))];
       const { data: people } = ids.length
         ? await supabase.from("profiles").select("id, name, email").in("id", ids).returns<{ id: string; name: string | null; email: string | null }[]>()
@@ -367,6 +382,21 @@ export default async function EstimateDetailPage({
         // Funded can also record the payout (DECISIONS #163): for the people
         // who record payments, on a signed contract.
         canRecordPayment: canManageBills(profile) && estimate.status === "Signed",
+        // A signed contract the customer would rather finance (#166).
+        paymentChange: {
+          ready: !changeError,
+          canSwitch: estimate.status === "Signed" && (estimate.kind ?? "contract") === "contract" && !!lender,
+          change: openChange
+            ? {
+                status: openChange.status as "sent" | "signed",
+                lender: openChange.lender,
+                financeCents: openChange.finance_cents,
+                sentAt: openChange.created_at,
+                signedName: openChange.signed_name,
+                signedAt: openChange.signed_at,
+              }
+            : null,
+        },
         loan:
           estimate.status === "Signed"
             ? {
@@ -378,6 +408,7 @@ export default async function EstimateDetailPage({
                   amount_cents: p.amount_cents,
                   credit_cents: p.credit_cents ?? 0,
                   cancelled_at: (p as EstimatePayment & { cancelled_at?: string | null }).cancelled_at ?? null,
+                  requested_at: p.requested_at ?? null,
                 })),
                 // With the Stripe ids, so a checkout opened and left counts
                 // for nothing here too, as it does when it's recorded.

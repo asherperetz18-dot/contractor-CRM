@@ -1,6 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { selectAll } from "@/lib/data/select-all";
+import { financedContracts } from "@/lib/data/financed-contracts";
 import {
   INVOICE_DOC_COLUMNS,
   INVOICE_PAYMENT_COLUMNS,
@@ -87,7 +88,10 @@ export async function runCompanyReminders(
       : "email";
 
   type Stage = InvoiceStageLite & { sent_at: string | null };
-  const stages = await selectAll<Stage>((f, t) =>
+  // A contract paying with financing (DECISIONS #166): the lender pays
+  // it, so its customer is never reminded about it.
+  const financed = await financedContracts(admin, companyId);
+  const billed = await selectAll<Stage>((f, t) =>
     admin
       .from("estimate_payments")
       .select(INVOICE_STAGE_COLUMNS)
@@ -100,6 +104,7 @@ export async function runCompanyReminders(
       .order("id")
       .range(f, t)
   );
+  const stages = billed.filter((s) => !financed.has(s.estimate_id));
   if (!stages.length) return { checked: 0, sent: 0 };
 
   const stageIds = stages.map((s) => s.id);

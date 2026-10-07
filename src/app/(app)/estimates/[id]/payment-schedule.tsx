@@ -74,6 +74,7 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   onChanged,
   credits = NO_CREDITS,
   canRemoveCredits = false,
+  financedBy = null,
 }: {
   estimateId: string;
   totalCents: number;
@@ -89,6 +90,9 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   credits?: BillCreditRow[];
   /** Bookkeeping, Office or Admin: may remove a credit given by hand. */
   canRemoveCredits?: boolean;
+  /** The lender paying what's left (DECISIONS #166): unpaid payments read
+   *  "Financing" and aren't billed. */
+  financedBy?: string | null;
 }) {
   const [rows, setRows] = useState<Row[]>(payments.map(toRow));
   /**
@@ -281,10 +285,22 @@ export const PaymentSchedule = memo(function PaymentSchedule({
     <section className="est-pay">
       <div className="est-pay-head">
         <div>
-          <h2 className="est-pay-title">Payments &amp; terms</h2>
+          <h2 className="est-pay-title">
+            Payments &amp; terms
+            {financedBy && <span className="est-badge est-badge-financing">Paying with financing</span>}
+          </h2>
           <p className="est-pay-sub">
-            Deposit is {depositRuleSentence({ percentBp: depositPercentBp, capCents: depositCapCents })}. The
-            balance bills as work completes.
+            {financedBy ? (
+              <>
+                What&apos;s left is being paid through {financedBy}: no bills or reminders go to the customer for
+                it. When {financedBy} pays you, record Funded in the Financing panel.
+              </>
+            ) : (
+              <>
+                Deposit is {depositRuleSentence({ percentBp: depositPercentBp, capCents: depositCapCents })}. The
+                balance bills as work completes.
+              </>
+            )}
           </p>
         </div>
         {!locked && (
@@ -350,6 +366,11 @@ export const PaymentSchedule = memo(function PaymentSchedule({
               {!depositPaid && settling && (
                 <div className="est-settling-flag">
                   {paymentMethodLabel(settling.method) || "Payment"} clearing
+                </div>
+              )}
+              {!depositPaid && !settling && financedBy && deposit > 0 && (
+                <div>
+                  <span className="est-badge est-badge-financing">Financing</span>
                 </div>
               )}
             </td>
@@ -468,6 +489,7 @@ export const PaymentSchedule = memo(function PaymentSchedule({
                           payments={paid}
                           signed={locked}
                           rollup={rollup}
+                          financedBy={financedBy}
                         />
                         {/* Take something off what's owed on a billed stage,
                             without money moving (DECISIONS #154); only once
