@@ -2160,3 +2160,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** a company can offer several lenders without customers applying twice, and a declined customer moves on to the next lender from the estimate. Needs 0220; until it runs, the one lender in company_profile works as before and Settings says to run it.
 
+
+## 171 — The iPhone app reaches TestFlight from GitHub, signed manually with an App Manager key
+
+**Date:** 2026-10-07
+
+**Context:** The Apple Developer account (AI Build Pros LLC, team 7U97978GD3) is open, and the owner made an App Store Connect API key with the **App Manager** role. Xcode's automatic signing on a build machine uses Apple's *cloud-managed* distribution certificate, and Apple only lets an **Admin** key use that (App Manager gets "Cloud signing permission error"). An App Manager key *can* create an ordinary Apple Distribution certificate and App Store provisioning profiles through the API. The repo is public, so run logs and artifacts are readable by anyone signed in to GitHub (same constraint as #086).
+
+**Decision:**
+- **Manual signing with the existing key, not an Admin key.** A one-time workflow (`ios-signing-certificate.yml`) makes the private key and CSR on the runner, has Apple issue the certificate, and publishes it only locked with gpg (AES-256, the `IOS_SIGNING_PASSWORD` secret, 20+ characters, one-day artifact), exactly as the Android upload key (#086). That locked text becomes the `IOS_DISTRIBUTION_CERTIFICATE` secret. It refuses to replace an existing one unless *Replace* is ticked, because Apple allows only a few distribution certificates per team.
+- **The release workflow (`ios-testflight.yml`, manual, `main` only, `macos-26`)** unlocks the certificate into a keychain of its own, reuses or replaces the App Store profile named *AI Build Pros CRM App Store* through `mobile/release/app-store-connect.mjs` (no dependencies; Node signs the ES256 token itself), archives, exports with `mobile/ios/ExportOptions.plist`, and uploads with `altool` and the API key. The keychain and the key file are removed in an `always()` step. It never submits for review.
+- **The project carries the signing settings:** the App target's Release build is Manual, Apple Distribution, that profile, team 7U97978GD3, conditioned on `sdk=iphoneos*` so the CocoaPods targets are untouched. Debug stays Automatic for running on a phone from Xcode. A shared `App` scheme is committed so `xcodebuild -scheme App` doesn't depend on Xcode auto-creating one.
+- **Build number = the workflow's run number**, version 1.0.N, like Android.
+- **Upload checks fixed up front:** `ITSAppUsesNonExemptEncryption = false` (HTTPS only, so no export-compliance question holds each build) and `UIRequiredDeviceCapabilities` = `arm64` (the template's `armv7` contradicts an iOS 14, 64-bit-only binary).
+- **The dialer's Speaker button stays Android-only for now.** `speakerSwitchAvailable()` already returns false on iPhone: the CallAudio plugin is registered with no web implementation and has no iOS side, so the button never renders. A Swift `CallAudio` (AVAudioSession `overrideOutputAudioPort`) is possible later; `ios-release.test.ts` points at where its test goes.
+- **A PR check (`ios-app.yml`)** archives the app unsigned on every `mobile/` PR, so a broken iOS build shows before the release run.
+
+**Consequence:** no Admin key sits in the repo's secrets. Two more secrets exist (`IOS_SIGNING_PASSWORD`, `IOS_DISTRIBUTION_CERTIFICATE`) and the certificate expires after a year: when it does, revoke it in developer.apple.com and rerun the create-once workflow with *Replace*. Renaming `ios-testflight.yml` resets `github.run_number`, and App Store Connect refuses a repeated build number for the same version, so keep the file name. If the owner ever prefers automatic cloud signing instead, it needs an **Admin** API key, and the certificate secrets go away.

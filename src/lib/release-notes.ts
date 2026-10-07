@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.241.1",
+    date: "2026-10-07",
+    notes: [
+      "The iPhone app can now be built and sent to TestFlight, so the team can install it on iPhones for testing. Nothing changes in the CRM itself.",
+    ],
+  },
+  {
     version: "1.241.0",
     date: "2026-10-07",
     notes: [
