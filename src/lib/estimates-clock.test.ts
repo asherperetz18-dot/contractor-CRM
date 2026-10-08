@@ -33,7 +33,8 @@ test("both date filters count a document on the company's day it was made", () =
     // still being typed is no edge rather than a crash.
     assert.match(view, /stampedWithin\(\{ from: calendarDay\(\w+\.from\), to: calendarDay\(\w+\.to\) \}, zone\)/);
     assert.doesNotMatch(view, /withinWindow\(e\.created_at/);
-    // Typing one date fills the other with the company's today.
+    // The date boxes stop at the company's today (on the Contract Board
+    // that also seeds the other edge when one is typed).
     assert.match(view, /max=\{today\}/);
   }
 });

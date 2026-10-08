@@ -104,7 +104,7 @@ export default async function EstimatesPage() {
   }
 
   // The company's calendar for the date filter, handed down: a document
-  // made after 5pm Pacific is that day's, not the server's (UTC) next.
+  // made after 5pm Pacific is that day's, not the UTC day after.
   const zone = await getCompanyZone();
   const today = isoDateInZone(new Date(), zone);
 
