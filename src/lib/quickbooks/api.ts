@@ -3,8 +3,9 @@ import { QB_MINOR_VERSION } from "./oauth.ts";
 /**
  * Talking to a company's QuickBooks Online for step 2 (DECISIONS #173):
  * find or add a vendor, and add, change or remove the bills and bill
- * payments the CRM sent. Pure, with `fetch` passed in, so it's tested
- * without the network; the caller holds the login (connection.ts).
+ * payments the CRM sent, and their receipts (DECISIONS #174). Pure, with
+ * `fetch` passed in, so it's tested without the network; the caller holds
+ * the login (connection.ts).
  *
  * Every write carries a request id: QuickBooks answers a repeat of the
  * same id with its first answer instead of doing the write twice. Each new
@@ -20,6 +21,8 @@ export type QbError = { kind: QbErrorKind; message: string; code: string | null 
 
 /** One QuickBooks call may take this long; a slow one mustn't hold up every company. */
 const TIMEOUT_MS = 20_000;
+/** A receipt upload carries the file, so it gets longer. */
+const UPLOAD_TIMEOUT_MS = 60_000;
 
 /** What a QuickBooks error means for the next step. */
 export function classifyQbError(status: number, json: unknown): QbError {
@@ -50,6 +53,8 @@ async function call(
   const url = new URL(`${access.apiBase}/v3/company/${encodeURIComponent(access.realmId)}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   url.searchParams.set("minorversion", String(QB_MINOR_VERSION));
+  // A form (an upload) sets its own content type, with its boundary.
+  const form = body instanceof FormData;
   let res: Response;
   try {
     res = await fetchImpl(url.toString(), {
@@ -57,10 +62,10 @@ async function call(
       headers: {
         Authorization: `Bearer ${access.accessToken}`,
         Accept: "application/json",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(body === undefined || form ? {} : { "Content-Type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
+      signal: AbortSignal.timeout(form ? UPLOAD_TIMEOUT_MS : TIMEOUT_MS),
     });
   } catch {
     return { error: { kind: "transient", message: "QuickBooks couldn't be reached. Trying again in a few minutes.", code: null } };
@@ -228,4 +233,92 @@ export async function voidBillPayment(access: QbAccess, current: Saved, requestI
   if ("error" in res) return res;
   const s = saved(res.json, "BillPayment");
   return "error" in s || s.id === current.id ? s : otherRecord();
+}
+
+// ---------------------------------------------------------------- receipts (DECISIONS #174)
+
+/** QuickBooks' query for the attachment the CRM uploaded with this note. */
+export function attachableNoteQuery(note: string): string {
+  return `select * from Attachable where Note = '${note.replace(/'/g, "\\'")}'`;
+}
+
+/**
+ * Uploads a bill's receipt and attaches it to the bill in QuickBooks, as a
+ * Receipt. `note` is unique to this try: if the answer is lost, the
+ * attachment is found by it (findAttachableByNote) instead of being
+ * uploaded twice.
+ */
+export async function uploadReceipt(
+  access: QbAccess,
+  p: { billQbId: string; fileName: string; contentType: string; note: string; bytes: Blob | Uint8Array },
+  fetchImpl: typeof fetch = fetch
+): Promise<Saved | { error: QbError }> {
+  const form = new FormData();
+  const meta = {
+    AttachableRef: [{ EntityRef: { type: "Bill", value: p.billQbId } }],
+    FileName: p.fileName,
+    ContentType: p.contentType,
+    Category: "Receipt",
+    Note: p.note,
+  };
+  form.append("file_metadata_01", new Blob([JSON.stringify(meta)], { type: "application/json" }), "attachment.json");
+  form.append("file_content_01", new File([p.bytes as BlobPart], p.fileName, { type: p.contentType }));
+  const res = await call(access, "POST", "upload", {}, form, fetchImpl);
+  if ("error" in res) return res;
+  const item = ((res.json.AttachableResponse as { Attachable?: unknown; Fault?: unknown }[] | undefined) ?? [])[0];
+  // Each file has its own answer: a refusal comes inside it.
+  if (item && "Fault" in item && item.Fault) return { error: classifyQbError(400, { Fault: item.Fault }) };
+  return saved({ Attachable: item?.Attachable }, "Attachable");
+}
+
+/** QuickBooks' query for the attachments on one bill. */
+export function attachableBillQuery(billQbId: string): string {
+  return `select * from Attachable where AttachableRef.EntityRef.Type = 'Bill' and AttachableRef.EntityRef.value = '${billQbId.replace(/'/g, "\\'")}'`;
+}
+
+/**
+ * The attachment the CRM uploaded with this note, if QuickBooks has it.
+ * Looked for by its note; if QuickBooks won't look by note, among the
+ * bill's attachments. An error is never taken as "not there".
+ */
+export async function findAttachableByNote(
+  access: QbAccess,
+  p: { note: string; billQbId: string | null },
+  fetchImpl: typeof fetch = fetch
+): Promise<{ attachable: { id: string } | null } | { error: QbError }> {
+  const rows = (json: Record<string, unknown>) =>
+    ((json.QueryResponse as { Attachable?: { Id?: unknown; Note?: unknown }[] } | undefined)?.Attachable ?? []).filter(
+      (a) => typeof a.Id === "string" && a.Note === p.note
+    );
+  const res = await call(access, "GET", "query", { query: attachableNoteQuery(p.note) }, undefined, fetchImpl);
+  if (!("error" in res)) {
+    const hit = rows(res.json)[0];
+    return { attachable: hit ? { id: hit.Id as string } : null };
+  }
+  if (res.error.kind !== "validation" || !p.billQbId) return res;
+  const onBill = await call(access, "GET", "query", { query: attachableBillQuery(p.billQbId) }, undefined, fetchImpl);
+  if ("error" in onBill) return onBill;
+  const hit = rows(onBill.json)[0];
+  return { attachable: hit ? { id: hit.Id as string } : null };
+}
+
+/** An attachment as QuickBooks has it now: its delete must send it back whole. */
+export async function readAttachable(
+  access: QbAccess,
+  id: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<{ attachable: Record<string, unknown> } | { error: QbError }> {
+  const res = await call(access, "GET", `attachable/${encodeURIComponent(id)}`, {}, undefined, fetchImpl);
+  if ("error" in res) return res;
+  const s = saved(res.json, "Attachable");
+  if ("error" in s) return s;
+  return { attachable: res.json.Attachable as Record<string, unknown> };
+}
+
+/** Deletes an attachment the CRM uploaded; `current` is it as readAttachable read it. */
+export async function deleteAttachable(access: QbAccess, current: Record<string, unknown>, requestId: string, fetchImpl: typeof fetch = fetch) {
+  const res = await call(access, "POST", "attachable", { operation: "delete", requestid: requestId }, current, fetchImpl);
+  if ("error" in res) return res;
+  const id = String(current.Id);
+  return (res.json.Attachable as { Id?: unknown } | undefined)?.Id === id ? { id, syncToken: String(current.SyncToken ?? "0") } : otherRecord();
 }

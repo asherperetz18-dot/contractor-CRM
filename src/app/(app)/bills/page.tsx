@@ -15,6 +15,7 @@ import {
 import { getVendors } from "@/lib/actions/vendors";
 import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
 import type { BillsQuickBooks, ChipRecord } from "@/lib/quickbooks/bill-status";
+import { quickBooksReceiptsReady } from "@/lib/quickbooks/receipts-ready";
 import { BillsView } from "./bills-view";
 
 export const dynamic = "force-dynamic";
@@ -156,16 +157,28 @@ async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient
     }>();
   // Never connected, or before 0222: nothing to show.
   if (error || !conn?.realm_id) return null;
-  const records = await selectAll<ChipRecord>((f, t) =>
-    supabase
-      .from("quickbooks_sync")
-      .select("record_type, record_id, bill_id, qb_id, status, failed_op, reason, sent_at")
-      .eq("company_id", companyId)
-      .eq("realm_id", conn.realm_id!)
-      .order("record_id")
-      .range(f, t)
-  );
+  const [records, receipts] = await Promise.all([
+    selectAll<ChipRecord>((f, t) =>
+      supabase
+        .from("quickbooks_sync")
+        .select("record_type, record_id, bill_id, qb_id, status, failed_op, reason, sent_at")
+        .eq("company_id", companyId)
+        .eq("realm_id", conn.realm_id!)
+        // A bill and its receipt share an id: ordered by both, so pages never overlap.
+        .order("record_type")
+        .order("record_id")
+        .range(f, t)
+    ),
+    quickBooksReceiptsReady(createAdminClient()),
+  ]);
   const sending = conn.send_bills && !conn.disconnected_at;
   if (!sending && !records.length) return null;
-  return { sending, sendFrom: conn.send_bills_from, environment: conn.environment, realmId: conn.realm_id, records };
+  return {
+    sending,
+    sendFrom: conn.send_bills_from,
+    environment: conn.environment,
+    realmId: conn.realm_id,
+    records,
+    receipts: receipts === true,
+  };
 }

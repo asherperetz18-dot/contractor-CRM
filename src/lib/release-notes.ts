@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.247.0",
+    date: "2026-10-08",
+    notes: [
+      "QuickBooks: each bill's receipt now goes with it. The photo or PDF attached to a bill in the CRM is attached to the same bill in QuickBooks, marked as a receipt, so your bookkeeper sees it right on the bill. Bills already in QuickBooks get theirs too. A replaced receipt is replaced there, and Bills to Pay says whether the receipt went (\"In QuickBooks · Bill and receipt\").",
+    ],
+  },
+  {
     version: "1.246.0",
     date: "2026-10-08",
     notes: [

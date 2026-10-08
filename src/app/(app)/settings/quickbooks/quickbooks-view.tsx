@@ -36,7 +36,7 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
 /**
  * Settings › QuickBooks: connect the company's QuickBooks Online and match
  * its accounts (DECISIONS #172), then send its bills and bill payments
- * (#173). Invoices and customer payments come next.
+ * (#173), with their receipts (#174). Invoices and customer payments come next.
  */
 export function QuickBooksView({
   settings,
@@ -161,6 +161,7 @@ export function QuickBooksView({
             Each bill and payment goes once and is marked <strong>In QuickBooks</strong>, so nothing is entered twice. A
             change in the CRM (amount, date, vendor) is sent too.
           </li>
+          <li>A bill&apos;s receipt (the photo or PDF attached in the CRM) is attached to it in QuickBooks too.</li>
           <li>
             A bill voided in the CRM is deleted in QuickBooks (QuickBooks can&apos;t void a bill); a payment deleted in the
             CRM is voided there.
@@ -174,7 +175,8 @@ export function QuickBooksView({
             Connect, and match your accounts <span className="est-badge est-badge-signed">Live</span>
           </li>
           <li className="is-now">
-            <strong>Bills and bill payments go to QuickBooks</strong> <span className="est-badge est-badge-signed">Live</span>
+            <strong>Bills, bill payments and their receipts go to QuickBooks</strong>{" "}
+            <span className="est-badge est-badge-signed">Live</span>
           </li>
           <li>Customers, invoices and customer payments</li>
           <li>Job costs, including lender fees</li>
@@ -240,6 +242,9 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
     <section className="est-pay">
       <h2 className="est-pay-title">Send bills to QuickBooks</h2>
       {!b.ready && <p className="error-note">Sending bills needs a database update first: run 0222_quickbooks_bills.sql in Supabase.</p>}
+      {b.ready && b.receiptsReady === false && (
+        <p className="error-note">Receipts need a database update first: run 0223_quickbooks_receipts.sql in Supabase. Bills and payments go meanwhile.</p>
+      )}
       <div className="qb-switch-row">
         <div>
           <strong>Bills and bill payments</strong>

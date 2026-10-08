@@ -4,7 +4,8 @@
  * with node:crypto, so the page's browser code can use it. Pure.
  */
 
-export type RecordType = "bill" | "bill_payment";
+/** A bill, a payment on it, or its receipt (one per bill, keyed by the bill's id). */
+export type RecordType = "bill" | "bill_payment" | "receipt";
 /**
  * sent: in QuickBooks as the CRM has it. waiting: can't go yet, or its
  * last change can't. failed: QuickBooks refused it, or its last change.
@@ -57,6 +58,9 @@ export function qbWebUrl(environment: "sandbox" | "production", kind: "bill" | "
 
 export type QbChip = { tone: "good" | "wait" | "bad" | "off"; text: string };
 
+/** How a receipt whose upload got no answer reads while QuickBooks won't say whether it has it. */
+export const LOOKUP_FAILED = "Couldn't check whether QuickBooks got it.";
+
 const OFF = "sending to QuickBooks is off";
 
 /** Where one bill stands with QuickBooks, as Bills to Pay shows it. */
@@ -68,6 +72,10 @@ export function billQbChips(p: {
   billRecord: ChipRecord | null;
   /** The bill's payments in the CRM, each with its record. */
   payments: { id: string; record: ChipRecord | null }[];
+  /** Whether the bill has a receipt in the CRM, and its record (DECISIONS #174). */
+  receipt?: { has: boolean; record: ChipRecord | null };
+  /** Every other record of the bill (its payments, deleted ones too, and its receipt). */
+  related?: ChipRecord[];
   day: (iso: string) => string;
 }): { chips: QbChip[]; qbId: string | null } {
   const r = p.billRecord;
@@ -78,6 +86,22 @@ export function billQbChips(p: {
     if (!r || !inQuickBooks(r)) return { chips: r?.status === "removed" ? [{ tone: "off", text: "Removed from QuickBooks" }] : [], qbId: null };
     if (!p.sending) return { chips: [{ tone: "wait", text: `Still in QuickBooks: ${OFF}` }], qbId };
     if (r.status === "failed" && r.failed_op === "remove") return { chips: [{ tone: "bad", text: `Couldn't remove from QuickBooks${why(r)}` }], qbId };
+    // A payment's void or the receipt's removal QuickBooks refused holds the bill back.
+    const stuck = (p.related ?? []).find((x) => inQuickBooks(x) && x.status === "failed" && x.failed_op === "remove");
+    if (stuck) {
+      const what = stuck.record_type === "receipt" ? "its receipt" : "a payment on it";
+      const said = (stuck.reason ?? "").replace(/^Couldn't \w+ it in QuickBooks\.\s*/, "");
+      return { chips: [{ tone: "bad", text: `Couldn't remove from QuickBooks: ${what} can't be taken off first.${said ? ` ${said}` : ""}` }], qbId };
+    }
+    // A receipt whose upload got no answer, and QuickBooks won't say whether it has it.
+    const unsure = (p.related ?? []).find((x) => x.status === "waiting" && !!x.reason?.startsWith(LOOKUP_FAILED));
+    if (unsure) {
+      const said = unsure.reason!.slice(LOOKUP_FAILED.length).trim();
+      return {
+        chips: [{ tone: "bad", text: `Couldn't remove from QuickBooks yet: its receipt may be on it, and QuickBooks won't say.${said ? ` ${said}` : ""}` }],
+        qbId,
+      };
+    }
     return { chips: [{ tone: "off", text: "Being removed from QuickBooks" }], qbId };
   }
   if (!r || !inQuickBooks(r)) {
@@ -91,21 +115,31 @@ export function billQbChips(p: {
   // In QuickBooks. Did its last change go?
   if (r.status === "failed") return { chips: [{ tone: "bad", text: `In QuickBooks, but the last change didn't go${why(r)}` }], qbId };
   if (r.status === "waiting") return { chips: [{ tone: "wait", text: `In QuickBooks; the last change waits${why(r)}` }], qbId };
-  // Every payment too?
+  // Every payment, and the receipt, too?
   const open = p.payments.filter((x) => !inQuickBooks(x.record));
-  if (!open.length) {
-    const what = p.payments.length === 0 ? "Bill" : p.payments.length === 1 ? "Bill and payment" : `Bill and ${p.payments.length} payments`;
+  const rr = p.receipt?.has ? p.receipt.record : null;
+  const receiptOpen = !!p.receipt?.has && (!inQuickBooks(rr) || rr!.status === "failed" || rr!.status === "waiting");
+  if (!open.length && !receiptOpen) {
+    const parts = [
+      "Bill",
+      ...(p.payments.length === 1 ? ["payment"] : p.payments.length > 1 ? [`${p.payments.length} payments`] : []),
+      ...(p.receipt?.has ? ["receipt"] : []),
+    ];
+    const what = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
     return { chips: [{ tone: "good", text: `✓ In QuickBooks · ${what}${r.sent_at ? ` · ${p.day(r.sent_at)}` : ""}` }], qbId };
   }
-  const first = open[0].record;
-  const chip: QbChip = !p.sending
-    ? { tone: "off", text: `Payment not sent: ${OFF}` }
-    : first?.status === "failed"
-      ? { tone: "bad", text: `Payment didn't go${why(first)}` }
-      : first?.status === "waiting"
-        ? { tone: "wait", text: `Payment waiting${why(first)}` }
-        : { tone: "off", text: "Payment goes in a few minutes" };
-  return { chips: [{ tone: "good", text: "✓ Bill in QuickBooks" }, chip], qbId };
+  const chips: QbChip[] = [{ tone: "good", text: "✓ Bill in QuickBooks" }];
+  const pending = (label: string, x: ChipRecord | null): QbChip =>
+    !p.sending
+      ? { tone: "off", text: `${label} not sent: ${OFF}` }
+      : x?.status === "failed"
+        ? { tone: "bad", text: `${label} didn't go${why(x)}` }
+        : x?.status === "waiting"
+          ? { tone: "wait", text: `${label} waiting${why(x)}` }
+          : { tone: "off", text: `${label} goes in a few minutes` };
+  if (open.length) chips.push(pending("Payment", open[0].record));
+  if (receiptOpen) chips.push(pending("Receipt", rr));
+  return { chips, qbId };
 }
 
 /** One payment's line on Bills to Pay: "in QuickBooks", or why not. */
@@ -126,4 +160,6 @@ export type BillsQuickBooks = {
   realmId: string;
   /** This company's records for the connected QuickBooks company. */
   records: ChipRecord[];
+  /** 0223 has run: receipts go with their bills (DECISIONS #174). */
+  receipts: boolean;
 };
