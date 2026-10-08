@@ -1,0 +1,15 @@
+name: QuickBooks Bills
+
+on:
+  # The timer (*/5 * * * * UTC) runs from the database: Supabase Cron,
+  # migration 0222 (DECISIONS #173). This button runs it by hand.
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send bills to QuickBooks
+        run: |
+          curl -sf -X POST "https://crm.aibuildpros.com/api/cron/quickbooks-sync" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"

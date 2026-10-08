@@ -62,6 +62,9 @@ export const BACKUP_TABLES = [
   "financing_lenders",
   // Which QuickBooks account each cost category lands in (0221, #172).
   "quickbooks_expense_accounts",
+  // What went to the company's QuickBooks, bill by bill (0222, #173):
+  // restored with the bills, so nothing is sent twice.
+  "quickbooks_sync",
   "contract_templates",
   "scope_templates",
   "company_documents",

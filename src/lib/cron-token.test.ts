@@ -24,7 +24,8 @@ const repo = new URL("../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, repo), "utf8");
 const migration = read("supabase/migrations/0203_scheduled_jobs.sql");
 /** Jobs added since 0203 are scheduled by their own migration. */
-const schedules = migration + read("supabase/migrations/0208_bill_reminders.sql");
+const schedules =
+  migration + read("supabase/migrations/0208_bill_reminders.sql") + read("supabase/migrations/0222_quickbooks_bills.sql");
 
 /** The jobs the database's scheduler now starts, and when (UTC) -- the times GitHub used. */
 const SCHEDULED: Record<string, string> = {
@@ -39,6 +40,8 @@ const SCHEDULED: Record<string, string> = {
   "rain-alerts": "0 6,14,22 * * *",
   // Payment reminders (0208, DECISIONS #152).
   "bill-reminders": "25 * * * *",
+  // Bills and bill payments to QuickBooks (0222, DECISIONS #173).
+  "quickbooks-sync": "*/5 * * * *",
 };
 
 test("every job route is started by exactly one scheduler", () => {

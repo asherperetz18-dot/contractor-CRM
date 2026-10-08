@@ -84,6 +84,9 @@ export async function GET(req: NextRequest) {
   if (before?.realm_id && before.realm_id !== realmId) {
     await admin.from("payment_accounts").update({ qb_account_id: null }).eq("company_id", companyId);
     await admin.from("quickbooks_expense_accounts").delete().eq("company_id", companyId);
+    // Sending bills stops until the owner picks where the new books start
+    // (DECISIONS #173); what went to the old company stays recorded under it.
+    await admin.from("quickbooks_connections").update({ send_bills: false, send_bills_from: null }).eq("company_id", companyId);
   }
 
   const now = new Date().toISOString();

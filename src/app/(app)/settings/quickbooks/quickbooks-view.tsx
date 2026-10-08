@@ -5,18 +5,38 @@ import { useRouter } from "next/navigation";
 import {
   disconnectQuickBooks,
   refreshQuickBooksAccounts,
+  saveQuickBooksBillSending,
   saveQuickBooksMatches,
+  sendBillsToQuickBooksNow,
   type QuickBooksSettings,
 } from "@/lib/actions/quickbooks";
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
+/** A YYYY-MM-DD day as "Oct 8, 2026", read as that calendar day wherever the browser is. */
+const fmtDate = (day: string) => {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+
+const money = (cents: number) => (cents / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
+
+/** "3 minutes ago", for when the job last looked. */
+function ago(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return fmtDay(iso);
+}
+
 const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card", cash: "Cash" };
 
 /**
- * Settings › QuickBooks (DECISIONS #172): connect the company's
- * QuickBooks Online, then match its accounts. This step writes nothing to
- * QuickBooks; the next ones send bills, then invoices and payments.
+ * Settings › QuickBooks: connect the company's QuickBooks Online and match
+ * its accounts (DECISIONS #172), then send its bills and bill payments
+ * (#173). Invoices and customer payments come next.
  */
 export function QuickBooksView({
   settings,
@@ -131,28 +151,185 @@ export function QuickBooksView({
         {error && <p className="error-note">{error}</p>}
         {message && <p className="hint-note">{message}</p>}
 
-        <h3 className="qb-subhead">How it will work</h3>
+        <h3 className="qb-subhead">How it works</h3>
         <ul className="qb-rules">
-          <li>One way: from the CRM to QuickBooks. The CRM never changes or deletes anything you entered in QuickBooks.</li>
           <li>
-            Each bill, invoice and payment goes once and is marked <strong>Synced</strong>, so nothing is entered twice.
+            One way: from the CRM to QuickBooks. The CRM only ever changes what it sent itself, never anything you
+            entered in QuickBooks.
           </li>
-          <li>Anything that can&apos;t go says why, on its row, and goes as soon as it&apos;s fixed.</li>
+          <li>
+            Each bill and payment goes once and is marked <strong>In QuickBooks</strong>, so nothing is entered twice. A
+            change in the CRM (amount, date, vendor) is sent too.
+          </li>
+          <li>
+            A bill voided in the CRM is deleted in QuickBooks (QuickBooks can&apos;t void a bill); a payment deleted in the
+            CRM is voided there.
+          </li>
+          <li>Anything that can&apos;t go says why, on its row in Bills to Pay, and goes as soon as it&apos;s fixed.</li>
           <li>Disconnect any time. What&apos;s already in QuickBooks stays there.</li>
         </ul>
         <h3 className="qb-subhead">The plan</h3>
         <ol className="qb-plan">
-          <li className="is-now">
-            <strong>Connect, and match your accounts</strong> <span className="est-badge est-badge-financing">this step</span>
+          <li>
+            Connect, and match your accounts <span className="est-badge est-badge-signed">Live</span>
           </li>
-          <li>Bills and bill payments go to QuickBooks</li>
+          <li className="is-now">
+            <strong>Bills and bill payments go to QuickBooks</strong> <span className="est-badge est-badge-signed">Live</span>
+          </li>
           <li>Customers, invoices and customer payments</li>
           <li>Job costs, including lender fees</li>
         </ol>
       </section>
 
+      {connected && <BillSending settings={settings} />}
       {connected && <MatchForm settings={settings} />}
     </>
+  );
+}
+
+/** Send bills to QuickBooks: the switch, the start date, and how it's going. */
+function BillSending({ settings }: { settings: QuickBooksSettings }) {
+  const router = useRouter();
+  const b = settings.bills;
+  const [on, setOn] = useState(b.on);
+  const [from, setFrom] = useState(b.from ?? b.today);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const changed = on !== b.on || (on && from !== b.from);
+
+  function save() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await saveQuickBooksBillSending({ on, from: on ? from : null });
+      if (res.error) return setError(res.error);
+      setMessage(
+        on
+          ? `Saved. Bills dated from ${fmtDate(from)} go to QuickBooks within a few minutes.`
+          : "Saved. Nothing more goes to QuickBooks; what's there stays."
+      );
+      router.refresh();
+    });
+  }
+
+  function sendNow() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await sendBillsToQuickBooksNow();
+      const parts = [
+        res.sent ? `${res.sent} sent` : null,
+        res.changed ? `${res.changed} updated` : null,
+        res.removed ? `${res.removed} removed` : null,
+        res.waiting ? `${res.waiting} waiting` : null,
+        res.failed ? `${res.failed} didn't go` : null,
+      ].filter(Boolean);
+      if (res.error && !parts.length) return setError(res.error);
+      setMessage(
+        (parts.length ? `Done: ${parts.join(", ")}.` : "Nothing new to send.") +
+          (res.waiting || res.failed ? " See Needs a look." : "") +
+          (res.more ? " The rest go in the next few minutes." : "")
+      );
+      if (res.error) setError(res.error);
+      router.refresh();
+    });
+  }
+
+  return (
+    <section className="est-pay">
+      <h2 className="est-pay-title">Send bills to QuickBooks</h2>
+      {!b.ready && <p className="error-note">Sending bills needs a database update first: run 0222_quickbooks_bills.sql in Supabase.</p>}
+      <div className="qb-switch-row">
+        <div>
+          <strong>Bills and bill payments</strong>
+          <div className="est-tax-note">On: each one goes to QuickBooks a few minutes after it&apos;s saved.</div>
+        </div>
+        <button
+          type="button"
+          className="ur-toggle-btn"
+          aria-pressed={on}
+          aria-label="Send bills and bill payments to QuickBooks"
+          disabled={pending || !b.ready}
+          onClick={() => {
+            setOn(!on);
+            setMessage(null);
+          }}
+        >
+          <span className={"toggle-track" + (on ? " toggle-on" : "")}>
+            <span className="toggle-thumb" />
+          </span>
+        </button>
+      </div>
+      {on && (
+        <>
+          <label className="field qb-from">
+            <span className="field-label">Start with bills dated from</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={pending} />
+          </label>
+          <p className="est-tax-note">
+            Bills dated before this stay out of QuickBooks, so the ones already entered there by hand aren&apos;t doubled. You
+            can move it back to send older ones.
+          </p>
+        </>
+      )}
+      {settings.connection?.environment === "sandbox" && (
+        <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
+      )}
+      {error && <p className="error-note">{error}</p>}
+      {message && <p className="hint-note">{message}</p>}
+      {changed && (
+        <div className="est-pay-actions">
+          <button type="button" className="btn-primary" onClick={save} disabled={pending || !b.ready || (on && !from)}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+
+      {b.on && (
+        <>
+          <div className="qb-counts">
+            <div className="qb-count">
+              <b>{b.counts.sent}</b>
+              <span>In QuickBooks</span>
+            </div>
+            <div className="qb-count">
+              <b>{b.counts.waiting}</b>
+              <span>Waiting</span>
+            </div>
+            <div className={"qb-count" + (b.counts.failed ? " is-failed" : "")}>
+              <b>{b.counts.failed}</b>
+              <span>Didn&apos;t go</span>
+            </div>
+          </div>
+          {b.attention.length > 0 && (
+            <>
+              <h3 className="qb-subhead">Needs a look</h3>
+              <ul className="qb-attention">
+                {b.attention.map((a, i) => (
+                  <li key={i} className={a.status === "waiting" ? undefined : "is-failed"}>
+                    <strong>
+                      {a.vendor}
+                      {a.amountCents !== null ? ` · ${money(a.amountCents)}` : ""} {a.kind}
+                    </strong>
+                    {a.deleted ? " (deleted in the CRM)" : a.day ? ` on ${fmtDate(a.day)}` : ""}
+                    <div className="est-tax-note">{a.reason}</div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="est-pay-actions qb-send-row">
+            <button type="button" className="btn-ghost" onClick={sendNow} disabled={pending || changed}>
+              {pending ? "Sending…" : "Send now"}
+            </button>
+            <span className="est-tax-note" suppressHydrationWarning>
+              {b.checkedAt ? `Last checked ${ago(b.checkedAt)}` : "Not checked yet: the first run is within five minutes."}
+            </span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
