@@ -21,10 +21,53 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.244.0",
+    version: "1.247.0",
     date: "2026-10-08",
     notes: [
       "QuickBooks: each bill's receipt now goes with it. The photo or PDF attached to a bill in the CRM is attached to the same bill in QuickBooks, marked as a receipt, so your bookkeeper sees it right on the bill. Bills already in QuickBooks get theirs too. A replaced receipt is replaced there, and Bills to Pay says whether the receipt went (\"In QuickBooks · Bill and receipt\").",
+    ],
+  },
+  {
+    version: "1.246.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: tap a number to see what's behind it. Leads Added opens the Pipeline, Appointments Booked the Schedule, Appointments Scheduled the Schedule on the same days, Showed / No-show the Appointment Reports, Calls and Texts their reports for the same period, and Won the Marketing Analytics. Tasks Completed stays a plain number for now: no page lists finished tasks yet.",
+      "Daily Brief: following one of its links now closes it for the day. Before, it opened itself again on top of the page it had just sent you to.",
+    ],
+  },
+  {
+    version: "1.245.1",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief opens faster: it no longer loads every contact, appointment and task your company ever had just to count today, this week and this month. The numbers are the same.",
+    ],
+  },
+  {
+    version: "1.245.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: This Week now starts on Monday and This Month on the 1st, both at midnight on your company's clock. They used to be the last 7 and 30 days, so This Month early in October still counted most of September.",
+    ],
+  },
+  {
+    version: "1.244.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Today now means since midnight on your company's clock, not the last 24 hours. In the morning it no longer counts most of yesterday, and Appointments Scheduled, Showed and No-show for Today cover today's appointments only. This Week and This Month are unchanged: the last 7 and 30 days.",
+    ],
+  },
+  {
+    version: "1.243.2",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Calls, talk time, Texts Out / In and each rep's Calls now count every call and text in the period. Once a company had more than 1,000 calls or texts in total, they were counted from only 1,000 of them and could come out too low.",
+    ],
+  },
+  {
+    version: "1.243.1",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Where Leads Came From and Rep Activity now follow the Today / This Week / This Month buttons like the numbers above them. They used to stay stuck on the last 7 days whichever you picked.",
     ],
   },
   {

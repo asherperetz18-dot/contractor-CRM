@@ -7500,6 +7500,17 @@ a.portal-header-stars:hover {
   padding: 10px 12px;
   background: #fff;
 }
+/* A tile that opens the page behind its number, styled like the
+   dashboard's stat cards. */
+a.brief-metric {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+a.brief-metric:hover {
+  border-color: var(--blueprint);
+}
 .brief-metric-value {
   font-size: 20px;
   font-weight: 600;

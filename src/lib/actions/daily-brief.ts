@@ -1,70 +1,34 @@
 "use server";
 
-import { addDays } from "@/lib/company-clock";
-import { companyToday } from "@/lib/data/company-today";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
-import { appointmentAttended, isAdminRole, type EventStatus } from "@/lib/data/types";
-import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
+import { isAdminRole } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
 import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
-import { countsAsLead } from "@/lib/lead-or-contact";
-
-type BriefLead = {
-  id: string;
-  created_at: string;
-  stage: string;
-  value: number | null;
-  won_at: string | null;
-  source: string | null;
-  refund_status: string;
-  refund_requested_at: string | null;
-  has_appt: string | null;
-};
-
-export type BriefPeriod = "today" | "week" | "month";
-
-export type BriefStats = {
-  leadsAdded: number;
-  apptsBooked: number;
-  apptsScheduled: number;
-  showed: number;
-  noShow: number;
-  calls: number;
-  talkMinutes: number;
-  textsOut: number;
-  textsIn: number;
-  tasksCompleted: number;
-  won: number;
-  wonValue: number;
-};
-
-export type BriefAttention = {
-  overdueTasks: number;
-  unconfirmedSoon: number;
-  refundsOutstanding: number;
-  staleRefunds: number;
-  coldLeads: number;
-  rainRisk: number;
-};
+import {
+  briefNumbers,
+  briefReadWindow,
+  briefTileLinks,
+  type BriefAttention,
+  type BriefBreakdown,
+  type BriefPeriod,
+  type BriefRows,
+  type BriefStats,
+  type BriefTile,
+} from "@/lib/daily-brief";
 
 export type DailyBrief = {
   companyName: string;
   generatedAt: string;
   periods: Record<BriefPeriod, BriefStats>;
   attention: BriefAttention;
-  topSources: { source: string; count: number }[];
-  repActivity: { name: string; appts: number; calls: number }[];
+  // One per period, so the lower tables follow the chips too.
+  breakdown: Record<BriefPeriod, BriefBreakdown>;
+  // Where each tile goes, on its period -- worked out on the company's
+  // clock here rather than the browser's.
+  links: Record<BriefPeriod, Record<BriefTile, string | null>>;
 };
-
-function startOf(period: BriefPeriod): string {
-  const days = period === "today" ? 1 : period === "week" ? 7 : 30;
-  return new Date(Date.now() - days * 86400000).toISOString();
-}
-
-function dayOf(period: BriefPeriod): string {
-  return startOf(period).slice(0, 10);
-}
 
 /**
  * Numbers for the admin daily brief.
@@ -79,180 +43,142 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
 
   const supabase = await createClient();
   const companyId = profile.company_id;
-  const todayISO = await companyToday();
-  const in2Days = addDays(todayISO, 2);
-  const in7Days = addDays(todayISO, 7);
+  const zone = await getCompanyZone();
+  const now = new Date();
+  const read = briefReadWindow(now, zone);
 
+  // Each read goes only as far as a figure needs. The leads, appointments
+  // and tasks used to be read in full -- every one the company ever had,
+  // some 79 pages of 1,000 at 79,000 contacts -- each time the brief
+  // opened. Every read is still paged (a bare select stops at 1000 rows
+  // without a word), in id order so the pages don't overlap.
   const [
     boughtKeys,
     { data: company },
-    leads,
-    events,
-    { data: calls },
-    { data: texts },
-    tasks,
+    newLeads,
+    wonLeads,
+    openRefunds,
+    bookedEvents,
+    datedEvents,
+    calls,
+    texts,
+    doneTasks,
+    overdueTasks,
     { data: members },
   ] = await Promise.all([
     getBoughtListKeysCached(companyId),
     supabase.from("company_profile").select("name").eq("company_id", companyId).maybeSingle(),
-    // selectAll: every figure on the brief is a sum over this, and a
-    // bare select stops at 1000. On 1520 leads the morning brief was
-    // reporting two thirds of the business as though it were all of it.
-    selectAll<BriefLead>((rangeFrom, rangeTo) =>
+    selectAll<BriefRows["newLeads"][number]>((rangeFrom, rangeTo) =>
       supabase
         .from("leads")
-        .select(
-          "id, created_at, stage, stage_key, value, won_at, source, refund_status, refund_requested_at, has_appt"
-        )
+        .select("id, created_at, source")
         .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
         .range(rangeFrom, rangeTo)
     ),
-    // Same cap, same shape: "1000 APPOINTMENTS BOOKED" on a tenant with
-    // 1,100 events was this query's bare select, not the real count.
-    selectAll<{
-      created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
-      rain_alert_pop: number | null;
-    }>((rangeFrom, rangeTo) =>
+    // Won in the window, however long ago they came in.
+    selectAll<BriefRows["wonLeads"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select("id, won_at, value")
+        .eq("company_id", companyId)
+        .gte("won_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["openRefunds"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select("id, refund_requested_at")
+        .eq("company_id", companyId)
+        .eq("refund_status", "Requested")
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["bookedEvents"][number]>((rangeFrom, rangeTo) =>
       supabase
         .from("events")
-        .select("id, created_at, date, status, assigned_to, customer_confirmed, rain_alert_pop")
+        .select("id, created_at, assigned_to")
         .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
         .range(rangeFrom, rangeTo)
     ),
-    supabase
-      .from("call_logs")
-      .select("id, created_at, duration_seconds, rep_id")
-      .eq("company_id", companyId),
-    supabase
-      .from("sms_messages")
-      .select("id, created_at, direction")
-      .eq("company_id", companyId),
-    selectAll<{ lead_id: string; due_date: string; completed_at: string | null }>(
-      (rangeFrom, rangeTo) =>
-        supabase
-          .from("lead_tasks")
-          .select("id, lead_id, due_date, completed_at")
-          .eq("company_id", companyId)
-          .range(rangeFrom, rangeTo)
+    // Dated in the window, up to a week ahead for the unconfirmed and
+    // rain warnings.
+    selectAll<BriefRows["datedEvents"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("events")
+        .select("id, date, status, customer_confirmed, rain_alert_pop")
+        .eq("company_id", companyId)
+        .gte("date", read.sinceDay)
+        .lte("date", read.weekAhead)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["calls"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("call_logs")
+        .select("id, created_at, duration_seconds, rep_id")
+        .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["texts"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("sms_messages")
+        .select("id, created_at, direction")
+        .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["doneTasks"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, completed_at")
+        .eq("company_id", companyId)
+        .gte("completed_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    // With its lead's stage, so one on a closed lead is skipped without
+    // reading the leads.
+    selectAll<BriefRows["overdueTasks"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, leads(stage_key)")
+        .eq("company_id", companyId)
+        .is("completed_at", null)
+        .lt("due_date", read.today)
+        .order("id")
+        .range(rangeFrom, rangeTo)
     ),
     supabase.from("profiles").select("id, name, email"),
   ]);
 
-  const leadRows = (leads ?? []) as {
-    id: string; created_at: string; stage: string; stage_key: string | null; value: number | null; won_at: string | null;
-    source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
-  }[];
-  const eventRows = events;
-  const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
-  const textRows = (texts ?? []) as { created_at: string; direction: string }[];
-  const taskRows = tasks;
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
-
-  function statsFor(period: BriefPeriod): BriefStats {
-    const since = startOf(period);
-    const sinceDay = dayOf(period);
-    const periodEvents = eventRows.filter((e) => e.date >= sinceDay && e.date <= todayISO);
-    const wonInPeriod = leadRows.filter((l) => l.won_at && l.won_at >= since);
-    const periodCalls = callRows.filter((c) => c.created_at >= since);
-    return {
-      // Real leads only: a bought-list import isn't leads (DECISIONS #156).
-      leadsAdded: leadRows.filter((l) => l.created_at >= since && countsAsLead(l.source, boughtKeys)).length,
-      apptsBooked: eventRows.filter((e) => e.created_at >= since).length,
-      apptsScheduled: periodEvents.length,
-      showed: periodEvents.filter((e) => appointmentAttended(e.status as EventStatus)).length,
-      noShow: periodEvents.filter((e) => e.status === "No-show").length,
-      calls: periodCalls.length,
-      talkMinutes: Math.round(periodCalls.reduce((t, c) => t + (c.duration_seconds || 0), 0) / 60),
-      textsOut: textRows.filter((t) => t.created_at >= since && t.direction === "outbound").length,
-      textsIn: textRows.filter((t) => t.created_at >= since && t.direction === "inbound").length,
-      tasksCompleted: taskRows.filter((t) => t.completed_at && t.completed_at >= since).length,
-      won: wonInPeriod.length,
-      wonValue: wonInPeriod.reduce((t, l) => t + (Number(l.value) || 0), 0),
-    };
-  }
-
-  const closedLeadIds = new Set(leadRows.filter((l) => isClosedStageKey(l.stage_key)).map((l) => l.id));
-  const openRefunds = leadRows.filter((l) => l.refund_status === "Requested");
-  const attention: BriefAttention = {
-    // Skips tasks hanging off a closed lead (won, lost, not interested,
-    // do-not-contact). Three of these were auto-created "no outcome set"
-    // follow-ups on appointments whose leads were later won -- counting
-    // them made the brief disagree with the pipeline's Follow-ups Due
-    // panel, which ignores closed leads too.
-    overdueTasks: taskRows.filter(
-      (t) => !t.completed_at && t.due_date < todayISO && !closedLeadIds.has(t.lead_id)
-    ).length,
-    // Appointments in the next couple of days the customer hasn't confirmed
-    // -- the ones most likely to become a wasted trip.
-    unconfirmedSoon: eventRows.filter(
-      (e) =>
-        e.date >= todayISO &&
-        e.date <= in2Days &&
-        !e.customer_confirmed &&
-        e.status !== "Cancelled"
-    ).length,
-    refundsOutstanding: openRefunds.length,
-    staleRefunds: openRefunds.filter(
-      (l) =>
-        l.refund_requested_at &&
-        Date.now() - new Date(l.refund_requested_at).getTime() > 30 * 86400000
-    ).length,
-    coldLeads: leadRows.filter((l) => !isClosedStageKey(l.stage_key) && !l.has_appt).length,
-    // Outdoor-sensitive appointments this week the rain-alerts cron has
-    // flagged (50%+ chance of rain) -- the office's cue to call and
-    // reschedule before the crew shows up to a wash-out.
-    rainRisk: eventRows.filter(
-      (e) =>
-        e.date >= todayISO &&
-        e.date <= in7Days &&
-        e.status !== "Cancelled" &&
-        (e.rain_alert_pop ?? 0) >= 50
-    ).length,
-  };
-
-  const sourceTally = new Map<string, number>();
-  const weekAgo = startOf("week");
-  for (const l of leadRows) {
-    if (l.created_at < weekAgo || !countsAsLead(l.source, boughtKeys)) continue;
-    const key = l.source as string;
-    sourceTally.set(key, (sourceTally.get(key) ?? 0) + 1);
-  }
-  const topSources = [...sourceTally.entries()]
-    .map(([source, count]) => ({ source, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
   const nameById = new Map(memberRows.map((m) => [m.id, m.name || m.email || "Unknown"]));
-  const repTally = new Map<string, { appts: number; calls: number }>();
-  for (const e of eventRows) {
-    if (e.created_at < weekAgo || !e.assigned_to) continue;
-    const row = repTally.get(e.assigned_to) ?? { appts: 0, calls: 0 };
-    row.appts += 1;
-    repTally.set(e.assigned_to, row);
-  }
-  for (const c of callRows) {
-    if (c.created_at < weekAgo || !c.rep_id) continue;
-    const row = repTally.get(c.rep_id) ?? { appts: 0, calls: 0 };
-    row.calls += 1;
-    repTally.set(c.rep_id, row);
-  }
-  const repActivity = [...repTally.entries()]
-    .map(([id, v]) => ({ name: nameById.get(id) ?? "Unknown", ...v }))
-    .sort((a, b) => b.appts + b.calls - (a.appts + a.calls))
-    .slice(0, 6);
+  const numbers = briefNumbers(
+    { newLeads, wonLeads, openRefunds, bookedEvents, datedEvents, calls, texts, doneTasks, overdueTasks },
+    now,
+    zone,
+    boughtKeys,
+    nameById
+  );
 
   return {
     brief: {
       companyName: (company as { name: string | null } | null)?.name || "Your Company",
       generatedAt: new Date().toISOString(),
-      periods: {
-        today: statsFor("today"),
-        week: statsFor("week"),
-        month: statsFor("month"),
+      ...numbers,
+      links: {
+        today: briefTileLinks("today", now, zone),
+        week: briefTileLinks("week", now, zone),
+        month: briefTileLinks("month", now, zone),
       },
-      attention,
-      topSources,
-      repActivity,
     },
   };
 }
