@@ -18,13 +18,20 @@ import {
   qbText,
   qbVendorName,
   qbWebUrl,
+  receiptFile,
+  receiptHash,
   type SyncBill,
   type SyncPayment,
   type SyncRecord,
 } from "./bill-sync.ts";
 import {
+  attachableBillQuery,
+  attachableNoteQuery,
   classifyQbError,
   createBillPayment,
+  deleteAttachable,
+  findAttachableByNote,
+  uploadReceipt,
   findVendor,
   vendorQuery,
   voidBillPayment,
@@ -56,6 +63,7 @@ const bill = (over: Partial<SyncBill> = {}): SyncBill => ({
   createdAt: "2026-10-08T16:00:00Z",
   voided: false,
   memo: "EST-1047 · Maria Lopez · Kitchen remodel",
+  receiptPath: null,
   ...over,
 });
 
@@ -570,4 +578,230 @@ test("the job runs company by company, one run at a time per company, only on it
   assert.doesNotMatch(source("../../app/(app)/settings/quickbooks/quickbooks-view.tsx"), /token/i);
   // Bills to Pay reads the statuses as the person viewing, through row-level security.
   assert.match(source("../../app/(app)/bills/page.tsx"), /from\("quickbooks_sync"\)/);
+});
+
+// ---------------------------------------------------------------- receipts (DECISIONS #174)
+
+const R = "receipts/lead-1/1728400000000-lumber.jpg";
+const withReceipt = (over: Partial<SyncBill> = {}) => bill({ receiptPath: R, ...over });
+const receiptSent = (over: Partial<SyncRecord> = {}) =>
+  sent({ record_type: "receipt", record_id: "b1", bill_id: "b1", qb_id: "900", qb_hash: receiptHash(R), ...over });
+
+test("a receipt goes as the file it is, named for its bill; kinds QuickBooks doesn't take wait, saying why", () => {
+  assert.deepEqual(receiptFile(R, "Contractor Warehouse", "2026-10-07"), {
+    file: { fileName: "Receipt · Contractor Warehouse · Oct 7.jpg", contentType: "image/jpeg" },
+  });
+  assert.deepEqual(receiptFile("receipts/x/1-scan.PDF", "ABC: Lumber", "2026-10-08"), {
+    file: { fileName: "Receipt · ABC - Lumber · Oct 8.pdf", contentType: "application/pdf" },
+  });
+  assert.equal("file" in receiptFile("receipts/x/1-a.png", "V", "2026-10-08"), true);
+  assert.equal("file" in receiptFile("receipts/x/1-a.tiff", "V", "2026-10-08"), true);
+  assert.deepEqual(receiptFile("receipts/x/1-IMG_2231.heic", "V", "2026-10-08"), {
+    wait: "QuickBooks doesn't take .heic photos. Attach it again as a JPG, PNG or PDF.",
+  });
+  assert.deepEqual(receiptFile("receipts/x/1-quote.docx", "V", "2026-10-08"), {
+    wait: "QuickBooks doesn't take .docx files. Attach it again as a JPG, PNG or PDF.",
+  });
+  assert.deepEqual(receiptFile("receipts/x/1-noext", "V", "2026-10-08"), {
+    wait: "QuickBooks doesn't take this kind of file. Attach it again as a JPG, PNG or PDF.",
+  });
+  assert.deepEqual(receiptFile("drive:abc", "V", "2026-10-08"), {
+    wait: "This receipt is kept in Google Drive, so it can't be attached in QuickBooks. Attach the file to the bill instead.",
+  });
+  assert.notEqual(receiptHash(R), receiptHash("receipts/lead-1/2-new.jpg"));
+});
+
+test("a bill's receipt follows it: with a new bill, to one already there, and again when replaced", () => {
+  // A new bill and its receipt, in that order.
+  assert.deepEqual(ops(plan({ bills: [withReceipt()] })), ["create_bill:b1", "attach_receipt:b1"]);
+  // Already in QuickBooks without it (sent before receipts went): it follows now.
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent()] })), ["attach_receipt:b1"]);
+  // There already: nothing.
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent(), receiptSent()] })), []);
+  // Replaced in the CRM: the new one goes, in place of the one the CRM attached.
+  const steps = plan({ bills: [withReceipt({ receiptPath: "receipts/lead-1/2-new.jpg" })], records: [sent(), receiptSent()] });
+  assert.deepEqual(ops(steps), ["attach_receipt:b1"]);
+  assert.equal(steps[0].op === "attach_receipt" && steps[0].record?.qb_id, "900");
+  // No receipt: nothing.
+  assert.deepEqual(ops(plan({ records: [sent()] })), []);
+});
+
+test("a receipt waits for its bill, and a kind QuickBooks doesn't take waits with the reason", () => {
+  // The bill can't go yet: its receipt says nothing of its own.
+  assert.deepEqual(ops(plan({ bills: [withReceipt({ vendorName: "" })] })), ["wait:b1"]);
+  const heic = plan({ bills: [withReceipt({ receiptPath: "receipts/x/1-IMG.heic" })], records: [sent()] });
+  assert.deepEqual(ops(heic), ["wait:b1"]);
+  assert.equal(heic[0].op === "wait" && heic[0].recordType, "receipt");
+  // Refused by QuickBooks: rests like anything else, Send now tries it.
+  const refused = receiptSent({ qb_id: null, status: "failed", failed_op: "add", tried_hash: receiptHash(R), next_try_at: "2026-10-08T16:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent(), refused] })), []);
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent(), refused], force: true })), ["attach_receipt:b1"]);
+});
+
+test("a voided bill's receipt comes out of QuickBooks before the bill does", () => {
+  assert.deepEqual(ops(plan({ bills: [withReceipt({ voided: true })], records: [sent(), receiptSent()] })), [
+    "remove_receipt:b1",
+    "delete_bill:b1",
+  ]);
+  // Its removal refused and resting: the bill waits too.
+  const resting = receiptSent({ status: "failed", failed_op: "remove", next_try_at: "2026-10-08T16:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [withReceipt({ voided: true })], records: [sent(), resting] })), []);
+  // A bill gone from the CRM altogether: the same.
+  assert.deepEqual(ops(plan({ bills: [], records: [sent(), receiptSent()] })), ["remove_receipt:b1", "delete_bill:b1"]);
+  // A receipt whose upload got no answer is settled first; nothing else happens to the bill that run.
+  const doubt = receiptSent({ qb_id: null, status: "waiting", doubt: { requestId: "crm-x", body: {}, hash: "h" } });
+  assert.deepEqual(ops(plan({ bills: [withReceipt({ voided: true })], records: [sent(), doubt] })), ["resolve:b1"]);
+  // A bill deleted in QuickBooks by someone there: its receipt is left alone too.
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent({ status: "gone" })] })), []);
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent({ status: "gone" }), receiptSent()] })), []);
+  // ...and one that never got there is forgotten, not left "didn't go" for good.
+  const stuck = receiptSent({ qb_id: null, status: "failed", failed_op: "add", reason: "QuickBooks said: Bill not found" });
+  assert.deepEqual(ops(plan({ bills: [withReceipt()], records: [sent({ status: "gone" }), stuck] })), ["drop:b1"]);
+  // ...and one still there but with a change pending is left as QuickBooks has it, nothing pending.
+  const pending = receiptSent({ status: "waiting", reason: "QuickBooks doesn't take .heic photos. Attach it again as a JPG, PNG or PDF." });
+  assert.deepEqual(ops(plan({ bills: [withReceipt({ receiptPath: "receipts/x/2-new.jpg" })], records: [sent({ status: "gone" }), pending] })), ["settle:b1"]);
+});
+
+test("Bills to Pay says whether the receipt went too", () => {
+  const receipt = (record: SyncRecord | null) => ({ has: true, record });
+  const c = (p: Partial<Parameters<typeof billQbChips>[0]>) =>
+    billQbChips({ sending: true, sendFrom: FROM, bill: bill(), billRecord: sent(), payments: [], day, ...p }).chips.map((x) => `${x.tone}|${x.text}`);
+  assert.deepEqual(c({ receipt: receipt(receiptSent()) }), ["good|✓ In QuickBooks · Bill and receipt · 10-08"]);
+  assert.deepEqual(c({ receipt: receipt(receiptSent()), payments: [{ id: "p1", record: sent({ record_type: "bill_payment", record_id: "p1" }) }] }), [
+    "good|✓ In QuickBooks · Bill, payment and receipt · 10-08",
+  ]);
+  assert.deepEqual(
+    c({
+      receipt: receipt(receiptSent()),
+      payments: [
+        { id: "p1", record: sent({ record_type: "bill_payment", record_id: "p1" }) },
+        { id: "p2", record: sent({ record_type: "bill_payment", record_id: "p2" }) },
+      ],
+    }),
+    ["good|✓ In QuickBooks · Bill, 2 payments and receipt · 10-08"]
+  );
+  assert.deepEqual(c({ receipt: receipt(null) }), ["good|✓ Bill in QuickBooks", "off|Receipt goes in a few minutes"]);
+  assert.deepEqual(c({ receipt: receipt(receiptSent({ qb_id: null, status: "waiting", reason: "QuickBooks doesn't take .heic files." })) }), [
+    "good|✓ Bill in QuickBooks",
+    "wait|Receipt waiting: QuickBooks doesn't take .heic files.",
+  ]);
+  assert.deepEqual(c({ receipt: receipt(receiptSent({ status: "failed", failed_op: "add", reason: "no" })) }), [
+    "good|✓ Bill in QuickBooks",
+    "bad|Receipt didn't go: no",
+  ]);
+  assert.deepEqual(c({ sending: false, receipt: receipt(null) }), ["good|✓ Bill in QuickBooks", "off|Receipt not sent: sending to QuickBooks is off"]);
+  // No receipt on the bill: as before.
+  assert.deepEqual(c({ receipt: { has: false, record: null } }), ["good|✓ In QuickBooks · Bill · 10-08"]);
+  // Voided, but QuickBooks won't let its receipt (or a payment's void) go first: it says so, not "being removed".
+  const voided = bill({ voided: true });
+  const stuckReceipt = receiptSent({ status: "failed", failed_op: "remove", reason: "Couldn't remove it in QuickBooks. QuickBooks said: Closed period" });
+  assert.deepEqual(c({ bill: voided, related: [stuckReceipt] }), [
+    "bad|Couldn't remove from QuickBooks: its receipt can't be taken off first. QuickBooks said: Closed period",
+  ]);
+  const stuckPay = sent({ record_type: "bill_payment", record_id: "p9", status: "failed", failed_op: "remove", reason: "Couldn't void it in QuickBooks. QuickBooks said: no" });
+  assert.deepEqual(c({ bill: voided, related: [stuckPay] }), ["bad|Couldn't remove from QuickBooks: a payment on it can't be taken off first. QuickBooks said: no"]);
+  assert.deepEqual(c({ bill: voided, related: [receiptSent()] }), ["off|Being removed from QuickBooks"]);
+  // Its receipt's upload got no answer and QuickBooks won't say whether it has it.
+  const unsure = receiptSent({ qb_id: null, status: "waiting", reason: "Couldn't check whether QuickBooks got it. QuickBooks said: Forbidden" });
+  assert.deepEqual(c({ bill: voided, related: [unsure] }), [
+    "bad|Couldn't remove from QuickBooks yet: its receipt may be on it, and QuickBooks won't say. QuickBooks said: Forbidden",
+  ]);
+});
+
+test("a receipt is uploaded to the bill as a Receipt, with a note to find it by if the answer is lost", async () => {
+  let seen: Seen | null = null;
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ AttachableResponse: [{ Attachable: { Id: "5000", SyncToken: "0" } }] }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const bytes = new Uint8Array([1, 2, 3]);
+  const res = await uploadReceipt(
+    access,
+    { billQbId: "108", fileName: "Receipt · V · Oct 7.jpg", contentType: "image/jpeg", note: "From the CRM · ref abc", bytes },
+    fetchImpl
+  );
+  assert.deepEqual(res, { id: "5000", syncToken: "0" });
+  const u = new URL(seen!.url);
+  assert.equal(u.pathname, "/v3/company/9341/upload");
+  assert.equal(u.searchParams.get("minorversion"), "75");
+  const form = seen!.init.body as FormData;
+  const meta = JSON.parse(await (form.get("file_metadata_01") as Blob).text());
+  assert.deepEqual(meta, {
+    AttachableRef: [{ EntityRef: { type: "Bill", value: "108" } }],
+    FileName: "Receipt · V · Oct 7.jpg",
+    ContentType: "image/jpeg",
+    Category: "Receipt",
+    Note: "From the CRM · ref abc",
+  });
+  const file = form.get("file_content_01") as File;
+  assert.equal(file.type, "image/jpeg");
+  assert.equal(file.size, 3);
+  // The form sets its own boundary: no JSON content type on an upload.
+  assert.equal((seen!.init.headers as Record<string, string>)["Content-Type"], undefined);
+
+  // A refusal inside the answer is a refusal.
+  const refusing = (async () =>
+    new Response(JSON.stringify({ AttachableResponse: [{ Fault: { Error: [{ Message: "m", Detail: "Bad file", code: "6000" }] } }] }), {
+      status: 200,
+    })) as unknown as typeof fetch;
+  const no = await uploadReceipt(access, { billQbId: "108", fileName: "a.jpg", contentType: "image/jpeg", note: "n", bytes }, refusing);
+  assert.ok("error" in no && no.error.kind === "validation" && /Bad file/.test(no.error.message));
+
+  assert.equal(attachableNoteQuery("From the CRM · ref abc"), "select * from Attachable where Note = 'From the CRM · ref abc'");
+  assert.equal(
+    attachableBillQuery("108"),
+    "select * from Attachable where AttachableRef.EntityRef.Type = 'Bill' and AttachableRef.EntityRef.value = '108'"
+  );
+});
+
+test("a lost upload is looked for by its note, else among the bill's attachments; a failed look is never 'not there'", async () => {
+  const answer = (rows: unknown[]) => new Response(JSON.stringify({ QueryResponse: rows.length ? { Attachable: rows } : {} }), { status: 200 });
+  const refused = () => new Response(JSON.stringify({ Fault: { Error: [{ Message: "m", Detail: "QueryParserError", code: "4000" }] } }), { status: 400 });
+  const queries: string[] = [];
+  const looks = (byNote: () => Response, byBill: () => Response) =>
+    (async (url: string) => {
+      const q = new URL(url).searchParams.get("query")!;
+      queries.push(q);
+      return /Note =/.test(q) ? byNote() : byBill();
+    }) as unknown as typeof fetch;
+  const n = { note: "From the CRM, ref crm-1", billQbId: "108" };
+  assert.deepEqual(await findAttachableByNote(access, n, looks(() => answer([{ Id: "5000", Note: n.note }]), refused)), { attachable: { id: "5000" } });
+  assert.deepEqual(await findAttachableByNote(access, n, looks(() => answer([]), refused)), { attachable: null });
+  // QuickBooks won't look by note: the bill's attachments, matched by note.
+  queries.length = 0;
+  const onBill = await findAttachableByNote(access, n, looks(refused, () => answer([{ Id: "777", Note: "bookkeeper" }, { Id: "5001", Note: n.note }])));
+  assert.deepEqual(onBill, { attachable: { id: "5001" } });
+  assert.equal(queries.length, 2);
+  // Neither works: an error, so the receipt stays in doubt.
+  const neither = await findAttachableByNote(access, n, looks(refused, refused));
+  assert.ok("error" in neither);
+});
+
+test("removing a receipt sends back the attachment as QuickBooks has it, as its delete asks", async () => {
+  let seen: Seen | null = null;
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    seen = { url, init };
+    return new Response(JSON.stringify({ Attachable: { Id: "5000", status: "Deleted" } }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const current = { Id: "5000", SyncToken: "1", FileName: "a.jpg", AttachableRef: [{ EntityRef: { type: "Bill", value: "108" } }] };
+  const res = await deleteAttachable(access, current, "crm-z", fetchImpl);
+  assert.deepEqual(res, { id: "5000", syncToken: "1" });
+  const u = new URL(seen!.url);
+  assert.equal(u.pathname, "/v3/company/9341/attachable");
+  assert.equal(u.searchParams.get("operation"), "delete");
+  assert.deepEqual(JSON.parse(String(seen!.init.body)), current);
+});
+
+test("0223 lets receipts be recorded; the job keeps going on a database without it", () => {
+  const sql = source("../../../supabase/migrations/0223_quickbooks_receipts.sql");
+  assert.match(sql, /drop constraint if exists quickbooks_sync_record_type_check/);
+  assert.match(sql, /check \(record_type in \('bill', 'bill_payment', 'receipt'\)\)/);
+  const run = source("./bill-sync-run.ts");
+  assert.match(run, /storage\.from\(RECEIPT_BUCKET\)\.download\(/);
+  assert.match(run, /quickbooks_sync_record_type_check/);
+  // Written down before it's uploaded, like every add.
+  assert.match(run, /case "attach_receipt":/);
+  assert.match(run, /attachableNoteQuery|findAttachableByNote/);
+  // The download is cut off with the run, like a QuickBooks call.
+  assert.match(run, /\.download\(path, \{\}, \{ signal \}\)/);
 });

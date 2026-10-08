@@ -2,21 +2,27 @@ import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { leadDisplayName, type ContactType } from "@/lib/data/types";
 import { isMissingSchemaError } from "@/lib/schema-drift";
+import { RECEIPT_BUCKET } from "@/lib/receipts";
 import { quickBooksAccess } from "./connection";
 import {
   createBill,
   createBillPayment,
   createVendor,
+  deleteAttachable,
   deleteBill,
+  findAttachableByNote,
   findVendor,
+  readAttachable,
   readBill,
   readBillPayment,
   updateBill,
+  uploadReceipt,
   voidBillPayment,
   type QbAccess,
   type QbError,
 } from "./api";
 import type { QbAccount } from "./accounts";
+import { LOOKUP_FAILED } from "./bill-status";
 import {
   WAIT,
   inQuickBooks,
@@ -47,6 +53,9 @@ import {
  * call at a time, writing quickbooks_sync after each. Before adding a bill
  * or payment it writes down the exact request (`doubt`), so a run cut off
  * mid-way is finished by repeating that request, never by adding it again.
+ * A bill's receipt (DECISIONS #174) is downloaded from storage and attached
+ * to the bill in QuickBooks, with a note unique to the try written down
+ * first: a lost answer is settled by looking for that note.
  * Stops starting work at the time budget or the write cap; the rest goes
  * next run.
  */
@@ -74,11 +83,13 @@ const CLAIM_MINUTES = 6;
 const MAX_TRANSIENT = 3;
 /** Past the budget, a call already started gets this long before it's cut off. */
 const GRACE_MS = 25_000;
+/** The largest file QuickBooks takes as an attachment. */
+const QB_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 const RECORD_COLUMNS =
   "record_type, record_id, bill_id, qb_id, qb_hash, tried_hash, doubt, status, failed_op, reason, tries, next_try_at, sent_at";
 const BILL_COLUMNS =
-  "id, vendor_id, vendor_name, lead_id, estimate_payment_id, reference, amount_cents, bill_date, due_date, voided_at, created_at";
+  "id, vendor_id, vendor_name, lead_id, estimate_payment_id, reference, amount_cents, bill_date, due_date, voided_at, created_at, receipt_path";
 const PAYMENT_COLUMNS = "id, bill_id, amount_cents, paid_on, method, check_number, note, paid_from_account_id, created_at";
 
 type BillRow = {
@@ -93,6 +104,7 @@ type BillRow = {
   due_date: string | null;
   voided_at: string | null;
   created_at: string;
+  receipt_path: string | null;
 };
 type PaymentRow = {
   id: string;
@@ -107,6 +119,8 @@ type PaymentRow = {
 };
 
 class StopRun extends Error {}
+/** The database hasn't had 0223 yet: a receipt can't be recorded, so none go this run. */
+class NoReceipts extends Error {}
 
 /**
  * Every row of a query, page by page -- and a failed read stops the run.
@@ -296,6 +310,7 @@ async function run(
       memo: b.lead_id
         ? billMemo({ docNumber: contract?.doc_number ?? null, customer: lead ? leadDisplayName(lead) : null, title: contract?.title ?? null })
         : billMemo({ docNumber: null, customer: null, title: null }),
+      receiptPath: b.receipt_path ?? null,
     };
   });
   const payments: SyncPayment[] = paymentRows.map((x) => {
@@ -341,6 +356,9 @@ async function run(
     records.filter((r) => r.record_type === "bill" && r.qb_id && r.status !== "removed" && r.status !== "gone").map((r) => [r.record_id, r.qb_id!])
   );
   const vendorIds = new Map<string, string>();
+  // Bills whose payment void or receipt removal didn't finish this run:
+  // they aren't deleted until it does.
+  const held = new Set<string>();
   let writes = 0;
   let transient = 0;
 
@@ -357,7 +375,10 @@ async function run(
       },
       { onConflict: "company_id,realm_id,record_type,record_id" }
     );
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (type === "receipt" && /quickbooks_sync_record_type_check/.test(error.message)) throw new NoReceipts(error.message);
+      throw new Error(error.message);
+    }
   };
   const drop = async (type: RecordType, id: string) => {
     const { error } = await admin
@@ -437,11 +458,94 @@ async function run(
     });
     summary.failed += 1;
   };
+  /** Someone deleted the bill in QuickBooks: the CRM leaves it alone, and nothing more is done to it this run. */
+  const billGone = async (billId: string, hash: string | null) => {
+    await save("bill", billId, billId, {
+      status: "gone",
+      reason: "Deleted in QuickBooks, so the CRM doesn't send it again.",
+      tried_hash: hash,
+      next_try_at: null,
+    });
+    billQb.delete(billId);
+    summary.failed += 1;
+  };
   /** Can't go yet for a reason found while sending (a vendor): rests like a refusal. */
   const waitAt = async (type: RecordType, id: string, billId: string, record: SyncRecord | null, hash: string, reason: string) => {
     const tries = (record?.tries ?? 0) + 1;
     await save(type, id, billId, { status: "waiting", reason, tried_hash: hash, tries, next_try_at: nextTryAt(tries, new Date()) });
     summary.waiting += 1;
+  };
+
+  const isTransient = (err: QbError) => err.kind === "transient" || err.kind === "stale";
+
+  /** Takes off the attachment the CRM put on a bill. Only a read saying "not found" means it's already gone. */
+  const takeOffReceipt = async (r: SyncRecord): Promise<{ ok: true } | { error: QbError }> => {
+    const current = await readAttachable(access, r.qb_id!, fetchImpl);
+    if ("error" in current) return current.error.kind === "notfound" ? { ok: true } : current;
+    const done = await deleteAttachable(access, current.attachable, newRequestId(), fetchImpl);
+    return "error" in done ? done : { ok: true };
+  };
+
+  /** The receipt file from storage, or why it can't be read now. Cut off with the run, like a QuickBooks call. */
+  const receiptBytes = async (path: string): Promise<{ blob: Blob } | { missing: true } | { unreadable: true }> => {
+    try {
+      const signal = AbortSignal.timeout(Math.max(1_000, hardStop - Date.now()));
+      const got = await admin.storage.from(RECEIPT_BUCKET).download(path, {}, { signal });
+      if (got.data && !got.error) return { blob: got.data };
+      if (signal.aborted) return { unreadable: true };
+      // Told apart by listing its folder: a download error doesn't say reliably.
+      const folder = path.slice(0, path.lastIndexOf("/"));
+      const base = path.slice(path.lastIndexOf("/") + 1);
+      const listed = await admin.storage.from(RECEIPT_BUCKET).list(folder, { search: base }, { signal });
+      if (!listed.error && !listed.data?.some((f) => f.name === base)) return { missing: true };
+    } catch {
+      // Cut off, or the file stopped part-way: tried again next run.
+    }
+    return { unreadable: true };
+  };
+
+  /**
+   * A receipt upload whose answer never came: QuickBooks has it if an
+   * attachment carries the note written down for that try. Only QuickBooks
+   * answering that none does clears it, to be sent again next run; a lookup
+   * that fails keeps it in doubt and is tried again later, so the file is
+   * never uploaded twice.
+   */
+  const resolveReceipt = async (r: SyncRecord) => {
+    const doubt = r.doubt!;
+    const body = (doubt.body ?? {}) as { note?: unknown; billQbId?: unknown };
+    if (!opts.force && r.next_try_at && new Date(r.next_try_at).getTime() > Date.now()) return;
+    const found =
+      typeof body.note === "string"
+        ? await findAttachableByNote(access, { note: body.note, billQbId: typeof body.billQbId === "string" ? body.billQbId : null }, fetchImpl)
+        : ({ attachable: null } as const);
+    if ("error" in found) {
+      await stopIf(found.error);
+      if (isTransient(found.error)) return countTransient(found.error);
+      const tries = r.tries + 1;
+      await save("receipt", r.record_id, r.record_id, {
+        status: "waiting",
+        reason: `${LOOKUP_FAILED} ${found.error.message}`,
+        tries,
+        next_try_at: nextTryAt(tries, new Date()),
+      });
+      summary.waiting += 1;
+      return;
+    }
+    if (found.attachable) {
+      await save("receipt", r.record_id, r.record_id, sentNow(found.attachable.id, doubt.hash));
+      summary.sent += 1;
+      return;
+    }
+    // Not there: sent again next run.
+    await save("receipt", r.record_id, r.record_id, {
+      doubt: null,
+      status: "waiting",
+      reason: "Didn't reach QuickBooks. Sending it again in a few minutes.",
+      tried_hash: null,
+      tries: 0,
+      next_try_at: null,
+    });
   };
 
   /** The QuickBooks vendor for a name: found, else added. */
@@ -503,9 +607,18 @@ async function run(
         await drop(step.recordType, step.recordId);
         return;
       case "settle":
-        await save("bill", step.recordId, step.recordId, { status: "sent", failed_op: null, reason: null, tried_hash: null, tries: 0, next_try_at: null });
+        await save(step.recordType, step.recordId, step.recordId, {
+          status: "sent",
+          failed_op: null,
+          reason: null,
+          tried_hash: null,
+          tries: 0,
+          next_try_at: null,
+        });
         return;
       case "wait":
+        // A receipt says nothing of its own until its bill is in QuickBooks.
+        if (step.recordType === "receipt" && !billQb.has(step.billId)) return;
         await save(step.recordType, step.recordId, step.billId, {
           status: "waiting",
           reason: step.reason,
@@ -516,6 +629,7 @@ async function run(
         return;
       case "resolve": {
         const r = step.record;
+        if (r.record_type === "receipt") return resolveReceipt(r);
         await add(r.record_type, r.record_id, r.bill_id ?? r.record_id, r, r.doubt!);
         return;
       }
@@ -531,6 +645,7 @@ async function run(
           if ("error" in done) err = done.error;
         }
         if (err) {
+          if (r.bill_id) held.add(r.bill_id);
           await stopIf(err);
           if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
           return removalRefused("bill_payment", r, "void", err);
@@ -541,6 +656,8 @@ async function run(
       }
       case "delete_bill": {
         const r = step.record;
+        // Its payment or receipt is still on it in QuickBooks: next run.
+        if (held.has(r.record_id)) return;
         writes += 1;
         const current = await readBill(access, r.qb_id!, fetchImpl);
         let err: QbError | null = "error" in current && current.error.kind !== "notfound" ? current.error : null;
@@ -588,13 +705,7 @@ async function run(
           if ("error" in current) {
             if (current.error.kind === "notfound") {
               // Deleted in QuickBooks by someone there: the CRM leaves it alone.
-              await save("bill", bill.id, bill.id, {
-                status: "gone",
-                reason: "Deleted in QuickBooks, so the CRM doesn't send it again.",
-                tried_hash: hash,
-                next_try_at: null,
-              });
-              summary.failed += 1;
+              await billGone(bill.id, hash);
               return;
             }
             result = current;
@@ -632,10 +743,116 @@ async function run(
         await add("bill_payment", payment.id, payment.billId, record, { requestId: newRequestId(), body, hash });
         return;
       }
+      case "remove_receipt": {
+        const r = step.record;
+        // Its bill was found deleted in QuickBooks this run: left alone.
+        if (!billQb.has(r.record_id)) return;
+        writes += 1;
+        const off = await takeOffReceipt(r);
+        if ("error" in off) {
+          held.add(r.record_id);
+          await stopIf(off.error);
+          if (isTransient(off.error)) return countTransient(off.error);
+          return removalRefused("receipt", r, "remove", off.error);
+        }
+        await save("receipt", r.record_id, r.record_id, {
+          status: "removed",
+          qb_id: null,
+          qb_hash: null,
+          failed_op: null,
+          reason: null,
+          tried_hash: null,
+          next_try_at: null,
+          tries: 0,
+        });
+        summary.removed += 1;
+        return;
+      }
+      case "attach_receipt": {
+        const { bill, hash, file, record } = step;
+        // Its bill didn't go this run: the receipt follows it next run.
+        const billQbId = billQb.get(bill.id);
+        if (!billQbId) return;
+        writes += 1;
+        // Its first row is written before the download: a database without
+        // 0223 refuses it here, before anything is fetched.
+        if (!record) await save("receipt", bill.id, bill.id, { status: "waiting", reason: "Being sent to QuickBooks now." });
+        const got = await receiptBytes(bill.receiptPath!);
+        if ("missing" in got) return waitAt("receipt", bill.id, bill.id, record, hash, "The receipt file couldn't be found. Attach it again.");
+        if ("unreadable" in got) {
+          await save("receipt", bill.id, bill.id, {
+            status: "waiting",
+            reason: "The receipt file couldn't be read just now. Trying again in a few minutes.",
+            tried_hash: hash,
+            next_try_at: null,
+          });
+          summary.waiting += 1;
+          return;
+        }
+        if (got.blob.size > QB_MAX_UPLOAD_BYTES) {
+          return waitAt("receipt", bill.id, bill.id, record, hash, "This receipt is too big for QuickBooks (over 100 MB). Attach a smaller copy.");
+        }
+        // Replaced in the CRM: the one it attached before comes off first.
+        const replacing = inQuickBooks(record);
+        if (replacing) {
+          const off = await takeOffReceipt(record!);
+          if ("error" in off) {
+            await stopIf(off.error);
+            if (isTransient(off.error)) return countTransient(off.error);
+            return refusedAt("receipt", bill.id, bill.id, record, hash, off.error, "change");
+          }
+        }
+        // Written down first, with a note unique to this try: a lost answer
+        // is settled next run by looking for the note, never by uploading twice.
+        const requestId = newRequestId();
+        const note = `From the CRM, ref ${requestId}`;
+        const doubt: InDoubt = { requestId, body: { note, billQbId }, hash };
+        await save("receipt", bill.id, bill.id, {
+          doubt,
+          qb_id: null,
+          qb_hash: null,
+          status: "waiting",
+          reason: "Being sent to QuickBooks now.",
+          failed_op: null,
+          tries: 0,
+          next_try_at: null,
+        });
+        const res = await uploadReceipt(
+          access,
+          { billQbId, fileName: file.fileName, contentType: file.contentType, note, bytes: got.blob },
+          fetchImpl
+        );
+        if (!("error" in res)) {
+          await save("receipt", bill.id, bill.id, sentNow(res.id, hash));
+          if (replacing) summary.changed += 1;
+          else summary.sent += 1;
+          return;
+        }
+        await stopIf(res.error);
+        if (isTransient(res.error)) {
+          // No answer: it may be in QuickBooks. Looked for by its note next run.
+          await save("receipt", bill.id, bill.id, { status: "waiting", reason: res.error.message, tried_hash: hash, next_try_at: null });
+          return countTransient(res.error);
+        }
+        // Refused. Its bill deleted in QuickBooks meanwhile? Then both are left alone.
+        const billNow = await readBill(access, billQbId, fetchImpl);
+        if ("error" in billNow && billNow.error.kind === "notfound") {
+          await drop("receipt", bill.id);
+          return billGone(bill.id, null);
+        }
+        // Else not attached: the next try is a new upload.
+        return refusedAt("receipt", bill.id, bill.id, record, hash, res.error, "add");
+      }
     }
   };
 
+  /** A step about a receipt: skipped once the database turns out not to have 0223. */
+  const aboutReceipt = (step: SyncStep) =>
+    step.op === "attach_receipt" || step.op === "remove_receipt" || ("recordType" in step && step.recordType === "receipt");
+  let receiptsOff = false;
+
   for (const step of steps) {
+    if (receiptsOff && aboutReceipt(step)) continue;
     const writesQuickBooks = step.op !== "drop" && step.op !== "wait" && step.op !== "settle";
     if (writesQuickBooks && (writes >= cap || Date.now() > deadline)) {
       summary.more = true;
@@ -648,6 +865,11 @@ async function run(
         summary.error = err.message;
         summary.more = true;
         return;
+      }
+      if (err instanceof NoReceipts) {
+        // Bills and payments still go; receipts start once 0223 is run.
+        receiptsOff = true;
+        continue;
       }
       throw err;
     }

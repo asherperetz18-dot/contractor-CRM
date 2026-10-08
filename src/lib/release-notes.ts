@@ -21,7 +21,7 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.247.0",
+    version: "1.248.0",
     date: "2026-10-08",
     notes: [
       "Tasks: a Done view. Pick Done today, Done this week or Done this month at the top of the Tasks page to see the follow-ups marked done, newest first, with when each was done. The Daily Brief's Tasks Completed number now opens it, on the same period.",
@@ -30,6 +30,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Appointment Reports opens faster: it loads only the period you're looking at instead of every appointment ever, and changing the period loads it in place.",
       "Appointment Reports: in the evening, tomorrow's appointments no longer show up under No Result Yet or in the count of appointments that have already happened.",
       "Daily Brief: tapping a number while the brief is open over that same page (the Schedule, Call Reports or Text Reports) now shows the period you tapped, instead of snapping back to the one that was there.",
+    ],
+  },
+  {
+    version: "1.247.0",
+    date: "2026-10-08",
+    notes: [
+      "QuickBooks: each bill's receipt now goes with it. The photo or PDF attached to a bill in the CRM is attached to the same bill in QuickBooks, marked as a receipt, so your bookkeeper sees it right on the bill. Bills already in QuickBooks get theirs too. A replaced receipt is replaced there, and Bills to Pay says whether the receipt went (\"In QuickBooks · Bill and receipt\").",
     ],
   },
   {
