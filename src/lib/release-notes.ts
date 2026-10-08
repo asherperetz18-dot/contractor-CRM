@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.243.1",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Where Leads Came From and Rep Activity now follow the Today / This Week / This Month buttons like the numbers above them. They used to stay stuck on the last 7 days whichever you picked.",
+    ],
+  },
+  {
     version: "1.243.0",
     date: "2026-10-08",
     notes: [
