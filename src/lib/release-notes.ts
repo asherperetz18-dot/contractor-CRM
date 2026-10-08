@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.253.0",
+    date: "2026-10-08",
+    notes: [
+      "Commission statements now go by your company's clock. A job paid off or signed off after 5pm counts on that day, so on the last day of the month it's payable that month, not the next. The statement opens on your company's month, and every date on it is your day.",
+    ],
+  },
+  {
     version: "1.252.0",
     date: "2026-10-08",
     notes: [

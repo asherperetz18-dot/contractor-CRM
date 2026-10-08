@@ -2300,3 +2300,32 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Profit & Loss, the page.** It hands the view the company's today and zone. `ProfitLossInput` carries the zone, and the ledger reads every timestamp as its company day; plain dates (`spent_on`, `bill_date`, `paid_on`) are already days. The view reads periods and the chart's last month from noon on that today.
 
 **Consequence:** both reports count an evening's texts and money on the evening's date, and count the same period on the server as in the browser. The Text Reports table still prints each text's time in the viewer's own zone, as most tables do (TECH_DEBT). No SQL. Still on the UTC day: the Estimates and Contracts date filters, and the commission statements (TECH_DEBT).
+
+## 179 — Commission statements go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** A commission is payroll for the month it qualified: the later of the final payment landing and the completion certificate being signed (`commissionQualifiedAt`). A sales-rep line has a third hold, job costs recorded, which carries no date and doesn't move it (TECH_DEBT). Both statements, dispatcher and sales rep, still used the server's clock (UTC), whose day starts at 5pm Pacific (4pm in winter):
+- They defaulted the period to the server's month, so a statement opened after 5pm on the 30th opened on next month.
+- They listed payable lines by the UTC day of `qualifiedAt`. A job paid off at 7pm on Sep 30 was payable on October's statement.
+- The sales statement's opening and closing balances did the same (`periodBalance`).
+- Every date printed (signed, payable since, payments, the certificate) was the server's day.
+
+**Decision:**
+- **The pages** take today from `companyNow()` and the zone from `getCompanyZone()`.
+  - A period date in the address is kept only when it is a real day (`calendarDay`). Anything else falls back to the company's month, rather than crashing the cut at the company's midnight.
+  - Payable lines are those whose `qualifiedAt` falls between the period's midnights there (`stampedWithin`).
+- **The balances.** `periodBalance` and `periodBalancesByRep` take the zone and compare `qualifiedAt` with the period's edges as instants (`windowInstants`). Payouts keep their plain `paid_on` dates.
+- **Printed dates.** Every date on the statements and the one-job statement prints through `dayLabel(value, zone, "long")`: a timestamp as its company day, a plain date as itself.
+- **What doesn't move.** Two dates still come from the person's own browser, and this change leaves them alone:
+  - the "This month" and "Last month" buttons in the filters, which read it when clicked;
+  - the payout form's default date on /sales-commission, which is the browser's date when that page loads.
+
+**Consequence:** a job that clears on the evening of the last day of a month is that month's payroll, on both statements and in the balance carried forward. No SQL.
+
+**Switching over:** the change re-files lines that qualified between 5pm and midnight Pacific on the last day of an already-paid period. Under the old rule they were on the next statement; now they are on the one that was paid.
+- For September 2026 that is Sep 30's evening. Such a line was not on the September statement paid before this shipped, and no longer shows on October's.
+- On the sales statement, with the payout ledger in, the balance carries it into October's opening. The itemised list doesn't show it.
+- The dispatcher statement has no ledger, so nothing carries it.
+- The owner was told to reopen September's statements and pay any line dated Sep 30 that wasn't on the copy already paid.
+- Hand-recorded payments, financing receipts and paper signatures are stamped at noon UTC (morning in Pacific), so only portal payments and e-signed certificates can fall in that evening. The Estimates and Contracts date filters and the rep report's Custom dates still use the UTC day (TECH_DEBT).

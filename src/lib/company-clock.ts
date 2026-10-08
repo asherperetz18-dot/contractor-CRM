@@ -73,6 +73,20 @@ export function isoDateReader(ianaZone: string): (instant: Date) => string {
   };
 }
 
+/**
+ * A YYYY-MM-DD from somewhere untrusted (an address, a form), kept only
+ * when it is a real calendar day from year 1000 on: "2026-02-31", "abc"
+ * and a half-typed "0002-01-15" are not. Null otherwise.
+ */
+export function calendarDay(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    value >= "1000" &&
+    addDays(value, 0) === value
+    ? value
+    : null;
+}
+
 /** `days` after a plain YYYY-MM-DD, as plain calendar arithmetic. */
 export function addDays(isoDay: string, days: number): string {
   const [y, m, d] = isoDay.split("-").map(Number);
