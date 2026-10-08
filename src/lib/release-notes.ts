@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.249.0",
+    date: "2026-10-08",
+    notes: [
+      "Dashboard and Tasks now go by your company's clock all evening. After 5pm, a task due today is no longer counted as overdue, Appointments Today no longer shows tomorrow's, and a customer payment due today isn't counted as overdue yet.",
+      "Dashboard: calls, sales and payments count on the day they happened where you are. An evening's calls stay on today's bar, and a sale or payment on the evening of the 31st stays in that month.",
+    ],
+  },
+  {
     version: "1.248.0",
     date: "2026-10-08",
     notes: [

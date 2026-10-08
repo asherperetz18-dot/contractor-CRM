@@ -1,3 +1,4 @@
+import { isoDateReader, localClockIn } from "../company-clock.ts";
 import { countsAsLead } from "../lead-or-contact.ts";
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
 import { phaseOwedCents, phaseState, type PortalPayment } from "./types.ts";
@@ -16,7 +17,10 @@ import { isClosedStageKey } from "../pipeline/stage-keys.ts";
  *
  * Every clock-dependent edge arrives precomputed in RollupBoundaries
  * and is passed to the SQL as parameters, so the two sides can never
- * disagree about "today", the window, or a cutoff.
+ * disagree about "today", the window, or a cutoff. All of it is the
+ * company's calendar (`zone`), never the server's UTC one: both sides
+ * file a timestamp -- a call, a signature, a payment -- on the
+ * company's day, so an evening's work stays on the evening's date.
  *
  * Units follow the app's split: signed / collected / owed figures are
  * integer cents (estimates.total_cents, portal_payments.amount_cents);
@@ -25,6 +29,8 @@ import { isClosedStageKey } from "../pipeline/stage-keys.ts";
  */
 
 export type RollupBoundaries = {
+  /** The company's IANA zone: whose calendar every date here is on. */
+  zone: string;
   today: string;
   from: string | null;
   to: string | null;
@@ -41,13 +47,20 @@ export type RollupBoundaries = {
   fetchFrom: string;
 };
 
-export function rollupBoundaries(win: DateWindow, now: Date = new Date()): RollupBoundaries {
+/** The cutoffs for `win` on `zone`'s calendar at `instant`. */
+export function rollupBoundaries(
+  win: DateWindow,
+  zone: string,
+  instant: Date = new Date()
+): RollupBoundaries {
+  const now = localClockIn(instant, zone);
   const prev = prevWindow(win, now);
   const daysBack = (n: number) =>
     isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - n));
   const monthsFrom = isoDay(new Date(now.getFullYear(), now.getMonth() - 11, 1));
   const candidates = [monthsFrom, win.from, prev?.from].filter(Boolean) as string[];
   return {
+    zone,
     today: isoDay(now),
     from: win.from,
     to: win.to,
@@ -180,6 +193,10 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
   const B = inputs.boundaries;
   const win: DateWindow = { from: B.from, to: B.to };
   const prev: DateWindow = { from: B.prevFrom, to: B.prevTo };
+  // The company's day a timestamp falls on: the SQL's
+  // `(ts at time zone p_zone)::date`.
+  const inZone = isoDateReader(B.zone);
+  const dayOf = (ts: string) => inZone(new Date(ts));
 
   // ── Signed / collected, window + previous + monthly ──────────────
   const monthKeys: string[] = [];
@@ -199,12 +216,13 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
   const signedPrev = { count: 0, cents: 0 };
   for (const s of sales) {
     if (!s.signed_at) continue;
-    const m = monthMap.get(s.signed_at.slice(0, 7));
+    const day = dayOf(s.signed_at);
+    const m = monthMap.get(day.slice(0, 7));
     if (m) m.signedCents += s.total_cents || 0;
-    if (withinWindow(s.signed_at, win)) {
+    if (withinWindow(day, win)) {
       signedCur.count += 1;
       signedCur.cents += s.total_cents || 0;
-    } else if (B.prevFrom && withinWindow(s.signed_at, prev)) {
+    } else if (B.prevFrom && withinWindow(day, prev)) {
       signedPrev.count += 1;
       signedPrev.cents += s.total_cents || 0;
     }
@@ -216,7 +234,7 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     if (p.status !== "succeeded") continue;
     // A payment with no paid_at is dated by its record, same reading as
     // the Payments page's history table.
-    const day = p.paid_at ?? p.created_at;
+    const day = dayOf(p.paid_at ?? p.created_at);
     const m = monthMap.get(day.slice(0, 7));
     if (m) m.collectedCents += p.amount_cents || 0;
     if (withinWindow(day, win)) collectedCur += p.amount_cents || 0;
@@ -268,7 +286,7 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
         d90: { count: 0, value: 0 },
         all: { count: 0, value: 0 },
       } as Record<"d30" | "d60" | "d90" | "all", StageBucket>);
-    const touched = (l.updated_at ?? "").slice(0, 10);
+    const touched = l.updated_at ? dayOf(l.updated_at) : "";
     const value = num(l.value);
     const add = (b: StageBucket) => {
       b.count += 1;
@@ -327,7 +345,7 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     return row;
   };
   for (const s of sales) {
-    if (!withinWindow(s.signed_at, win)) continue;
+    if (!s.signed_at || !withinWindow(dayOf(s.signed_at), win)) continue;
     // Credited to the contract's Sales team seats, dollars split by
     // share; a contract with no seats goes to the rep stamped on it.
     for (const c of saleCredits(s)) {
@@ -353,7 +371,7 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     if (day >= B.today) break;
   }
   for (const c of inputs.callsRecent) {
-    const day = c.created_at.slice(0, 10);
+    const day = dayOf(c.created_at);
     if (perDayMap.has(day)) perDayMap.set(day, (perDayMap.get(day) ?? 0) + 1);
   }
 
@@ -363,7 +381,11 @@ export function buildDashboardRollup(inputs: RollupInputs): DashboardRollup {
     if (j.status === "Not Started") production.notStarted += 1;
     else if (j.status === "In Progress") production.inProgress += 1;
     else if (j.status === "On Hold") production.onHold += 1;
-    else if (j.status === "Complete" && withinWindow(j.end_date ?? j.updated_at, win))
+    // end_date is a plain date already; the stamp falls back to its day.
+    else if (
+      j.status === "Complete" &&
+      withinWindow(j.end_date ?? (j.updated_at ? dayOf(j.updated_at) : null), win)
+    )
       production.completedInWindow += 1;
   }
 

@@ -2227,3 +2227,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Before the database is ready.** 0223 widens the record-type check to allow 'receipt'. Until it's run, the first receipt the job tries to record is refused by the database before anything is downloaded or uploaded, and the job skips receipts for the rest of that run; bills and payments still go. Settings › QuickBooks says "Receipts need a database update first: run 0223…", and Bills to Pay leaves receipts out of its line. Both find out by asking the database to record a receipt for no company, which it always refuses: by the record-type check before 0223, by the missing company after, so nothing is written. Once the answer is yes, a server stops asking.
 
 **Consequence:** the bookkeeper sees the receipt on the bill in QuickBooks. Needs 0223. Receipts on job costs saved as "Already paid" (not bills) wait for step 4, with those costs.
+
+## 175 — The dashboard and the Tasks page read the company's day, calls and money included
+
+**Date:** 2026-10-08
+
+**Context:** The dashboard rollup took its "today" and cutoffs from the server's clock (UTC) and filed every timestamp by its UTC day. From 5pm Pacific (4pm in winter), Overdue Tasks counted tasks due today, Appointments Today showed tomorrow's, customer payments due today read overdue, an evening's calls went on tomorrow's bar, and a sale signed the evening of the 31st counted in the next month. Moving only the cutoffs to the company's clock was tried in v1.248.0 and reverted: the SQL still filed calls and money by the UTC day, so the evening's calls fell off the 14-day strip and the last evening's money off the 12-month chart. The Tasks page kept the server's day as well, so its Overdue section matched the card that opens it.
+
+**Decision:**
+- **One calendar for all of it.** `rollupBoundaries(win, zone)` works out today, the windows, the touch cutoffs, the strip's and chart's first days on the company's calendar, and carries the zone. `dashboard_rollup` (0224) takes it as `p_zone` and files every timestamp `at time zone p_zone`. The body is 0211's with only that swapped, and a test holds them to it. The TypeScript mirror files by the same day (`isoDateReader`), and the backup path cuts its timestamp reads at the company's midnight instead of UTC's. The Tasks page's today is `isoDateInZone(now, zone)`. Both move in this one change, so the card and the page it opens agree every evening.
+- **The zone is a last argument that defaults to 'UTC', and the old signature is dropped.** If the SQL runs before the new app is live, the old app keeps working and reads as it always did. One function stays in the database, so a call never matches two.
+- **Before 0224 runs,** the app's call (it now sends `p_zone`) finds no function and falls back to the TypeScript mirror. Same numbers on the company's day, but slower, because the backup reads every open lead for the stage panel. It doesn't fall back to the old function: that one would put the evening's calls and money back on UTC days.
+- **One formatter per rollup.** Reading a day in a zone builds a date formatter, and building one per row cost about 3 seconds over 50,000 rows. `isoDateReader(zone)` builds it once (about 160 ms).
+
+**Consequence:** the dashboard and the Tasks page agree with the office's clock at any hour. Needs 0224 to be fast again. The Dispatch Dashboard's rollup (`dispatch_rollup`) still files its timestamps by the UTC day, with cutoffs on the company's calendar. It is not changed here.
