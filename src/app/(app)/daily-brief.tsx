@@ -3,12 +3,8 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { money } from "@/lib/data/types";
-import {
-  getDailyBrief,
-  type BriefPeriod,
-  type BriefStats,
-  type DailyBrief,
-} from "@/lib/actions/daily-brief";
+import { getDailyBrief, type BriefStats, type DailyBrief } from "@/lib/actions/daily-brief";
+import type { BriefPeriod } from "@/lib/daily-brief";
 
 // Shown once a day. Keyed by date so it reappears each morning but never
 // nags on every page load.
