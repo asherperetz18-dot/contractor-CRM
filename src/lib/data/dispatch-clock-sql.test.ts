@@ -53,3 +53,13 @@ test("the Dispatch Dashboard sends its company's zone, and the fallback cuts day
   assert.doesNotMatch(action, /nextDay/);
   assert.doesNotMatch(action, /\.(gte|lt)\("created_at", (from|B\.|nextDay)/);
 });
+
+test("the fallback reads leads only, as dispatch_rollup's counts_as_lead does", () => {
+  // Until 0225 runs, the fallback serves the page; a bought-list import
+  // or a sourceless contact is not a lead to race to (DECISIONS #156).
+  const leadReads = action.split('.from("leads")').slice(1);
+  assert.equal(leadReads.length, 2);
+  for (const read of leadReads) {
+    assert.match(read.slice(0, 400), /\.not\("source", "imatch", notALead\)/);
+  }
+});

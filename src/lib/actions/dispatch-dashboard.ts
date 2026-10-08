@@ -17,6 +17,8 @@ import {
   type TodayVisit,
 } from "@/lib/data/dispatch-rollup";
 import { loadTaggedStages } from "@/lib/pipeline/company-stages";
+import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
+import { notALeadPattern } from "@/lib/lead-or-contact";
 import { preAppointmentStageNames } from "@/lib/pipeline/stage-keys";
 
 type CohortRow = DispatchInputs["cohort"][number];
@@ -64,12 +66,16 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
   // Coast. "To Sep 20" runs up to Sep 21's start, keeping all of Sep 20.
   const startOf = (day: string) => dayStartInZone(day, B.zone).toISOString();
   const after = (day: string) => startOf(addDays(day, 1));
+  // Leads only, as the SQL's counts_as_lead: a bought-list import or a
+  // contact with no source isn't a lead to race to (DECISIONS #156).
+  const notALead = notALeadPattern(await getBoughtListKeysCached(companyId));
   const leadsCreated = (from: string, to: string | null) =>
     selectAll<{ id: string; created_at: string; dispatcher_id: string | null }>((f, t) => {
       let q = supabase
         .from("leads")
         .select("id, created_at, dispatcher_id")
         .eq("company_id", companyId)
+        .not("source", "imatch", notALead)
         .gte("created_at", startOf(from))
         .range(f, t);
       if (to) q = q.lt("created_at", after(to));
@@ -153,6 +159,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
         .from("leads")
         .select("id, created_at, dispatcher_id")
         .eq("company_id", companyId)
+        .not("source", "imatch", notALead)
         // Still waiting for a first appointment -- the same stages the
         // SQL takes (pre_appointment_stage_names, 0195).
         .in("stage", waitingStages)
