@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.245.1",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief opens faster: it no longer loads every contact, appointment and task your company ever had just to count today, this week and this month. The numbers are the same.",
+    ],
+  },
+  {
     version: "1.245.0",
     date: "2026-10-08",
     notes: [
