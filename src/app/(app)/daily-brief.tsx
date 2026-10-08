@@ -209,13 +209,13 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
 
               <div className="brief-columns">
                 <div>
-                  <div className="brief-section-title">Where Leads Came From (7 days)</div>
-                  {brief.topSources.length === 0 ? (
-                    <p className="empty-hint">No leads in the last 7 days.</p>
+                  <div className="brief-section-title">Where Leads Came From ({PERIOD_LABEL[period]})</div>
+                  {brief.breakdown[period].topSources.length === 0 ? (
+                    <p className="empty-hint">No leads {PERIOD_LABEL[period].toLowerCase()}.</p>
                   ) : (
                     <table className="data-table">
                       <tbody>
-                        {brief.topSources.map((s) => (
+                        {brief.breakdown[period].topSources.map((s) => (
                           <tr key={s.source}>
                             <td>{s.source}</td>
                             <td className="right mono">{s.count}</td>
@@ -227,9 +227,9 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
                 </div>
 
                 <div>
-                  <div className="brief-section-title">Rep Activity (7 days)</div>
-                  {brief.repActivity.length === 0 ? (
-                    <p className="empty-hint">No rep activity in the last 7 days.</p>
+                  <div className="brief-section-title">Rep Activity ({PERIOD_LABEL[period]})</div>
+                  {brief.breakdown[period].repActivity.length === 0 ? (
+                    <p className="empty-hint">No rep activity {PERIOD_LABEL[period].toLowerCase()}.</p>
                   ) : (
                     <table className="data-table">
                       <thead>
@@ -240,7 +240,7 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {brief.repActivity.map((r) => (
+                        {brief.breakdown[period].repActivity.map((r) => (
                           <tr key={r.name}>
                             <td>{r.name}</td>
                             <td className="right mono">{r.appts}</td>

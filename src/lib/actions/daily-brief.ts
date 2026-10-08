@@ -9,6 +9,7 @@ import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 import { selectAll } from "@/lib/data/select-all";
 import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import { countsAsLead } from "@/lib/lead-or-contact";
+import { briefBreakdown, type BriefBreakdown } from "@/lib/daily-brief";
 
 type BriefLead = {
   id: string;
@@ -53,8 +54,8 @@ export type DailyBrief = {
   generatedAt: string;
   periods: Record<BriefPeriod, BriefStats>;
   attention: BriefAttention;
-  topSources: { source: string; count: number }[];
-  repActivity: { name: string; appts: number; calls: number }[];
+  // One per period, so the lower tables follow the chips too.
+  breakdown: Record<BriefPeriod, BriefBreakdown>;
 };
 
 function startOf(period: BriefPeriod): string {
@@ -210,36 +211,10 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     ).length,
   };
 
-  const sourceTally = new Map<string, number>();
-  const weekAgo = startOf("week");
-  for (const l of leadRows) {
-    if (l.created_at < weekAgo || !countsAsLead(l.source, boughtKeys)) continue;
-    const key = l.source as string;
-    sourceTally.set(key, (sourceTally.get(key) ?? 0) + 1);
-  }
-  const topSources = [...sourceTally.entries()]
-    .map(([source, count]) => ({ source, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
   const nameById = new Map(memberRows.map((m) => [m.id, m.name || m.email || "Unknown"]));
-  const repTally = new Map<string, { appts: number; calls: number }>();
-  for (const e of eventRows) {
-    if (e.created_at < weekAgo || !e.assigned_to) continue;
-    const row = repTally.get(e.assigned_to) ?? { appts: 0, calls: 0 };
-    row.appts += 1;
-    repTally.set(e.assigned_to, row);
-  }
-  for (const c of callRows) {
-    if (c.created_at < weekAgo || !c.rep_id) continue;
-    const row = repTally.get(c.rep_id) ?? { appts: 0, calls: 0 };
-    row.calls += 1;
-    repTally.set(c.rep_id, row);
-  }
-  const repActivity = [...repTally.entries()]
-    .map(([id, v]) => ({ name: nameById.get(id) ?? "Unknown", ...v }))
-    .sort((a, b) => b.appts + b.calls - (a.appts + a.calls))
-    .slice(0, 6);
+  const breakdownRows = { leads: leadRows, events: eventRows, calls: callRows };
+  const breakdownFor = (period: BriefPeriod) =>
+    briefBreakdown(breakdownRows, startOf(period), boughtKeys, nameById);
 
   return {
     brief: {
@@ -251,8 +226,11 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         month: statsFor("month"),
       },
       attention,
-      topSources,
-      repActivity,
+      breakdown: {
+        today: breakdownFor("today"),
+        week: breakdownFor("week"),
+        month: breakdownFor("month"),
+      },
     },
   };
 }
