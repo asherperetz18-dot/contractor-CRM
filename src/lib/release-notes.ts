@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.254.0",
+    date: "2026-10-08",
+    notes: [
+      "Estimates & Contracts and the Contract Board now go by your company's clock. An estimate or contract made after 5pm counts on the day it was made, so a created-date range keeps its last evening and no longer takes in the evening before it starts. \"Older than 7 days\" counts your days too.",
+    ],
+  },
+  {
     version: "1.253.0",
     date: "2026-10-08",
     notes: [

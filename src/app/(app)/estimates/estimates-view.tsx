@@ -24,12 +24,14 @@ import { useFunnelOrder } from "./funnel-order-prefs";
 import { NewEstimateDialog } from "./new-estimate-dialog";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { FilterSelect } from "@/components/filter-select";
-import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { resolveWindow } from "@/lib/data/date-range";
+import { calendarDay, stampedWithin } from "@/lib/company-clock";
 import {
   DEFAULT_ESTIMATE_SORT,
   FOLLOW_UP_CHIPS,
   FOLLOW_UP_CHIP_LABELS,
   matchesEstimateSearch,
+  followUpClock,
   matchesFollowUpChip,
   sortEstimates,
   type EstimateSort,
@@ -138,6 +140,8 @@ export function EstimatesView({
   canCreate,
   viewsByEstimate,
   savedCardOrder,
+  today,
+  zone,
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
@@ -156,6 +160,10 @@ export function EstimatesView({
   /** The card order saved on this person's profile. Null = never
    *  arranged there; the browser's own saved order applies instead. */
   savedCardOrder: string[] | null;
+  /** The company's today, from the server: what the date filter counts from. */
+  today: string;
+  /** The company's zone: a document counts on the day it was made there. */
+  zone: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -292,12 +300,18 @@ export function EstimatesView({
 
   // Search and dates narrow every card, not just the table: "signed this
   // month" is the number a person reads off Contracts with a date picked.
-  const now = new Date();
-  const dateWindow = resolveWindow({ preset: datePreset, from: dateFrom, to: dateTo }, now);
+  // The company's calendar, not the browser's or the server's: a
+  // document made after 5pm Pacific is that day's. A date still being
+  // typed is no edge rather than a broken window.
+  const dateWindow = resolveWindow(
+    { preset: datePreset, from: dateFrom, to: dateTo },
+    new Date(`${today}T12:00:00`)
+  );
+  const madeInWindow = stampedWithin({ from: calendarDay(dateWindow.from), to: calendarDay(dateWindow.to) }, zone);
   const scoped = estimates.filter((e) => {
     const lead = leadById.get(e.lead_id);
     return (
-      withinWindow(e.created_at, dateWindow) &&
+      madeInWindow(e.created_at) &&
       matchesEstimateSearch(
         {
           docNumber: e.doc_number,
@@ -350,15 +364,16 @@ export function EstimatesView({
       (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
   );
   const followUp = (e: EstimateListRow) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
+  const chipClock = followUpClock(today, zone);
   // Each chip's count is what ticking it would leave, given everything
   // else already on -- so a chip reading 0 is not worth the click.
   const chipOptions = FOLLOW_UP_CHIPS[bucket].map((chip) => ({
     chip,
     label: FOLLOW_UP_CHIP_LABELS[chip],
-    count: beforeChips.filter((e) => matchesFollowUpChip(followUp(e), chip, now)).length,
+    count: beforeChips.filter((e) => matchesFollowUpChip(followUp(e), chip, chipClock)).length,
   }));
   const rows = sortEstimates(
-    beforeChips.filter((e) => [...chips].every((c) => matchesFollowUpChip(followUp(e), c, now))),
+    beforeChips.filter((e) => [...chips].every((c) => matchesFollowUpChip(followUp(e), c, chipClock))),
     sort,
     (e) => viewsByEstimate[e.id]?.count ?? 0
   );
@@ -501,6 +516,7 @@ export function EstimatesView({
               type="date"
               className="ur-company-filter"
               value={dateFrom}
+              max={today}
               onChange={(ev) => setDateFrom(ev.target.value)}
               aria-label="Created from"
             />
@@ -509,6 +525,7 @@ export function EstimatesView({
               type="date"
               className="ur-company-filter"
               value={dateTo}
+              max={today}
               onChange={(ev) => setDateTo(ev.target.value)}
               aria-label="Created to"
             />

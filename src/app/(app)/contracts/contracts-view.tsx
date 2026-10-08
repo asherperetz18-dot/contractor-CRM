@@ -16,7 +16,8 @@ import {
   repOptionIds,
 } from "@/lib/data/funnel-cards";
 import { estimateSeats } from "@/lib/data/estimate-seats";
-import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { resolveWindow } from "@/lib/data/date-range";
+import { calendarDay, stampedWithin } from "@/lib/company-clock";
 import {
   BOARD_COLUMNS,
   boardCardStats,
@@ -79,6 +80,8 @@ export function ContractsView({
   reps,
   viewsByEstimate,
   canCreate,
+  today,
+  zone,
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
@@ -90,6 +93,10 @@ export function ContractsView({
   /** Customer portal opens per document: count and most recent. */
   viewsByEstimate: Record<string, { count: number; last: string }>;
   canCreate: boolean;
+  /** The company's today, from the server: what the date filter counts from. */
+  today: string;
+  /** The company's zone: a contract counts on the day it was made there. */
+  zone: string;
 }) {
   const router = useRouter();
   const [scope, setScope] = useState<BoardScope | null>(null);
@@ -138,11 +145,14 @@ export function ContractsView({
   // stray attached document from ever becoming a board card.
   const boardDocs = contracts.filter((e) => boardColumnFor(e) !== null);
 
-  const win = resolveWindow(range, now);
+  // The company's calendar for the date filter: a contract made after
+  // 5pm Pacific is that day's. A date still being typed is no edge.
+  const win = resolveWindow(range, new Date(`${today}T12:00:00`));
+  const madeInWindow = stampedWithin({ from: calendarDay(win.from), to: calendarDay(win.to) }, zone);
   const filtered = boardDocs.filter((e) => {
     if (!matchesRepFilter(peopleFor(e), repFilter)) return false;
     if (clientFilter && customerName(e) !== clientFilter) return false;
-    if (!withinWindow(e.created_at, win)) return false;
+    if (!madeInWindow(e.created_at)) return false;
     const salesperson = seatsFor(e)[0];
     return matchesBoardSearch(
       {
@@ -303,6 +313,7 @@ export function ContractsView({
             { key: "90", label: "Created: Last 90 days" },
           ]}
           value={range}
+          max={today}
           onChange={setRange}
         />
         <input

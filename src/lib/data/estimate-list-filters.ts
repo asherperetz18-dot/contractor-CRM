@@ -1,4 +1,4 @@
-import { isoDay } from "./date-range.ts";
+import { addDays, dayStartInZone } from "../company-clock.ts";
 import type { FunnelCardKey } from "./funnel-order.ts";
 import type { Estimate } from "./types.ts";
 
@@ -75,22 +75,25 @@ const STALE_DAYS = 7;
 const EXPIRING_DAYS = 7;
 const OPENED_OFTEN = 3;
 
-/** `now` shifted by whole calendar days, as YYYY-MM-DD. */
-function dayOffset(now: Date, days: number): string {
-  return isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days));
+/**
+ * What the chips measure against, worked out once per render: the
+ * company's today, and the instant a draft turns stale -- the company's
+ * midnight a week back, so a draft made at 7pm Pacific is aged by its
+ * own day, not the UTC day after.
+ */
+export type FollowUpClock = { today: string; staleBefore: number };
+
+export function followUpClock(today: string, zone: string): FollowUpClock {
+  return { today, staleBefore: dayStartInZone(addDays(today, -STALE_DAYS), zone).getTime() };
 }
 
-export function matchesFollowUpChip(
-  doc: FollowUpDoc,
-  chip: FollowUpChip,
-  now: Date = new Date()
-): boolean {
+export function matchesFollowUpChip(doc: FollowUpDoc, chip: FollowUpChip, clock: FollowUpClock): boolean {
   switch (chip) {
     case "no_price":
       return !doc.total_cents;
     case "stale_draft":
       // Exactly a week old is still this week's work.
-      return doc.created_at.slice(0, 10) < dayOffset(now, -STALE_DAYS);
+      return Date.parse(doc.created_at) < clock.staleBefore;
     case "not_opened":
       return doc.views === 0;
     case "opened_often":
@@ -99,7 +102,7 @@ export function matchesFollowUpChip(
       if (!doc.expires_at) return false;
       const day = doc.expires_at.slice(0, 10);
       // Already lapsed is Expired and has left the card; today still counts.
-      return day >= isoDay(now) && day <= dayOffset(now, EXPIRING_DAYS);
+      return day >= clock.today && day <= addDays(clock.today, EXPIRING_DAYS);
     }
   }
 }
