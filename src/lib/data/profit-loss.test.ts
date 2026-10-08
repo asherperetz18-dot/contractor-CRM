@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   plPeriodWindow,
   profitLoss,
@@ -25,6 +26,9 @@ import { ALL_TIME } from "./date-range.ts";
 //   Aug 3. A voided no-job bill for $9,900 dated Aug 2 with a real
 //   $300 payment made Aug 2 before the void.
 const COMPANY: ProfitLossInput = {
+  // Timestamps below are read on UTC's calendar; the evening test moves
+  // the company to Los Angeles.
+  zone: "UTC",
   contracts: [
     { id: "est-a", lead_id: "lead-a", deposit_cents: 100000, signed_at: "2026-08-05T18:30:00Z" },
     { id: "est-b", lead_id: "lead-b", deposit_cents: 50000, signed_at: "2026-07-30T12:00:00Z" },
@@ -146,6 +150,49 @@ test("window edges are inclusive and read timestamps as their day", () => {
   // must still include it.
   const r = profitLoss("cash", { from: "2026-08-20", to: "2026-08-20" }, COMPANY);
   assert.equal(r.incomeCents, 1500000);
+});
+
+test("an evening's money counts on the company's day and month, not the server's", () => {
+  // Everything here happened on the evening of Aug 31 in Los Angeles,
+  // which UTC already calls Sep 1.
+  const EVENING: ProfitLossInput = {
+    zone: "America/Los_Angeles",
+    contracts: [{ id: "est-e", lead_id: "lead-e", deposit_cents: 70000, signed_at: "2026-09-01T03:00:00Z" }],
+    phases: [{ estimate_id: "est-e", amount_cents: 400000, requested_at: "2026-09-01T04:00:00Z" }],
+    payments: [
+      { estimate_id: "est-e", lead_id: "lead-e", amount_cents: 70000, status: "succeeded", paid_at: "2026-09-01T02:00:00Z", created_at: "2026-09-01T02:00:00Z" },
+      // No paid date: its record dates it.
+      { estimate_id: "est-e", lead_id: "lead-e", amount_cents: 5000, status: "succeeded", paid_at: null, created_at: "2026-09-01T06:00:00Z" },
+    ],
+    expenses: [],
+    // An overhead bill with no bill date: the day it was entered.
+    bills: [{ id: "bill-e", lead_id: null, vendor_id: null, vendor_name: "Night Shift Supply", amount_cents: 25000, bill_date: null, created_at: "2026-09-01T05:00:00Z", voided_at: null }],
+    billPayments: [],
+  };
+  assert.equal(profitLoss("cash", AUG, EVENING).incomeCents, 75000);
+  const accrual = profitLoss("accrual", AUG, EVENING);
+  assert.equal(accrual.incomeCents, 470000);
+  assert.equal(accrual.overheadCents, 25000);
+  assert.equal(profitLoss("cash", { from: "2026-09-01", to: "2026-09-30" }, EVENING).incomeCents, 0);
+  // The month chart files it under August too.
+  const months = profitLossByMonth("accrual", { from: "2026-08-01", to: "2026-09-30" }, EVENING, new Date(2026, 8, 15, 12));
+  assert.deepEqual(
+    months.map((m) => [m.month, m.incomeCents, m.overheadCents]),
+    [["2026-08", 470000, 25000], ["2026-09", 0, 0]]
+  );
+});
+
+test("the page hands the report the company's today and zone; nothing reads the browser's clock", () => {
+  const page = readFileSync(new URL("../../app/(app)/profit-loss/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const today = isoDateInZone\(new Date\(\), zone\);/);
+  assert.match(page, /today=\{today\}/);
+  assert.match(page, /zone=\{zone\}/);
+  const view = readFileSync(new URL("../../app/(app)/profit-loss/profit-loss-view.tsx", import.meta.url), "utf8");
+  // "This month" and the chart's last month come from that today, so the
+  // server's first draw and the browser agree on the evening of the 31st.
+  assert.match(view, /new Date\(`\$\{today\}T12:00:00`\)/);
+  assert.match(view, /plPeriodWindow\(range\.preset as PLPeriodKey, now\)/);
+  assert.match(view, /profitLossByMonth\(\s*basis,\s*window,\s*input,\s*now\s*\)/);
 });
 
 test("summary lines always reconcile: gross = income - costs, net = gross - overhead", () => {

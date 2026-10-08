@@ -8,6 +8,7 @@ import {
   instantOfWallClock,
   isoDateInZone,
   isoDateReader,
+  stampedWithin,
   windowInstants,
   localClockIn,
   utcClockIn,
@@ -78,6 +79,22 @@ test("a window of days becomes the instants a timestamp column is cut at, on the
   assert.deepEqual(windowInstants({ from: null, to: null }, LA), { from: null, before: null });
   // Across the November change the day after starts on standard time.
   assert.equal(windowInstants({ from: null, to: "2026-11-01" }, LA).before, "2026-11-02T08:00:00.000Z");
+});
+
+test("a timestamp is in a window of days when it falls between the zone's midnights", () => {
+  const inOct1to10 = stampedWithin({ from: "2026-10-01", to: "2026-10-10" }, LA);
+  // Oct 10, 7pm in Los Angeles: UTC already calls it the 11th.
+  assert.equal(inOct1to10("2026-10-11T02:00:00Z"), true);
+  // Sep 30, 8pm: UTC calls it Oct 1, but it's the evening before.
+  assert.equal(inOct1to10("2026-10-01T03:00:00Z"), false);
+  // Midnight on the 1st is in; midnight after the 10th is out.
+  assert.equal(inOct1to10("2026-10-01T07:00:00+00:00"), true);
+  assert.equal(inOct1to10("2026-10-11T07:00:00.000Z"), false);
+  // Supabase's microseconds read the same.
+  assert.equal(inOct1to10("2026-10-05T12:00:00.123456+00:00"), true);
+  assert.equal(inOct1to10(null), false);
+  // An open edge lets everything through on that side.
+  assert.equal(stampedWithin({ from: null, to: null }, LA)("1999-01-01T00:00:00Z"), true);
 });
 
 test("Arizona keeps standard time all summer, so it is not Mountain Time", () => {

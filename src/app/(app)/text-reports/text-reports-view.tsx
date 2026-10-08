@@ -5,7 +5,7 @@ import { requestsAddress } from "@/lib/report-address";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
-import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { isoDateReader, stampedWithin } from "@/lib/company-clock";
 import { leadDisplayName, normalizePhone, type LeadLite } from "@/lib/data/types";
 import {
   TEXT_REPORT_PRESETS,
@@ -13,6 +13,7 @@ import {
   parseTextReportQuery,
   textReportQueryString,
   textReportRange,
+  textReportWindow,
   type TextReportQuery,
   type TextReportRow,
 } from "@/lib/text-reports-window";
@@ -35,25 +36,24 @@ function replyKind(m: TextReportRow): "yes" | "no" | null {
   return null;
 }
 
-function dayKey(iso: string) {
-  return iso.slice(0, 10);
-}
-
 export function TextReportsView({
   query,
   messages,
   leads,
+  today,
+  zone,
 }: {
   query: TextReportQuery;
   messages: TextReportRow[];
   leads: LeadLite[];
+  /** The company's today, from the server: the window's anchor. */
+  today: string;
+  /** The company's zone: whose days the texts are counted on. */
+  zone: string;
 }) {
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<DirectionFilter>("All");
   const [range, setRange] = useState<RangeState>(() => textReportRange(query));
-  // Captured once at mount -- a "now" read during render would make the
-  // date-range filter shift unpredictably across re-renders.
-  const [now] = useState(() => Date.now());
 
   // The page loads only the period in the address (DECISIONS #146).
   // Changing it puts the new period there -- in a transition, so the
@@ -120,10 +120,18 @@ export function TextReportsView({
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const win = resolveWindow(shownRange, new Date(now));
+    // The same window the server loaded, from the same company today, its
+    // days cut at the company's midnights.
+    const inWindow = stampedWithin(
+      textReportWindow(
+        parseTextReportQuery({ range: shownRange.preset, from: shownRange.from, to: shownRange.to }),
+        today
+      ),
+      zone
+    );
     return messages.filter((m) => {
       if (direction !== "All" && m.direction !== direction) return false;
-      if (!withinWindow(m.created_at, win)) return false;
+      if (!inWindow(m.created_at)) return false;
       if (!q) return true;
       const lead = contactFor(m);
       const name = lead ? leadDisplayName(lead).toLowerCase() : "";
@@ -136,7 +144,7 @@ export function TextReportsView({
     });
     // contactFor is derived from the same inputs the memo already tracks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, direction, shownRange, search, now, leadById, leadByPhone]);
+  }, [messages, direction, shownRange, search, today, zone, leadById, leadByPhone]);
 
   // The table draws a page of rows at a time -- a busy month is thousands
   // of texts -- while the numbers above it count them all. Another filter
@@ -165,12 +173,18 @@ export function TextReportsView({
     : 0;
 
   const busiestDay = useMemo(() => {
+    // Each text on the company's day it was sent -- an evening's texts
+    // on that evening, not the UTC day after.
+    const dayOf = isoDateReader(zone);
     const counts = new Map<string, number>();
-    for (const m of rows) counts.set(dayKey(m.created_at), (counts.get(dayKey(m.created_at)) ?? 0) + 1);
+    for (const m of rows) {
+      const day = dayOf(new Date(m.created_at));
+      counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
     let best: [string, number] | null = null;
     for (const entry of counts) if (!best || entry[1] > best[1]) best = entry;
     return best;
-  }, [rows]);
+  }, [rows, zone]);
 
   return (
     <div>
@@ -224,7 +238,7 @@ export function TextReportsView({
           presets={PRESETS}
           value={range}
           onChange={setRange}
-          max={new Date(now).toISOString().slice(0, 10)}
+          max={today}
         />
       </div>
 

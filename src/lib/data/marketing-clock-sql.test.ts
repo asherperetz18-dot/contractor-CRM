@@ -69,5 +69,5 @@ test("the rep report files leads, sends and signatures on the company's day", ()
   // bare slice of the UTC string put an evening on the next day.
   assert.doesNotMatch(report, /inRange\((l\.created_at|e\.signed_at|e\.sent_at)/);
   assert.doesNotMatch(report, /within\(l\.created_at, win\)/);
-  assert.match(report, /const edges = windowInstants\(win, zone\);/);
+  assert.match(report, /const stampedIn: StampedIn = stampedWithin\(win, zone\);/);
 });

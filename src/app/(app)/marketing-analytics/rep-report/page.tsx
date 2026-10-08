@@ -1,6 +1,6 @@
 import { clientName } from "@/lib/data/client-name";
 import { companyNow, getCompanyZone } from "@/lib/data/company-today";
-import { windowInstants } from "@/lib/company-clock";
+import { stampedWithin } from "@/lib/company-clock";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
@@ -386,16 +386,9 @@ export default async function RepReportPage({
 
   const state = { preset: rangeKey, from: sp.from ?? "", to: sp.to ?? "" };
   const win = resolveWindow(state, now);
-  // The period's edges as instants, worked out once: comparing each
-  // timestamp with them is exact and costs nothing per row.
-  const edges = windowInstants(win, zone);
-  const fromMs = edges.from ? Date.parse(edges.from) : -Infinity;
-  const beforeMs = edges.before ? Date.parse(edges.before) : Infinity;
-  const stampedIn: StampedIn = (timestamp) => {
-    if (!timestamp) return false;
-    const t = Date.parse(timestamp);
-    return t >= fromMs && t < beforeMs;
-  };
+  // The period's edges at the company's midnights, worked out once:
+  // checking each timestamp against them is exact and costs nothing per row.
+  const stampedIn: StampedIn = stampedWithin(win, zone);
 
   // What the printed sheet calls the period. A custom range has to say
   // its actual dates: "Custom" on a document somebody files is useless

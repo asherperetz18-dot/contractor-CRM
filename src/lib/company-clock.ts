@@ -156,6 +156,25 @@ export function windowInstants(
   };
 }
 
+/**
+ * Whether a timestamp falls in a window of days on `ianaZone`'s calendar
+ * -- between its midnights there (`windowInstants`). Built once per
+ * window, so checking a row is a number comparison, not a date format.
+ */
+export function stampedWithin(
+  win: { from: string | null; to: string | null },
+  ianaZone: string
+): (timestamp: string | null | undefined) => boolean {
+  const { from, before } = windowInstants(win, ianaZone);
+  const lo = from ? Date.parse(from) : -Infinity;
+  const hi = before ? Date.parse(before) : Infinity;
+  return (timestamp) => {
+    if (!timestamp) return false;
+    const t = Date.parse(timestamp);
+    return t >= lo && t < hi;
+  };
+}
+
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
