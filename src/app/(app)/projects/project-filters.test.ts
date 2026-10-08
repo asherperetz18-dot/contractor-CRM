@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chipMatches, matchesProjectFilters, projectTotals } from "./project-filters.ts";
+import {
+  chipMatches,
+  dateRangeBounds,
+  matchesProjectFilters,
+  projectClock,
+  projectTotals,
+} from "./project-filters.ts";
 import type { ProjectCard } from "./projects-view";
 
 /**
@@ -19,7 +25,8 @@ const card = (over: Partial<ProjectCard>): ProjectCard =>
     ...over,
   }) as ProjectCard;
 
-const NOW = new Date("2026-09-17T12:00:00");
+// The company's today, on UTC's calendar for the fixtures below.
+const NOW = projectClock("2026-09-17", "UTC");
 
 test("NewMonth keeps only jobs signed this calendar month", () => {
   assert.equal(chipMatches(card({ signedAt: "2026-09-02T10:00:00Z" }), "NewMonth", NOW), true);
@@ -109,4 +116,42 @@ test("a focus id keeps exactly the one project the link named", () => {
   assert.equal(matchesProjectFilters(other, { ...noFilters, focusId: "est-1" }), false);
   // No focus in the URL: nothing changes.
   assert.equal(matchesProjectFilters(other, noFilters), true);
+});
+
+test("New this month is the company's month, evenings included", () => {
+  // Sep 30 in Los Angeles: the month runs from Sep 1 07:00 UTC to Oct 1 07:00 UTC.
+  const la = projectClock("2026-09-30", "America/Los_Angeles");
+  // Sep 30 at 7pm there -- UTC already called it October.
+  assert.equal(chipMatches(card({ signedAt: "2026-10-01T02:00:00Z" }), "NewMonth", la), true);
+  // Aug 31 at 10pm there -- UTC already called it September.
+  assert.equal(chipMatches(card({ signedAt: "2026-09-01T05:00:00Z" }), "NewMonth", la), false);
+  // Oct 1 at 12:30am there is next month's.
+  assert.equal(chipMatches(card({ signedAt: "2026-10-01T07:30:00Z" }), "NewMonth", la), false);
+});
+
+const signedIn = (signedAt: string, bounds: [number, number] | null) =>
+  matchesProjectFilters(card({ signedAt }), { search: "", client: "", rep: "", bounds });
+
+test("a custom Signed range runs between the company's midnights", () => {
+  const oct = dateRangeBounds("custom", "2026-10-01", "2026-10-08", "America/Los_Angeles");
+  // Oct 8 at 6pm in Los Angeles is the range's last evening, in it.
+  assert.equal(signedIn("2026-10-09T01:00:00Z", oct), true);
+  // Sep 30 at 6pm there is the evening before it starts, out of it.
+  assert.equal(signedIn("2026-10-01T01:00:00Z", oct), false);
+  // Its first minute and its last are both in.
+  assert.equal(signedIn("2026-10-01T07:00:00Z", oct), true);
+  assert.equal(signedIn("2026-10-09T06:59:59Z", oct), true);
+  assert.equal(signedIn("2026-10-09T07:00:00Z", oct), false);
+});
+
+test("either edge of a custom range may be left open, and a half-typed date is no edge", () => {
+  const since = dateRangeBounds("custom", "2026-10-01", "", "America/Los_Angeles");
+  assert.equal(signedIn("2030-01-01T00:00:00Z", since), true);
+  assert.equal(signedIn("2026-10-01T01:00:00Z", since), false);
+  const upTo = dateRangeBounds("custom", "", "2026-10-08", "America/Los_Angeles");
+  assert.equal(signedIn("2020-01-01T00:00:00Z", upTo), true);
+  assert.equal(signedIn("2026-10-09T07:00:00Z", upTo), false);
+  // A date the address carries badly is no edge rather than a broken range.
+  assert.equal(dateRangeBounds("custom", "2026-1", "nope", "America/Los_Angeles"), null);
+  assert.equal(dateRangeBounds("custom", "", "", "America/Los_Angeles"), null);
 });

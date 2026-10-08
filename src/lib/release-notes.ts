@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.256.0",
+    date: "2026-10-08",
+    notes: [
+      "Projects now goes by your company's clock. A contract signed after 5pm counts on the day it was signed, so a custom Signed range keeps its last evening and no longer takes in the evening before it starts, and \"New this month\" counts your month. A checklist step due today isn't overdue until tomorrow, on the page and on its printout alike.",
+    ],
+  },
+  {
     version: "1.255.0",
     date: "2026-10-08",
     notes: [

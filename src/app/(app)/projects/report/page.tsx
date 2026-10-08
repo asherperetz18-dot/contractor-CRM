@@ -16,6 +16,7 @@ import {
   dateRangeBounds,
   matchesProjectFilters,
   PROJECT_CHIPS,
+  projectClock,
   type ProjectChip,
   type ProjectDateRange,
 } from "../project-filters";
@@ -122,7 +123,10 @@ export default async function ProjectsReportPage({
   const range: ProjectDateRange = RANGES.includes(sp.range as ProjectDateRange)
     ? (sp.range as ProjectDateRange)
     : "any";
-  const bounds = dateRangeBounds(range, sp.from ?? "", sp.to ?? "");
+  // One company clock for the list, the same as the page's: the Signed
+  // range between its midnights, "New this month" in its month.
+  const clock = projectClock(todayISO, zone);
+  const bounds = dateRangeBounds(range, sp.from ?? "", sp.to ?? "", zone);
 
   const [{ cards, reps }, { data: company }, { data: checklistRows }] = await Promise.all([
     buildProjectCards(supabase, companyId),
@@ -143,7 +147,7 @@ export default async function ProjectsReportPage({
   const listed = cards
     .filter(
       (p) =>
-        chipMatches(p, chip) &&
+        chipMatches(p, chip, clock) &&
         matchesProjectFilters(p, {
           search: sp.q ?? "",
           client: sp.client ?? "",
