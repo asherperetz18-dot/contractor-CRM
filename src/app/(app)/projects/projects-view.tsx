@@ -22,6 +22,7 @@ import { toggleLedger, type LedgerFilter } from "@/lib/data/job-ledger";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
+import { dayLabel } from "@/lib/company-clock";
 import {
   chipMatches,
   dateRangeBounds,
@@ -1182,35 +1183,17 @@ export function ProjectsView({
                   {visibleColumns.has("status") && <td>{STATUS_LABEL[p.status]}</td>}
                   {visibleColumns.has("signedDate") && (
                     <td>
-                      {p.signedAt
-                        ? new Date(p.signedAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.signedAt, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("startDate") && (
                     <td>
-                      {p.startDate
-                        ? new Date(p.startDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.startDate, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("completionDate") && (
                     <td>
-                      {p.completionDate
-                        ? new Date(p.completionDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.completionDate, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("changeOrders") && (

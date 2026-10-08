@@ -45,3 +45,26 @@ test("the printed report filters on the same company clock as the page", () => {
   assert.match(report, /dateRangeBounds\(range, sp\.from \?\? "", sp\.to \?\? "", zone\)/);
   assert.match(report, /chipMatches\(p, chip, clock\)/);
 });
+
+test("the table prints a job's own days: Signed on the company's calendar, Start and Completion as the dates they are", () => {
+  // A plain date read as UTC midnight shows the day before in any US
+  // browser; the printed report already prints these with dayLabel.
+  assert.match(view, /dayLabel\(p\.signedAt, zone, "short"\)/);
+  assert.match(view, /dayLabel\(p\.startDate, zone, "short"\)/);
+  assert.match(view, /dayLabel\(p\.completionDate, zone, "short"\)/);
+  assert.doesNotMatch(view, /new Date\(p\.(signedAt|startDate|completionDate)\)/);
+});
+
+test("the printed report names the same dates its list is cut at", () => {
+  assert.match(report, /const fromDay = calendarDay\(sp\.from\);/);
+  assert.match(report, /const toDay = calendarDay\(sp\.to\);/);
+  assert.doesNotMatch(report, /longDate\(sp\.(from|to)\)/);
+});
+
+test("template steps are dated from the signing day on the company's calendar", () => {
+  const auto = source("./checklist-auto.ts");
+  const action = source("./actions/checklists.ts");
+  assert.match(auto, /dueFromOffset\(signedAtIso, it\.offset_days, zone\)/);
+  assert.match(action, /dueFromOffset\(base, it\.offset_days, zone\)/);
+});
+
