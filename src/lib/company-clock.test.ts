@@ -7,6 +7,7 @@ import {
   dayStartInZone,
   instantOfWallClock,
   isoDateInZone,
+  isoDateReader,
   localClockIn,
   utcClockIn,
   wallClockIn,
@@ -44,6 +45,21 @@ test("the calendar day is the zone's, not UTC's", () => {
   const lateLA = new Date("2026-09-21T06:30:00Z");
   assert.equal(isoDateInZone(lateLA, LA), "2026-09-20");
   assert.equal(isoDateInZone(lateLA, NY), "2026-09-21");
+});
+
+test("isoDateReader reads many instants on one zone's calendar, as isoDateInZone does", () => {
+  // One formatter for a whole batch: building one per row cost seconds
+  // across a contact book.
+  const inLA = isoDateReader(LA);
+  assert.equal(inLA(EVENING_LA), "2026-09-20");
+  assert.equal(inLA(new Date("2026-09-21T06:30:00Z")), "2026-09-20");
+  assert.equal(inLA(new Date("2026-09-21T07:00:00Z")), "2026-09-21");
+  assert.equal(isoDateReader("UTC")(EVENING_LA), "2026-09-21");
+  // Across the November change, every hour of a day agrees with the slow path.
+  for (let h = 0; h < 48; h++) {
+    const at = new Date(Date.UTC(2026, 10, 1, h, 30));
+    assert.equal(inLA(at), isoDateInZone(at, LA), at.toISOString());
+  }
 });
 
 test("Arizona keeps standard time all summer, so it is not Mountain Time", () => {

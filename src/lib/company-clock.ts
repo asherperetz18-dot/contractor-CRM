@@ -54,6 +54,25 @@ export function isoDateInZone(instant: Date, ianaZone: string): string {
   return `${w.year}-${pad2(w.month)}-${pad2(w.day)}`;
 }
 
+/**
+ * isoDateInZone for a batch of instants in one zone: the formatter is
+ * built once, not per call -- per call, it cost seconds across a
+ * contact book.
+ */
+export function isoDateReader(ianaZone: string): (instant: Date) => string {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: ianaZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return (instant) => {
+    const parts = fmt.formatToParts(instant);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  };
+}
+
 /** `days` after a plain YYYY-MM-DD, as plain calendar arithmetic. */
 export function addDays(isoDay: string, days: number): string {
   const [y, m, d] = isoDay.split("-").map(Number);

@@ -20,10 +20,11 @@ import { winRates } from "./win-rates.ts";
  * pipeline stage `value` stays in the dollars the leads table stores.
  */
 
-// September 20th, mid-month: the window is "this month".
-const NOW = new Date(2026, 8, 20, 12, 0, 0);
+// September 20th, mid-month, noon in Los Angeles: the window is "this month".
+const ZONE = "America/Los_Angeles";
+const NOW = new Date("2026-09-20T19:00:00Z");
 const WIN = { from: "2026-09-01", to: null };
-const B = rollupBoundaries(WIN, NOW);
+const B = rollupBoundaries(WIN, ZONE, NOW);
 
 test("boundaries: every cutoff the SQL needs, precomputed", () => {
   assert.equal(B.today, "2026-09-20");
@@ -41,20 +42,33 @@ test("boundaries: every cutoff the SQL needs, precomputed", () => {
 });
 
 test("boundaries: a custom range compares to the equal span right before it", () => {
-  const b = rollupBoundaries({ from: "2026-03-01", to: "2026-03-31" }, NOW);
+  const b = rollupBoundaries({ from: "2026-03-01", to: "2026-03-31" }, ZONE, NOW);
   assert.deepEqual({ from: b.prevFrom, to: b.prevTo }, { from: "2026-01-29", to: "2026-02-28" });
   // The month series still reaches further back, so it stays the floor.
   assert.equal(b.fetchFrom, "2025-10-01");
   // A window older than the month series widens the floor to reach its
   // own comparison span.
-  const old = rollupBoundaries({ from: "2025-03-01", to: "2025-03-31" }, NOW);
+  const old = rollupBoundaries({ from: "2025-03-01", to: "2025-03-31" }, ZONE, NOW);
   assert.equal(old.fetchFrom, "2025-01-29");
 });
 
 test("boundaries: month-to-date at a month's edge clamps the previous month's day", () => {
   // March 31st: "vs February" cannot be February 31st.
-  const b = rollupBoundaries({ from: "2026-03-01", to: null }, new Date(2026, 2, 31, 9));
+  const b = rollupBoundaries({ from: "2026-03-01", to: null }, ZONE, new Date("2026-03-31T16:00:00Z"));
   assert.deepEqual({ from: b.prevFrom, to: b.prevTo }, { from: "2026-02-01", to: "2026-02-28" });
+});
+
+test("boundaries: today is the company's day, not the server's", () => {
+  // 6:30pm on Oct 7 in Los Angeles is already Oct 8 on the server's UTC
+  // clock: a task due Oct 7 isn't overdue yet, and the dial strip ends
+  // on Oct 7.
+  const b = rollupBoundaries({ from: "2026-10-01", to: null }, ZONE, new Date("2026-10-08T01:30:00Z"));
+  assert.equal(b.zone, ZONE);
+  assert.equal(b.today, "2026-10-07");
+  assert.deepEqual({ from: b.prevFrom, to: b.prevTo }, { from: "2026-09-01", to: "2026-09-07" });
+  assert.equal(b.d30, "2026-09-07");
+  assert.equal(b.callsFrom, "2026-09-24");
+  assert.equal(b.monthsFrom, "2025-11-01");
 });
 
 const inputs: RollupInputs = {
@@ -281,6 +295,53 @@ test("production: live status counts, finished scoped to the window", () => {
     onHold: 1,
     completedInWindow: 1,
   });
+});
+
+test("an evening's calls, money and work are filed on the company's day, not the server's", () => {
+  // 6:30pm on Oct 7 in Los Angeles, this month so far. The server's clock
+  // reads Oct 8 already; everything below happened on the evening of the
+  // date in its comment, which UTC files a day later.
+  const eve = rollupBoundaries({ from: "2026-10-01", to: null }, ZONE, new Date("2026-10-08T01:30:00Z"));
+  const r = buildDashboardRollup({
+    ...inputs,
+    boundaries: eve,
+    signedSinceMonths: [
+      // Oct 7, 5pm: this month, and today.
+      { assigned_to: "r1", signed_at: "2026-10-08T00:00:00Z", total_cents: 100000, kind: "contract", status: "Signed" },
+      // Sep 30, 7pm: September, not this month.
+      { assigned_to: "r1", signed_at: "2026-10-01T02:00:00Z", total_cents: 40000, kind: "contract", status: "Signed" },
+    ],
+    paymentsSinceMonths: [
+      // Sep 30, 5:30pm: September's money.
+      { amount_cents: 7000, status: "succeeded", paid_at: "2026-10-01T00:30:00Z", created_at: "2026-10-01T00:30:00Z" },
+      // Oct 7, 6pm, with no paid date: its record dates it.
+      { amount_cents: 3000, status: "succeeded", paid_at: null, created_at: "2026-10-08T01:00:00Z" },
+    ],
+    openLeads: [
+      // Touched Sep 6 at 8pm: just past the 30-day line (Sep 7).
+      { stage: "New Leads", stage_key: null, value: 100, updated_at: "2026-09-07T03:00:00Z" },
+    ],
+    callsRecent: [{ created_at: "2026-10-08T01:00:00Z" }, { created_at: "2026-10-07T16:00:00Z" }],
+    jobs: [
+      // Finished Sep 30 at 8pm, no end date: not this month's.
+      { status: "Complete", end_date: null, updated_at: "2026-10-01T03:00:00Z" },
+      { status: "Complete", end_date: null, updated_at: "2026-10-08T01:00:00Z" },
+    ],
+  });
+  assert.equal(r.window.signedCents, 100000);
+  assert.equal(r.window.collectedCents, 3000);
+  const month = new Map(r.months.map((m) => [m.month, m]));
+  assert.equal(r.months[11].month, "2026-10");
+  assert.deepEqual(month.get("2026-09"), { month: "2026-09", signedCents: 40000, collectedCents: 7000 });
+  assert.deepEqual(month.get("2026-10"), { month: "2026-10", signedCents: 100000, collectedCents: 3000 });
+  // The Sep 30 sale isn't credited to this month's team either.
+  assert.deepEqual(r.team[0], { rep: "r1", signedCount: 1, signedCents: 100000, appts: 2 });
+  const stage = r.stages.find((s) => s.stage === "New Leads")!;
+  assert.equal(stage.buckets.d30.count, 0);
+  assert.equal(stage.buckets.d60.count, 1);
+  // Both of today's calls on today's bar -- the strip ends on Oct 7.
+  assert.deepEqual(r.calls.perDay.at(-1), { day: "2026-10-07", dials: 2 });
+  assert.equal(r.production.completedInWindow, 1);
 });
 
 test("coerce: the RPC's JSON round-trips to exactly the builder's shape", () => {
