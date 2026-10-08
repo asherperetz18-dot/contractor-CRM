@@ -29,6 +29,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Daily Brief: Showed / No-show now opens Appointment Reports on the same days you picked, instead of the last 30 days.",
       "Appointment Reports opens faster: it loads only the period you're looking at instead of every appointment ever, and changing the period loads it in place.",
       "Appointment Reports: tomorrow's appointments no longer count as Pending in the evening.",
+      "Daily Brief: tapping a number while the brief is open over that same page (the Schedule, Call Reports or Text Reports) now shows the period you tapped, instead of snapping back to the one that was there.",
     ],
   },
   {

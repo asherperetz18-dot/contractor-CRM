@@ -120,6 +120,21 @@ export function ScheduleList({
     parseScheduleQuery({ range, from: customFrom, to: customTo, rep: repFilter, limit })
   );
   const loadedQs = scheduleQueryString(query);
+  // The address can also move without this list asking: the Daily Brief
+  // opens from the top bar on this very page, and its appointment tiles
+  // link here. Follow it, rather than sending it back to the old window
+  // (adjusting state from a prop, during render, as React advises).
+  const [seenQs, setSeenQs] = useState(loadedQs);
+  if (seenQs !== loadedQs) {
+    setSeenQs(loadedQs);
+    if (loadedQs !== wantedQs) {
+      setRange(query.range);
+      setCustomFrom(query.from ?? "");
+      setCustomTo(query.to ?? "");
+      setRepFilter(query.rep ?? "All");
+      setLimit(query.limit);
+    }
+  }
   useEffect(() => {
     if (wantedQs !== loadedQs) {
       startWindow(() => router.replace(`/schedule${wantedQs}`, { scroll: false }));

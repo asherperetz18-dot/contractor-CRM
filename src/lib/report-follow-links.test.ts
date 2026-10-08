@@ -1,0 +1,40 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+/**
+ * The Daily Brief opens from the top bar on any page, and its tiles link
+ * into the Schedule, Call Reports and Text Reports on a period. Tapped
+ * while the brief sits over that very page, the link changed the address
+ * under a report that keeps its period in state: the Schedule and Text
+ * Reports pushed the address straight back to their old period, and Call
+ * Reports loaded the new calls under its old period's name. Each now
+ * follows an address it didn't ask for (adjusting state from a prop,
+ * during render, as React advises), the way Appointment Reports does.
+ */
+
+const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("the Schedule follows a link that arrives while it's open", () => {
+  const view = source("../app/(app)/schedule/schedule-list.tsx");
+  assert.match(
+    view,
+    /if \(seenQs !== loadedQs\) \{\s*setSeenQs\(loadedQs\);\s*if \(loadedQs !== wantedQs\) \{\s*setRange\(query\.range\);\s*setCustomFrom\(query\.from \?\? ""\);\s*setCustomTo\(query\.to \?\? ""\);\s*setRepFilter\(query\.rep \?\? "All"\);\s*setLimit\(query\.limit\);/
+  );
+});
+
+test("Text Reports follows a link that arrives while it's open", () => {
+  const view = source("../app/(app)/text-reports/text-reports-view.tsx");
+  assert.match(
+    view,
+    /if \(seenQs !== loadedQs\) \{\s*setSeenQs\(loadedQs\);\s*if \(loadedQs !== wantedQs\) setRange\(textReportRange\(query\)\);/
+  );
+});
+
+test("Call Reports names the period a link brought, not the last one picked", () => {
+  const view = source("../app/(app)/call-reports/call-reports-view.tsx");
+  assert.match(
+    view,
+    /if \(seenRange !== initialRange\) \{\s*setSeenRange\(initialRange\);\s*if \(initialRange !== rangeKey\) setRangeKey\(initialRange\);/
+  );
+});
