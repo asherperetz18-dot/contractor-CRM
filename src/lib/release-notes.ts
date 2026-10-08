@@ -25,7 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-10-08",
     notes: [
       "Tasks: a Done view. Pick Done today, Done this week or Done this month at the top of the Tasks page to see the follow-ups marked done, newest first, with when each was done. The Daily Brief's Tasks Completed number now opens it, on the same period.",
-      "Tasks: a task due today no longer shows as overdue in the evening. The page now goes by your company's clock, the same as the dashboard's Overdue Tasks card that opens it.",
+      "Tasks and the dashboard: in the evening, a task due today no longer counts as overdue, and the dashboard's Appointments Today no longer shows tomorrow's. Both now go by your company's clock, so the dashboard's Overdue Tasks number and the Tasks page it opens agree.",
     ],
   },
   {

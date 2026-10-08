@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { companyNow } from "@/lib/data/company-today";
 import { selectAll } from "@/lib/data/select-all";
 import type { DateWindow } from "@/lib/data/date-range";
 import {
@@ -38,7 +39,9 @@ export async function getDashboardRollup(win: DateWindow): Promise<DashboardRoll
   if (!profile) return emptyDashboardRollup();
 
   const supabase = await createClient();
-  const B = rollupBoundaries(win);
+  // Calendar days on the company's clock, like the window itself: the
+  // server's own is UTC, and from 5pm Pacific its "today" is tomorrow.
+  const B = rollupBoundaries(win, await companyNow());
 
   const { data, error } = await supabase.rpc("dashboard_rollup", {
     p_company: profile.company_id,

@@ -7,6 +7,8 @@ import {
   type RollupInputs,
 } from "./dashboard-rollup.ts";
 import { winRates } from "./win-rates.ts";
+import { readFileSync } from "node:fs";
+import { localClockIn } from "../company-clock.ts";
 
 /**
  * The dashboard is reduced in the database (dashboard_rollup, migration
@@ -330,4 +332,21 @@ test("win rates: the card reads the funnel -- signed out of the cohort, and out 
     leadsInWindow: inputs.leadsInWindow.map((l) => ({ ...l, has_appt: false })),
   });
   assert.deepEqual(winRates(quiet.funnel).fromAppts, { rate: null, signed: 1, of: 0 });
+});
+
+/**
+ * The boundaries are calendar days, so they must be the company's: the
+ * action used to call rollupBoundaries(win) with the server's clock
+ * (UTC), so from 5pm Pacific "today" was tomorrow -- Overdue Tasks
+ * counted tasks due today, Appointments Today showed tomorrow's, and the
+ * card disagreed with the Tasks page it opens. The page's own filter
+ * window was already on the company's clock (companyNow).
+ */
+test("the dashboard's days are the company's, not the server's", () => {
+  // 6pm Pacific on Oct 8 is already Oct 9 in UTC.
+  const sixPmPacific = new Date("2026-10-09T01:00:00.000Z");
+  const b = rollupBoundaries({ from: "2026-10-01", to: null }, localClockIn(sixPmPacific, "America/Los_Angeles"));
+  assert.equal(b.today, "2026-10-08");
+  const action = readFileSync(new URL("../actions/dashboard.ts", import.meta.url), "utf8");
+  assert.match(action, /rollupBoundaries\(win, await companyNow\(\)\)/);
 });

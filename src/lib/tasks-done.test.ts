@@ -37,8 +37,8 @@ test("the Done view reads only the period's finished tasks, newest first", () =>
 
 test("the Tasks page tells today by the company's clock", () => {
   // It used the server's (UTC) date: from 5pm Pacific a task due today
-  // showed as overdue, and the Overdue section stopped matching the
-  // dashboard card that opens it, which reads the company's clock.
+  // showed as overdue. The dashboard's Overdue Tasks card, which opens
+  // this page, moved to the company's clock with it, so the two agree.
   assert.doesNotMatch(page, /isoDay\(new Date\(\)\)/);
   assert.match(page, /const today = isoDateInZone\(now, zone\);/);
 });
