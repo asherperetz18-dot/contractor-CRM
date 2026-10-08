@@ -83,14 +83,16 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const todayISO = await companyToday();
   const in2Days = addDays(todayISO, 2);
   const in7Days = addDays(todayISO, 7);
+  // The furthest back any period looks.
+  const monthAgo = startOf("month");
 
   const [
     boughtKeys,
     { data: company },
     leads,
     events,
-    { data: calls },
-    { data: texts },
+    calls,
+    texts,
     tasks,
     { data: members },
   ] = await Promise.all([
@@ -120,14 +122,29 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         .eq("company_id", companyId)
         .range(rangeFrom, rangeTo)
     ),
-    supabase
-      .from("call_logs")
-      .select("id, created_at, duration_seconds, rep_id")
-      .eq("company_id", companyId),
-    supabase
-      .from("sms_messages")
-      .select("id, created_at, direction")
-      .eq("company_id", companyId),
+    // Calls and texts had the same bare select: past 1000 of either in
+    // total, the counts were taken over whichever 1000 came back. Only
+    // the last 30 days are read -- no period looks further -- paged,
+    // and in id order so the pages don't overlap.
+    selectAll<{ created_at: string; duration_seconds: number; rep_id: string | null }>(
+      (rangeFrom, rangeTo) =>
+        supabase
+          .from("call_logs")
+          .select("id, created_at, duration_seconds, rep_id")
+          .eq("company_id", companyId)
+          .gte("created_at", monthAgo)
+          .order("id")
+          .range(rangeFrom, rangeTo)
+    ),
+    selectAll<{ created_at: string; direction: string }>((rangeFrom, rangeTo) =>
+      supabase
+        .from("sms_messages")
+        .select("id, created_at, direction")
+        .eq("company_id", companyId)
+        .gte("created_at", monthAgo)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
     selectAll<{ lead_id: string; due_date: string; completed_at: string | null }>(
       (rangeFrom, rangeTo) =>
         supabase
@@ -144,8 +161,8 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
   }[];
   const eventRows = events;
-  const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
-  const textRows = (texts ?? []) as { created_at: string; direction: string }[];
+  const callRows = calls;
+  const textRows = texts;
   const taskRows = tasks;
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
 

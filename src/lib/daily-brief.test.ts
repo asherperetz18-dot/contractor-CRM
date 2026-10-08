@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { briefBreakdown } from "./daily-brief.ts";
 
 /**
@@ -91,4 +92,24 @@ test("the tables keep the top 5 sources and top 6 reps", () => {
   assert.equal(out.repActivity.length, 6);
   // A rep no longer on the roster still shows, unnamed.
   assert.equal(out.repActivity[0].name, "Unknown");
+});
+
+const action = readFileSync(new URL("./actions/daily-brief.ts", import.meta.url), "utf8");
+
+test("calls and texts are read in full for the last 30 days, not cut off at 1000 rows", () => {
+  // A bare select stops at 1000 rows without a word. Past 1000 calls or
+  // texts in total, the Calls, talk time, Texts and each rep's Calls
+  // were counted over whichever 1000 came back. No period looks back
+  // further than the month, so that's all that's read, and it's paged
+  // like the leads and appointments.
+  assert.match(action, /const monthAgo = startOf\("month"\);/);
+  for (const table of ["call_logs", "sms_messages"]) {
+    const at = action.indexOf(`.from("${table}")`);
+    assert.ok(at > 0, table);
+    assert.match(action.slice(at - 250, at), /selectAll<[\s\S]*\(rangeFrom, rangeTo\) =>\s*supabase\s*$/, table);
+    const query = action.slice(at, action.indexOf("),", at));
+    assert.match(query, /\.gte\("created_at", monthAgo\)/, table);
+    assert.match(query, /\.order\("id"\)/, table);
+    assert.match(query, /\.range\(rangeFrom, rangeTo\)/, table);
+  }
 });
