@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getRoleNamesCached } from "@/lib/data/company-chrome";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/data/bills";
 import { getVendors } from "@/lib/actions/vendors";
 import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
+import type { BillsQuickBooks, SyncRecord } from "@/lib/quickbooks/bill-status";
 import { BillsView } from "./bills-view";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ export default async function BillsPage() {
   const supabase = await createClient();
   const companyId = profile.company_id;
 
-  const [bills, payments, vendorsRes, leads, expenses, accountsRes] = await Promise.all([
+  const [bills, payments, vendorsRes, leads, expenses, accountsRes, qb] = await Promise.all([
     selectAll<VendorBill>((f, t) =>
       supabase
         .from("vendor_bills")
@@ -98,6 +100,7 @@ export default async function BillsPage() {
         .range(f, t)
     ),
     getPaymentAccounts(true),
+    quickBooksStatus(supabase, companyId),
   ]);
 
   // The inner join can return one row per signed document.
@@ -129,6 +132,40 @@ export default async function BillsPage() {
       receiptLeads={receiptLeads}
       canEditCosts={canEditJobCosts(profile)}
       accounts={accountsRes.accounts}
+      qb={qb}
     />
   );
+}
+
+/**
+ * Where each bill stands with QuickBooks (DECISIONS #173). The connection
+ * is server-only (it holds the login), so it's read here, after the page's
+ * own gate; the records are read as the viewer, through row-level security.
+ */
+async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient>>, companyId: string): Promise<BillsQuickBooks | null> {
+  const { data: conn, error } = await createAdminClient()
+    .from("quickbooks_connections")
+    .select("realm_id, environment, disconnected_at, send_bills, send_bills_from")
+    .eq("company_id", companyId)
+    .maybeSingle<{
+      realm_id: string | null;
+      environment: "sandbox" | "production";
+      disconnected_at: string | null;
+      send_bills: boolean;
+      send_bills_from: string | null;
+    }>();
+  // Never connected, or before 0222: nothing to show.
+  if (error || !conn?.realm_id) return null;
+  const records = await selectAll<SyncRecord>((f, t) =>
+    supabase
+      .from("quickbooks_sync")
+      .select("record_type, record_id, bill_id, qb_id, qb_hash, status, reason, tries, next_try_at, sent_at")
+      .eq("company_id", companyId)
+      .eq("realm_id", conn.realm_id!)
+      .order("record_id")
+      .range(f, t)
+  );
+  const sending = conn.send_bills && !conn.disconnected_at;
+  if (!sending && !records.length) return null;
+  return { sending, sendFrom: conn.send_bills_from, environment: conn.environment, realmId: conn.realm_id, records };
 }

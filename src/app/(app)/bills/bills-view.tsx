@@ -38,6 +38,7 @@ import {
   updateVendorBill,
 } from "@/lib/actions/vendor-bills";
 import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
+import { billQbChips, paymentQbNote, qbWebUrl, type BillsQuickBooks, type QbChip, type SyncRecord } from "@/lib/quickbooks/bill-status";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/components/uploads/file-drop";
@@ -80,6 +81,7 @@ export function BillsView({
   receiptLeads,
   canEditCosts,
   accounts,
+  qb,
 }: {
   bills: VendorBill[];
   payments: VendorBillPayment[];
@@ -94,6 +96,8 @@ export function BillsView({
   /** "Paid from" accounts, archived included so old payments still name
    *  theirs. Empty until migration 0176 runs. */
   accounts: PaymentAccount[];
+  /** Where each bill stands with QuickBooks; null when it isn't connected. */
+  qb: BillsQuickBooks | null;
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("outstanding");
@@ -121,6 +125,11 @@ export function BillsView({
     }
     return m;
   }, [payments]);
+
+  const qbRecord = useMemo(
+    () => new Map((qb?.records ?? []).map((r) => [`${r.record_type}:${r.record_id}`, r])),
+    [qb]
+  );
 
   const remaining = (b: VendorBill) => billRemainingCents(b, paymentsByBill.get(b.id) ?? []);
   const vendorName = (b: VendorBill) => {
@@ -342,6 +351,14 @@ export function BillsView({
                                 {leadDisplayName(leadById.get(b.lead_id)!)}
                               </div>
                             )}
+                            {qb && (
+                              <QbStatus
+                                qb={qb}
+                                bill={b}
+                                billRecord={qbRecord.get(`bill:${b.id}`) ?? null}
+                                payments={rowPayments.map((p) => ({ id: p.id, record: qbRecord.get(`bill_payment:${p.id}`) ?? null }))}
+                              />
+                            )}
                           </td>
                           <td className="mono">
                             {fmtDay(b.bill_date)}
@@ -429,6 +446,7 @@ export function BillsView({
                                     : ""}
                                   {p.note ? ` · ${p.note}` : ""}
                                   {p.job_expense_id ? " · filed as job cost" : ""}
+                                  {qbPaymentText(qbRecord.get(`bill_payment:${p.id}`) ?? null)}
                                 </span>
                               </td>
                               <td className="right mono">{moneyCents(p.amount_cents)}</td>
@@ -956,4 +974,62 @@ function PaidOnEntry({
       )}
     </div>
   );
+}
+
+const QB_TONE: Record<QbChip["tone"], string> = {
+  good: "est-badge-signed",
+  wait: "est-badge-sent",
+  bad: "est-badge-declined",
+  off: "",
+};
+
+/** "Oct 6": a day, or the day of a moment, on this browser's calendar. */
+function shortDay(iso: string): string {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return (day ? new Date(y, m - 1, d) : new Date(iso)).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** Where a bill stands with QuickBooks, under its vendor (DECISIONS #173). */
+function QbStatus({
+  qb,
+  bill,
+  billRecord,
+  payments,
+}: {
+  qb: BillsQuickBooks;
+  bill: VendorBill;
+  billRecord: SyncRecord | null;
+  payments: { id: string; record: SyncRecord | null }[];
+}) {
+  const { chips, qbId } = billQbChips({
+    sending: qb.sending,
+    sendFrom: qb.sendFrom,
+    bill: { billDate: bill.bill_date, createdAt: bill.created_at, voided: !!bill.voided_at },
+    billRecord,
+    payments,
+    day: shortDay,
+  });
+  if (!chips.length) return null;
+  return (
+    <div className="qb-chips">
+      {chips.map((c) => (
+        <span key={c.text} className={`est-badge qb-chip ${QB_TONE[c.tone]}`} suppressHydrationWarning>
+          {c.text}
+        </span>
+      ))}
+      {qbId && (
+        <a className="qb-open" href={qbWebUrl(qb.environment, "bill", qbId, qb.realmId)} target="_blank" rel="noopener noreferrer">
+          Open in QuickBooks ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** A payment's line: " · ✓ in QuickBooks", or why it hasn't gone. */
+function qbPaymentText(record: SyncRecord | null): string {
+  const note = paymentQbNote(record);
+  if (!note) return "";
+  return note === "in QuickBooks" ? " · ✓ in QuickBooks" : ` · ${note}`;
 }

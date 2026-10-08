@@ -99,6 +99,8 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "estimates", column: "financing_offered", migration: "0219_financing_offer.sql" },
   { table: "estimates", column: "financing_lender_id", migration: "0220_financing_lenders.sql" },
   { table: "quickbooks_expense_accounts", column: "qb_account_id", migration: "0221_quickbooks_connection.sql" },
+  { table: "quickbooks_sync", column: "qb_hash", migration: "0222_quickbooks_bills.sql" },
+  { table: "quickbooks_connections", column: "send_bills", migration: "0222_quickbooks_bills.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

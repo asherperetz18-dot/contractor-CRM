@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.243.0",
+    date: "2026-10-08",
+    notes: [
+      "QuickBooks, step 2: turn on Settings › QuickBooks › Send bills to QuickBooks and pick a start date. From then on, every bill goes to your QuickBooks a few minutes after it's saved, and every payment on it from the account it was paid from. Changes and voids follow. Bills to Pay shows where each bill stands, with Open in QuickBooks, and anything that can't go says why.",
+    ],
+  },
+  {
     version: "1.242.0",
     date: "2026-10-08",
     notes: [

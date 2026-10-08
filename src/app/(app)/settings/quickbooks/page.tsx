@@ -3,8 +3,10 @@ import { getQuickBooksSettings } from "@/lib/actions/quickbooks";
 import { QuickBooksView } from "./quickbooks-view";
 
 export const dynamic = "force-dynamic";
+// Send now sends up to 40 bills and payments while the page waits.
+export const maxDuration = 60;
 
-/** Connecting QuickBooks Online, and matching accounts (DECISIONS #172). */
+/** Connecting QuickBooks Online and matching accounts (DECISIONS #172); sending bills (#173). */
 export default async function QuickBooksPage({
   searchParams,
 }: {
