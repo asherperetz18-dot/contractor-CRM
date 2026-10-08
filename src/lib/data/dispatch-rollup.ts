@@ -1,4 +1,4 @@
-import { isoDateReader, localClockIn } from "../company-clock.ts";
+import { dayStartInZone, isoDateReader, localClockIn } from "../company-clock.ts";
 import { isoDay, prevWindow, type DateWindow } from "./date-range.ts";
 import { NO_DISPOSITION, type EventStatus } from "./types.ts";
 
@@ -7,8 +7,8 @@ import { NO_DISPOSITION, type EventStatus } from "./types.ts";
  *
  * Same contract as the main dashboard (dashboard-rollup.ts): the
  * database reduces everything in one call (dispatch_rollup, migration
- * 0171) and buildDispatchRollup is that SQL's tested mirror -- and the
- * server-side fallback until the migration has run. Every clock edge
+ * 0171, latest 0225) and buildDispatchRollup is that SQL's tested
+ * mirror -- and the server-side fallback until 0225 has run. Every clock edge
  * arrives precomputed in DispatchBoundaries and goes to the SQL as a
  * parameter, so the two sides can never disagree about "today". All of
  * it is the company's calendar (`zone`), never the server's UTC one,
@@ -89,6 +89,20 @@ export function dispatchBoundaries(
     resultsFrom: daysFrom(-RESULTS_DAYS),
     waitingFrom,
   };
+}
+
+/**
+ * The waiting leads new enough for the untouched alert: received since
+ * the company's midnight `untouchedFrom`, as the SQL's
+ * `(created_at at time zone p_zone)::date >= p_untouched_from`. The
+ * fallback looks up first touches for these.
+ */
+export function untouchedCandidates<T extends { created_at: string }>(
+  waiting: T[],
+  B: DispatchBoundaries
+): T[] {
+  const since = dayStartInZone(B.untouchedFrom, B.zone).getTime();
+  return waiting.filter((l) => Date.parse(l.created_at) >= since);
 }
 
 export type DispatchWindowTotals = {

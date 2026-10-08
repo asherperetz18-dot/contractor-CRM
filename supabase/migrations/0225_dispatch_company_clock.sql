@@ -3,10 +3,11 @@
 --
 -- Until now dispatch_rollup filed new leads, booked appointments, calls,
 -- texts and how long a lead has waited by the UTC day, which on the West
--- Coast starts at 5pm (4pm in winter), so each period ran 5pm to 5pm:
--- Today took in last night's leads and calls, a custom range left out
--- its last evening, and a lead that came in after 5pm yesterday read as
--- under a day old.
+-- Coast starts at 5pm (4pm in winter). So each period started at 5pm
+-- the evening before, and one with an end date ended at 5pm on its last
+-- day: Today took in last night's leads and calls, a custom range left
+-- out its last evening, and a lead that came in after 5pm yesterday read
+-- as under a day old.
 --
 -- The function now takes the company's time zone (p_zone, sent by the
 -- app) and files every timestamp on that zone's calendar. Nothing else

@@ -12,6 +12,7 @@ import {
   coerceDispatchRollup,
   dispatchBoundaries,
   emptyDispatchRollup,
+  untouchedCandidates,
   type DispatchInputs,
   type DispatchRollup,
   type TodayVisit,
@@ -26,9 +27,9 @@ type CohortRow = DispatchInputs["cohort"][number];
 /**
  * Every number the Dispatch Dashboard renders, for one date window.
  *
- * Served by dispatch_rollup (migration 0171): one call, reduced in the
- * database. Until that migration has run the function is missing and
- * this falls back to targeted windowed queries reduced by the same
+ * Served by dispatch_rollup (migration 0171, latest 0225): one call,
+ * reduced in the database. Until 0225 has run the function this calls
+ * (the one taking the zone) is missing, and this falls back to targeted windowed queries reduced by the same
  * tested builder -- slower, identical numbers. Runs as the signed-in
  * user, so RLS scopes every read: a dispatcher who is not a supervisor
  * gets their own leads and the unclaimed pool, nothing more. Every day
@@ -218,11 +219,8 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
   const touchIds = new Set<string>();
   for (const l of cohortLeads) touchIds.add(l.id);
   for (const l of prevLeads) touchIds.add(l.id);
-  // Since the company's midnight untouchedFrom days back, as the SQL's
-  // `(created_at at time zone p_zone)::date >= p_untouched_from`.
-  const untouchedSince = Date.parse(startOf(B.untouchedFrom));
-  const untouchedCandidates = waitingLeads.filter((l) => Date.parse(l.created_at) >= untouchedSince);
-  for (const l of untouchedCandidates) touchIds.add(l.id);
+  const recentWaiting = untouchedCandidates(waitingLeads, B);
+  for (const l of recentWaiting) touchIds.add(l.id);
   const firstTouch = new Map<string, string>();
   const note = (leadId: string, at: string) => {
     const cur = firstTouch.get(leadId);
@@ -283,7 +281,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
     boundaries: B,
     cohort: cohortLeads.map(withTouch),
     prevCohort: prevLeads.map(withTouch),
-    untouched: untouchedCandidates.filter((l) => !firstTouch.has(l.id)),
+    untouched: recentWaiting.filter((l) => !firstTouch.has(l.id)),
     waiting: waitingLeads,
     todayEvents,
     weekEvents,

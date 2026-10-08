@@ -24,7 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     version: "1.250.0",
     date: "2026-10-08",
     notes: [
-      "Dispatch Dashboard now goes by your company's clock. Each period runs midnight to midnight instead of 5pm to 5pm: Today no longer counts last night's leads, bookings, calls and texts, and a date range you pick keeps its last evening. A lead that came in yesterday evening shows as a day old under Waiting for a first appointment, not under a day.",
+      "Dispatch Dashboard now goes by your company's clock. Each period starts at your midnight instead of the server's (5pm Pacific): Today no longer counts last night's leads, bookings, calls and texts, and a date range you pick keeps its last evening. A lead that came in yesterday evening shows as a day old under Waiting for a first appointment, not under a day.",
     ],
   },
   {

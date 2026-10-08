@@ -52,6 +52,8 @@ test("the Dispatch Dashboard sends its company's zone, and the fallback cuts day
   // timestamp bound is the instant the company's day starts.
   assert.doesNotMatch(action, /nextDay/);
   assert.doesNotMatch(action, /\.(gte|lt)\("created_at", (from|B\.|nextDay)/);
+  // The untouched alert's candidates go through the tested helper.
+  assert.match(action, /const recentWaiting = untouchedCandidates\(waitingLeads, B\);/);
 });
 
 test("the fallback reads leads only, as dispatch_rollup's counts_as_lead does", () => {

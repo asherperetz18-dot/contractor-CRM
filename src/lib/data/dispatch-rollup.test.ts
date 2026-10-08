@@ -5,6 +5,7 @@ import {
   coerceDispatchRollup,
   dispatchBoundaries,
   emptyDispatchRollup,
+  untouchedCandidates,
   type DispatchInputs,
 } from "./dispatch-rollup.ts";
 
@@ -68,9 +69,24 @@ test("boundaries: today and every floor are the company's days, ages run from th
   assert.equal(b.nowIso, "2026-10-08T01:30:00.000Z");
 });
 
+test("the untouched alert's floor is the company's midnight, as the SQL's", () => {
+  // At 6:30pm Oct 7 in Los Angeles the alert looks back to Sep 30, which
+  // starts at 07:00 UTC there. The fallback picks its candidates the
+  // way dispatch_rollup does: (created_at at time zone p_zone)::date.
+  const b = dispatchBoundaries({ from: "2026-10-01", to: null }, LA, EVENING);
+  const leads = [
+    // Sep 29, 6pm: UTC already calls it Sep 30, but it's before the floor.
+    { id: "eve", created_at: "2026-09-30T01:00:00Z" },
+    // Sep 30, 12:00am exactly.
+    { id: "midnight", created_at: "2026-09-30T07:00:00+00:00" },
+    { id: "today", created_at: "2026-10-08T00:30:00.000Z" },
+  ];
+  assert.deepEqual(untouchedCandidates(leads, b).map((l) => l.id), ["midnight", "today"]);
+});
+
 test("a waiting lead's age is counted in the company's days, evenings included", () => {
-  // UTC files each of these a day later than it happened in Los Angeles,
-  // which moved them into the bucket below.
+  // UTC filed the last two a day later than they happened in Los Angeles,
+  // a bucket too young; today's evening lead was under a day either way.
   const R = buildDispatchRollup(
     inputs({
       boundaries: dispatchBoundaries({ from: "2026-10-01", to: null }, LA, EVENING),
