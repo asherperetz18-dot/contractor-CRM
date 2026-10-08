@@ -1,14 +1,7 @@
 import Link from "next/link";
 import { moneyCents } from "@/lib/data/types";
 import type { CommissionPayoutRow, RepCommissionRow } from "@/lib/actions/rep-commission";
-
-function longDate(value: string | null) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
+import { dayLabel } from "@/lib/company-clock";
 
 const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
 
@@ -26,11 +19,15 @@ export function JobStatement({
   rows,
   payouts,
   ledgerReady,
+  zone,
 }: {
   rows: RepCommissionRow[];
   payouts: CommissionPayoutRow[];
   ledgerReady: boolean;
+  /** The company's zone: a payment or signature prints as its day there. */
+  zone: string;
 }) {
+  const longDate = (value: string | null) => dayLabel(value, zone, "long");
   const first = rows[0];
   const d = first.detail;
   const job = first.job;

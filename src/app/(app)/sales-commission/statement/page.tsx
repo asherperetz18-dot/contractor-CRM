@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { companyNow, getCompanyZone } from "@/lib/data/company-today";
+import { calendarDay, dayLabel, stampedWithin } from "@/lib/company-clock";
 import { moneyCents, COMMISSION_HOLD_LABEL, type CommissionHold } from "@/lib/data/types";
 import {
   getRepCommissions,
@@ -34,14 +36,6 @@ function iso(d: Date) {
   ).padStart(2, "0")}`;
 }
 
-function longDate(value: string | null) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
 function holdText(holds: CommissionHold[]) {
   return holds.map((h) => COMMISSION_HOLD_LABEL[h]).join(" · ");
 }
@@ -69,9 +63,15 @@ export default async function CommissionStatementPage({
   if (!profile) return null;
 
   const sp = await searchParams;
-  const now = new Date();
-  const from = sp.from || iso(new Date(now.getFullYear(), now.getMonth(), 1));
-  const to = sp.to || iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  // The company's month and days, not the server's (UTC, a day ahead
+  // from 5pm Pacific): a job paid off on the evening of the 30th is that
+  // month's payroll. A date in the address that isn't a real day falls
+  // back to this month.
+  const now = await companyNow();
+  const zone = await getCompanyZone();
+  const from = calendarDay(sp.from) ?? iso(new Date(now.getFullYear(), now.getMonth(), 1));
+  const to = calendarDay(sp.to) ?? iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const longDate = (value: string | null) => dayLabel(value, zone, "long");
 
   const [{ rows, everyone, error }, payoutsRes, reps, { data: company }] = await Promise.all([
     getRepCommissions({ repId: sp.rep, detailFor: sp.job }),
@@ -102,11 +102,11 @@ export default async function CommissionStatementPage({
     q.set("job", estimateId);
     return `/sales-commission/statement?${q.toString()}`;
   };
-  // Payable lines are dated by when they qualified; held lines have no
-  // date yet, so a period filter would hide them entirely.
-  const payable = all.filter(
-    (r) => r.qualifiedAt && r.qualifiedAt.slice(0, 10) >= from && r.qualifiedAt.slice(0, 10) <= to,
-  );
+  // Payable lines are dated by when they qualified, on the company's
+  // calendar; held lines have no date yet, so a period filter would hide
+  // them entirely.
+  const inPeriod = stampedWithin({ from, to }, zone);
+  const payable = all.filter((r) => inPeriod(r.qualifiedAt));
   const held = all.filter((r) => r.holds.length > 0);
 
   const payableTotal = payable.reduce((s, r) => s + r.payableCents, 0);
@@ -154,9 +154,9 @@ export default async function CommissionStatementPage({
   // One rep reads like a bank statement; across reps each line is its
   // own balance, because netting one rep's advance against another's
   // wages would print a payroll short.
-  const balance = ledgerReady && oneRep ? periodBalance(lines, payoutLikes, from, to) : null;
+  const balance = ledgerReady && oneRep ? periodBalance(lines, payoutLikes, from, to, zone) : null;
   const balancesByRep =
-    ledgerReady && !oneRep ? periodBalancesByRep(lines, payoutLikes, from, to) : null;
+    ledgerReady && !oneRep ? periodBalancesByRep(lines, payoutLikes, from, to, zone) : null;
 
   const repNameById = new Map<string, string>();
   for (const r of reps) repNameById.set(r.id, r.name);
@@ -241,6 +241,7 @@ export default async function CommissionStatementPage({
                 rows={jobRows}
                 payouts={payouts.filter((p) => p.estimateId === sp.job)}
                 ledgerReady={ledgerReady}
+                zone={zone}
               />
             )
           ) : (

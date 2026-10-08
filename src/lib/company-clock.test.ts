@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addDays,
+  calendarDay,
   dayEndInZone,
   dayLabel,
   dayStartInZone,
@@ -95,6 +96,14 @@ test("a timestamp is in a window of days when it falls between the zone's midnig
   assert.equal(inOct1to10(null), false);
   // An open edge lets everything through on that side.
   assert.equal(stampedWithin({ from: null, to: null }, LA)("1999-01-01T00:00:00Z"), true);
+});
+
+test("a calendar day from an address is kept only when it is a real day", () => {
+  assert.equal(calendarDay("2026-09-30"), "2026-09-30");
+  assert.equal(calendarDay("2028-02-29"), "2028-02-29");
+  for (const bad of ["2026-02-31", "2026-13-01", "abc", "", "0002-01-15", "2026-9-30", undefined, null, 20260930]) {
+    assert.equal(calendarDay(bad), null, String(bad));
+  }
 });
 
 test("Arizona keeps standard time all summer, so it is not Mountain Time", () => {
