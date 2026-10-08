@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { selectAll } from "@/lib/data/select-all";
 import { isoDay } from "@/lib/data/date-range";
+import { briefPeriodStart } from "@/lib/daily-brief";
+import { doneAtLabel, parseDonePeriod } from "@/lib/tasks-done";
 import { TasksView, type TaskRow } from "./tasks-view";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +16,7 @@ type TaskRecord = {
   title: string;
   due_date: string;
   assigned_to: string | null;
+  completed_at: string | null;
 };
 
 type TaskLead = {
@@ -36,24 +40,51 @@ type TaskLead = {
  * lead's notes for warnings); this page reads the indexed tasks table
  * directly, so it is complete without scanning the book — only the
  * leads the tasks actually reference are fetched, by id.
+ *
+ * `?done=today|week|month` lists the tasks marked done in that period
+ * instead — the Daily Brief's Tasks Completed tile, itemized, on the
+ * brief's own period starts so the two agree.
  */
-export default async function TasksPage() {
+export default async function TasksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ done?: string }>;
+}) {
   const profile = await getCurrentProfile();
   if (!profile) return null;
 
   const supabase = await createClient();
   const companyId = profile.company_id;
+  const done = parseDonePeriod((await searchParams).done);
+  // Done is the Daily Brief's periods, on the company's clock. The open
+  // tasks' today stays the server's day, as the dashboard's Overdue Tasks
+  // card reads it, so the section matches the card that opens it; both
+  // move to the company's clock together (TECH_DEBT).
+  const zone = await getCompanyZone();
+  const now = new Date();
+  const today = isoDay(now);
 
   const [tasks, members] = await Promise.all([
-    selectAll<TaskRecord>((f, t) =>
-      supabase
+    selectAll<TaskRecord>((f, t) => {
+      if (done) {
+        const { since } = briefPeriodStart(done, now, zone);
+        return supabase
+          .from("lead_tasks")
+          .select("id, lead_id, title, due_date, assigned_to, completed_at")
+          .eq("company_id", companyId)
+          .gte("completed_at", since)
+          .order("completed_at", { ascending: false })
+          .order("id")
+          .range(f, t);
+      }
+      return supabase
         .from("lead_tasks")
-        .select("id, lead_id, title, due_date, assigned_to")
+        .select("id, lead_id, title, due_date, assigned_to, completed_at")
         .eq("company_id", companyId)
         .is("completed_at", null)
         .order("due_date", { ascending: true })
-        .range(f, t)
-    ),
+        .range(f, t);
+    }),
     getCompanyMembers(companyId),
   ]);
 
@@ -74,7 +105,9 @@ export default async function TasksPage() {
   const rows: TaskRow[] = tasks
     .map((t) => {
       const lead = leadById.get(t.lead_id);
-      return lead ? { ...t, lead } : null;
+      if (!lead) return null;
+      const { completed_at, ...task } = t;
+      return { ...task, lead, doneAt: completed_at ? doneAtLabel(completed_at, zone) : null };
     })
     .filter((r): r is TaskRow => r !== null);
 
@@ -90,11 +123,15 @@ export default async function TasksPage() {
     profile.roles.includes("Office") || profile.roles.includes("Admin");
 
   return (
+    // Keyed by view: switching Open / Done is a link to this same page,
+    // and the list it keeps in state would otherwise outlive the switch.
     <TasksView
+      key={done ?? "open"}
       rows={rows}
       repNames={repNames}
-      today={isoDay(new Date())}
+      today={today}
       canComplete={canComplete}
+      done={done}
     />
   );
 }

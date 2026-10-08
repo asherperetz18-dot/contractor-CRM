@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.248.0",
+    date: "2026-10-08",
+    notes: [
+      "Tasks: a Done view. Pick Done today, Done this week or Done this month at the top of the Tasks page to see the follow-ups marked done, newest first, with when each was done. The Daily Brief's Tasks Completed number now opens it, on the same period.",
+      "Daily Brief: Showed / No-show now opens Appointment Reports on the same days you picked, instead of the last 30 days.",
+      "Appointment Reports opens faster: it loads only the period you're looking at instead of every appointment ever, and changing the period loads it in place.",
+      "Appointment Reports: in the evening, tomorrow's appointments no longer show up under No Result Yet or in the count of appointments that have already happened.",
+      "Daily Brief: tapping a number while the brief is open over that same page now shows the period you tapped. The Schedule and Text Reports no longer snap back to the period that was there, and Call Reports' picker shows Today or This month when that's the number you tapped.",
+    ],
+  },
+  {
     version: "1.247.0",
     date: "2026-10-08",
     notes: [

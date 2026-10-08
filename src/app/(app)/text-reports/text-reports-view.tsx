@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { requestsAddress } from "@/lib/report-address";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
@@ -65,11 +66,35 @@ export function TextReportsView({
     parseTextReportQuery({ range: range.preset, from: range.from, to: range.to })
   );
   const loadedQs = textReportQueryString(query);
+  // The address can also move without this report asking: the Daily
+  // Brief opens from the top bar on this very page, and its Texts tile
+  // links here. Follow it, rather than sending it back to the old period
+  // (adjusting state from a prop, during render, as React advises).
+  const [seenQs, setSeenQs] = useState(loadedQs);
+  if (seenQs !== loadedQs) {
+    setSeenQs(loadedQs);
+    if (loadedQs !== wantedQs) setRange(textReportRange(query));
+  }
+  // The address this view last asked for, so its own request arriving
+  // isn't taken for a link -- and going back to the loaded period while
+  // another is on its way still asks, so the router drops that one.
+  const asked = useRef(loadedQs);
+  const loadedBefore = useRef(loadedQs);
   useEffect(() => {
-    if (wantedQs !== loadedQs) {
+    const followed = loadedQs !== loadedBefore.current;
+    loadedBefore.current = loadedQs;
+    const ask = requestsAddress({
+      wanted: wantedQs,
+      loaded: loadedQs,
+      sent: asked.current,
+      pending: windowPending,
+      followed,
+    });
+    asked.current = wantedQs;
+    if (ask) {
       startWindow(() => router.replace(`/text-reports${wantedQs}`, { scroll: false }));
     }
-  }, [wantedQs, loadedQs, router]);
+  }, [wantedQs, loadedQs, windowPending, router]);
   const loading = windowPending || wantedQs !== loadedQs;
   const loadedRange = useMemo(() => textReportRange(query), [query]);
   const shownRange = loading ? loadedRange : range;

@@ -53,6 +53,15 @@ export function CallReportsView({
   const [repFilter, setRepFilter] = useState("All");
   const [dispositionFilter, setDispositionFilter] = useState("All");
   const [rangeKey, setRangeKey] = useState(initialRange);
+  // A link can land here while the report is open -- the Daily Brief
+  // opens from the top bar on this very page, and its Calls tile links
+  // here. The calls follow the address; the picker must name its period,
+  // not the last one picked (adjusting state from a prop, during render).
+  const [seenRange, setSeenRange] = useState(initialRange);
+  if (seenRange !== initialRange) {
+    setSeenRange(initialRange);
+    if (initialRange !== rangeKey) setRangeKey(initialRange);
+  }
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 

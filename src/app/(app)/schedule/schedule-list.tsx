@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { requestsAddress } from "@/lib/report-address";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
@@ -120,11 +121,41 @@ export function ScheduleList({
     parseScheduleQuery({ range, from: customFrom, to: customTo, rep: repFilter, limit })
   );
   const loadedQs = scheduleQueryString(query);
+  // The address can also move without this list asking: the Daily Brief
+  // opens from the top bar on this very page, and its appointment tiles
+  // link here. Follow it, rather than sending it back to the old window
+  // (adjusting state from a prop, during render, as React advises).
+  const [seenQs, setSeenQs] = useState(loadedQs);
+  if (seenQs !== loadedQs) {
+    setSeenQs(loadedQs);
+    if (loadedQs !== wantedQs) {
+      setRange(query.range);
+      setCustomFrom(query.from ?? "");
+      setCustomTo(query.to ?? "");
+      setRepFilter(query.rep ?? "All");
+      setLimit(query.limit);
+    }
+  }
+  // The address this view last asked for, so its own request arriving
+  // isn't taken for a link -- and going back to the loaded period while
+  // another is on its way still asks, so the router drops that one.
+  const asked = useRef(loadedQs);
+  const loadedBefore = useRef(loadedQs);
   useEffect(() => {
-    if (wantedQs !== loadedQs) {
+    const followed = loadedQs !== loadedBefore.current;
+    loadedBefore.current = loadedQs;
+    const ask = requestsAddress({
+      wanted: wantedQs,
+      loaded: loadedQs,
+      sent: asked.current,
+      pending: windowPending,
+      followed,
+    });
+    asked.current = wantedQs;
+    if (ask) {
       startWindow(() => router.replace(`/schedule${wantedQs}`, { scroll: false }));
     }
-  }, [wantedQs, loadedQs, router]);
+  }, [wantedQs, loadedQs, windowPending, router]);
   const loading = windowPending || wantedQs !== loadedQs;
 
   // Local calendar days, compared as the same yyyy-mm-dd strings the

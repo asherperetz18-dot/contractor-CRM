@@ -27,7 +27,7 @@ export type DailyBrief = {
   breakdown: Record<BriefPeriod, BriefBreakdown>;
   // Where each tile goes, on its period -- worked out on the company's
   // clock here rather than the browser's.
-  links: Record<BriefPeriod, Record<BriefTile, string | null>>;
+  links: Record<BriefPeriod, Record<BriefTile, string>>;
 };
 
 /**

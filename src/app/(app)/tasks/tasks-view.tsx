@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeLeadTask } from "@/lib/actions/leads";
 import { groupTasksByDue } from "@/lib/data/lead-task-groups";
 import { leadDisplayName, type ContactType } from "@/lib/data/types";
+import type { BriefPeriod } from "@/lib/daily-brief";
 
 export type TaskRow = {
   id: string;
@@ -22,9 +24,24 @@ export type TaskRow = {
     stage: string;
     assigned_to: string | null;
   };
+  /** When it was marked done, on the company's clock; null while open. */
+  doneAt: string | null;
 };
 
 const UPCOMING_SHOWN = 100;
+
+// The Done view's periods are the Daily Brief's: since midnight, since
+// Monday, since the 1st, on the company's clock.
+const DONE_LABEL: Record<BriefPeriod, string> = {
+  today: "Done today",
+  week: "Done this week",
+  month: "Done this month",
+};
+const DONE_SINCE: Record<BriefPeriod, string> = {
+  today: "since midnight",
+  week: "since Monday",
+  month: "since the 1st",
+};
 
 function daysLate(due: string, today: string): number {
   return Math.round(
@@ -181,21 +198,81 @@ function Section({
   );
 }
 
+function DoneList({
+  rows,
+  done,
+  repNames,
+  onOpen,
+}: {
+  rows: TaskRow[];
+  done: BriefPeriod;
+  repNames: Record<string, string>;
+  onOpen: (leadId: string) => void;
+}) {
+  return (
+    <div className="dash-panel" style={{ marginBottom: 14 }}>
+      <div className="cp-tz-head">
+        <span>
+          {DONE_LABEL[done]} <span className="count-pill">{rows.length}</span>
+        </span>
+      </div>
+      <p className="module-sub" style={{ margin: "4px 0 0" }}>
+        Marked done {DONE_SINCE[done]}, newest first — the Daily Brief&apos;s Tasks Completed, itemized.
+      </p>
+      {rows.length === 0 ? (
+        <p className="empty-hint">No tasks marked done {DONE_SINCE[done]}.</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Contact</th>
+                <th>Phone</th>
+                <th>Pipeline Stage</th>
+                <th>Assigned To</th>
+                <th>Due</th>
+                <th>Done</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} onClick={() => onOpen(r.lead_id)} title="Open this contact">
+                  <td>{r.title || "Follow up"}</td>
+                  <td>{leadDisplayName(r.lead)}</td>
+                  <td className="mono">{r.lead.phone || "—"}</td>
+                  <td>{r.lead.stage}</td>
+                  <td>{repNames[r.assigned_to ?? r.lead.assigned_to ?? ""] || "Unassigned"}</td>
+                  <td>{dueLabel(r.due_date)}</td>
+                  <td>{r.doneAt}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Every open lead task, grouped against today. The Overdue section
  * counts exactly what the dashboard's "Overdue tasks" card counts, so
- * the number that was clicked is the number that appears.
+ * the number that was clicked is the number that appears. With `done`
+ * set it lists the tasks finished in that period instead.
  */
 export function TasksView({
   rows: initialRows,
   repNames,
   today,
   canComplete,
+  done,
 }: {
   rows: TaskRow[];
   repNames: Record<string, string>;
   today: string;
   canComplete: boolean;
+  done: BriefPeriod | null;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState(initialRows);
@@ -218,8 +295,18 @@ export function TasksView({
   }
 
   function openLead(leadId: string) {
-    router.push(`/contacts?openLead=${leadId}&from=/tasks`);
+    const back = done ? `/tasks?done=${done}` : "/tasks";
+    router.push(`/contacts?openLead=${leadId}&from=${encodeURIComponent(back)}`);
   }
+
+  const views: { href: string; label: string; active: boolean }[] = [
+    { href: "/tasks", label: "Open", active: !done },
+    ...(["today", "week", "month"] as BriefPeriod[]).map((p) => ({
+      href: `/tasks?done=${p}`,
+      label: DONE_LABEL[p],
+      active: done === p,
+    })),
+  ];
 
   return (
     <div>
@@ -227,51 +314,72 @@ export function TasksView({
         <div>
           <h1 className="module-title">Tasks</h1>
           <p className="module-sub">
-            Every open follow-up on your leads, oldest first — click a row to open the contact.
+            {done
+              ? "Follow-ups marked done — click a row to open the contact."
+              : "Every open follow-up on your leads, oldest first — click a row to open the contact."}
           </p>
         </div>
       </div>
 
+      <nav className="chip-row tasks-views" aria-label="Which tasks">
+        {views.map((v) => (
+          <Link
+            key={v.href}
+            href={v.href}
+            className={"chip" + (v.active ? " chip-active" : "")}
+            aria-current={v.active ? "page" : undefined}
+          >
+            {v.label}
+          </Link>
+        ))}
+      </nav>
+
       {error && <p className="hint-note">{error}</p>}
 
-      <Section
-        title="Overdue"
-        hint="Due before today — the dashboard's Overdue Tasks number, itemized."
-        rows={groups.overdue}
-        today={today}
-        repNames={repNames}
-        canComplete={canComplete}
-        onDone={markDone}
-        pendingId={pendingId}
-        onOpen={openLead}
-        urgent
-        defaultOpen
-      />
-      <Section
-        title="Due Today"
-        hint="On the hook for today."
-        rows={groups.dueToday}
-        today={today}
-        repNames={repNames}
-        canComplete={canComplete}
-        onDone={markDone}
-        pendingId={pendingId}
-        onOpen={openLead}
-        attention
-        defaultOpen
-      />
-      <Section
-        title="Coming Up"
-        hint="Scheduled for later — nearest first."
-        rows={groups.upcoming.slice(0, UPCOMING_SHOWN)}
-        totalCount={groups.upcoming.length}
-        today={today}
-        repNames={repNames}
-        canComplete={canComplete}
-        onDone={markDone}
-        pendingId={pendingId}
-        onOpen={openLead}
-      />
+      {done ? (
+        <DoneList rows={rows} done={done} repNames={repNames} onOpen={openLead} />
+      ) : (
+        <>
+          <Section
+            title="Overdue"
+            hint="Due before today — the dashboard's Overdue Tasks number, itemized."
+            rows={groups.overdue}
+            today={today}
+            repNames={repNames}
+            canComplete={canComplete}
+            onDone={markDone}
+            pendingId={pendingId}
+            onOpen={openLead}
+            urgent
+            defaultOpen
+          />
+          <Section
+            title="Due Today"
+            hint="On the hook for today."
+            rows={groups.dueToday}
+            today={today}
+            repNames={repNames}
+            canComplete={canComplete}
+            onDone={markDone}
+            pendingId={pendingId}
+            onOpen={openLead}
+            attention
+            defaultOpen
+          />
+          <Section
+            title="Coming Up"
+            hint="Scheduled for later — nearest first."
+            rows={groups.upcoming.slice(0, UPCOMING_SHOWN)}
+            totalCount={groups.upcoming.length}
+            today={today}
+            repNames={repNames}
+            canComplete={canComplete}
+            onDone={markDone}
+            pendingId={pendingId}
+            onOpen={openLead}
+          />
+        </>
+      )}
     </div>
   );
 }
