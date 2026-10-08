@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.246.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: tap a number to see what's behind it. Leads Added opens the Pipeline, Appointments Booked the Schedule, Appointments Scheduled the Schedule on the same days, Showed / No-show the Appointment Reports, Calls and Texts their reports for the same period, and Won the Marketing Analytics. Tasks Completed stays a plain number for now: no page lists finished tasks yet.",
+      "Daily Brief: following one of its links now closes it for the day. Before, it opened itself again on top of the page it had just sent you to.",
+    ],
+  },
+  {
     version: "1.245.1",
     date: "2026-10-08",
     notes: [

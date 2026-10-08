@@ -222,3 +222,37 @@ export function briefNumbers(
     breakdown: { today: breakdownFor("today"), week: breakdownFor("week"), month: breakdownFor("month") },
   };
 }
+
+export type BriefTile =
+  | "leadsAdded"
+  | "apptsBooked"
+  | "apptsScheduled"
+  | "showed"
+  | "calls"
+  | "texts"
+  | "tasksCompleted"
+  | "won";
+
+/**
+ * Where each tile goes: the page that lists what it counts, opened on the
+ * same period wherever that page takes one from the link -- the Schedule
+ * (appointment dates), Call Reports (an instant) and Text Reports (a
+ * day). The others open as the dashboard's cards do. No page lists
+ * finished tasks, so Tasks Completed has nowhere to go.
+ */
+export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Record<BriefTile, string | null> {
+  const { since, sinceDay } = briefPeriodStart(period, now, zone);
+  const today = isoDateInZone(now, zone);
+  // Call Reports' own presets cover today and this month; a week has none.
+  const callRange = period === "week" ? "custom" : period;
+  return {
+    leadsAdded: "/pipeline",
+    apptsBooked: "/schedule",
+    apptsScheduled: `/schedule?range=custom&from=${sinceDay}&to=${today}`,
+    showed: "/appointment-reports",
+    calls: `/call-reports?range=${callRange}&fromTs=${encodeURIComponent(since)}`,
+    texts: `/text-reports?from=${sinceDay}`,
+    tasksCompleted: null,
+    won: "/marketing-analytics",
+  };
+}

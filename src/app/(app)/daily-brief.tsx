@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { money } from "@/lib/data/types";
 import { getDailyBrief, type DailyBrief } from "@/lib/actions/daily-brief";
-import type { BriefPeriod, BriefStats } from "@/lib/daily-brief";
+import type { BriefPeriod, BriefStats, BriefTile } from "@/lib/daily-brief";
 
 // Shown once a day. Keyed by date so it reappears each morning but never
 // nags on every page load.
@@ -20,36 +21,75 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function Metric({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
-  return (
-    <div className="brief-metric">
+// A tile with somewhere to go is a link to the page behind its number,
+// closing the brief on the way out; one without stays a plain number.
+function Metric({
+  label,
+  value,
+  hint,
+  href,
+  close,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  href: string | null;
+  close: () => void;
+}) {
+  const body = (
+    <>
       <div className="brief-metric-value mono">{value}</div>
       <div className="brief-metric-label">{label}</div>
       {hint && <div className="brief-metric-hint">{hint}</div>}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className="brief-metric" onClick={close}>
+      {body}
+    </Link>
+  ) : (
+    <div className="brief-metric">{body}</div>
   );
 }
 
-function StatsGrid({ s }: { s: BriefStats }) {
+function StatsGrid({
+  s,
+  links,
+  close,
+}: {
+  s: BriefStats;
+  links: Record<BriefTile, string | null>;
+  close: () => void;
+}) {
   const showRate = s.showed + s.noShow > 0 ? Math.round((s.showed / (s.showed + s.noShow)) * 100) : null;
   return (
     <>
       <div className="brief-metrics">
-        <Metric label="Leads Added" value={s.leadsAdded} />
-        <Metric label="Appointments Booked" value={s.apptsBooked} />
-        <Metric label="Appointments Scheduled" value={s.apptsScheduled} />
+        <Metric label="Leads Added" value={s.leadsAdded} href={links.leadsAdded} close={close} />
+        <Metric label="Appointments Booked" value={s.apptsBooked} href={links.apptsBooked} close={close} />
+        <Metric label="Appointments Scheduled" value={s.apptsScheduled} href={links.apptsScheduled} close={close} />
         <Metric
           label="Showed / No-show"
           value={`${s.showed} / ${s.noShow}`}
           hint={showRate !== null ? `${showRate}% show rate` : undefined}
+          href={links.showed}
+          close={close}
         />
-        <Metric label="Calls" value={s.calls} hint={s.talkMinutes ? `${s.talkMinutes}m talk time` : undefined} />
-        <Metric label="Texts Out / In" value={`${s.textsOut} / ${s.textsIn}`} />
-        <Metric label="Tasks Completed" value={s.tasksCompleted} />
+        <Metric
+          label="Calls"
+          value={s.calls}
+          hint={s.talkMinutes ? `${s.talkMinutes}m talk time` : undefined}
+          href={links.calls}
+          close={close}
+        />
+        <Metric label="Texts Out / In" value={`${s.textsOut} / ${s.textsIn}`} href={links.texts} close={close} />
+        <Metric label="Tasks Completed" value={s.tasksCompleted} href={links.tasksCompleted} close={close} />
         <Metric
           label="Won"
           value={s.won}
           hint={s.wonValue > 0 ? money(s.wonValue) : undefined}
+          href={links.won}
+          close={close}
         />
       </div>
       {s.won > 0 && s.wonValue === 0 && (
@@ -179,9 +219,9 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
                   <ul>
                     {attentionItems.map((x) => (
                       <li key={x.one}>
-                        <a href={x.href}>
+                        <Link href={x.href} onClick={close}>
                           <strong>{x.n}</strong> {x.n === 1 ? x.one : x.many}
-                        </a>
+                        </Link>
                       </li>
                     ))}
                   </ul>
@@ -201,7 +241,7 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
                 ))}
               </div>
 
-              <StatsGrid s={brief.periods[period]} />
+              <StatsGrid s={brief.periods[period]} links={brief.links[period]} close={close} />
 
               <div className="brief-columns">
                 <div>

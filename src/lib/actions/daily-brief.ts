@@ -9,11 +9,13 @@ import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import {
   briefNumbers,
   briefReadWindow,
+  briefTileLinks,
   type BriefAttention,
   type BriefBreakdown,
   type BriefPeriod,
   type BriefRows,
   type BriefStats,
+  type BriefTile,
 } from "@/lib/daily-brief";
 
 export type DailyBrief = {
@@ -23,6 +25,9 @@ export type DailyBrief = {
   attention: BriefAttention;
   // One per period, so the lower tables follow the chips too.
   breakdown: Record<BriefPeriod, BriefBreakdown>;
+  // Where each tile goes, on its period -- worked out on the company's
+  // clock here rather than the browser's.
+  links: Record<BriefPeriod, Record<BriefTile, string | null>>;
 };
 
 /**
@@ -169,6 +174,11 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
       companyName: (company as { name: string | null } | null)?.name || "Your Company",
       generatedAt: new Date().toISOString(),
       ...numbers,
+      links: {
+        today: briefTileLinks("today", now, zone),
+        week: briefTileLinks("week", now, zone),
+        month: briefTileLinks("month", now, zone),
+      },
     },
   };
 }

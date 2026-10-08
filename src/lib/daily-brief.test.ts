@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { briefBreakdown, briefNumbers, briefPeriodStart, briefReadWindow, type BriefRows } from "./daily-brief.ts";
+import {
+  briefBreakdown,
+  briefNumbers,
+  briefPeriodStart,
+  briefReadWindow,
+  briefTileLinks,
+  type BriefRows,
+} from "./daily-brief.ts";
 
 /**
  * The Daily Brief's two lower tables: where leads came from, and each
@@ -394,4 +401,47 @@ test("every read is paged and goes only as far back as a figure needs", () => {
   // An overdue task brings its lead's stage, so one on a closed lead is
   // skipped without reading the leads.
   assert.match(action, /\.select\("id, leads\(stage_key\)"\)/);
+});
+
+/**
+ * Each tile opens the page that lists what it counts (the owner's rule:
+ * a number you can't click through reads as broken), on the same period
+ * wherever that page can take one from the link: the Schedule and Call
+ * Reports to the instant, Text Reports by day. The rest open as the
+ * dashboard's cards do. No page lists finished tasks, so Tasks Completed
+ * stays a plain number.
+ */
+test("each tile opens the page behind its number, on the same period where it can", () => {
+  assert.deepEqual(briefTileLinks("today", FRI, LA), {
+    leadsAdded: "/pipeline",
+    apptsBooked: "/schedule",
+    apptsScheduled: "/schedule?range=custom&from=2026-10-02&to=2026-10-02",
+    showed: "/appointment-reports",
+    calls: "/call-reports?range=today&fromTs=2026-10-02T07%3A00%3A00.000Z",
+    texts: "/text-reports?from=2026-10-02",
+    tasksCompleted: null,
+    won: "/marketing-analytics",
+  });
+  // The week began Monday Sep 28; Call Reports has no week preset, so it
+  // opens on a custom range from Monday.
+  const week = briefTileLinks("week", FRI, LA);
+  assert.equal(week.apptsScheduled, "/schedule?range=custom&from=2026-09-28&to=2026-10-02");
+  assert.equal(week.calls, "/call-reports?range=custom&fromTs=2026-09-28T07%3A00%3A00.000Z");
+  assert.equal(week.texts, "/text-reports?from=2026-09-28");
+  const month = briefTileLinks("month", FRI, LA);
+  assert.equal(month.apptsScheduled, "/schedule?range=custom&from=2026-10-01&to=2026-10-02");
+  assert.equal(month.calls, "/call-reports?range=month&fromTs=2026-10-01T07%3A00%3A00.000Z");
+  assert.equal(month.texts, "/text-reports?from=2026-10-01");
+});
+
+const modal = readFileSync(new URL("../app/(app)/daily-brief.tsx", import.meta.url), "utf8");
+
+test("following a link out of the brief closes it for the day", () => {
+  // The Needs Attention links were bare <a>s: a full page load, and the
+  // brief -- never marked seen -- opened itself again on top of the page
+  // it had just sent you to. Every link out now closes it first.
+  assert.doesNotMatch(modal, /<a\s/);
+  const links = modal.match(/<Link\b[^>]*>/g) ?? [];
+  assert.ok(links.length >= 2, "tiles and Needs Attention both link out");
+  for (const l of links) assert.match(l, /onClick=\{close\}/, l);
 });
