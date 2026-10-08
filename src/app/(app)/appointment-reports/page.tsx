@@ -7,8 +7,16 @@ import { canUseSalesCenter, type Event } from "@/lib/data/types";
 import { AppointmentReportsView } from "./appointment-reports-view";
 import { staffPageLabel } from "@/lib/staff-words";
 import { getCompanyWordsCached } from "@/lib/data/company-chrome";
+import { appointmentReportRange } from "@/lib/appointment-reports-range";
 
-export default async function AppointmentReportsPage() {
+export default async function AppointmentReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  // A link can open the report on a range (the Daily Brief's Showed /
+  // No-show tile does); otherwise the last 30 days, as always.
+  const range = appointmentReportRange(await searchParams);
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canUseSalesCenter(profile);
@@ -33,7 +41,11 @@ export default async function AppointmentReportsPage() {
   const leads = await leadsLiteByIds(supabase, companyId, events.map((e) => e.lead_id));
 
   return (
+    // Keyed by range: the brief opens from the top bar on this very page,
+    // and the range already in the report's state would swallow a new link.
     <AppointmentReportsView
+      key={`${range.from}|${range.to}`}
+      initialRange={range}
       title={staffPageLabel("/appointment-reports", "Appointment Reports", await getCompanyWordsCached(companyId))}
       events={events}
       leads={leads}

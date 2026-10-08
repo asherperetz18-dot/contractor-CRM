@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
-import { resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { isoDay, resolveWindow, withinWindow } from "@/lib/data/date-range";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import {
   EVENT_STATUS_COLOR,
@@ -38,18 +38,21 @@ function csvCell(value: string): string {
 
 export function AppointmentReportsView({
   title = "Appointment Reports",
+  initialRange,
   events,
   leads,
   reps,
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
+  /** The period to open on: a link's range, or the last 30 days. */
+  initialRange: RangeState;
   events: Event[];
   leads: LeadLite[];
   reps: Profile[];
   canWrite: boolean;
 }) {
-  const [range, setRange] = useState<RangeState>({ preset: "30", from: "", to: "" });
+  const [range, setRange] = useState<RangeState>(initialRange);
   const [repFilter, setRepFilter] = useState("All");
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
 
@@ -58,9 +61,11 @@ export function AppointmentReportsView({
     id ? reps.find((r) => r.id === id)?.name || reps.find((r) => r.id === id)?.email || "Unknown" : "Unassigned";
 
   // Captured once rather than read during render, so the same list does
-  // not render differently on a re-render.
+  // not render differently on a re-render. The local day, as the presets
+  // read it: the UTC one is tomorrow from 5pm Pacific, and tomorrow's
+  // appointments counted as already happened.
   const [nowMs] = useState(() => Date.now());
-  const todayISO = new Date(nowMs).toISOString().slice(0, 10);
+  const todayISO = isoDay(new Date(nowMs));
 
   const inRange = useMemo(() => {
     const win = resolveWindow(range, new Date(nowMs));

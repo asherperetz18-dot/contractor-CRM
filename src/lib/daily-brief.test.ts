@@ -407,16 +407,16 @@ test("every read is paged and goes only as far back as a figure needs", () => {
  * Each tile opens the page that lists what it counts (the owner's rule:
  * a number you can't click through reads as broken), on the same period
  * wherever that page can take one from the link: the Schedule and Call
- * Reports to the instant, Text Reports by day, the Tasks page's Done
- * view by the brief's own periods. The rest open as the dashboard's
- * cards do.
+ * Reports to the instant, Text Reports and Appointment Reports by day,
+ * the Tasks page's Done view by the brief's own periods. The rest open
+ * as the dashboard's cards do.
  */
 test("each tile opens the page behind its number, on the same period where it can", () => {
   assert.deepEqual(briefTileLinks("today", FRI, LA), {
     leadsAdded: "/pipeline",
     apptsBooked: "/schedule",
     apptsScheduled: "/schedule?range=custom&from=2026-10-02&to=2026-10-02",
-    showed: "/appointment-reports",
+    showed: "/appointment-reports?from=2026-10-02&to=2026-10-02",
     calls: "/call-reports?range=today&fromTs=2026-10-02T07%3A00%3A00.000Z",
     texts: "/text-reports?from=2026-10-02",
     tasksCompleted: "/tasks?done=today",
@@ -426,11 +426,13 @@ test("each tile opens the page behind its number, on the same period where it ca
   // opens on a custom range from Monday.
   const week = briefTileLinks("week", FRI, LA);
   assert.equal(week.apptsScheduled, "/schedule?range=custom&from=2026-09-28&to=2026-10-02");
+  assert.equal(week.showed, "/appointment-reports?from=2026-09-28&to=2026-10-02");
   assert.equal(week.calls, "/call-reports?range=custom&fromTs=2026-09-28T07%3A00%3A00.000Z");
   assert.equal(week.texts, "/text-reports?from=2026-09-28");
   assert.equal(week.tasksCompleted, "/tasks?done=week");
   const month = briefTileLinks("month", FRI, LA);
   assert.equal(month.apptsScheduled, "/schedule?range=custom&from=2026-10-01&to=2026-10-02");
+  assert.equal(month.showed, "/appointment-reports?from=2026-10-01&to=2026-10-02");
   assert.equal(month.calls, "/call-reports?range=month&fromTs=2026-10-01T07%3A00%3A00.000Z");
   assert.equal(month.texts, "/text-reports?from=2026-10-01");
   assert.equal(month.tasksCompleted, "/tasks?done=month");

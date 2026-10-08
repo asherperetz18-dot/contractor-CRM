@@ -236,9 +236,9 @@ export type BriefTile =
 /**
  * Where each tile goes: the page that lists what it counts, opened on the
  * same period wherever that page takes one from the link -- the Schedule
- * (appointment dates), Call Reports (an instant), Text Reports (a day)
- * and the Tasks page's Done view (this very period). The others open as
- * the dashboard's cards do.
+ * and Appointment Reports (appointment dates), Call Reports (an instant),
+ * Text Reports (a day) and the Tasks page's Done view (this very
+ * period). The others open as the dashboard's cards do.
  */
 export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Record<BriefTile, string> {
   const { since, sinceDay } = briefPeriodStart(period, now, zone);
@@ -249,7 +249,7 @@ export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Re
     leadsAdded: "/pipeline",
     apptsBooked: "/schedule",
     apptsScheduled: `/schedule?range=custom&from=${sinceDay}&to=${today}`,
-    showed: "/appointment-reports",
+    showed: `/appointment-reports?from=${sinceDay}&to=${today}`,
     calls: `/call-reports?range=${callRange}&fromTs=${encodeURIComponent(since)}`,
     texts: `/text-reports?from=${sinceDay}`,
     tasksCompleted: `/tasks?done=${period}`,
