@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.245.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: This Week now starts on Monday and This Month on the 1st, both at midnight on your company's clock. They used to be the last 7 and 30 days, so This Month early in October still counted most of September.",
+    ],
+  },
+  {
     version: "1.244.0",
     date: "2026-10-08",
     notes: [

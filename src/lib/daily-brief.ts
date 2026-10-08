@@ -1,11 +1,12 @@
 import { dayStartInZone, isoDateInZone } from "./company-clock.ts";
 import { countsAsLead } from "./lead-or-contact.ts";
+import { weekBounds } from "./production-board.ts";
 
 export type BriefPeriod = "today" | "week" | "month";
 
 /**
- * Where each period starts. Today runs from midnight on the company's
- * clock; This Week and This Month are the last 7 and 30 days. `since` is
+ * Where each period starts, at midnight on the company's clock: Today
+ * that morning, This Week on Monday, This Month on the 1st. `since` is
  * what timestamps are compared with, `sinceDay` what an appointment's
  * plain date is compared with.
  */
@@ -14,12 +15,10 @@ export function briefPeriodStart(
   now: Date,
   zone: string
 ): { since: string; sinceDay: string } {
-  if (period === "today") {
-    const today = isoDateInZone(now, zone);
-    return { since: dayStartInZone(today, zone).toISOString(), sinceDay: today };
-  }
-  const since = new Date(now.getTime() - (period === "week" ? 7 : 30) * 86400000).toISOString();
-  return { since, sinceDay: since.slice(0, 10) };
+  const today = isoDateInZone(now, zone);
+  const day =
+    period === "today" ? today : period === "week" ? weekBounds(today).start : `${today.slice(0, 8)}01`;
+  return { since: dayStartInZone(day, zone).toISOString(), sinceDay: day };
 }
 
 export type BriefBreakdown = {
@@ -73,4 +72,10 @@ export function briefBreakdown(
     .slice(0, 6);
 
   return { topSources, repActivity };
+}
+
+/** The earliest any period starts -- how far back calls and texts are
+ *  read. Usually the 1st, but a week that began last month starts first. */
+export function briefEarliestStart(now: Date, zone: string): string {
+  return (["today", "week", "month"] as const).map((p) => briefPeriodStart(p, now, zone).since).sort()[0];
 }

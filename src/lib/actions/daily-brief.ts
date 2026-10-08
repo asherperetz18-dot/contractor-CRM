@@ -9,7 +9,13 @@ import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 import { selectAll } from "@/lib/data/select-all";
 import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import { countsAsLead } from "@/lib/lead-or-contact";
-import { briefBreakdown, briefPeriodStart, type BriefBreakdown, type BriefPeriod } from "@/lib/daily-brief";
+import {
+  briefBreakdown,
+  briefEarliestStart,
+  briefPeriodStart,
+  type BriefBreakdown,
+  type BriefPeriod,
+} from "@/lib/daily-brief";
 
 type BriefLead = {
   id: string;
@@ -76,7 +82,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const in2Days = addDays(todayISO, 2);
   const in7Days = addDays(todayISO, 7);
   // The furthest back any period looks.
-  const monthAgo = periodStart("month").since;
+  const readFrom = briefEarliestStart(now, zone);
 
   const [
     boughtKeys,
@@ -116,15 +122,15 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     ),
     // Calls and texts had the same bare select: past 1000 of either in
     // total, the counts were taken over whichever 1000 came back. Only
-    // the last 30 days are read -- no period looks further -- paged,
-    // and in id order so the pages don't overlap.
+    // what the periods cover is read, paged, and in id order so the
+    // pages don't overlap.
     selectAll<{ created_at: string; duration_seconds: number; rep_id: string | null }>(
       (rangeFrom, rangeTo) =>
         supabase
           .from("call_logs")
           .select("id, created_at, duration_seconds, rep_id")
           .eq("company_id", companyId)
-          .gte("created_at", monthAgo)
+          .gte("created_at", readFrom)
           .order("id")
           .range(rangeFrom, rangeTo)
     ),
@@ -133,7 +139,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         .from("sms_messages")
         .select("id, created_at, direction")
         .eq("company_id", companyId)
-        .gte("created_at", monthAgo)
+        .gte("created_at", readFrom)
         .order("id")
         .range(rangeFrom, rangeTo)
     ),
