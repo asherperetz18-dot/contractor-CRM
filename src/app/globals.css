@@ -3441,6 +3441,10 @@ a.stat-card {
   opacity: 0.6;
   transition: opacity 0.15s;
 }
+.appointment-reports-body.is-loading {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
 .text-reports-more {
   display: flex;
   flex-wrap: wrap;

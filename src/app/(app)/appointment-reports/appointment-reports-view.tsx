@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
 import { isoDay, resolveWindow, withinWindow } from "@/lib/data/date-range";
+import {
+  APPOINTMENT_REPORT_PRESETS,
+  appointmentReportQuery,
+  type AppointmentReportRange,
+} from "@/lib/appointment-reports-range";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import {
   EVENT_STATUS_COLOR,
@@ -19,13 +25,6 @@ import {
   type Profile,
 } from "@/lib/data/types";
 
-const PRESETS = [
-  { key: "7", label: "Last 7 Days" },
-  { key: "30", label: "Last 30 Days" },
-  { key: "90", label: "Last 90 Days" },
-  { key: "all", label: "All Time" },
-];
-
 /** Percent, or "—" when there is nothing to divide by. */
 function rate(part: number, whole: number): string {
   if (whole === 0) return "—";
@@ -38,21 +37,47 @@ function csvCell(value: string): string {
 
 export function AppointmentReportsView({
   title = "Appointment Reports",
-  initialRange,
+  query,
   events,
   leads,
   reps,
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
-  /** The period to open on: a link's range, or the last 30 days. */
-  initialRange: RangeState;
+  /** The period in the address -- the one the server loaded. */
+  query: AppointmentReportRange;
   events: Event[];
   leads: LeadLite[];
   reps: Profile[];
   canWrite: boolean;
 }) {
-  const [range, setRange] = useState<RangeState>(initialRange);
+  const [range, setRange] = useState<RangeState>(query);
+
+  // The page loads only the period in the address. Changing it puts the
+  // new period there -- in a transition, so the report stays on screen,
+  // faded, until the new appointments arrive; until then the numbers
+  // stay on the period that's loaded rather than counting part of the
+  // new one as all of it.
+  const router = useRouter();
+  const [windowPending, startWindow] = useTransition();
+  const wantedQs = appointmentReportQuery(range);
+  const loadedQs = appointmentReportQuery(query);
+  // The address can also move without this view asking: the Daily Brief
+  // opens from the top bar on this very page, and its Showed / No-show
+  // tile links here. Follow it, rather than sending it back to the old
+  // period (adjusting state from a prop, during render, as React advises).
+  const [seenQs, setSeenQs] = useState(loadedQs);
+  if (seenQs !== loadedQs) {
+    setSeenQs(loadedQs);
+    if (loadedQs !== wantedQs) setRange(query);
+  }
+  useEffect(() => {
+    if (wantedQs !== loadedQs) {
+      startWindow(() => router.replace(`/appointment-reports${wantedQs}`, { scroll: false }));
+    }
+  }, [wantedQs, loadedQs, router]);
+  const loading = windowPending || wantedQs !== loadedQs;
+  const shownRange = loading ? query : range;
   const [repFilter, setRepFilter] = useState("All");
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
 
@@ -68,7 +93,7 @@ export function AppointmentReportsView({
   const todayISO = isoDay(new Date(nowMs));
 
   const inRange = useMemo(() => {
-    const win = resolveWindow(range, new Date(nowMs));
+    const win = resolveWindow(shownRange, new Date(nowMs));
     return events.filter((e) => {
       // Only appointments that have actually happened can have an
       // outcome, so a show rate that counted next week's bookings as
@@ -80,7 +105,7 @@ export function AppointmentReportsView({
       if (repFilter !== "All" && e.assigned_to !== repFilter) return false;
       return true;
     });
-  }, [events, range, repFilter, nowMs, todayISO]);
+  }, [events, shownRange, repFilter, nowMs, todayISO]);
 
   // Won counts as a show -- see appointmentAttended.
   const showed = inRange.filter((e) => appointmentAttended(e.status));
@@ -149,13 +174,13 @@ export function AppointmentReportsView({
       </div>
 
       <div className="ur-filter-bar">
-        <DateRangeFilter presets={PRESETS} value={range} onChange={setRange} max={todayISO} />
+        <DateRangeFilter presets={[...APPOINTMENT_REPORT_PRESETS]} value={range} onChange={setRange} max={todayISO} />
         <select value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
           <option value="All">All Reps</option>
           {repDropdownOptions(
             reps,
-            // Salespeople plus anyone with an appointment in history,
-            // and the current tick so it stays visible to be undone.
+            // Salespeople plus anyone with an appointment in the loaded
+            // period, and the current tick so it stays visible to be undone.
             events.map((e) => e.assigned_to).concat(repFilter)
           ).map((r) => (
             <option key={r.id} value={r.id}>
@@ -165,121 +190,123 @@ export function AppointmentReportsView({
         </select>
       </div>
 
-      <div className="stat-grid stat-grid-5">
-        <div className={"stat-card stat-static" + (showed.length > 0 ? " stat-card-won" : "")}>
-          <div className="stat-value mono">{rate(showed.length, resolved)}</div>
-          <div className="stat-label">Show Rate</div>
+      <div className={"appointment-reports-body" + (loading ? " is-loading" : "")} aria-busy={loading}>
+        <div className="stat-grid stat-grid-5">
+          <div className={"stat-card stat-static" + (showed.length > 0 ? " stat-card-won" : "")}>
+            <div className="stat-value mono">{rate(showed.length, resolved)}</div>
+            <div className="stat-label">Show Rate</div>
+          </div>
+          <div className="stat-card stat-static">
+            <div className="stat-value mono">{showed.length}</div>
+            <div className="stat-label">Showed</div>
+          </div>
+          <div className="stat-card stat-static">
+            <div className="stat-value mono">{noShow.length}</div>
+            <div className="stat-label">No-show</div>
+          </div>
+          <div className="stat-card stat-static">
+            <div className="stat-value mono">{cancelled.length}</div>
+            <div className="stat-label">Cancelled</div>
+          </div>
+          <div
+            className={"stat-card stat-static" + (pending.length > 0 ? " digest-urgent" : "")}
+          >
+            <div className="stat-value mono">{pending.length}</div>
+            <div className="stat-label">No Result Yet</div>
+          </div>
         </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{showed.length}</div>
-          <div className="stat-label">Showed</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{noShow.length}</div>
-          <div className="stat-label">No-show</div>
-        </div>
-        <div className="stat-card stat-static">
-          <div className="stat-value mono">{cancelled.length}</div>
-          <div className="stat-label">Cancelled</div>
-        </div>
-        <div
-          className={"stat-card stat-static" + (pending.length > 0 ? " digest-urgent" : "")}
-        >
-          <div className="stat-value mono">{pending.length}</div>
-          <div className="stat-label">No Result Yet</div>
-        </div>
-      </div>
 
-      {pending.length > 0 && (
-        <p className="hint-note" style={{ marginBottom: 14 }}>
-          The show rate is worked out from the {resolved} appointments that have an outcome
-          recorded. {pending.length} more have been and gone without one, so they count
-          neither way — recording them is what makes this number trustworthy.
-        </p>
-      )}
-
-      <div className="dash-panel" style={{ marginBottom: 14 }}>
-        <h3>By Rep</h3>
-        {byRep.length === 0 ? (
-          <p className="empty-hint">No appointments in this range.</p>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Rep</th>
-                <th className="right">Appts</th>
-                <th className="right">Showed</th>
-                <th className="right">No-show</th>
-                <th className="right">No Result</th>
-                <th className="right">Show Rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {byRep.map((row) => {
-                const open = expandedRep === row.id;
-                const theirs = inRange
-                  .filter((e) => (e.assigned_to ?? "unassigned") === row.id)
-                  .sort((a, b) => b.date.localeCompare(a.date));
-                return (
-                  <tr key={row.id} className={open ? "value-breakdown-row is-open" : "value-breakdown-row"}>
-                    <td colSpan={6} style={{ padding: 0 }}>
-                      <div
-                        className="ar-rep-row"
-                        onClick={() => setExpandedRep(open ? null : row.id)}
-                      >
-                        <span className="ar-rep-name">
-                          <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
-                          {row.id === "unassigned" ? "Unassigned" : repName(row.id)}
-                        </span>
-                        <span className="mono ar-num">{row.total}</span>
-                        <span className="mono ar-num">{row.showed}</span>
-                        <span className="mono ar-num">{row.noShow}</span>
-                        <span className="mono ar-num">{row.pending}</span>
-                        <span className="mono ar-num">
-                          {rate(row.showed, row.showed + row.noShow)}
-                        </span>
-                      </div>
-                      {open && (
-                        <div className="value-lead-list">
-                          {theirs.map((e) => {
-                            const lead = e.lead_id ? leadById.get(e.lead_id) : null;
-                            const late = appointmentResultOverdue(e, nowMs);
-                            return (
-                              <Link
-                                key={e.id}
-                                className="value-lead-row"
-                                href={
-                                  lead
-                                    ? `/contacts?openLead=${lead.id}&from=/appointment-reports`
-                                    : "/schedule"
-                                }
-                              >
-                                <span className="value-lead-name">
-                                  {lead ? leadDisplayName(lead) : e.title || e.event_type}
-                                </span>
-                                <span className="value-lead-meta">
-                                  {shortReceivedDate(e.date)}{" "}
-                                  {formatTimeRange(e.time, e.end_time)} · {e.event_type}
-                                </span>
-                                {hasAppointmentResult(e.status) ? (
-                                  <Badge color={EVENT_STATUS_COLOR[e.status]}>{e.status}</Badge>
-                                ) : (
-                                  <span className={late ? "stale-tag" : "value-lead-meta"}>
-                                    {late ? "● no result" : "upcoming"}
-                                  </span>
-                                )}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {pending.length > 0 && (
+          <p className="hint-note" style={{ marginBottom: 14 }}>
+            The show rate is worked out from the {resolved} appointments that have an outcome
+            recorded. {pending.length} more have been and gone without one, so they count
+            neither way — recording them is what makes this number trustworthy.
+          </p>
         )}
+
+        <div className="dash-panel" style={{ marginBottom: 14 }}>
+          <h3>By Rep</h3>
+          {byRep.length === 0 ? (
+            <p className="empty-hint">No appointments in this range.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Rep</th>
+                  <th className="right">Appts</th>
+                  <th className="right">Showed</th>
+                  <th className="right">No-show</th>
+                  <th className="right">No Result</th>
+                  <th className="right">Show Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byRep.map((row) => {
+                  const open = expandedRep === row.id;
+                  const theirs = inRange
+                    .filter((e) => (e.assigned_to ?? "unassigned") === row.id)
+                    .sort((a, b) => b.date.localeCompare(a.date));
+                  return (
+                    <tr key={row.id} className={open ? "value-breakdown-row is-open" : "value-breakdown-row"}>
+                      <td colSpan={6} style={{ padding: 0 }}>
+                        <div
+                          className="ar-rep-row"
+                          onClick={() => setExpandedRep(open ? null : row.id)}
+                        >
+                          <span className="ar-rep-name">
+                            <span className="value-breakdown-caret">{open ? "▾" : "▸"}</span>{" "}
+                            {row.id === "unassigned" ? "Unassigned" : repName(row.id)}
+                          </span>
+                          <span className="mono ar-num">{row.total}</span>
+                          <span className="mono ar-num">{row.showed}</span>
+                          <span className="mono ar-num">{row.noShow}</span>
+                          <span className="mono ar-num">{row.pending}</span>
+                          <span className="mono ar-num">
+                            {rate(row.showed, row.showed + row.noShow)}
+                          </span>
+                        </div>
+                        {open && (
+                          <div className="value-lead-list">
+                            {theirs.map((e) => {
+                              const lead = e.lead_id ? leadById.get(e.lead_id) : null;
+                              const late = appointmentResultOverdue(e, nowMs);
+                              return (
+                                <Link
+                                  key={e.id}
+                                  className="value-lead-row"
+                                  href={
+                                    lead
+                                      ? `/contacts?openLead=${lead.id}&from=/appointment-reports`
+                                      : "/schedule"
+                                  }
+                                >
+                                  <span className="value-lead-name">
+                                    {lead ? leadDisplayName(lead) : e.title || e.event_type}
+                                  </span>
+                                  <span className="value-lead-meta">
+                                    {shortReceivedDate(e.date)}{" "}
+                                    {formatTimeRange(e.time, e.end_time)} · {e.event_type}
+                                  </span>
+                                  {hasAppointmentResult(e.status) ? (
+                                    <Badge color={EVENT_STATUS_COLOR[e.status]}>{e.status}</Badge>
+                                  ) : (
+                                    <span className={late ? "stale-tag" : "value-lead-meta"}>
+                                      {late ? "● no result" : "upcoming"}
+                                    </span>
+                                  )}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

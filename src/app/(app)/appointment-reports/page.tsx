@@ -7,32 +7,36 @@ import { canUseSalesCenter, type Event } from "@/lib/data/types";
 import { AppointmentReportsView } from "./appointment-reports-view";
 import { staffPageLabel } from "@/lib/staff-words";
 import { getCompanyWordsCached } from "@/lib/data/company-chrome";
-import { appointmentReportRange } from "@/lib/appointment-reports-range";
+import { appointmentReportRange, appointmentReportServerWindow } from "@/lib/appointment-reports-range";
 
 export default async function AppointmentReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
-  // A link can open the report on a range (the Daily Brief's Showed /
-  // No-show tile does); otherwise the last 30 days, as always.
+  // The period rides in the address, and a link can open the report on
+  // one (the Daily Brief's Showed / No-show tile does); otherwise the
+  // last 30 days, as always.
   const range = appointmentReportRange(await searchParams);
   const supabase = await createClient();
   const profile = await getCurrentProfile();
   const canWrite = canUseSalesCenter(profile);
   const companyId = profile?.company_id ?? "";
 
+  // Only the period in the address, and nothing after tomorrow -- this
+  // page used to load every appointment the company ever had. Paged:
+  // appointments accumulate faster than anything else here, and a plain
+  // select stops at 1000 rows without saying so.
+  const bounds = appointmentReportServerWindow(range, new Date().toISOString().slice(0, 10));
   const [events, reps] = await Promise.all([
-    // Paged: appointments accumulate faster than anything else here, and
-    // a plain select stops at 1000 rows without saying so.
-    selectAll<Event>((f, t) =>
-      supabase
-        .from("events")
-        .select("*")
-        .eq("company_id", companyId)
+    selectAll<Event>((f, t) => {
+      let q = supabase.from("events").select("*").eq("company_id", companyId).lte("date", bounds.hi);
+      if (bounds.lo) q = q.gte("date", bounds.lo);
+      return q
         .order("date", { ascending: false })
-        .range(f, t)
-    ),
+        .order("id")
+        .range(f, t);
+    }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
   ]);
 
@@ -41,11 +45,8 @@ export default async function AppointmentReportsPage({
   const leads = await leadsLiteByIds(supabase, companyId, events.map((e) => e.lead_id));
 
   return (
-    // Keyed by range: the brief opens from the top bar on this very page,
-    // and the range already in the report's state would swallow a new link.
     <AppointmentReportsView
-      key={`${range.from}|${range.to}`}
-      initialRange={range}
+      query={range}
       title={staffPageLabel("/appointment-reports", "Appointment Reports", await getCompanyWordsCached(companyId))}
       events={events}
       leads={leads}
