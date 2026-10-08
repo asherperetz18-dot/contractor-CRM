@@ -53,3 +53,12 @@ test("the dashboard sends its company's zone, and the fallback cuts days at the 
   // timestamp bound is the instant the company's day starts.
   assert.doesNotMatch(action, /\.(gte|lt)\("(created_at|signed_at)", (B\.|cohortFrom|nextDay)/);
 });
+
+test("the Payments page tells overdue by the company's day, as the dashboard card that opens it does", () => {
+  // The dashboard's Overdue payments card and its aging chip open
+  // /payments. Left on the server's clock, the page called a bill due
+  // today overdue from 5pm Pacific while the card didn't.
+  const page = readFileSync(new URL("../../app/(app)/payments/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const today = await companyToday\(\);/);
+  assert.match(page, /state: phaseState\(ph, on, new Date\(`\$\{today\}T12:00:00`\)\),/);
+});

@@ -1,5 +1,6 @@
 import { clientName } from "@/lib/data/client-name";
 import { createClient } from "@/lib/supabase/server";
+import { companyToday } from "@/lib/data/company-today";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getRoleNamesCached } from "@/lib/data/company-chrome";
 import { roleName } from "@/lib/role-names";
@@ -186,6 +187,11 @@ export default async function PaymentsPage() {
     contracts.filter((c) => depositPayment(payments.filter((p) => p.estimate_id === c.id))).map((c) => c.id)
   );
 
+  // Overdue turns over at the company's midnight, not the server's (UTC,
+  // 5pm Pacific): the dashboard's Overdue payments card opens this page,
+  // and both count a bill due today as not late yet.
+  const today = await companyToday();
+
   // The rows below are the tables, flattened to plain strings and cents
   // so the client-side search can filter them without knowing anything
   // about leads or contracts. Order is decided here, once.
@@ -202,7 +208,7 @@ export default async function PaymentsPage() {
         customer: c ? nameOf(c.lead_id) : "",
         phase: ph.name || "Progress payment",
         dueDate: ph.due_date ?? null,
-        state: phaseState(ph, on),
+        state: phaseState(ph, on, new Date(`${today}T12:00:00`)),
         amountCents: ph.amount_cents,
         paidCents: paidTotalCents(on),
         owedCents: phaseOwedCents(ph, on),
