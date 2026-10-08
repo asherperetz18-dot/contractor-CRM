@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { DateRangeFilter, type RangeState } from "@/components/date-range-filter";
-import { isoDay, resolveWindow, withinWindow } from "@/lib/data/date-range";
+import { withinWindow } from "@/lib/data/date-range";
 import {
   APPOINTMENT_REPORT_PRESETS,
   appointmentReportQuery,
+  appointmentReportWindow,
   type AppointmentReportRange,
 } from "@/lib/appointment-reports-range";
 import { repDropdownOptions } from "@/lib/data/rep-options";
@@ -38,6 +39,7 @@ function csvCell(value: string): string {
 export function AppointmentReportsView({
   title = "Appointment Reports",
   query,
+  today,
   events,
   leads,
   reps,
@@ -46,6 +48,8 @@ export function AppointmentReportsView({
   title?: string;
   /** The period in the address -- the one the server loaded. */
   query: AppointmentReportRange;
+  /** Today on the company's clock, as the server loaded the window. */
+  today: string;
   events: Event[];
   leads: LeadLite[];
   reps: Profile[];
@@ -85,27 +89,23 @@ export function AppointmentReportsView({
   const repName = (id: string | null) =>
     id ? reps.find((r) => r.id === id)?.name || reps.find((r) => r.id === id)?.email || "Unknown" : "Unassigned";
 
+  // Marks a result overdue by the hour, in a rep's opened list only.
   // Captured once rather than read during render, so the same list does
-  // not render differently on a re-render. The local day, as the presets
-  // read it: the UTC one is tomorrow from 5pm Pacific, and tomorrow's
-  // appointments counted as already happened.
+  // not render differently on a re-render.
   const [nowMs] = useState(() => Date.now());
-  const todayISO = isoDay(new Date(nowMs));
 
+  // The server's window, from the company's today it hands down -- so the
+  // report counts what was loaded, and nothing here reads a clock during
+  // render (the server's is UTC, the browser's local: they disagree from
+  // 5pm Pacific, and the first load's counts didn't match).
   const inRange = useMemo(() => {
-    const win = resolveWindow(shownRange, new Date(nowMs));
+    const win = appointmentReportWindow(shownRange, today);
     return events.filter((e) => {
-      // Only appointments that have actually happened can have an
-      // outcome, so a show rate that counted next week's bookings as
-      // "no result" would drift down every time someone books ahead.
-      // This still applies to a custom range: a window running into next
-      // month reports on the part of it that has been and gone.
-      if (e.date > todayISO) return false;
       if (!withinWindow(e.date, win)) return false;
       if (repFilter !== "All" && e.assigned_to !== repFilter) return false;
       return true;
     });
-  }, [events, shownRange, repFilter, nowMs, todayISO]);
+  }, [events, shownRange, repFilter, today]);
 
   // Won counts as a show -- see appointmentAttended.
   const showed = inRange.filter((e) => appointmentAttended(e.status));
@@ -154,7 +154,7 @@ export function AppointmentReportsView({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `appointment-results-${todayISO}.csv`;
+    a.download = `appointment-results-${today}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -174,7 +174,7 @@ export function AppointmentReportsView({
       </div>
 
       <div className="ur-filter-bar">
-        <DateRangeFilter presets={[...APPOINTMENT_REPORT_PRESETS]} value={range} onChange={setRange} max={todayISO} />
+        <DateRangeFilter presets={[...APPOINTMENT_REPORT_PRESETS]} value={range} onChange={setRange} max={today} />
         <select value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
           <option value="All">All Reps</option>
           {repDropdownOptions(

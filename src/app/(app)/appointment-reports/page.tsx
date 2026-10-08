@@ -7,7 +7,8 @@ import { canUseSalesCenter, type Event } from "@/lib/data/types";
 import { AppointmentReportsView } from "./appointment-reports-view";
 import { staffPageLabel } from "@/lib/staff-words";
 import { getCompanyWordsCached } from "@/lib/data/company-chrome";
-import { appointmentReportRange, appointmentReportServerWindow } from "@/lib/appointment-reports-range";
+import { companyToday } from "@/lib/data/company-today";
+import { appointmentReportRange, appointmentReportWindow } from "@/lib/appointment-reports-range";
 
 export default async function AppointmentReportsPage({
   searchParams,
@@ -23,15 +24,18 @@ export default async function AppointmentReportsPage({
   const canWrite = canUseSalesCenter(profile);
   const companyId = profile?.company_id ?? "";
 
-  // Only the period in the address, and nothing after tomorrow -- this
-  // page used to load every appointment the company ever had. Paged:
-  // appointments accumulate faster than anything else here, and a plain
-  // select stops at 1000 rows without saying so.
-  const bounds = appointmentReportServerWindow(range, new Date().toISOString().slice(0, 10));
+  // Only the period in the address, up to today on the company's clock --
+  // this page used to load every appointment the company ever had. The
+  // report counts this same window from the same today, handed down, so
+  // it reads no clock while it renders. Paged: appointments accumulate
+  // faster than anything else here, and a plain select stops at 1000
+  // rows without saying so.
+  const today = await companyToday();
+  const win = appointmentReportWindow(range, today);
   const [events, reps] = await Promise.all([
     selectAll<Event>((f, t) => {
-      let q = supabase.from("events").select("*").eq("company_id", companyId).lte("date", bounds.hi);
-      if (bounds.lo) q = q.gte("date", bounds.lo);
+      let q = supabase.from("events").select("*").eq("company_id", companyId).lte("date", win.to);
+      if (win.from) q = q.gte("date", win.from);
       return q
         .order("date", { ascending: false })
         .order("id")
@@ -47,6 +51,7 @@ export default async function AppointmentReportsPage({
   return (
     <AppointmentReportsView
       query={range}
+      today={today}
       title={staffPageLabel("/appointment-reports", "Appointment Reports", await getCompanyWordsCached(companyId))}
       events={events}
       leads={leads}

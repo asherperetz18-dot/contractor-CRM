@@ -5,9 +5,8 @@ import {
   APPOINTMENT_REPORT_PRESETS,
   appointmentReportQuery,
   appointmentReportRange,
-  appointmentReportServerWindow,
+  appointmentReportWindow,
 } from "./appointment-reports-range.ts";
-import { isoDay, resolveWindow } from "./data/date-range.ts";
 
 /**
  * Appointment Reports' period rides in the address (`?range=7|90|all`, or
@@ -58,61 +57,42 @@ test("the address carries only what differs from the default, and reads back the
   }
 });
 
-test("custom dates load exactly, never past tomorrow; all time has no start", () => {
-  assert.deepEqual(
-    appointmentReportServerWindow({ preset: "30", from: "2026-10-01", to: "2026-10-05" }, "2026-10-08"),
-    { lo: "2026-10-01", hi: "2026-10-05" }
-  );
-  // Only appointments that have happened are reported: a range running
-  // into next month loads no further than tomorrow.
-  assert.deepEqual(
-    appointmentReportServerWindow({ preset: "30", from: "2026-10-01", to: "2026-11-30" }, "2026-10-08"),
-    { lo: "2026-10-01", hi: "2026-10-09" }
-  );
-  assert.deepEqual(appointmentReportServerWindow({ preset: "all", from: "", to: "" }, "2026-10-08"), {
-    lo: null,
-    hi: "2026-10-09",
+/**
+ * One window, from the company's today the server hands down: the server
+ * loads exactly it and the report counts exactly it, so the two can't
+ * drift -- and nothing reads a clock while the page renders, where the
+ * server's (UTC) and the browser's disagree every US evening.
+ */
+test("a period's days run up to today, never past it -- only what has happened is reported", () => {
+  const today = "2026-10-08";
+  assert.deepEqual(appointmentReportWindow({ preset: "7", from: "", to: "" }, today), { from: "2026-10-01", to: today });
+  assert.deepEqual(appointmentReportWindow({ preset: "30", from: "", to: "" }, today), { from: "2026-09-08", to: today });
+  assert.deepEqual(appointmentReportWindow({ preset: "90", from: "", to: "" }, today), { from: "2026-07-10", to: today });
+  assert.deepEqual(appointmentReportWindow({ preset: "all", from: "", to: "" }, today), { from: null, to: today });
+  // Every preset the filter offers reads back from the address and ends today.
+  for (const p of APPOINTMENT_REPORT_PRESETS) {
+    assert.equal(appointmentReportWindow(appointmentReportRange({ range: p.key }), today).to, today, p.key);
+  }
+  // Custom dates are absolute, but a range running into next month
+  // reports on the part of it that has been and gone.
+  assert.deepEqual(appointmentReportWindow({ preset: "30", from: "2026-10-01", to: "2026-10-05" }, today), {
+    from: "2026-10-01",
+    to: "2026-10-05",
+  });
+  assert.deepEqual(appointmentReportWindow({ preset: "7", from: "2026-10-01", to: "2026-11-30" }, today), {
+    from: "2026-10-01",
+    to: today,
+  });
+  assert.deepEqual(appointmentReportWindow({ preset: "30", from: "", to: "2026-10-03" }, today), {
+    from: null,
+    to: "2026-10-03",
   });
 });
 
-// The browser decides "today" (the presets and the has-it-happened cap
-// are its local day); the server knows only the UTC date, a day either
-// side of it. Its window must hold every appointment the report shows.
-const ZONES = ["America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Kolkata", "Australia/Sydney", "Pacific/Kiritimati", "Pacific/Pago_Pago"];
-const INSTANTS = [
-  "2026-10-08T01:00:00Z", // 6pm Pacific, already tomorrow in UTC
-  "2026-10-08T16:00:00Z",
-  "2026-03-08T10:30:00Z", // US clocks go forward
-  "2026-11-01T08:30:00Z", // US clocks go back
-  "2026-03-29T00:30:00Z", // London clocks go forward
-  "2026-10-04T15:30:00Z", // Sydney clocks go forward
-  "2027-01-01T00:30:00Z",
-  "2028-02-29T23:30:00Z",
-];
-
-test("whatever 'today' is where the person is, the server's window holds every appointment the report shows", () => {
-  const original = process.env.TZ;
-  try {
-    for (const zone of ZONES) {
-      process.env.TZ = zone;
-      for (const at of INSTANTS) {
-        const now = new Date(at);
-        const localToday = isoDay(now);
-        for (const p of APPOINTMENT_REPORT_PRESETS) {
-          const range = appointmentReportRange({ range: p.key });
-          const client = resolveWindow(range, now);
-          const server = appointmentReportServerWindow(range, at.slice(0, 10));
-          const label = `${p.key} in ${zone} at ${at}`;
-          assert.ok(server.hi >= localToday, `${label}: hi ${server.hi} < today ${localToday}`);
-          if (client.from === null) assert.equal(server.lo, null, label);
-          else assert.ok(server.lo !== null && server.lo <= client.from, `${label}: ${server.lo} > ${client.from}`);
-        }
-      }
-    }
-  } finally {
-    if (original === undefined) delete process.env.TZ;
-    else process.env.TZ = original;
-  }
+test("the Daily Brief's Showed / No-show days open as exactly those days", () => {
+  // briefTileLinks sends the period's first day to the company's today.
+  const r = appointmentReportRange({ from: "2026-10-05", to: "2026-10-08" });
+  assert.deepEqual(appointmentReportWindow(r, "2026-10-08"), { from: "2026-10-05", to: "2026-10-08" });
 });
 
 const page = readFileSync(new URL("../app/(app)/appointment-reports/page.tsx", import.meta.url), "utf8");
@@ -123,12 +103,14 @@ const view = readFileSync(
 
 test("the page loads one window of appointments, not every one the company ever had", () => {
   assert.match(page, /const range = appointmentReportRange\(await searchParams\);/);
-  assert.match(page, /appointmentReportServerWindow\(range, new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\)/);
-  assert.match(page, /\.lte\("date", bounds\.hi\)/);
-  assert.match(page, /if \(bounds\.lo\) q = q\.gte\("date", bounds\.lo\);/);
+  assert.match(page, /const today = await companyToday\(\);/);
+  assert.match(page, /const win = appointmentReportWindow\(range, today\);/);
+  assert.match(page, /\.lte\("date", win\.to\)/);
+  assert.match(page, /if \(win\.from\) q = q\.gte\("date", win\.from\);/);
   // A tie-breaker, so paging a window past 1,000 appointments neither repeats nor skips one.
   assert.match(page, /\.order\("date", \{ ascending: false \}\)\s*\.order\("id"\)/);
   assert.match(page, /query=\{range\}/);
+  assert.match(page, /today=\{today\}/);
 });
 
 test("changing the period loads it in place, and a link arriving on the open report is followed", () => {
@@ -142,10 +124,14 @@ test("changing the period loads it in place, and a link arriving on the open rep
   assert.doesNotMatch(page, /key=/);
 });
 
-test("the report's today is the local day, not the UTC one", () => {
-  // From 5pm Pacific the UTC date is tomorrow: tomorrow's appointments
-  // counted as already happened (Pending), dragging a preset's numbers
-  // away from the brief's. The presets themselves were already local.
-  assert.doesNotMatch(view, /toISOString\(\)\.slice\(0, 10\)/);
-  assert.match(view, /const todayISO = isoDay\(new Date\(nowMs\)\);/);
+test("the report counts the server's window and reads no clock while it renders", () => {
+  // It read the clock during render: on the server (UTC) and again in
+  // the browser (local), which disagree from 5pm Pacific, so the first
+  // load's counts didn't match and React re-drew the page -- and the UTC
+  // "today" put tomorrow's appointments under No Result Yet.
+  assert.match(view, /const win = appointmentReportWindow\(shownRange, today\);/);
+  assert.doesNotMatch(view, /resolveWindow|isoDay\(|toISOString\(\)\.slice/);
+  // The one clock left marks a result overdue by the hour, and is drawn
+  // only once a rep's row is opened -- never in the first render.
+  assert.match(view, /const \[expandedRep, setExpandedRep\] = useState<string \| null>\(null\);/);
 });

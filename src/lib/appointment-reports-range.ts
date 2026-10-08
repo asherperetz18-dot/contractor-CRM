@@ -7,10 +7,11 @@ import { addDays } from "./company-clock.ts";
  * The period rides in the address (`?range=7|90|all`, or `?from=…&to=…`
  * for a custom range) and the server loads only that window -- this page
  * used to load every appointment the company ever had and filter in the
- * browser, and always opened on the last 30 days. The report still
- * applies its own exact filter on the browser's own "today"; the server
- * only knows the UTC date, a day either side of it, so it loads a day
- * extra each way. Pure, so the page, the view and the tests share it.
+ * browser, and always opened on the last 30 days. The window is worked
+ * out from the company's today, which the server hands to the report, so
+ * what it loads and what the report counts are one and the same, and no
+ * clock is read while the page renders. Pure, so the page, the view and
+ * the tests share it.
  */
 
 export const APPOINTMENT_REPORT_PRESETS = [
@@ -52,17 +53,20 @@ export function appointmentReportQuery(r: AppointmentReportRange): string {
 }
 
 /**
- * The days the server loads, inclusive (null is open): every appointment
- * the report could show for any "today" a day either side of the UTC
- * date. Only appointments that have happened are reported, so nothing
- * after tomorrow comes, whatever the range says.
+ * The days a period covers, inclusive (a null start is open), on the
+ * company's `today`: the server loads exactly these and the report counts
+ * exactly these. Only appointments that have happened can have an
+ * outcome -- a show rate that counted next week's bookings as "no result"
+ * would drift down every time someone booked ahead -- so it never runs
+ * past today, whatever the range says; a custom range running into next
+ * month reports on the part of it that has been and gone.
  */
-export function appointmentReportServerWindow(
+export function appointmentReportWindow(
   r: AppointmentReportRange,
-  utcToday: string
-): { lo: string | null; hi: string } {
-  const tomorrow = addDays(utcToday, 1);
-  if (r.from || r.to) return { lo: r.from || null, hi: r.to && r.to < tomorrow ? r.to : tomorrow };
-  if (r.preset === "all") return { lo: null, hi: tomorrow };
-  return { lo: addDays(utcToday, -(Number(r.preset) + 1)), hi: tomorrow };
+  today: string
+): { from: string | null; to: string } {
+  const to = r.to && r.to < today ? r.to : today;
+  if (r.from || r.to) return { from: r.from || null, to };
+  if (r.preset === "all") return { from: null, to };
+  return { from: addDays(today, -Number(r.preset)), to };
 }
