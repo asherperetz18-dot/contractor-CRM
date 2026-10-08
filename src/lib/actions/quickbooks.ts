@@ -11,6 +11,7 @@ import { encryptionAvailable, decryptSecret } from "@/lib/crypto/secrets";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import { quickbooksCredentials, revokeQuickBooksToken } from "@/lib/quickbooks/oauth";
 import { quickBooksAccess, readQbAccounts, readQuickBooksConnection } from "@/lib/quickbooks/connection";
+import { quickBooksReceiptsReady } from "@/lib/quickbooks/receipts-ready";
 import { accountChoices, categoryKey, costCategories, type QbAccount } from "@/lib/quickbooks/accounts";
 import { syncCompanyBills } from "@/lib/quickbooks/bill-sync-run";
 
@@ -26,7 +27,7 @@ const isDay = (s?: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Nu
 
 /** Something that needs a look on the settings page: waiting, or refused by QuickBooks. */
 export type QuickBooksAttention = {
-  kind: "bill" | "payment";
+  kind: "bill" | "payment" | "receipt";
   vendor: string;
   amountCents: number | null;
   day: string | null;
@@ -46,6 +47,8 @@ export type QuickBooksBillSending = {
   checkedAt: string | null;
   counts: { sent: number; waiting: number; failed: number };
   attention: QuickBooksAttention[];
+  /** 0223 has run (null: couldn't tell): receipts go with their bills (DECISIONS #174). */
+  receiptsReady: boolean | null;
 };
 
 export type QuickBooksSettings = {
@@ -167,14 +170,24 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
     checkedAt: null,
     counts: { sent: 0, waiting: 0, failed: 0 },
     attention: [],
+    receiptsReady: true,
   };
-  const { data: conn, error } = await admin
-    .from("quickbooks_connections")
-    .select("send_bills, send_bills_from, bills_checked_at")
-    .eq("company_id", companyId)
-    .maybeSingle<{ send_bills: boolean; send_bills_from: string | null; bills_checked_at: string | null }>();
+  const [{ data: conn, error }, receiptsReady] = await Promise.all([
+    admin
+      .from("quickbooks_connections")
+      .select("send_bills, send_bills_from, bills_checked_at")
+      .eq("company_id", companyId)
+      .maybeSingle<{ send_bills: boolean; send_bills_from: string | null; bills_checked_at: string | null }>(),
+    quickBooksReceiptsReady(admin),
+  ]);
   if (error) return { ...off, ready: !isMissingSchemaError(error) };
-  const base = { ...off, on: !!conn?.send_bills, from: conn?.send_bills_from ?? null, checkedAt: conn?.bills_checked_at ?? null };
+  const base = {
+    ...off,
+    on: !!conn?.send_bills,
+    from: conn?.send_bills_from ?? null,
+    checkedAt: conn?.bills_checked_at ?? null,
+    receiptsReady,
+  };
   if (!realmId) return base;
 
   const count = async (status: string) => {
@@ -199,7 +212,7 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
       .in("status", ["waiting", "failed", "gone"])
       .order("updated_at", { ascending: false })
       .limit(20)
-      .returns<{ record_type: "bill" | "bill_payment"; record_id: string; bill_id: string | null; status: "waiting" | "failed" | "gone"; reason: string | null }[]>(),
+      .returns<{ record_type: "bill" | "bill_payment" | "receipt"; record_id: string; bill_id: string | null; status: "waiting" | "failed" | "gone"; reason: string | null }[]>(),
   ]);
 
   // Name each one the way Bills to Pay does: the vendor, the amount, the day.
@@ -231,7 +244,8 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
     const isPayment = r.record_type === "bill_payment";
     const pay = isPayment ? payById.get(r.record_id) : undefined;
     return {
-      kind: isPayment ? "payment" : "bill",
+      // A receipt is named by its bill: the vendor, the amount, the day.
+      kind: isPayment ? "payment" : r.record_type === "receipt" ? "receipt" : "bill",
       vendor: (bill?.vendor_id ? vendorName.get(bill.vendor_id) : null) ?? bill?.vendor_name ?? "A bill",
       // A payment deleted in the CRM: not the bill's amount or date.
       amountCents: isPayment ? (pay ? Number(pay.amount_cents) : null) : bill ? Number(bill.amount_cents) : null,

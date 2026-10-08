@@ -57,6 +57,8 @@ export type SyncBill = {
   voided: boolean;
   /** The job, as the memo reads: billMemo(). */
   memo: string;
+  /** The receipt file in storage (vendor_bills.receipt_path), if any. */
+  receiptPath: string | null;
 };
 
 export type SyncPayment = {
@@ -97,6 +99,55 @@ export function qbText(value: string | null | undefined, max: number): string {
 export function qbVendorName(value: string | null | undefined): string {
   const cleaned = qbText((value ?? "").replace(/[\t\r\n]/g, " ").replace(/:/g, " - "), 2000).replace(/\s+/g, " ").trim();
   return cleaned.slice(0, 500).trim();
+}
+
+// ---------------------------------------------------------------- receipts (DECISIONS #174)
+
+/** The kinds of file QuickBooks takes as an attachment that a receipt can be. */
+const RECEIPT_TYPES: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  tif: "image/tiff",
+  tiff: "image/tiff",
+  pdf: "application/pdf",
+};
+
+/** Kinds of photo a phone may take that QuickBooks doesn't. */
+const PHOTO_TYPES = new Set(["heic", "heif", "webp", "avif", "bmp"]);
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A bill's receipt as QuickBooks will hold it: "Receipt · Contractor
+ * Warehouse · Oct 7.jpg", with its type. A kind of file QuickBooks doesn't
+ * take, or one kept in Google Drive, waits instead, saying why.
+ */
+export function receiptFile(path: string, vendorName: string | null, day: string): { file: { fileName: string; contentType: string } } | { wait: string } {
+  if (!path.startsWith("receipts/")) {
+    return { wait: "This receipt is kept in Google Drive, so it can't be attached in QuickBooks. Attach the file to the bill instead." };
+  }
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  const contentType = RECEIPT_TYPES[ext];
+  if (!contentType) {
+    return {
+      wait: ext
+        ? `QuickBooks doesn't take .${ext} ${PHOTO_TYPES.has(ext) ? "photos" : "files"}. Attach it again as a JPG, PNG or PDF.`
+        : "QuickBooks doesn't take this kind of file. Attach it again as a JPG, PNG or PDF.",
+    };
+  }
+  const [, m, d] = day.split("-").map(Number);
+  const when = m && d ? `${MONTHS[m - 1]} ${d}` : day;
+  const vendor = qbVendorName(vendorName) || "Bill";
+  return { file: { fileName: qbText(`Receipt · ${vendor} · ${when}.${ext}`, 1000), contentType } };
+}
+
+/** Which receipt went: a different file (replaced in the CRM) is sent again. */
+export function receiptHash(path: string): string {
+  return sha(["receipt", path]);
 }
 
 /** "EST-1047 · Maria Lopez · Kitchen remodel"; a bill with no job says so. */
@@ -251,10 +302,13 @@ export type SyncStep =
   | { op: "void_payment"; recordId: string; record: SyncRecord }
   | { op: "delete_bill"; recordId: string; record: SyncRecord }
   | { op: "drop"; recordType: RecordType; recordId: string }
-  | { op: "settle"; recordType: "bill"; recordId: string }
+  | { op: "settle"; recordType: "bill" | "receipt"; recordId: string }
   | { op: "wait"; recordType: RecordType; recordId: string; billId: string; reason: string; hash: string }
   | { op: "create_bill" | "update_bill"; recordId: string; bill: SyncBill; hash: string; accountId: string; record: SyncRecord | null }
-  | { op: "create_payment"; recordId: string; payment: SyncPayment; hash: string; record: SyncRecord | null };
+  | { op: "create_payment"; recordId: string; payment: SyncPayment; hash: string; record: SyncRecord | null }
+  /** Attach the bill's receipt; `record` in QuickBooks means it replaces the one the CRM attached. */
+  | { op: "attach_receipt"; recordId: string; bill: SyncBill; hash: string; file: { fileName: string; contentType: string }; record: SyncRecord | null }
+  | { op: "remove_receipt"; recordId: string; record: SyncRecord };
 
 export const WAIT = {
   noVendor: "This bill has no vendor.",
@@ -289,6 +343,7 @@ export function planBillSync(p: {
   const billsById = new Map(p.bills.map((b) => [b.id, b]));
   const paymentIds = new Set(p.payments.map((x) => x.id));
   const paymentRecordsOf = (billId: string) => p.records.filter((r) => r.record_type === "bill_payment" && r.bill_id === billId);
+  const receiptRecord = (billId: string) => recordOf.get(keyOf("receipt", billId)) ?? null;
 
   const resolves: SyncStep[] = [];
   const voids: SyncStep[] = [];
@@ -330,8 +385,23 @@ export function planBillSync(p: {
     }
     voids.push({ op: "void_payment", recordId: r.record_id, record: r });
   };
+  /** Take out the receipt the CRM attached (before its bill is deleted). */
+  const removeReceipt = (billId: string) => {
+    const rr = receiptRecord(billId);
+    if (!rr) return;
+    if (!inQuickBooks(rr)) {
+      if (!isBusy(rr) && rr.status !== "removed" && rr.status !== "gone") drops.push({ op: "drop", recordType: "receipt", recordId: billId });
+      else if (isBusy(rr)) blocked.add(billId);
+      return;
+    }
+    if (isBusy(rr) || removalResting(rr)) {
+      blocked.add(billId);
+      return;
+    }
+    voids.push({ op: "remove_receipt", recordId: billId, record: rr });
+  };
   const deleteBill = (r: SyncRecord) => {
-    // Not while a payment of it is still in QuickBooks, or may be (in doubt).
+    // Not while a payment or its receipt is still in QuickBooks, or may be (in doubt).
     if (blocked.has(r.record_id) || removalResting(r) || paymentRecordsOf(r.record_id).some(isBusy)) return;
     deletes.push({ op: "delete_bill", recordId: r.record_id, record: r });
   };
@@ -342,8 +412,9 @@ export function planBillSync(p: {
   };
   const wait = (recordType: RecordType, recordId: string, billId: string, reason: string, hash: string) => {
     const r = recordOf.get(keyOf(recordType, recordId));
-    // Already noted, the same way: nothing to write.
-    if (r && r.status === "waiting" && r.reason === reason && !inQuickBooks(r)) return;
+    // Already noted, the same way: nothing to write. (A receipt can wait
+    // while the one before it is still attached.)
+    if (r && r.status === "waiting" && r.reason === reason && (recordType === "receipt" || !inQuickBooks(r))) return;
     work.push({ op: "wait", recordType, recordId, billId, reason, hash });
   };
 
@@ -359,8 +430,12 @@ export function planBillSync(p: {
     if (r.record_type !== "bill" || billsById.has(r.record_id) || isBusy(r)) continue;
     if (inQuickBooks(r)) {
       for (const pr of paymentRecordsOf(r.record_id)) if (inQuickBooks(pr)) voidPayment(pr);
+      removeReceipt(r.record_id);
       deleteBill(r);
-    } else drop(r);
+    } else {
+      drop(r);
+      removeReceipt(r.record_id);
+    }
   }
 
   const paymentsByBill = new Map<string, SyncPayment[]>();
@@ -378,11 +453,16 @@ export function planBillSync(p: {
     );
 
     if (rec?.status === "gone") {
-      // Deleted in QuickBooks by someone there: left alone, and so are its payments.
+      // Deleted in QuickBooks by someone there: left alone, and so are its
+      // payments and its receipt. A receipt that never got there is
+      // forgotten; one still there is left as it is, with nothing pending.
       for (const pay of pays) {
         const pr = paymentRecord(pay.id);
         if (!isBusy(pr) && !inQuickBooks(pr)) wait("bill_payment", pay.id, bill.id, WAIT.billGone, paymentHash(pay));
       }
+      const gr = receiptRecord(bill.id);
+      if (inQuickBooks(gr) && !isBusy(gr) && gr!.status !== "sent") work.push({ op: "settle", recordType: "receipt", recordId: bill.id });
+      else drop(gr);
       continue;
     }
 
@@ -390,8 +470,12 @@ export function planBillSync(p: {
       if (inQuickBooks(rec)) {
         for (const pay of pays) if (inQuickBooks(paymentRecord(pay.id))) voidPayment(paymentRecord(pay.id)!);
         for (const pr of paymentRecordsOf(bill.id)) if (inQuickBooks(pr)) voidPayment(pr);
+        removeReceipt(bill.id);
         deleteBill(rec!);
-      } else drop(rec);
+      } else {
+        drop(rec);
+        removeReceipt(bill.id);
+      }
       for (const pay of pays) drop(paymentRecord(pay.id));
       continue;
     }
@@ -401,6 +485,7 @@ export function planBillSync(p: {
       // Moved before the start date before it ever went: it stays out.
       drop(rec);
       for (const pay of pays) drop(paymentRecord(pay.id));
+      drop(receiptRecord(bill.id));
       continue;
     }
 
@@ -436,6 +521,26 @@ export function planBillSync(p: {
       else if (!billGoes) wait("bill_payment", pay.id, bill.id, WAIT.billFirst, pHash);
       else if (!resting(pr, pHash)) work.push({ op: "create_payment", recordId: pay.id, payment: pay, hash: pHash, record: pr });
     }
+
+    // Its receipt, once the bill is (or is about to be) in QuickBooks.
+    const rr = receiptRecord(bill.id);
+    if (isBusy(rr)) continue;
+    if (!bill.receiptPath) {
+      // No receipt any more: the one the CRM attached comes out.
+      if (inQuickBooks(rr)) {
+        if (!removalResting(rr!)) work.push({ op: "remove_receipt", recordId: bill.id, record: rr! });
+      } else drop(rr);
+      continue;
+    }
+    const rHash = receiptHash(bill.receiptPath);
+    if (inQuickBooks(rr) && rr!.qb_hash === rHash) {
+      if (rr!.status !== "sent") work.push({ op: "settle", recordType: "receipt", recordId: bill.id });
+      continue;
+    }
+    if (!billGoes) continue;
+    const file = receiptFile(bill.receiptPath, bill.vendorName, billDay(bill));
+    if ("wait" in file) wait("receipt", bill.id, bill.id, file.wait, rHash);
+    else if (!resting(rr, rHash)) work.push({ op: "attach_receipt", recordId: bill.id, bill, hash: rHash, file: file.file, record: rr });
   }
 
   return [...resolves, ...voids, ...deletes, ...drops, ...work];

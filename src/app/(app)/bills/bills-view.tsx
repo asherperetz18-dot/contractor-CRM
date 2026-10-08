@@ -130,6 +130,15 @@ export function BillsView({
     () => new Map((qb?.records ?? []).map((r) => [`${r.record_type}:${r.record_id}`, r])),
     [qb]
   );
+  // Each bill's payment and receipt records, deleted payments' too.
+  const qbRelated = useMemo(() => {
+    const m = new Map<string, ChipRecord[]>();
+    for (const r of qb?.records ?? []) {
+      if (r.record_type === "bill" || !r.bill_id) continue;
+      m.set(r.bill_id, [...(m.get(r.bill_id) ?? []), r]);
+    }
+    return m;
+  }, [qb]);
 
   const remaining = (b: VendorBill) => billRemainingCents(b, paymentsByBill.get(b.id) ?? []);
   const vendorName = (b: VendorBill) => {
@@ -357,6 +366,8 @@ export function BillsView({
                                 bill={b}
                                 billRecord={qbRecord.get(`bill:${b.id}`) ?? null}
                                 payments={rowPayments.map((p) => ({ id: p.id, record: qbRecord.get(`bill_payment:${p.id}`) ?? null }))}
+                                receipt={qb.receipts ? { has: !!b.receipt_path, record: qbRecord.get(`receipt:${b.id}`) ?? null } : undefined}
+                                related={qbRelated.get(b.id) ?? []}
                               />
                             )}
                           </td>
@@ -990,17 +1001,22 @@ function shortDay(iso: string): string {
   return (day ? new Date(y, m - 1, d) : new Date(iso)).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** Where a bill stands with QuickBooks, under its vendor (DECISIONS #173). */
+/** Where a bill stands with QuickBooks, under its vendor (DECISIONS #173), and its receipt (#174). */
 function QbStatus({
   qb,
   bill,
   billRecord,
   payments,
+  receipt,
+  related,
 }: {
   qb: BillsQuickBooks;
   bill: VendorBill;
   billRecord: ChipRecord | null;
   payments: { id: string; record: ChipRecord | null }[];
+  /** Left out until 0223 has run. */
+  receipt: { has: boolean; record: ChipRecord | null } | undefined;
+  related: ChipRecord[];
 }) {
   const { chips, qbId } = billQbChips({
     sending: qb.sending,
@@ -1008,6 +1024,8 @@ function QbStatus({
     bill: { billDate: bill.bill_date, createdAt: bill.created_at, voided: !!bill.voided_at },
     billRecord,
     payments,
+    receipt,
+    related,
     day: shortDay,
   });
   if (!chips.length) return null;
