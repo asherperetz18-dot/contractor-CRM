@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.251.0",
+    date: "2026-10-08",
+    notes: [
+      "Marketing Analytics and the sales rep report now go by your company's clock. Leads, estimates and contracts from after 5pm count on the day they happened, so a date range you pick keeps its last evening and no longer takes in the evening before it starts. A contract signed on a Sunday evening shows in that week's bar instead of the next week's.",
+      "Marketing Analytics: in the evening, today's appointments no longer count as having no result yet on the team table, so it matches the rep report. The page also opens on your last 30 days instead of the server's.",
+    ],
+  },
+  {
     version: "1.250.0",
     date: "2026-10-08",
     notes: [

@@ -1,3 +1,4 @@
+import { isoDateReader, localClockIn } from "../company-clock.ts";
 import { isoDay, prevWindow, withinWindow, type DateWindow } from "./date-range.ts";
 import { saleCredits, splitCents } from "./sale-credit.ts";
 
@@ -35,12 +36,19 @@ import { saleCredits, splitCents } from "./sale-credit.ts";
  *     every bucket at once, its leads' appointments and documents
  *     included.
  *
+ * Every day here is the company's (`zone`), never the server's UTC one:
+ * the window's edges, "today", the strip's Mondays, and the day a lead
+ * arrived, an estimate went out or a contract was signed (0226), so an
+ * evening's work stays on the evening's date.
+ *
  * Units: value and lead_cost stay in the dollars the leads table
  * stores; every *Cents figure is integer cents from estimates. The two
  * never mix.
  */
 
 export type MarketingBoundaries = {
+  /** The company's IANA zone: whose calendar every date here is on. */
+  zone: string;
   today: string;
   from: string | null;
   to: string | null;
@@ -59,7 +67,13 @@ export function mondayOf(day: string): string {
   return isoDay(new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset));
 }
 
-export function marketingBoundaries(win: DateWindow, now: Date = new Date()): MarketingBoundaries {
+/** The cutoffs for `win` on `zone`'s calendar at `instant`. */
+export function marketingBoundaries(
+  win: DateWindow,
+  zone: string,
+  instant: Date = new Date()
+): MarketingBoundaries {
+  const now = localClockIn(instant, zone);
   const today = isoDay(now);
   const prev = prevWindow(win, now);
   const monday = new Date(`${mondayOf(today)}T00:00:00`);
@@ -68,6 +82,7 @@ export function marketingBoundaries(win: DateWindow, now: Date = new Date()): Ma
     ? ([weeksFrom, win.from, prev?.from].filter(Boolean) as string[]).sort()[0]
     : null;
   return {
+    zone,
     today,
     from: win.from,
     to: win.to,
@@ -251,6 +266,10 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
   const excluded = new Set(inputs.excludeSources);
   const win: DateWindow = { from: B.from, to: B.to };
   const prevWin: DateWindow | null = B.prevFrom ? { from: B.prevFrom, to: B.prevTo } : null;
+  // The company's day a timestamp falls on: the SQL's
+  // `(ts at time zone p_zone)::date`.
+  const inZone = isoDateReader(B.zone);
+  const dayOf = (ts: string) => inZone(new Date(ts));
 
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const keep = (l: MarketingLead) => !excluded.has(sourceOf(l));
@@ -271,8 +290,11 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
     return expected != null && cost === num(expected);
   };
 
-  const cohort = leads.filter((l) => keep(l) && withinWindow(l.created_at, win));
-  const prevCohort = prevWin ? leads.filter((l) => keep(l) && withinWindow(l.created_at, prevWin)) : [];
+  const arrived = new Map(leads.map((l) => [l.id, dayOf(l.created_at)]));
+  const cohort = leads.filter((l) => keep(l) && withinWindow(arrived.get(l.id), win));
+  const prevCohort = prevWin
+    ? leads.filter((l) => keep(l) && withinWindow(arrived.get(l.id), prevWin))
+    : [];
 
   // ── Contracts per lead: the one revenue rule ────────────────────
   const sawEstimate = new Set<string>();
@@ -377,9 +399,9 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
       e.status === "Signed"
         ? credits.map((c) => c.rep)
         : [(e.status !== "Void" && holder) || e.assigned_to].filter((x): x is string => !!x);
-    const sentDay = e.sent_at ?? e.issued_at ?? e.created_at;
+    const sentDay = dayOf(e.sent_at ?? e.issued_at ?? e.created_at);
     if (withinWindow(sentDay, win)) for (const o of owners) rep(o).estimates += 1;
-    if (e.status === "Signed" && e.signed_at && withinWindow(e.signed_at, win)) {
+    if (e.status === "Signed" && e.signed_at && withinWindow(dayOf(e.signed_at), win)) {
       for (const c of credits) {
         const r = rep(c.rep);
         r.signed += 1;
@@ -417,12 +439,12 @@ export function buildMarketingRollup(inputs: MarketingRollupInputs): MarketingRo
   }
   for (const l of leads) {
     if (!keep(l)) continue;
-    const w = weekMap.get(mondayOf(l.created_at.slice(0, 10)));
+    const w = weekMap.get(mondayOf(arrived.get(l.id)!));
     if (w) w.leads += 1;
   }
   for (const e of estimates) {
     if (!isContract(e) || e.status !== "Signed" || !e.signed_at || !leadOk(e.lead_id)) continue;
-    const w = weekMap.get(mondayOf(e.signed_at.slice(0, 10)));
+    const w = weekMap.get(mondayOf(dayOf(e.signed_at)));
     if (w) {
       w.signed += 1;
       w.signedCents += e.total_cents || 0;

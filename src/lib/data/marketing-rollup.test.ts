@@ -21,6 +21,7 @@ import {
  */
 
 const B = {
+  zone: "UTC",
   today: "2026-09-20",
   from: "2026-08-21",
   to: null,
@@ -122,15 +123,59 @@ const INPUTS: MarketingRollupInputs = {
 test("boundaries: previous period and a Monday-start 12-week strip", () => {
   // Sep 20 2026 is a Sunday; its ISO week starts Mon Sep 14, and eleven
   // weeks before that is Mon Jun 29.
-  const b = marketingBoundaries({ from: "2026-08-21", to: null }, new Date(2026, 8, 20, 12));
+  const b = marketingBoundaries({ from: "2026-08-21", to: null }, "UTC", new Date("2026-09-20T12:00:00Z"));
   assert.equal(b.today, "2026-09-20");
   assert.deepEqual([b.prevFrom, b.prevTo], ["2026-07-21", "2026-08-20"]);
   assert.equal(b.weeksFrom, "2026-06-29");
   // The fallback fetches from whichever edge is oldest.
   assert.equal(b.fetchFrom, "2026-06-29");
-  const all = marketingBoundaries({ from: null, to: null }, new Date(2026, 8, 20, 12));
+  const all = marketingBoundaries({ from: null, to: null }, "UTC", new Date("2026-09-20T12:00:00Z"));
   assert.equal(all.prevFrom, null);
   assert.equal(all.fetchFrom, null);
+});
+
+const LA = "America/Los_Angeles";
+// 6:30pm on Sunday Oct 11 in Los Angeles: already Monday Oct 12 on the
+// server's UTC clock.
+const SUNDAY_EVENING = new Date("2026-10-12T01:30:00Z");
+
+test("boundaries: today, the comparison period and the 12-week strip are the company's", () => {
+  const b = marketingBoundaries({ from: "2026-10-01", to: null }, LA, SUNDAY_EVENING);
+  assert.equal(b.zone, LA);
+  assert.equal(b.today, "2026-10-11");
+  assert.deepEqual([b.prevFrom, b.prevTo], ["2026-09-01", "2026-09-11"]);
+  // This week is still the one that began Mon Oct 5, so the strip starts
+  // Jul 20 (the server's clock had already moved it to Jul 27).
+  assert.equal(b.weeksFrom, "2026-07-20");
+});
+
+test("an evening's leads, sends and signatures are filed on the company's day", () => {
+  const b = marketingBoundaries({ from: "2026-10-01", to: "2026-10-10" }, LA, SUNDAY_EVENING);
+  const r = buildMarketingRollup({
+    ...INPUTS,
+    boundaries: b,
+    leads: [
+      // Oct 10, 7pm: in the range (UTC called it Oct 11).
+      lead({ id: "in", source: "Roy", assigned_to: "asher", created_at: "2026-10-11T02:00:00Z" }),
+      // Sep 30, 8pm: before it (UTC called it Oct 1).
+      lead({ id: "before", source: "Roy", assigned_to: "asher", created_at: "2026-10-01T03:00:00Z" }),
+    ],
+    estimates: [
+      // Sent and signed Oct 10 at 7:30pm: in the range.
+      est({ id: "k1", lead_id: "in", status: "Signed", kind: "contract", assigned_to: "asher", total_cents: 9_000_00, sent_at: "2026-10-11T02:30:00Z", signed_at: "2026-10-11T02:30:00Z" }),
+      // Signed Sunday Oct 11 at 6pm: this week's bar, not a week the
+      // strip doesn't have yet.
+      est({ id: "k2", lead_id: "before", status: "Signed", kind: "contract", assigned_to: "asher", total_cents: 1_000_00, sent_at: "2026-09-30T20:00:00Z", signed_at: "2026-10-12T01:00:00Z" }),
+    ],
+    events: [],
+  });
+  assert.equal(r.totals.leads, 1);
+  assert.equal(r.totals.signedCents, 9_000_00);
+  const asher = r.byRep.find((x) => x.rep === "asher")!;
+  assert.deepEqual([asher.leads, asher.estimates, asher.signed, asher.signedCents], [1, 1, 1, 9_000_00]);
+  const thisWeek = r.weeks.at(-1)!;
+  assert.equal(thisWeek.week, "2026-10-05");
+  assert.deepEqual([thisWeek.leads, thisWeek.signed, thisWeek.signedCents], [1, 2, 10_000_00]);
 });
 
 test("totals: one revenue definition, and the Won-without-contract gap is counted", () => {

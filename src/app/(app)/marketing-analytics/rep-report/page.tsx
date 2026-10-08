@@ -1,5 +1,6 @@
 import { clientName } from "@/lib/data/client-name";
-import { companyNow } from "@/lib/data/company-today";
+import { companyNow, getCompanyZone } from "@/lib/data/company-today";
+import { isoDateReader } from "@/lib/company-clock";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
@@ -79,6 +80,11 @@ const RANGE_LABEL: Record<string, string> = {
 // is how a report loses the reader's trust.
 type Window = DateWindow;
 const within = withinWindow;
+
+/** The company's day a timestamp falls on, for the window checks: a bare
+ *  slice of the UTC string put an evening's lead or signature on the
+ *  next day (the server's midnight is 5pm Pacific). */
+type DayOf = (timestamp: string | null) => string | null;
 
 /**
  * Targets to measure a rep against.
@@ -180,14 +186,16 @@ function buildFunnel(
   leadRepById: Map<string, string | null>,
   win: Window,
   todayISO: string,
-  boughtKeys: string[]
+  boughtKeys: string[],
+  dayOf: DayOf
 ): Funnel {
   const inRange = (d: string | null) => within(d, win);
 
   // Leads only: bought-list contacts handed to a rep to call aren't
   // leads they were given (DECISIONS #156). Their sales still count.
   const mine = leads.filter(
-    (l) => l.assigned_to === repId && inRange(l.created_at) && countsAsLead(l.source, boughtKeys)
+    (l) =>
+      l.assigned_to === repId && inRange(dayOf(l.created_at)) && countsAsLead(l.source, boughtKeys)
   );
 
   // Primary assignee only. A ride-along used to count in the rider's
@@ -222,9 +230,9 @@ function buildFunnel(
   };
   const repEstimates = estimates.filter((e) => repShareBp(e) > 0);
   const sent = repEstimates.filter(
-    (e) => e.status !== "Draft" && inRange(e.sent_at ?? e.issued_at ?? e.created_at)
+    (e) => e.status !== "Draft" && inRange(dayOf(e.sent_at ?? e.issued_at ?? e.created_at))
   );
-  const signed = repEstimates.filter((e) => e.status === "Signed" && inRange(e.signed_at));
+  const signed = repEstimates.filter((e) => e.status === "Signed" && inRange(dayOf(e.signed_at)));
   // A partnership sale counts for both seats, the dollars split by share.
   const signedCents = signed.reduce((s, e) => s + splitCents(e.total_cents, repShareBp(e)), 0);
 
@@ -295,7 +303,8 @@ function leadRows(
   repId: string,
   leads: RepReportLead[],
   estimates: Estimate[],
-  win: Window
+  win: Window,
+  dayOf: DayOf
 ): LeadRow[] {
   const signedByLead = new Map<string, number>();
   for (const e of estimates) {
@@ -304,7 +313,7 @@ function leadRows(
   }
 
   return leads
-    .filter((l) => l.assigned_to === repId && within(l.created_at, win))
+    .filter((l) => l.assigned_to === repId && within(dayOf(l.created_at), win))
     .map((l) => {
       const signedCents = signedByLead.get(l.id) ?? 0;
       return {
@@ -340,7 +349,7 @@ export default async function RepReportPage({
   const rangeKey = custom ? "custom" : sp.days && RANGE_LABEL[sp.days] ? sp.days : "30";
 
   const supabase = await createClient();
-  const [leads, members, events, { data: estimates }, { data: company }, boughtKeys] =
+  const [leads, members, events, { data: estimates }, { data: company }, boughtKeys, zone] =
     await Promise.all([
       selectAll<RepReportLead>((f, t) =>
         supabase
@@ -367,11 +376,15 @@ export default async function RepReportPage({
         .eq("company_id", companyId)
         .maybeSingle<Company>(),
       getBoughtListKeysCached(companyId),
+      getCompanyZone(),
     ]);
 
-  // The office's calendar, not the server's UTC one (data/company-today).
+  // The office's calendar, not the server's UTC one (data/company-today):
+  // today and the window, and the day each timestamp is filed on.
   const now = await companyNow();
   const todayISO = isoDay(now);
+  const inZone = isoDateReader(zone);
+  const dayOf: DayOf = (timestamp) => (timestamp ? inZone(new Date(timestamp)) : null);
   const state = { preset: rangeKey, from: sp.from ?? "", to: sp.to ?? "" };
   const win = resolveWindow(state, now);
 
@@ -394,7 +407,8 @@ export default async function RepReportPage({
       leadRepById,
       win,
       todayISO,
-      boughtKeys
+      boughtKeys,
+      dayOf
     );
 
   const chosen = sp.rep ? salespeople.find((r) => r.id === sp.rep) : null;
@@ -405,7 +419,7 @@ export default async function RepReportPage({
     ? apptRows(chosen.id, events, leadById, win)
     : [];
   const leadLines = chosen
-    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), win)
+    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), win, dayOf)
     : [];
   const pipelineCents = leadLines
     .filter((l) => !l.sold)

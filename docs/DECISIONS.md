@@ -2256,3 +2256,25 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **The fallback counts leads only, as the SQL has since 0211.** Its two lead reads (the window's new leads, and those waiting for a first appointment) now leave out bought-list and sourceless contacts (`notALeadPattern`, #156). Before, they counted every contact, which nobody saw while the database function answered. With this change the fallback answers until 0225 runs, and without the rule it would have shown every list import as new leads.
 
 **Consequence:** each Dispatch Dashboard period starts, and ends if it has an end date, at the company's midnight, the same as the main dashboard's. It needs 0225 to be fast again. Marketing Analytics and the rep report still file by the UTC day (TECH_DEBT).
+
+## 177 — Marketing Analytics and the rep report go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** After #175 and #176, Marketing Analytics was the last report on the server's clock (UTC), and in more ways than the dashboards had been:
+- **Its "today" came from the server.** `marketingBoundaries(win)` read `new Date()` on the server. From 5pm Pacific, today's appointments counted as "no result" on the team table, and the comparison period and the twelve-week strip moved a day early. The rep report already took today from the company's calendar, so the two disagreed every evening.
+- **The page opened on the server's last 30 days** (`presetWindow("30")` on the server).
+- **The SQL cut each period at UTC midnight.** `marketing_analytics_rollup` (0195) also filed estimates sent, contracts signed and the weekly strip by the UTC day. So a period started at 5pm the evening before and, with an end date, ended at 5pm on its last day. A contract signed on a Sunday evening landed in the next week's bar.
+- **The fallback and the drill-down lists cut at bare dates and a UTC `nextDay`.** These are a rep's leads, and Won without a contract.
+- **The rep report filed each lead, sent estimate and signature by slicing its UTC timestamp.** The dashboard's team panel links each rep there with its window.
+
+**Decision:** the same change as #175 and #176, applied to these pages.
+- `marketingBoundaries(win, zone)` works out today, the comparison period and the strip's Mondays on the company's calendar, and carries the zone.
+- `marketing_analytics_rollup` (0226) takes it as `p_zone text default 'UTC'`. Its body is 0195's with `at time zone 'utc'` read `at time zone p_zone`, and a test holds it to that. That swap moves both readings: a timestamp's day (`created_at at time zone p_zone`) and a day's first instant (`p_from::timestamp at time zone p_zone`). The old signature is dropped.
+- The TypeScript mirror files the cohort, sends, signatures and weeks by the company's day (`isoDateReader`).
+- The fallback and both drill-down lists cut timestamp reads at the company's midnight (`windowInstants`), so a list holds what its tile counts.
+- The page opens on `presetWindow("30", await companyNow())`.
+- The rep report reads each timestamp as its company day (`isoDateReader(zone)`) before the window check.
+- Until 0226 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower.
+
+**Consequence:** every report and dashboard now files by the company's day. Marketing Analytics, its team table, the rep report it opens and the main dashboard's team panel agree at any hour. Needs 0226 to be fast again. The lead-rule gap in Marketing's "Exclude bought lists" (TECH_DEBT) is unchanged: this change only swaps the zone.
