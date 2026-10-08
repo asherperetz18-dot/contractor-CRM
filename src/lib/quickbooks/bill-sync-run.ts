@@ -16,16 +16,19 @@ import {
   type QbAccess,
   type QbError,
 } from "./api";
+import type { QbAccount } from "./accounts";
 import {
   WAIT,
+  inQuickBooks,
   billBody,
   billMemo,
   billPaymentBody,
+  billUpdateBody,
   nextTryAt,
+  newRequestId,
   planBillSync,
-  qbCreateRequestId,
-  qbRequestId,
   qbVendorName,
+  type InDoubt,
   type RecordType,
   type SyncBill,
   type SyncPayment,
@@ -41,8 +44,11 @@ import {
  * so two runs never send its bills at once. Reads the bills dated from the
  * start date, the ones already sent, their payments and what's needed to
  * describe them; asks planBillSync what to do; does it, one QuickBooks
- * call at a time, writing quickbooks_sync after each. Stops at the write
- * cap or the time budget; the rest goes next run.
+ * call at a time, writing quickbooks_sync after each. Before adding a bill
+ * or payment it writes down the exact request (`doubt`), so a run cut off
+ * mid-way is finished by repeating that request, never by adding it again.
+ * Stops starting work at the time budget or the write cap; the rest goes
+ * next run.
  */
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -64,10 +70,13 @@ export type BillSyncSummary = {
 const IN_CHUNK = 100;
 /** Longer than any one run can take (the job's limit is five minutes). */
 const CLAIM_MINUTES = 6;
-/** QuickBooks not answering this many times in a row: it's down, stop for now. */
+/** QuickBooks not answering this many times in a run: it's down, stop for now. */
 const MAX_TRANSIENT = 3;
+/** Past the budget, a call already started gets this long before it's cut off. */
+const GRACE_MS = 25_000;
 
-const RECORD_COLUMNS = "record_type, record_id, bill_id, qb_id, qb_hash, status, reason, tries, next_try_at, sent_at";
+const RECORD_COLUMNS =
+  "record_type, record_id, bill_id, qb_id, qb_hash, tried_hash, doubt, status, failed_op, reason, tries, next_try_at, sent_at";
 const BILL_COLUMNS =
   "id, vendor_id, vendor_name, lead_id, estimate_payment_id, reference, amount_cents, bill_date, due_date, voided_at, created_at";
 const PAYMENT_COLUMNS = "id, bill_id, amount_cents, paid_on, method, check_number, note, paid_from_account_id, created_at";
@@ -139,9 +148,15 @@ export async function syncCompanyBills(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const { data: conn, error: connError } = await admin
     .from("quickbooks_connections")
-    .select("realm_id, disconnected_at, send_bills, send_bills_from")
+    .select("realm_id, disconnected_at, send_bills, send_bills_from, accounts")
     .eq("company_id", companyId)
-    .maybeSingle<{ realm_id: string | null; disconnected_at: string | null; send_bills: boolean; send_bills_from: string | null }>();
+    .maybeSingle<{
+      realm_id: string | null;
+      disconnected_at: string | null;
+      send_bills: boolean;
+      send_bills_from: string | null;
+      accounts: QbAccount[] | null;
+    }>();
   if (connError) {
     return { ...summary, error: isMissingSchemaError(connError) ? "QuickBooks needs a database update first: run 0222_quickbooks_bills.sql in Supabase." : connError.message };
   }
@@ -165,7 +180,8 @@ export async function syncCompanyBills(
     const got = await quickBooksAccess(admin, companyId, fetchImpl);
     if ("error" in got) return { ...summary, error: got.error };
     if (got.access.realmId !== realmId) return { ...summary, error: "QuickBooks needs you to connect again." };
-    await run(admin, companyId, realmId, sendFrom, got.access, fetchImpl, opts, summary);
+    const qbTypes = new Map((Array.isArray(conn.accounts) ? conn.accounts : []).map((a) => [a.id, a.type]));
+    await run(admin, companyId, realmId, sendFrom, qbTypes, got.access, fetchImpl, opts, summary);
     return summary;
   } finally {
     await admin
@@ -180,13 +196,22 @@ async function run(
   companyId: string,
   realmId: string,
   sendFrom: string,
+  qbTypes: Map<string, string>,
   access: QbAccess,
-  fetchImpl: typeof fetch,
+  baseFetch: typeof fetch,
   opts: { writeCap?: number; budgetMs?: number; force?: boolean },
   summary: BillSyncSummary
 ) {
   const deadline = Date.now() + (opts.budgetMs ?? 120_000);
   const cap = opts.writeCap ?? 100;
+  // No call outlives the run: one still going GRACE_MS past the budget is
+  // cut off (and an add cut off that way is repeated next run, not doubled).
+  const hardStop = deadline + GRACE_MS;
+  const fetchImpl = ((url: string, init: RequestInit = {}) => {
+    const left = Math.max(1_000, hardStop - Date.now());
+    const signal = init.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(left)]) : AbortSignal.timeout(left);
+    return baseFetch(url, { ...init, signal });
+  }) as typeof fetch;
 
   // ---------------------------------------------------------------- read
   const records = await readAll<SyncRecord>((f, t) =>
@@ -284,7 +309,15 @@ async function run(
       reference: x.check_number,
       note: x.note,
       createdAt: x.created_at,
-      account: account ? { id: account.id, name: account.name, kind: account.kind, qbAccountId: account.qb_account_id } : null,
+      account: account
+        ? {
+            id: account.id,
+            name: account.name,
+            kind: account.kind,
+            qbAccountId: account.qb_account_id,
+            qbType: account.qb_account_id ? qbTypes.get(account.qb_account_id) ?? null : null,
+          }
+        : null,
     };
   });
 
@@ -303,10 +336,9 @@ async function run(
 
   // ---------------------------------------------------------------- write
   const billById = new Map(bills.map((b) => [b.id, b]));
-  const paymentBill = new Map(payments.map((x) => [x.id, x.billId]));
   // QuickBooks' id for each bill, as it stands during this run.
   const billQb = new Map(
-    records.filter((r) => r.record_type === "bill" && r.qb_id && r.status !== "removed").map((r) => [r.record_id, r.qb_id!])
+    records.filter((r) => r.record_type === "bill" && r.qb_id && r.status !== "removed" && r.status !== "gone").map((r) => [r.record_id, r.qb_id!])
   );
   const vendorIds = new Map<string, string>();
   let writes = 0;
@@ -337,34 +369,79 @@ async function run(
       .eq("record_id", id);
     if (error) throw new Error(error.message);
   };
+  const sentNow = (qbId: string, hash: string): Partial<SyncRecord> => ({
+    status: "sent",
+    qb_id: qbId,
+    qb_hash: hash,
+    tried_hash: null,
+    doubt: null,
+    failed_op: null,
+    reason: null,
+    tries: 0,
+    next_try_at: null,
+    sent_at: new Date().toISOString(),
+  });
 
-  /** QuickBooks said no: what that means for this record, and for the run. */
-  const refused = async (type: RecordType, id: string, billId: string | null, record: SyncRecord | null, hash: string | null, err: QbError) => {
+  /** A login refused or QuickBooks asking to slow down: the run stops. */
+  const stopIf = async (err: QbError) => {
     if (err.kind === "auth") {
       await admin.from("quickbooks_connections").update({ last_error: err.message, updated_at: new Date().toISOString() }).eq("company_id", companyId);
       throw new StopRun(err.message);
     }
     if (err.kind === "throttle") throw new StopRun(err.message);
+  };
+  const countTransient = (err: QbError) => {
+    transient += 1;
+    if (transient >= MAX_TRANSIENT) throw new StopRun(err.message);
+  };
+  /** A vendor lookup QuickBooks didn't answer: a bill or payment not sent yet says so meanwhile. */
+  const vendorTrouble = async (type: RecordType, id: string, billId: string, record: SyncRecord | null, hash: string, err: QbError) => {
+    await stopIf(err);
     if (err.kind === "transient" || err.kind === "stale") {
-      transient += 1;
-      // Not sent yet: say so meanwhile. Already in QuickBooks: it stays as
-      // it was there, and the change is tried again next run.
-      if (!record?.qb_id || record.status === "removed") {
-        await save(type, id, billId, { status: "waiting", reason: err.message, qb_hash: hash, next_try_at: null });
-      }
-      if (transient >= MAX_TRANSIENT) throw new StopRun(err.message);
-      return;
+      if (!inQuickBooks(record)) await save(type, id, billId, { status: "waiting", reason: err.message, tried_hash: hash, next_try_at: null });
+      return countTransient(err);
     }
-    const tries = (record?.tries ?? 0) + 1;
+    return refusedAt(type, id, billId, record, hash, err, inQuickBooks(record) ? "change" : "add");
+  };
+  /** QuickBooks refused a version for good: say why, rest, try again later or when it changes. */
+  const refusedAt = async (
+    type: RecordType,
+    id: string,
+    billId: string | null,
+    record: SyncRecord | null,
+    hash: string,
+    err: QbError,
+    op: "add" | "change"
+  ) => {
+    const tries = (record?.failed_op === op ? record.tries : 0) + 1;
     await save(type, id, billId, {
       status: "failed",
+      failed_op: op,
       reason: err.message,
-      qb_hash: hash,
+      tried_hash: hash,
+      doubt: null,
       tries,
-      // Gone from QuickBooks: trying again won't bring it back.
-      next_try_at: err.kind === "notfound" ? null : nextTryAt(tries, new Date()),
+      next_try_at: nextTryAt(tries, new Date()),
     });
     summary.failed += 1;
+  };
+  /** QuickBooks refused a void or a delete: say why, try again later. */
+  const removalRefused = async (type: RecordType, r: SyncRecord, what: string, err: QbError) => {
+    const tries = (r.failed_op === "remove" ? r.tries : 0) + 1;
+    await save(type, r.record_id, r.bill_id ?? r.record_id, {
+      status: "failed",
+      failed_op: "remove",
+      reason: `Couldn't ${what} it in QuickBooks. ${err.message}`,
+      tries,
+      next_try_at: nextTryAt(tries, new Date()),
+    });
+    summary.failed += 1;
+  };
+  /** Can't go yet for a reason found while sending (a vendor): rests like a refusal. */
+  const waitAt = async (type: RecordType, id: string, billId: string, record: SyncRecord | null, hash: string, reason: string) => {
+    const tries = (record?.tries ?? 0) + 1;
+    await save(type, id, billId, { status: "waiting", reason, tried_hash: hash, tries, next_try_at: nextTryAt(tries, new Date()) });
+    summary.waiting += 1;
   };
 
   /** The QuickBooks vendor for a name: found, else added. */
@@ -382,9 +459,8 @@ async function run(
       return { id: found.vendor.id };
     }
     writes += 1;
-    // Per day: a retry today is the same request; a vendor removed in
-    // QuickBooks since is added fresh tomorrow, not answered with the old one.
-    const made = await createVendor(access, clean, qbRequestId([companyId, realmId, "vendor", key, new Date().toISOString().slice(0, 10)]), fetchImpl);
+    // A vendor added but whose answer was lost is found by name next time.
+    const made = await createVendor(access, clean, newRequestId(), fetchImpl);
     if ("error" in made) {
       if (made.error.kind === "duplicate") {
         return { wait: `QuickBooks already has a customer or employee named "${clean}". Rename the vendor in the CRM or in QuickBooks.` };
@@ -395,11 +471,30 @@ async function run(
     return { id: made.id };
   };
 
-  /** A vendor problem holds the record, tried again later like a refusal. */
-  const vendorWait = async (type: RecordType, id: string, billId: string, record: SyncRecord | null, hash: string, reason: string) => {
-    const tries = (record?.tries ?? 0) + 1;
-    await save(type, id, billId, { status: "waiting", reason, qb_hash: hash, tries, next_try_at: nextTryAt(tries, new Date()) });
-    summary.waiting += 1;
+  /**
+   * Adds a bill or payment. The exact request is written down first; if no
+   * answer comes, it stays written down and the next run repeats it (same
+   * request id: QuickBooks answers a repeat without adding it again).
+   */
+  const add = async (type: RecordType, id: string, billId: string, record: SyncRecord | null, doubt: InDoubt) => {
+    await save(type, id, billId, record ? { doubt } : { doubt, status: "waiting", reason: "Being sent to QuickBooks now." });
+    writes += 1;
+    const res = type === "bill" ? await createBill(access, doubt.body, doubt.requestId, fetchImpl) : await createBillPayment(access, doubt.body, doubt.requestId, fetchImpl);
+    if (!("error" in res)) {
+      await save(type, id, billId, sentNow(res.id, doubt.hash));
+      if (type === "bill") billQb.set(id, res.id);
+      summary.sent += 1;
+      return;
+    }
+    await stopIf(res.error);
+    if (res.error.kind === "transient" || res.error.kind === "stale") {
+      // No answer: it may be in QuickBooks. Kept in doubt, repeated next run.
+      await save(type, id, billId, { status: "waiting", reason: res.error.message, tried_hash: doubt.hash, next_try_at: null });
+      countTransient(res.error);
+      return;
+    }
+    // Refused: QuickBooks didn't add it. The next try is a new request.
+    await refusedAt(type, id, billId, record, doubt.hash, res.error, "add");
   };
 
   const doStep = async (step: SyncStep) => {
@@ -407,26 +502,40 @@ async function run(
       case "drop":
         await drop(step.recordType, step.recordId);
         return;
+      case "settle":
+        await save("bill", step.recordId, step.recordId, { status: "sent", failed_op: null, reason: null, tried_hash: null, tries: 0, next_try_at: null });
+        return;
       case "wait":
         await save(step.recordType, step.recordId, step.billId, {
           status: "waiting",
           reason: step.reason,
-          qb_hash: step.hash,
-          qb_id: null,
+          tried_hash: step.hash,
           next_try_at: null,
         });
         summary.waiting += 1;
         return;
+      case "resolve": {
+        const r = step.record;
+        await add(r.record_type, r.record_id, r.bill_id ?? r.record_id, r, r.doubt!);
+        return;
+      }
       case "void_payment": {
         const r = step.record;
         writes += 1;
+        // Only a read saying "not found" means it's gone; the same answer
+        // to the void itself can mean something it uses was made inactive.
         const current = await readBillPayment(access, r.qb_id!, fetchImpl);
-        if ("error" in current && current.error.kind !== "notfound") return refused("bill_payment", r.record_id, r.bill_id, r, r.qb_hash, current.error);
-        if (!("error" in current)) {
-          const done = await voidBillPayment(access, current, qbRequestId([companyId, realmId, "bill_payment", r.record_id, "void", current.syncToken]), fetchImpl);
-          if ("error" in done && done.error.kind !== "notfound") return refused("bill_payment", r.record_id, r.bill_id, r, r.qb_hash, done.error);
+        let err: QbError | null = "error" in current && current.error.kind !== "notfound" ? current.error : null;
+        if (!err && !("error" in current) && !current.voided) {
+          const done = await voidBillPayment(access, current, newRequestId(), fetchImpl);
+          if ("error" in done) err = done.error;
         }
-        await save("bill_payment", r.record_id, r.bill_id, { status: "removed", reason: null, next_try_at: null, tries: 0 });
+        if (err) {
+          await stopIf(err);
+          if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
+          return removalRefused("bill_payment", r, "void", err);
+        }
+        await save("bill_payment", r.record_id, r.bill_id, { status: "removed", failed_op: null, reason: null, tried_hash: null, next_try_at: null, tries: 0 });
         summary.removed += 1;
         return;
       }
@@ -434,96 +543,100 @@ async function run(
         const r = step.record;
         writes += 1;
         const current = await readBill(access, r.qb_id!, fetchImpl);
-        if ("error" in current && current.error.kind !== "notfound") return refused("bill", r.record_id, r.record_id, r, r.qb_hash, current.error);
-        if (!("error" in current)) {
-          const done = await deleteBill(access, current, qbRequestId([companyId, realmId, "bill", r.record_id, "delete", current.syncToken]), fetchImpl);
-          if ("error" in done && done.error.kind !== "notfound") return refused("bill", r.record_id, r.record_id, r, r.qb_hash, done.error);
+        let err: QbError | null = "error" in current && current.error.kind !== "notfound" ? current.error : null;
+        if (!err && !("error" in current)) {
+          const done = await deleteBill(access, current, newRequestId(), fetchImpl);
+          if ("error" in done) err = done.error;
         }
-        await save("bill", r.record_id, r.record_id, { status: "removed", qb_id: null, reason: null, next_try_at: null, tries: 0 });
+        if (err) {
+          await stopIf(err);
+          if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
+          return removalRefused("bill", r, "delete", err);
+        }
+        await save("bill", r.record_id, r.record_id, {
+          status: "removed",
+          qb_id: null,
+          failed_op: null,
+          reason: null,
+          tried_hash: null,
+          next_try_at: null,
+          tries: 0,
+        });
         billQb.delete(r.record_id);
         summary.removed += 1;
         return;
       }
-      case "create_bill":
+      case "create_bill": {
+        const { bill, hash, record } = step;
+        const vendor = await vendorFor(bill.vendorName);
+        if ("wait" in vendor) return waitAt("bill", bill.id, bill.id, record, hash, vendor.wait);
+        if ("error" in vendor) return vendorTrouble("bill", bill.id, bill.id, record, hash, vendor.error);
+        const body = billBody(bill, { vendorId: vendor.id, accountId: step.accountId });
+        await add("bill", bill.id, bill.id, record, { requestId: newRequestId(), body, hash });
+        return;
+      }
       case "update_bill": {
         const { bill, hash, record } = step;
         const vendor = await vendorFor(bill.vendorName);
-        if ("wait" in vendor) return vendorWait("bill", bill.id, bill.id, record, hash, vendor.wait);
-        if ("error" in vendor) return refused("bill", bill.id, bill.id, record, hash, vendor.error);
-        const body = billBody(bill, { vendorId: vendor.id, accountId: step.accountId });
+        if ("wait" in vendor) return waitAt("bill", bill.id, bill.id, record, hash, vendor.wait);
+        if ("error" in vendor) return vendorTrouble("bill", bill.id, bill.id, record, hash, vendor.error);
         writes += 1;
-        let result;
-        if (step.op === "create_bill") {
-          result = await createBill(access, body, qbCreateRequestId({ companyId, realmId }, "bill", bill.id, hash, record), fetchImpl);
-        } else {
-          let current = await readBill(access, record!.qb_id!, fetchImpl);
+        let result: Awaited<ReturnType<typeof updateBill>> | null = null;
+        // Read it as QuickBooks has it now; if it changed there meanwhile, once more.
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const current = await readBill(access, record!.qb_id!, fetchImpl);
           if ("error" in current) {
-            const err =
-              current.error.kind === "notfound"
-                ? { ...current.error, message: "It was deleted in QuickBooks, so changes to it aren't sent." }
-                : current.error;
-            return refused("bill", bill.id, bill.id, record, hash, err);
+            if (current.error.kind === "notfound") {
+              // Deleted in QuickBooks by someone there: the CRM leaves it alone.
+              await save("bill", bill.id, bill.id, {
+                status: "gone",
+                reason: "Deleted in QuickBooks, so the CRM doesn't send it again.",
+                tried_hash: hash,
+                next_try_at: null,
+              });
+              summary.failed += 1;
+              return;
+            }
+            result = current;
+            break;
           }
-          result = await updateBill(access, current, body, qbRequestId([companyId, realmId, "bill", bill.id, "update", hash, current.syncToken]), fetchImpl);
-          // Changed in QuickBooks meanwhile: read it again, once.
-          if ("error" in result && result.error.kind === "stale") {
-            current = await readBill(access, record!.qb_id!, fetchImpl);
-            if ("error" in current) return refused("bill", bill.id, bill.id, record, hash, current.error);
-            result = await updateBill(access, current, body, qbRequestId([companyId, realmId, "bill", bill.id, "update", hash, current.syncToken]), fetchImpl);
-          }
+          const update = billUpdateBody(bill, current, { vendorId: vendor.id });
+          if ("wait" in update) return waitAt("bill", bill.id, bill.id, record, hash, update.wait);
+          result = await updateBill(access, update.body, newRequestId(), fetchImpl);
+          if (!("error" in result) || result.error.kind !== "stale") break;
         }
-        if ("error" in result) return refused("bill", bill.id, bill.id, record, hash, result.error);
-        await save("bill", bill.id, bill.id, {
-          status: "sent",
-          qb_id: result.id,
-          qb_hash: hash,
-          reason: null,
-          tries: 0,
-          next_try_at: null,
-          sent_at: new Date().toISOString(),
-        });
-        billQb.set(bill.id, result.id);
-        if (step.op === "create_bill") summary.sent += 1;
-        else summary.changed += 1;
-        return;
+        if (result && !("error" in result)) {
+          await save("bill", bill.id, bill.id, sentNow(result.id, hash));
+          summary.changed += 1;
+          return;
+        }
+        const err = result!.error;
+        await stopIf(err);
+        // No answer: QuickBooks keeps what it had; the change goes next run.
+        if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
+        return refusedAt("bill", bill.id, bill.id, record, hash, err, "change");
       }
       case "create_payment": {
         const { payment, hash, record } = step;
-        const bill = billById.get(paymentBill.get(payment.id) ?? "");
+        const bill = billById.get(payment.billId);
         const billQbId = billQb.get(payment.billId);
         if (!bill || !billQbId) {
-          await save("bill_payment", payment.id, payment.billId, { status: "waiting", reason: WAIT.billFirst, qb_hash: hash, qb_id: null, next_try_at: null });
+          await save("bill_payment", payment.id, payment.billId, { status: "waiting", reason: WAIT.billFirst, tried_hash: hash, next_try_at: null });
           summary.waiting += 1;
           return;
         }
         const vendor = await vendorFor(bill.vendorName);
-        if ("wait" in vendor) return vendorWait("bill_payment", payment.id, payment.billId, record, hash, vendor.wait);
-        if ("error" in vendor) return refused("bill_payment", payment.id, payment.billId, record, hash, vendor.error);
-        writes += 1;
-        const made = await createBillPayment(
-          access,
-          billPaymentBody(payment, { vendorId: vendor.id, billQbId }),
-          qbCreateRequestId({ companyId, realmId }, "bill_payment", payment.id, hash, record),
-          fetchImpl
-        );
-        if ("error" in made) return refused("bill_payment", payment.id, payment.billId, record, hash, made.error);
-        await save("bill_payment", payment.id, payment.billId, {
-          status: "sent",
-          qb_id: made.id,
-          qb_hash: hash,
-          reason: null,
-          tries: 0,
-          next_try_at: null,
-          sent_at: new Date().toISOString(),
-        });
-        summary.sent += 1;
+        if ("wait" in vendor) return waitAt("bill_payment", payment.id, payment.billId, record, hash, vendor.wait);
+        if ("error" in vendor) return vendorTrouble("bill_payment", payment.id, payment.billId, record, hash, vendor.error);
+        const body = billPaymentBody(payment, { vendorId: vendor.id, billQbId });
+        await add("bill_payment", payment.id, payment.billId, record, { requestId: newRequestId(), body, hash });
         return;
       }
     }
   };
 
   for (const step of steps) {
-    const writesQuickBooks = step.op !== "drop" && step.op !== "wait";
+    const writesQuickBooks = step.op !== "drop" && step.op !== "wait" && step.op !== "settle";
     if (writesQuickBooks && (writes >= cap || Date.now() > deadline)) {
       summary.more = true;
       break;

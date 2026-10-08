@@ -38,7 +38,7 @@ import {
   updateVendorBill,
 } from "@/lib/actions/vendor-bills";
 import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
-import { billQbChips, paymentQbNote, qbWebUrl, type BillsQuickBooks, type QbChip, type SyncRecord } from "@/lib/quickbooks/bill-status";
+import { billQbChips, paymentQbNote, qbWebUrl, type BillsQuickBooks, type ChipRecord, type QbChip } from "@/lib/quickbooks/bill-status";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/components/uploads/file-drop";
@@ -999,8 +999,8 @@ function QbStatus({
 }: {
   qb: BillsQuickBooks;
   bill: VendorBill;
-  billRecord: SyncRecord | null;
-  payments: { id: string; record: SyncRecord | null }[];
+  billRecord: ChipRecord | null;
+  payments: { id: string; record: ChipRecord | null }[];
 }) {
   const { chips, qbId } = billQbChips({
     sending: qb.sending,
@@ -1028,7 +1028,7 @@ function QbStatus({
 }
 
 /** A payment's line: " · ✓ in QuickBooks", or why it hasn't gone. */
-function qbPaymentText(record: SyncRecord | null): string {
+function qbPaymentText(record: ChipRecord | null): string {
   const note = paymentQbNote(record);
   if (!note) return "";
   return note === "in QuickBooks" ? " · ✓ in QuickBooks" : ` · ${note}`;

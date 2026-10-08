@@ -9,12 +9,12 @@ import {
   billMemo,
   billPaymentBody,
   billQbChips,
+  billUpdateBody,
   nextTryAt,
   paymentHash,
   paymentQbNote,
+  newRequestId,
   planBillSync,
-  qbCreateRequestId,
-  qbRequestId,
   qbText,
   qbVendorName,
   qbWebUrl,
@@ -59,8 +59,8 @@ const bill = (over: Partial<SyncBill> = {}): SyncBill => ({
   ...over,
 });
 
-const card = { id: "pa1", name: "Amex", kind: "credit_card", qbAccountId: "41" };
-const bank = { id: "pa2", name: "Chase Checking", kind: "bank", qbAccountId: "35" };
+const card = { id: "pa1", name: "Amex", kind: "credit_card", qbAccountId: "41", qbType: "Credit Card" };
+const bank = { id: "pa2", name: "Chase Checking", kind: "bank", qbAccountId: "35", qbType: "Bank" };
 
 const payment = (over: Partial<SyncPayment> = {}): SyncPayment => ({
   id: "p1",
@@ -81,7 +81,10 @@ const sent = (over: Partial<SyncRecord> = {}): SyncRecord => ({
   bill_id: "b1",
   qb_id: "108",
   qb_hash: billHash(bill()),
+  tried_hash: null,
+  doubt: null,
   status: "sent",
+  failed_op: null,
   reason: null,
   tries: 0,
   next_try_at: null,
@@ -135,8 +138,8 @@ test("a bill goes as one line to the matched expense account, with the job in th
       },
     ],
   });
-  // No due date in the CRM: QuickBooks uses its own terms.
-  assert.equal("DueDate" in billBody(bill({ dueDate: null }), { vendorId: "56", accountId: "60" }), false);
+  // No due date in the CRM: due on its bill date.
+  assert.equal(billBody(bill({ dueDate: null }), { vendorId: "56", accountId: "60" }).DueDate, "2026-10-08");
   assert.equal(billBody(bill({ amountCents: 61248 }), { vendorId: "56", accountId: "60" }).Line[0].Amount, 612.48);
 });
 
@@ -157,10 +160,13 @@ test("a card payment goes as a credit card bill payment; bank and cash as a chec
   assert.deepEqual(check.CheckPayment, { BankAccountRef: { value: "35" }, PrintStatus: "PrintComplete" });
   assert.equal(check.DocNumber, "10442");
 
-  const zelle = billPaymentBody(payment({ method: "zelle", account: { ...bank, kind: "cash" } }), { vendorId: "56", billQbId: "108" });
+  const zelle = billPaymentBody(payment({ method: "zelle", account: { ...bank, kind: "cash", qbType: null } }), { vendorId: "56", billQbId: "108" });
   assert.equal(zelle.PayType, "Check");
   assert.deepEqual(zelle.CheckPayment, { BankAccountRef: { value: "35" }, PrintStatus: "NotSet" });
   assert.equal("DocNumber" in zelle, false);
+  // The matched QuickBooks account decides, whatever the CRM account is called.
+  assert.equal(billPaymentBody(payment({ account: { ...card, qbType: "Bank" } }), { vendorId: "56", billQbId: "108" }).PayType, "Check");
+  assert.equal(billPaymentBody(payment({ account: { ...bank, qbType: "Credit Card" } }), { vendorId: "56", billQbId: "108" }).PayType, "CreditCard");
   // QuickBooks' document numbers are at most 21 characters.
   assert.equal(
     billPaymentBody(payment({ method: "check", reference: "1".repeat(30), account: bank }), { vendorId: "56", billQbId: "108" }).DocNumber,
@@ -221,7 +227,7 @@ test("a payment waits for its paid-from account, its match, and its bill", () =>
   };
   assert.equal(reason(plan({ records: [sent()], payments: [payment({ account: null })] }), "p1"), 'No "Paid from" account on this payment. Delete it and record it again with one.');
   assert.equal(
-    reason(plan({ records: [sent()], payments: [payment({ account: { ...card, name: "Home Depot card", qbAccountId: null } })] }), "p1"),
+    reason(plan({ records: [sent()], payments: [payment({ account: { ...card, name: "Home Depot card", qbAccountId: null, qbType: null } })] }), "p1"),
     '"Home Depot card" isn\'t matched to a QuickBooks account yet. Match it in Settings › QuickBooks.'
   );
   // Its bill can't go yet, so neither can the payment.
@@ -230,6 +236,12 @@ test("a payment waits for its paid-from account, its match, and its bill", () =>
   const over = plan({ records: [sent()], payments: [payment({ amountCents: 300000 }), payment({ id: "p2", paidOn: "2026-10-09", amountCents: 50000 })] });
   assert.equal(reason(over, "p1"), "create_payment");
   assert.equal(reason(over, "p2"), "This payment is more than what's left on the bill.");
+  // What QuickBooks already has paid counts first, whatever the dates: a back-dated one that goes over waits.
+  const back = plan({
+    records: [sent(), sent({ record_type: "bill_payment", record_id: "p2", qb_id: "201" })],
+    payments: [payment({ id: "p2", paidOn: "2026-10-15", amountCents: 200000 }), payment({ id: "p1", paidOn: "2026-10-10", amountCents: 200000 })],
+  });
+  assert.equal(reason(back, "p1"), "This payment is more than what's left on the bill.");
 });
 
 test("voiding a bill deletes it in QuickBooks, after voiding its payments there", () => {
@@ -260,7 +272,7 @@ test("a bill deleted outright in the CRM is removed from QuickBooks too", () => 
 });
 
 test("something QuickBooks refused is tried again later, or at once when it changes", () => {
-  const failed = sent({ qb_id: null, status: "failed", reason: "QuickBooks said: no", tries: 1, next_try_at: "2026-10-08T16:00:00Z" });
+  const failed = sent({ qb_id: null, qb_hash: null, tried_hash: billHash(bill()), status: "failed", reason: "QuickBooks said: no", tries: 1, next_try_at: "2026-10-08T16:00:00Z" });
   assert.deepEqual(ops(plan({ records: [failed] })), []);
   assert.deepEqual(ops(plan({ records: [failed], now: new Date("2026-10-08T16:01:00Z") })), ["create_bill:b1"]);
   assert.deepEqual(ops(plan({ records: [failed], bills: [bill({ amountCents: 1 })] })), ["create_bill:b1"]);
@@ -271,6 +283,89 @@ test("something QuickBooks refused is tried again later, or at once when it chan
   assert.deepEqual(ops(s), ["wait:p1"]);
 });
 
+test("a change QuickBooks refused on a bill already there is tried again later, on Send now, or not at all if put back", () => {
+  const edited = bill({ amountCents: 330000 });
+  const refusedChange = sent({ status: "failed", failed_op: "change", reason: "QuickBooks said: closed", tried_hash: billHash(edited), tries: 1, next_try_at: "2026-10-08T16:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [edited], records: [refusedChange] })), [], "resting");
+  assert.deepEqual(ops(plan({ bills: [edited], records: [refusedChange], now: new Date("2026-10-08T16:01:00Z") })), ["update_bill:b1"]);
+  assert.deepEqual(ops(plan({ bills: [edited], records: [refusedChange], force: true })), ["update_bill:b1"]);
+  // Changed back to what QuickBooks has: nothing to send, the note goes.
+  assert.deepEqual(ops(plan({ bills: [bill()], records: [refusedChange] })), ["settle:b1"]);
+  // A vendor wait on a change, the same.
+  const vendorWait = sent({ status: "waiting", reason: "inactive", tried_hash: billHash(edited), tries: 1, next_try_at: "2026-10-08T16:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [edited], records: [vendorWait], force: true })), ["update_bill:b1"]);
+  // Its payments still go: the bill is in QuickBooks.
+  assert.deepEqual(ops(plan({ bills: [edited], records: [refusedChange], payments: [payment()] })), ["create_payment:p1"]);
+});
+
+test("an add whose answer never came is repeated exactly, first, and nothing else happens to it that run", () => {
+  const doubt = { requestId: "crm-x", body: { TotalAmt: 1 }, hash: "h0" };
+  const inDoubt = sent({ qb_id: null, qb_hash: null, status: "waiting", doubt });
+  // Edited, voided, or moved before the start date meanwhile: still repeated first, then dealt with next run.
+  for (const b of [bill({ amountCents: 1 }), bill({ voided: true }), bill({ billDate: "2026-01-01" })]) {
+    const steps = plan({ bills: [b], records: [inDoubt], payments: [payment()] });
+    assert.deepEqual(ops(steps), ["resolve:b1"]);
+  }
+  // A payment in doubt that was deleted in the CRM: repeated first, voided next run.
+  const payDoubt = sent({ record_type: "bill_payment", record_id: "p9", qb_id: null, status: "waiting", doubt });
+  assert.deepEqual(ops(plan({ records: [sent(), payDoubt] })), ["resolve:p9"]);
+  // A bill isn't deleted while one of its payments is still unsettled in QuickBooks.
+  assert.deepEqual(ops(plan({ bills: [bill({ voided: true })], records: [sent(), payDoubt] })), ["resolve:p9"]);
+});
+
+test("a bill someone deleted in QuickBooks is left alone, and so are its payments", () => {
+  const gone = sent({ status: "gone", reason: "Deleted in QuickBooks" });
+  const steps = plan({ bills: [bill({ amountCents: 1 })], records: [gone], payments: [payment()] });
+  assert.deepEqual(ops(steps), ["wait:p1"]);
+  assert.equal(steps[0].op === "wait" && steps[0].reason, "Its bill was deleted in QuickBooks, so the CRM doesn't send its payments.");
+  assert.deepEqual(ops(plan({ bills: [bill({ voided: true })], records: [gone] })), []);
+});
+
+test("a voided bill waits to be deleted while a payment void QuickBooks refused is resting", () => {
+  const resting = sent({ record_type: "bill_payment", record_id: "p9", qb_id: "201", status: "failed", failed_op: "remove", next_try_at: "2026-10-08T16:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [bill({ voided: true })], records: [sent(), resting] })), []);
+  assert.deepEqual(ops(plan({ bills: [bill({ voided: true })], records: [sent(), resting], force: true })), ["void_payment:p9", "delete_bill:b1"]);
+  // A refused change isn't a refused removal: voiding the bill goes ahead at once.
+  const refusedChange = sent({ status: "failed", failed_op: "change", tried_hash: "x", tries: 5, next_try_at: "2026-10-09T15:00:00Z" });
+  assert.deepEqual(ops(plan({ bills: [bill({ voided: true })], records: [refusedChange] })), ["delete_bill:b1"]);
+});
+
+test("a change keeps what the bookkeeper set on the bill in QuickBooks", () => {
+  const line = {
+    Id: "1",
+    DetailType: "AccountBasedExpenseLineDetail",
+    Amount: 3240,
+    Description: "Framing lumber",
+    AccountBasedExpenseLineDetail: { AccountRef: { value: "77" }, ClassRef: { value: "9" }, CustomerRef: { value: "5" }, BillableStatus: "Billable" },
+  };
+  const current = { id: "108", syncToken: "3", lines: [line] };
+  // Only the memo or dates changed: the line isn't sent at all.
+  const a = billUpdateBody(bill({ memo: "EST-1048 · Maria Lopez · Bath" }), current, { vendorId: "56" });
+  assert.ok("body" in a);
+  assert.deepEqual(a.body, {
+    Id: "108",
+    SyncToken: "3",
+    sparse: true,
+    VendorRef: { value: "56" },
+    TxnDate: "2026-10-08",
+    DueDate: "2026-10-20",
+    PrivateNote: "EST-1048 · Maria Lopez · Bath",
+  });
+  // The amount changed: the same line, amount changed, its account, class and customer kept.
+  const b = billUpdateBody(bill({ amountCents: 330000 }), current, { vendorId: "56" });
+  assert.ok("body" in b);
+  assert.deepEqual(b.body.Line, [{ ...line, Amount: 3300 }]);
+  // A due date cleared in the CRM: due on its bill date.
+  const c = billUpdateBody(bill({ dueDate: null }), current, { vendorId: "56" });
+  assert.ok("body" in c && c.body.DueDate === "2026-10-08");
+  // Split into two lines in QuickBooks: its lines stay; a new total waits for the bookkeeper.
+  const split = { ...current, lines: [{ ...line, Amount: 3000 }, { ...line, Id: "2", Amount: 240 }] };
+  const d = billUpdateBody(bill({ memo: "x" }), split, { vendorId: "56" });
+  assert.ok("body" in d && !("Line" in d.body));
+  const e = billUpdateBody(bill({ amountCents: 1 }), split, { vendorId: "56" });
+  assert.ok("wait" in e && /split into several lines/.test(e.wait));
+});
+
 test("tries back off: 15 minutes, then an hour, four, twelve, a day", () => {
   assert.deepEqual(BACKOFF_MINUTES, [15, 60, 240, 720, 1440]);
   assert.equal(nextTryAt(1, NOW), "2026-10-08T15:15:00.000Z");
@@ -279,28 +374,16 @@ test("tries back off: 15 minutes, then an hour, four, twelve, a day", () => {
 });
 
 test("a wait already noted isn't written again every run", () => {
-  const waiting = sent({ qb_id: null, status: "waiting", reason: "This bill has no vendor.", qb_hash: billHash(bill({ vendorName: "" })) });
+  const waiting = sent({ qb_id: null, status: "waiting", reason: "This bill has no vendor.", qb_hash: null, tried_hash: billHash(bill({ vendorName: "" })) });
   assert.deepEqual(ops(plan({ bills: [bill({ vendorName: "" })], records: [waiting] })), []);
 });
 
-test("each write carries a request id QuickBooks uses to ignore a repeat; a new try gets a new one", () => {
-  const a = qbRequestId(["c1", "r1", "bill", "b1", "create", "h", 0]);
-  assert.equal(a, qbRequestId(["c1", "r1", "bill", "b1", "create", "h", 0]));
-  assert.notEqual(a, qbRequestId(["c1", "r1", "bill", "b1", "create", "h", 1]));
+test("every new try gets its own request id (QuickBooks answers a repeated one with its first answer)", () => {
+  const a = newRequestId();
   assert.ok(a.length <= 50);
-  assert.match(a, /^crm-[0-9a-f]{40}$/);
+  assert.match(a, /^crm-[0-9a-f]{32}$/);
+  assert.notEqual(a, newRequestId());
   assert.notEqual(paymentHash(payment()), paymentHash(payment({ amountCents: 1 })));
-});
-
-test("adding a bill again after it was removed is a new request, not the first one repeated", () => {
-  const scope = { companyId: "c1", realmId: "r1" };
-  const first = qbCreateRequestId(scope, "bill", "b1", "h", null);
-  // Cut off after QuickBooks saved it, before the CRM wrote it down: the same request.
-  assert.equal(qbCreateRequestId(scope, "bill", "b1", "h", sent({ qb_id: null, status: "waiting", sent_at: null })), first);
-  // Refused, then tried again: a new one.
-  assert.notEqual(qbCreateRequestId(scope, "bill", "b1", "h", sent({ qb_id: null, status: "failed", tries: 1, sent_at: null })), first);
-  // Voided, deleted in QuickBooks, un-voided: a new one, or QuickBooks answers with the deleted bill.
-  assert.notEqual(qbCreateRequestId(scope, "bill", "b1", "h", sent({ qb_id: null, status: "removed" })), first);
 });
 
 test("Open in QuickBooks goes to the right company, practice or real", () => {
@@ -342,7 +425,25 @@ test("each bill says where it stands with QuickBooks", () => {
   assert.deepEqual(chips({ sending: false, billRecord: sent() }), ["good|✓ In QuickBooks · Bill · 10-08"]);
   assert.deepEqual(chips({ bill: bill({ voided: true }), billRecord: sent({ qb_id: null, status: "removed" }) }), ["off|Removed from QuickBooks"]);
   assert.deepEqual(chips({ bill: bill({ voided: true }), billRecord: sent() }), ["off|Being removed from QuickBooks"]);
+  assert.deepEqual(chips({ bill: bill({ voided: true }), billRecord: sent({ status: "failed", failed_op: "remove", reason: "closed" }) }), [
+    "bad|Couldn't remove from QuickBooks: closed",
+  ]);
+  // Its last change was refused, then it was voided: being removed, not "couldn't remove".
+  assert.deepEqual(chips({ bill: bill({ voided: true }), billRecord: sent({ status: "failed", failed_op: "change", reason: "closed" }) }), [
+    "off|Being removed from QuickBooks",
+  ]);
   assert.deepEqual(chips({ bill: bill({ voided: true }) }), []);
+  // Turned off with things pending: it says they won't go, not that they will.
+  assert.deepEqual(chips({ sending: false, billRecord: sent(), payments: [{ id: "p1", record: null }] }), [
+    "good|✓ Bill in QuickBooks",
+    "off|Payment not sent: sending to QuickBooks is off",
+  ]);
+  assert.deepEqual(chips({ sending: false, bill: bill({ voided: true }), billRecord: sent() }), ["wait|Still in QuickBooks: sending to QuickBooks is off"]);
+  assert.deepEqual(chips({ sending: false, billRecord: sent({ qb_id: null, status: "waiting", reason: "x" }) }), ["off|Not sent: sending to QuickBooks is off"]);
+  // Deleted in QuickBooks by someone there: no link to a bill that isn't there.
+  assert.deepEqual(chips({ billRecord: sent({ status: "gone" }) }), ["off|Deleted in QuickBooks, so the CRM doesn't send it again"]);
+  assert.equal(billQbChips({ sending: true, sendFrom: FROM, bill: bill(), billRecord: sent({ status: "gone" }), payments: [], day }).qbId, null);
+  assert.deepEqual(chips({ billRecord: sent({ status: "waiting", reason: "inactive" }) }), ["wait|In QuickBooks; the last change waits: inactive"]);
   assert.equal(billQbChips({ sending: true, sendFrom: FROM, bill: bill(), billRecord: sent(), payments: [], day }).qbId, "108");
   assert.equal(billQbChips({ sending: true, sendFrom: FROM, bill: bill(), billRecord: sent({ status: "removed", qb_id: null }), payments: [], day }).qbId, null);
 });
@@ -389,6 +490,15 @@ test("a vendor is looked up by its exact name, apostrophes escaped, inactive one
   assert.ok(seen!.init.signal, "every call has a time limit");
 });
 
+test("an answer that's cut off is no answer, never a refusal; an answer about another record isn't taken", async () => {
+  const cut = (async () => new Response("{\"Bill\":{\"Id\"", { status: 200 })) as unknown as typeof fetch;
+  const made = await createBillPayment(access, {} as never, "crm-a", cut);
+  assert.ok("error" in made && made.error.kind === "transient");
+  const other = (async () => new Response(JSON.stringify({ BillPayment: { Id: "999", SyncToken: "4" } }), { status: 200 })) as unknown as typeof fetch;
+  const v = await voidBillPayment(access, { id: "200", syncToken: "3" }, "crm-b", other);
+  assert.ok("error" in v && /different record/.test(v.error.message));
+});
+
 test("writes post JSON with the request id; a payment is voided, not deleted", async () => {
   const calls: Seen[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
@@ -425,6 +535,10 @@ test("0222 keeps what was sent, per QuickBooks company, readable only by the cos
   assert.match(sql, /add column if not exists send_bills boolean not null default false/);
   assert.match(sql, /add column if not exists send_bills_from date/);
   assert.match(sql, /add column if not exists bills_claimed_until timestamptz/);
+  assert.match(sql, /tried_hash text/);
+  assert.match(sql, /doubt jsonb/);
+  assert.match(sql, /'sent', 'waiting', 'failed', 'removed', 'gone'/);
+  assert.match(sql, /failed_op text check \(failed_op in \('add', 'change', 'remove'\)\)/);
   assert.match(sql, /select public\.apply_billing_lock_policies\(\);/);
   assert.match(sql, /perform cron\.schedule\('crm-quickbooks-sync', '\*\/5 \* \* \* \*', \$job\$select crm_jobs\.run\('\/api\/cron\/quickbooks-sync'\)\$job\$\);/);
   assert.match(source("../backup-scope.ts"), /"quickbooks_sync"/);
@@ -440,6 +554,14 @@ test("the job runs company by company, one run at a time per company, only on it
   assert.match(run, /\.eq\("realm_id", realmId\)/);
   assert.match(run, /planBillSync\(/);
   assert.match(run, /quickBooksAccess\(/);
+  // The exact request is written down before an add goes, and repeated if no answer came.
+  assert.match(run, /await save\(type, id, billId, record \? \{ doubt \}/);
+  assert.match(run, /case "resolve":/);
+  // Every new try gets a new request id; only a lost add repeats its own.
+  assert.doesNotMatch(run, /qbRequestId\(/);
+  assert.match(run, /requestId: newRequestId\(\)/);
+  // A failed read stops the run: never read as "nothing sent" or "everything deleted".
+  assert.doesNotMatch(run, /selectAll\s*[<(]/);
   // A different QuickBooks company: sending stops until the owner picks the start date for it.
   assert.match(source("../../app/api/oauth/quickbooks/callback/route.ts"), /send_bills: false/);
   const actions = source("../actions/quickbooks.ts");

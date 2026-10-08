@@ -7,8 +7,10 @@ import { QB_MINOR_VERSION } from "./oauth.ts";
  * without the network; the caller holds the login (connection.ts).
  *
  * Every write carries a request id: QuickBooks answers a repeat of the
- * same id with its first answer instead of doing the write twice, so a
- * run cut off after QuickBooks saved a bill doesn't add it again.
+ * same id with its first answer instead of doing the write twice. Each new
+ * try gets a new one; only an add whose answer never came is repeated with
+ * its own (bill-sync-run.ts keeps it), so a run cut off after QuickBooks
+ * saved a bill doesn't add it again.
  */
 
 export type QbAccess = { realmId: string; accessToken: string; apiBase: string };
@@ -64,9 +66,19 @@ async function call(
     return { error: { kind: "transient", message: "QuickBooks couldn't be reached. Trying again in a few minutes.", code: null } };
   }
   const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  // Accepted, but the answer was cut off: it may well have been done, so
+  // it counts as no answer, never as a refusal.
+  if (res.ok && !json) {
+    return { error: { kind: "transient", message: "QuickBooks' answer didn't come through. Trying again in a few minutes.", code: null } };
+  }
   if (!res.ok || !json || "Fault" in json) return { error: classifyQbError(res.ok ? 400 : res.status, json) };
   return { json };
 }
+
+/** QuickBooks answered about another record than the one asked about. */
+const otherRecord = (): { error: QbError } => ({
+  error: { kind: "validation", message: "QuickBooks answered about a different record. Trying again later.", code: null },
+});
 
 type Saved = { id: string; syncToken: string };
 
@@ -130,47 +142,35 @@ export type QbBillPaymentBody = {
   Line: { Amount: number; LinkedTxn: { TxnId: string; TxnType: "Bill" }[] }[];
 };
 
-export async function createBill(access: QbAccess, body: QbBillBody, requestId: string, fetchImpl: typeof fetch = fetch) {
+/** Adds a bill. `body` is a QbBillBody -- or, repeating a try whose answer
+ *  never came, exactly what was sent then. */
+export async function createBill(access: QbAccess, body: QbBillBody | unknown, requestId: string, fetchImpl: typeof fetch = fetch) {
   const res = await call(access, "POST", "bill", { requestid: requestId }, body, fetchImpl);
   return "error" in res ? res : saved(res.json, "Bill");
 }
 
-/** A bill as QuickBooks has it now: what an update or delete must name. */
+/** A bill as QuickBooks has it now, lines and all: what a change or a
+ *  delete must name, and what a change must keep. */
 export async function readBill(
   access: QbAccess,
   id: string,
   fetchImpl: typeof fetch = fetch
-): Promise<(Saved & { lineId: string | null }) | { error: QbError }> {
+): Promise<(Saved & { lines: Record<string, unknown>[] }) | { error: QbError }> {
   const res = await call(access, "GET", `bill/${encodeURIComponent(id)}`, {}, undefined, fetchImpl);
   if ("error" in res) return res;
   const s = saved(res.json, "Bill");
   if ("error" in s) return s;
-  const line = ((res.json.Bill as { Line?: { Id?: unknown; DetailType?: unknown }[] }).Line ?? []).find(
-    (l) => l.DetailType === "AccountBasedExpenseLineDetail" && typeof l.Id === "string"
-  );
-  return { ...s, lineId: (line?.Id as string | undefined) ?? null };
+  const lines = ((res.json.Bill as { Line?: Record<string, unknown>[] }).Line ?? []).filter((l) => l && l.DetailType !== "SubTotalLineDetail");
+  return { ...s, lines };
 }
 
-/** Changes the bill in place. Sparse: what the CRM doesn't send (a class,
- *  terms, a location the bookkeeper set) stays as it is; the one line is
- *  replaced by the CRM's. */
-export async function updateBill(
-  access: QbAccess,
-  current: Saved & { lineId: string | null },
-  body: QbBillBody,
-  requestId: string,
-  fetchImpl: typeof fetch = fetch
-) {
-  const line = { ...body.Line[0], ...(current.lineId ? { Id: current.lineId } : {}) };
-  const res = await call(
-    access,
-    "POST",
-    "bill",
-    { requestid: requestId },
-    { ...body, Line: [line], Id: current.id, SyncToken: current.syncToken, sparse: true },
-    fetchImpl
-  );
-  return "error" in res ? res : saved(res.json, "Bill");
+/** Changes a bill in place: a sparse body from billUpdateBody (bill-sync.ts),
+ *  which keeps what the bookkeeper set on it. */
+export async function updateBill(access: QbAccess, body: Record<string, unknown>, requestId: string, fetchImpl: typeof fetch = fetch) {
+  const res = await call(access, "POST", "bill", { requestid: requestId }, body, fetchImpl);
+  if ("error" in res) return res;
+  const s = saved(res.json, "Bill");
+  return "error" in s || s.id === body.Id ? s : otherRecord();
 }
 
 /** QuickBooks can't void a bill; deleting is the only way to take it back. */
@@ -183,12 +183,13 @@ export async function deleteBill(access: QbAccess, current: Saved, requestId: st
     { Id: current.id, SyncToken: current.syncToken },
     fetchImpl
   );
-  return "error" in res ? res : { id: current.id, syncToken: current.syncToken };
+  if ("error" in res) return res;
+  return (res.json.Bill as { Id?: unknown } | undefined)?.Id === current.id ? { id: current.id, syncToken: current.syncToken } : otherRecord();
 }
 
 export async function createBillPayment(
   access: QbAccess,
-  body: QbBillPaymentBody,
+  body: QbBillPaymentBody | unknown,
   requestId: string,
   fetchImpl: typeof fetch = fetch
 ) {
@@ -197,9 +198,20 @@ export async function createBillPayment(
   return "error" in res ? res : saved(res.json, "BillPayment");
 }
 
-export async function readBillPayment(access: QbAccess, id: string, fetchImpl: typeof fetch = fetch) {
+/** A bill payment as QuickBooks has it now; voided already, or not. */
+export async function readBillPayment(
+  access: QbAccess,
+  id: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<(Saved & { voided: boolean }) | { error: QbError }> {
   const res = await call(access, "GET", `billpayment/${encodeURIComponent(id)}`, {}, undefined, fetchImpl);
-  return "error" in res ? res : saved(res.json, "BillPayment");
+  if ("error" in res) return res;
+  const s = saved(res.json, "BillPayment");
+  if ("error" in s) return s;
+  const p = res.json.BillPayment as { TotalAmt?: unknown; Line?: unknown[]; PrivateNote?: unknown };
+  // A voided payment is kept at zero, its lines cleared, "Voided" in its memo.
+  const voided = Number(p.TotalAmt) === 0 && !(p.Line ?? []).length && /^Voided/i.test(String(p.PrivateNote ?? ""));
+  return { ...s, voided };
 }
 
 /** A voided bill payment stays in QuickBooks at zero, marked Voided: the
@@ -213,5 +225,7 @@ export async function voidBillPayment(access: QbAccess, current: Saved, requestI
     { Id: current.id, SyncToken: current.syncToken, sparse: true },
     fetchImpl
   );
-  return "error" in res ? res : saved(res.json, "BillPayment");
+  if ("error" in res) return res;
+  const s = saved(res.json, "BillPayment");
+  return "error" in s || s.id === current.id ? s : otherRecord();
 }

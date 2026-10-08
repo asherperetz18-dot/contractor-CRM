@@ -30,7 +30,9 @@ export type QuickBooksAttention = {
   vendor: string;
   amountCents: number | null;
   day: string | null;
-  status: "waiting" | "failed";
+  /** The payment is no longer in the CRM (its void in QuickBooks is what's stuck). */
+  deleted: boolean;
+  status: "waiting" | "failed" | "gone";
   reason: string;
 };
 
@@ -184,19 +186,20 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
       .eq("status", status);
     return n ?? 0;
   };
-  const [sent, waiting, failed, { data: open }] = await Promise.all([
+  const [sent, waiting, failed, gone, { data: open }] = await Promise.all([
     count("sent"),
     count("waiting"),
     count("failed"),
+    count("gone"),
     admin
       .from("quickbooks_sync")
       .select("record_type, record_id, bill_id, status, reason")
       .eq("company_id", companyId)
       .eq("realm_id", realmId)
-      .in("status", ["waiting", "failed"])
+      .in("status", ["waiting", "failed", "gone"])
       .order("updated_at", { ascending: false })
       .limit(20)
-      .returns<{ record_type: "bill" | "bill_payment"; record_id: string; bill_id: string | null; status: "waiting" | "failed"; reason: string | null }[]>(),
+      .returns<{ record_type: "bill" | "bill_payment"; record_id: string; bill_id: string | null; status: "waiting" | "failed" | "gone"; reason: string | null }[]>(),
   ]);
 
   // Name each one the way Bills to Pay does: the vendor, the amount, the day.
@@ -225,17 +228,21 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
 
   const attention: QuickBooksAttention[] = rows.map((r) => {
     const bill = billsById.get(r.record_type === "bill" ? r.record_id : r.bill_id ?? "");
-    const pay = r.record_type === "bill_payment" ? payById.get(r.record_id) : undefined;
+    const isPayment = r.record_type === "bill_payment";
+    const pay = isPayment ? payById.get(r.record_id) : undefined;
     return {
-      kind: r.record_type === "bill" ? "bill" : "payment",
+      kind: isPayment ? "payment" : "bill",
       vendor: (bill?.vendor_id ? vendorName.get(bill.vendor_id) : null) ?? bill?.vendor_name ?? "A bill",
-      amountCents: pay ? Number(pay.amount_cents) : bill ? Number(bill.amount_cents) : null,
-      day: pay ? pay.paid_on : bill?.bill_date ?? null,
+      // A payment deleted in the CRM: not the bill's amount or date.
+      amountCents: isPayment ? (pay ? Number(pay.amount_cents) : null) : bill ? Number(bill.amount_cents) : null,
+      day: isPayment ? pay?.paid_on ?? null : bill?.bill_date ?? null,
+      deleted: isPayment && !pay,
       status: r.status,
       reason: r.reason ?? "",
     };
   });
-  return { ...base, counts: { sent, waiting, failed }, attention };
+  // Deleted in QuickBooks by someone there counts with what didn't go.
+  return { ...base, counts: { sent, waiting, failed: failed + gone }, attention };
 }
 
 /**
@@ -265,18 +272,39 @@ export async function saveQuickBooksBillSending(input: { on: boolean; from: stri
   return {};
 }
 
-/** Send now: this company's new and changed bills go at once, refusals tried again. */
-export async function sendBillsToQuickBooksNow(): Promise<{ error?: string; sent?: number; changed?: number; removed?: number; more?: boolean }> {
+export type SendNowResult = {
+  error?: string;
+  sent?: number;
+  changed?: number;
+  removed?: number;
+  waiting?: number;
+  failed?: number;
+  more?: boolean;
+};
+
+/**
+ * Send now: this company's new and changed bills go at once, refusals
+ * tried again. Stops starting work after 20 seconds (and cuts off a call
+ * still going at 45), inside the page's 60-second limit; the rest goes
+ * with the five-minute job.
+ */
+export async function sendBillsToQuickBooksNow(): Promise<SendNowResult> {
   const who = await officeAdmin();
   if (!who) return { error: "Only Office or Admin users can change this." };
   const companyId = who.profile.company_id;
   if (await isCompanyLocked(companyId)) return { error: (await lockedServicesError(companyId)) ?? "This company is locked." };
-  const s = await syncCompanyBills(who.admin, companyId, { writeCap: 40, budgetMs: 45_000, force: true });
-  revalidatePath("/settings/quickbooks");
-  revalidatePath("/bills");
+  let s;
+  try {
+    s = await syncCompanyBills(who.admin, companyId, { writeCap: 40, budgetMs: 20_000, force: true });
+  } catch {
+    return { error: "Sending didn't finish. Try again in a minute; nothing is sent twice." };
+  } finally {
+    revalidatePath("/settings/quickbooks");
+    revalidatePath("/bills");
+  }
   if (s.busy) return { error: "QuickBooks is already sending this company's bills. Look again in a minute." };
-  if (s.error && !s.sent && !s.changed && !s.removed) return { error: s.error };
-  return { sent: s.sent, changed: s.changed, removed: s.removed, more: s.more, ...(s.error ? { error: s.error } : {}) };
+  const result = { sent: s.sent, changed: s.changed, removed: s.removed, waiting: s.waiting, failed: s.failed, more: s.more };
+  return s.error ? { ...result, error: s.error } : result;
 }
 
 /** Reads QuickBooks' accounts again: one added there since connecting. */

@@ -15,8 +15,12 @@
 --     company: QuickBooks' id for it, what was sent, and -- when it hasn't
 --     gone -- why. record_id is deliberately not a foreign key: a payment
 --     deleted in the CRM leaves its row behind, so the job still knows to
---     void it in QuickBooks. The cost-money roles can read it (Bills to
---     Pay shows it); only the server writes it.
+--     void it in QuickBooks. Before adding a bill or payment the job writes
+--     the exact request, with its request id, into `doubt`; if no answer
+--     came, the next run repeats it (QuickBooks answers a repeat of a
+--     request id without adding it twice).
+--     The cost-money roles can read it (Bills to Pay shows it); only the
+--     server writes it.
 --   * The job runs every five minutes, from the database's scheduler
 --     (0203), like the other scheduled jobs.
 --
@@ -42,9 +46,17 @@ create table if not exists public.quickbooks_sync (
   bill_id uuid,
   -- QuickBooks' Id, once it's there.
   qb_id text,
-  -- What was last sent or tried, to tell when it changed.
+  -- What QuickBooks has: a hash of the version that last went.
   qb_hash text,
-  status text not null default 'waiting' check (status in ('sent', 'waiting', 'failed', 'removed')),
+  -- The last version that didn't go (waiting or refused), to tell when it changes.
+  tried_hash text,
+  -- An add sent with no answer back: { requestId, body, hash }, repeated next run.
+  doubt jsonb,
+  -- sent, waiting, failed (refused), removed (voided or deleted after the
+  -- CRM voided or deleted it), gone (deleted in QuickBooks by someone there).
+  status text not null default 'waiting' check (status in ('sent', 'waiting', 'failed', 'removed', 'gone')),
+  -- While failed: which step QuickBooks refused -- adding it, a change, or removing it.
+  failed_op text check (failed_op in ('add', 'change', 'remove')),
   reason text,
   tries integer not null default 0,
   next_try_at timestamptz,

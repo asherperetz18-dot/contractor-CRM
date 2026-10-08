@@ -218,15 +218,17 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
     setMessage(null);
     startTransition(async () => {
       const res = await sendBillsToQuickBooksNow();
-      const done = (res.sent ?? 0) + (res.changed ?? 0) + (res.removed ?? 0);
-      if (res.error && !done) return setError(res.error);
       const parts = [
         res.sent ? `${res.sent} sent` : null,
         res.changed ? `${res.changed} updated` : null,
         res.removed ? `${res.removed} removed` : null,
+        res.waiting ? `${res.waiting} waiting` : null,
+        res.failed ? `${res.failed} didn't go` : null,
       ].filter(Boolean);
+      if (res.error && !parts.length) return setError(res.error);
       setMessage(
         (parts.length ? `Done: ${parts.join(", ")}.` : "Nothing new to send.") +
+          (res.waiting || res.failed ? " See Needs a look." : "") +
           (res.more ? " The rest go in the next few minutes." : "")
       );
       if (res.error) setError(res.error);
@@ -305,12 +307,12 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
               <h3 className="qb-subhead">Needs a look</h3>
               <ul className="qb-attention">
                 {b.attention.map((a, i) => (
-                  <li key={i} className={a.status === "failed" ? "is-failed" : undefined}>
+                  <li key={i} className={a.status === "waiting" ? undefined : "is-failed"}>
                     <strong>
                       {a.vendor}
                       {a.amountCents !== null ? ` · ${money(a.amountCents)}` : ""} {a.kind}
                     </strong>
-                    {a.day ? ` on ${fmtDate(a.day)}` : ""}
+                    {a.deleted ? " (deleted in the CRM)" : a.day ? ` on ${fmtDate(a.day)}` : ""}
                     <div className="est-tax-note">{a.reason}</div>
                   </li>
                 ))}
