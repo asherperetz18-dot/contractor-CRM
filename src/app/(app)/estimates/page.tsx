@@ -1,3 +1,5 @@
+import { getCompanyZone } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
@@ -101,8 +103,15 @@ export default async function EstimatesPage() {
     else viewsByEstimate[v.estimate_id] = { count: 1, last: v.viewed_at };
   }
 
+  // The company's calendar for the date filter, handed down: a document
+  // made after 5pm Pacific is that day's, not the server's (UTC) next.
+  const zone = await getCompanyZone();
+  const today = isoDateInZone(new Date(), zone);
+
   return (
     <EstimatesView
+      today={today}
+      zone={zone}
       title={staffPageLabel("/estimates", "Estimates & Contracts", await getCompanyWordsCached(profile.company_id))}
       words={await getCompanyWordsCached(profile.company_id)}
       estimates={estimates}

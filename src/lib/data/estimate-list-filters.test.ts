@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   FOLLOW_UP_CHIPS,
+  followUpClock,
   matchesEstimateSearch,
   matchesFollowUpChip,
   sortEstimates,
@@ -67,7 +68,8 @@ test("each card offers only the follow-up chips that mean something there", () =
   assert.deepEqual(FOLLOW_UP_CHIPS.signed, []);
 });
 
-const now = new Date("2026-09-28T12:00:00");
+// The company's today, on UTC's calendar for the fixtures below.
+const now = followUpClock("2026-09-28", "UTC");
 const doc = (over: Partial<Parameters<typeof matchesFollowUpChip>[0]> = {}) => ({
   total_cents: 2_800_000,
   created_at: "2026-09-25T18:00:00Z",
@@ -93,6 +95,15 @@ test("Not opened and Opened 3+ times read the customer's views", () => {
   assert.equal(matchesFollowUpChip(doc({ views: 1 }), "not_opened", now), false);
   assert.equal(matchesFollowUpChip(doc({ views: 3 }), "opened_often", now), true);
   assert.equal(matchesFollowUpChip(doc({ views: 2 }), "opened_often", now), false);
+});
+
+test("Older than 7 days counts the company's days, evenings included", () => {
+  // Oct 8 in Los Angeles: a week back is Oct 1, which starts at 07:00 UTC.
+  const la = followUpClock("2026-10-08", "America/Los_Angeles");
+  // Sep 30 at 8pm there -- UTC already called it Oct 1, a week old.
+  assert.equal(matchesFollowUpChip(doc({ created_at: "2026-10-01T03:00:00Z" }), "stale_draft", la), true);
+  // Oct 1 at 12:30am there: exactly a week old, still this week's work.
+  assert.equal(matchesFollowUpChip(doc({ created_at: "2026-10-01T07:30:00Z" }), "stale_draft", la), false);
 });
 
 test("Expires within 7 days counts today through a week out", () => {

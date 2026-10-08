@@ -2329,3 +2329,18 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The dispatcher statement has no ledger, so nothing carries it.
 - The owner was told to reopen September's statements and pay any line dated Sep 30 that wasn't on the copy already paid.
 - Hand-recorded payments, financing receipts and paper signatures are stamped at noon UTC (morning in Pacific), so only portal payments and e-signed certificates can fall in that evening. The Estimates and Contracts date filters and the rep report's Custom dates still use the UTC day (TECH_DEBT).
+
+## 180 — The Estimates and Contracts date filters go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** Estimates & Contracts and the Contract Board load every document and filter in the browser. Their "Created" date filter, and the funnel cards it narrows, compared each `created_at` by its UTC day, against a window worked out from a clock read while the page drew (UTC on the server's first draw, the browser's own after). So a document made after 5pm Pacific (4pm in winter) fell on the next day: a range ending today left it out, and one starting today took in the evening before. The Estimates "Older than 7 days" chip did the same.
+
+**Decision:**
+- **The pages** hand the views the company's today and zone. Each view works out its window from noon on that today (`resolveWindow`) and counts a document when its `created_at` falls between the window's company midnights (`stampedWithin`).
+  - A custom date still being typed (or otherwise not a real day, `calendarDay`) is no edge, not a broken window.
+  - The date boxes stop at today, so typing one fills the other with the company's today.
+- **The follow-up chips** measure against a `followUpClock(today, zone)` worked out once per draw: today, and the company's midnight a week back. A draft made at 7pm Pacific is aged by its own day, and the chips cost a number comparison per document across thousands.
+- **What doesn't move.** The Contract Board's stat cards (awaiting, signed this month, expiring, average days to sign), its expiry countdowns and its no-reply flags still read the clock where the page draws: the server's on the first draw, then the browser's. For anyone in the company's zone the browser's is the same day, and none of them compare a stored timestamp's UTC day.
+
+**Consequence:** a document counts on the day it was made, on both pages' filters and on the funnel cards above them. No SQL. The rep report's Custom date boxes still seed from the browser's UTC date (TECH_DEBT).
