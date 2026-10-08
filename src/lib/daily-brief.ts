@@ -1,4 +1,26 @@
+import { dayStartInZone, isoDateInZone } from "./company-clock.ts";
 import { countsAsLead } from "./lead-or-contact.ts";
+
+export type BriefPeriod = "today" | "week" | "month";
+
+/**
+ * Where each period starts. Today runs from midnight on the company's
+ * clock; This Week and This Month are the last 7 and 30 days. `since` is
+ * what timestamps are compared with, `sinceDay` what an appointment's
+ * plain date is compared with.
+ */
+export function briefPeriodStart(
+  period: BriefPeriod,
+  now: Date,
+  zone: string
+): { since: string; sinceDay: string } {
+  if (period === "today") {
+    const today = isoDateInZone(now, zone);
+    return { since: dayStartInZone(today, zone).toISOString(), sinceDay: today };
+  }
+  const since = new Date(now.getTime() - (period === "week" ? 7 : 30) * 86400000).toISOString();
+  return { since, sinceDay: since.slice(0, 10) };
+}
 
 export type BriefBreakdown = {
   topSources: { source: string; count: number }[];

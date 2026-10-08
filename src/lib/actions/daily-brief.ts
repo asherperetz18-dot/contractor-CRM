@@ -1,7 +1,7 @@
 "use server";
 
-import { addDays } from "@/lib/company-clock";
-import { companyToday } from "@/lib/data/company-today";
+import { addDays, isoDateInZone } from "@/lib/company-clock";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { appointmentAttended, isAdminRole, type EventStatus } from "@/lib/data/types";
@@ -9,7 +9,7 @@ import { isClosedStageKey } from "@/lib/pipeline/stage-keys";
 import { selectAll } from "@/lib/data/select-all";
 import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import { countsAsLead } from "@/lib/lead-or-contact";
-import { briefBreakdown, type BriefBreakdown } from "@/lib/daily-brief";
+import { briefBreakdown, briefPeriodStart, type BriefBreakdown, type BriefPeriod } from "@/lib/daily-brief";
 
 type BriefLead = {
   id: string;
@@ -22,8 +22,6 @@ type BriefLead = {
   refund_requested_at: string | null;
   has_appt: string | null;
 };
-
-export type BriefPeriod = "today" | "week" | "month";
 
 export type BriefStats = {
   leadsAdded: number;
@@ -58,15 +56,6 @@ export type DailyBrief = {
   breakdown: Record<BriefPeriod, BriefBreakdown>;
 };
 
-function startOf(period: BriefPeriod): string {
-  const days = period === "today" ? 1 : period === "week" ? 7 : 30;
-  return new Date(Date.now() - days * 86400000).toISOString();
-}
-
-function dayOf(period: BriefPeriod): string {
-  return startOf(period).slice(0, 10);
-}
-
 /**
  * Numbers for the admin daily brief.
  *
@@ -80,17 +69,22 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
 
   const supabase = await createClient();
   const companyId = profile.company_id;
-  const todayISO = await companyToday();
+  const zone = await getCompanyZone();
+  const now = new Date();
+  const todayISO = isoDateInZone(now, zone);
+  const periodStart = (period: BriefPeriod) => briefPeriodStart(period, now, zone);
   const in2Days = addDays(todayISO, 2);
   const in7Days = addDays(todayISO, 7);
+  // The furthest back any period looks.
+  const monthAgo = periodStart("month").since;
 
   const [
     boughtKeys,
     { data: company },
     leads,
     events,
-    { data: calls },
-    { data: texts },
+    calls,
+    texts,
     tasks,
     { data: members },
   ] = await Promise.all([
@@ -120,14 +114,29 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
         .eq("company_id", companyId)
         .range(rangeFrom, rangeTo)
     ),
-    supabase
-      .from("call_logs")
-      .select("id, created_at, duration_seconds, rep_id")
-      .eq("company_id", companyId),
-    supabase
-      .from("sms_messages")
-      .select("id, created_at, direction")
-      .eq("company_id", companyId),
+    // Calls and texts had the same bare select: past 1000 of either in
+    // total, the counts were taken over whichever 1000 came back. Only
+    // the last 30 days are read -- no period looks further -- paged,
+    // and in id order so the pages don't overlap.
+    selectAll<{ created_at: string; duration_seconds: number; rep_id: string | null }>(
+      (rangeFrom, rangeTo) =>
+        supabase
+          .from("call_logs")
+          .select("id, created_at, duration_seconds, rep_id")
+          .eq("company_id", companyId)
+          .gte("created_at", monthAgo)
+          .order("id")
+          .range(rangeFrom, rangeTo)
+    ),
+    selectAll<{ created_at: string; direction: string }>((rangeFrom, rangeTo) =>
+      supabase
+        .from("sms_messages")
+        .select("id, created_at, direction")
+        .eq("company_id", companyId)
+        .gte("created_at", monthAgo)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
     selectAll<{ lead_id: string; due_date: string; completed_at: string | null }>(
       (rangeFrom, rangeTo) =>
         supabase
@@ -144,14 +153,13 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
     source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
   }[];
   const eventRows = events;
-  const callRows = (calls ?? []) as { created_at: string; duration_seconds: number; rep_id: string | null }[];
-  const textRows = (texts ?? []) as { created_at: string; direction: string }[];
+  const callRows = calls;
+  const textRows = texts;
   const taskRows = tasks;
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
 
   function statsFor(period: BriefPeriod): BriefStats {
-    const since = startOf(period);
-    const sinceDay = dayOf(period);
+    const { since, sinceDay } = periodStart(period);
     const periodEvents = eventRows.filter((e) => e.date >= sinceDay && e.date <= todayISO);
     const wonInPeriod = leadRows.filter((l) => l.won_at && l.won_at >= since);
     const periodCalls = callRows.filter((c) => c.created_at >= since);
@@ -214,7 +222,7 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const nameById = new Map(memberRows.map((m) => [m.id, m.name || m.email || "Unknown"]));
   const breakdownRows = { leads: leadRows, events: eventRows, calls: callRows };
   const breakdownFor = (period: BriefPeriod) =>
-    briefBreakdown(breakdownRows, startOf(period), boughtKeys, nameById);
+    briefBreakdown(breakdownRows, periodStart(period).since, boughtKeys, nameById);
 
   return {
     brief: {

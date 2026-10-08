@@ -21,6 +21,20 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.244.0",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Today now means since midnight on your company's clock, not the last 24 hours. In the morning it no longer counts most of yesterday, and Appointments Scheduled, Showed and No-show for Today cover today's appointments only. This Week and This Month are unchanged: the last 7 and 30 days.",
+    ],
+  },
+  {
+    version: "1.243.2",
+    date: "2026-10-08",
+    notes: [
+      "Daily Brief: Calls, talk time, Texts Out / In and each rep's Calls now count every call and text in the period. Once a company had more than 1,000 calls or texts in total, they were counted from only 1,000 of them and could come out too low.",
+    ],
+  },
+  {
     version: "1.243.1",
     date: "2026-10-08",
     notes: [
