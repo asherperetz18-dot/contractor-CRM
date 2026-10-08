@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.252.0",
+    date: "2026-10-08",
+    notes: [
+      "Text Reports now goes by your company's clock. A text sent after 5pm counts on the day it was sent, so a date range keeps its last evening and no longer takes in the evening before it starts. The busiest day is your day too.",
+      "Profit & Loss: a payment, deposit or billed stage from the evening counts on that day. On the 31st it stays in that month instead of moving to the next, and This month and This year are your company's.",
+    ],
+  },
+  {
     version: "1.251.0",
     date: "2026-10-08",
     notes: [

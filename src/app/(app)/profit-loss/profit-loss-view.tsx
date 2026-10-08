@@ -42,6 +42,8 @@ export function ProfitLossView({
   billPayments,
   jobs,
   vendorNames,
+  today,
+  zone,
 }: {
   contracts: PLContract[];
   phases: PLPhase[];
@@ -51,6 +53,10 @@ export function ProfitLossView({
   billPayments: PLBillPayment[];
   jobs: PLJobInfo[];
   vendorNames: { id: string; name: string | null }[];
+  /** The company's today, from the server: what "this month" means. */
+  today: string;
+  /** The company's zone: whose day each payment and signature counts on. */
+  zone: string;
 }) {
   const [basis, setBasis] = useState<PLBasis>("cash");
   const [range, setRange] = useState<RangeState>({ preset: "this-year", from: "", to: "" });
@@ -61,29 +67,27 @@ export function ProfitLossView({
     [vendorNames]
   );
 
+  // Noon on the company's today: the calendar every period is read on,
+  // the same on the server's first draw and in the browser.
+  const now = useMemo(() => new Date(`${today}T12:00:00`), [today]);
   const window =
     range.from || range.to
       ? { from: range.from || null, to: range.to || null }
-      : plPeriodWindow(range.preset as PLPeriodKey);
+      : plPeriodWindow(range.preset as PLPeriodKey, now);
+  const input = useMemo(
+    () => ({ zone, contracts, phases, payments, expenses, bills, billPayments }),
+    [zone, contracts, phases, payments, expenses, bills, billPayments]
+  );
 
   const report = useMemo(
-    () =>
-      profitLoss(basis, window, { contracts, phases, payments, expenses, bills, billPayments }),
+    () => profitLoss(basis, window, input),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [basis, window.from, window.to, contracts, phases, payments, expenses, bills, billPayments]
+    [basis, window.from, window.to, input]
   );
   const months = useMemo(
-    () =>
-      profitLossByMonth(basis, window, {
-        contracts,
-        phases,
-        payments,
-        expenses,
-        bills,
-        billPayments,
-      }),
+    () => profitLossByMonth(basis, window, input, now),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [basis, window.from, window.to, contracts, phases, payments, expenses, bills, billPayments]
+    [basis, window.from, window.to, input, now]
   );
   const jobName = (leadId: string | null) =>
     leadId ? (jobInfo.get(leadId)?.name ?? "Unnamed job") : "Not tied to a job";

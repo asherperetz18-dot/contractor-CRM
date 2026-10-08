@@ -2278,3 +2278,25 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - Until 0226 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower.
 
 **Consequence:** Marketing Analytics, its team table, the rep report it opens and the main dashboard's team panel go by the company's day and agree at any hour. Text Reports, Profit & Loss and the Estimates and Contracts date filters still file by the UTC day (TECH_DEBT). Needs 0226 to be fast again. The lead-rule gap in Marketing's "Exclude bought lists" (TECH_DEBT) is unchanged: this change only swaps the zone.
+
+## 178 — Text Reports and Profit & Loss go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** After #175–#177, these two reports still used the server's clock (UTC), whose day starts at 5pm Pacific (4pm in winter).
+- **Text Reports:**
+  - The server loaded a period from the UTC date, a day wider at the start to cover any browser's date, and cut it at UTC midnight.
+  - The view then filtered on the browser's own clock, read while the page rendered, and by each text's UTC day.
+  - The busiest day was a UTC day too.
+  - So a text sent after 5pm on a range's last day was left out, and one from the evening before it started was counted.
+- **Profit & Loss:**
+  - The report runs in the browser on every record, and filed each payment, deposit, billed phase and dateless bill by its UTC day and month. A payment at 7pm on the 31st landed in the next month.
+  - "This month" and the chart's last month came from a clock read during render. On the server's first draw that was UTC, so the evening of a month's last day could draw one month and then flip to the other.
+
+**Decision:**
+- **Text Reports, the window.** It works like Appointment Reports (`appointmentReportWindow`): the server works out the company's today and hands it to the view. `textReportWindow(query, today)` is the one window both use, plain day arithmetic. The server cuts it at the company's midnights (`windowInstants`) and loads exactly it.
+- **Text Reports, the view.** It counts with `stampedWithin(window, zone)`, a check built once per window, so each row costs only a number comparison. It is shared with the rep report, which had the same code inline. The busiest day is each text's company day (`isoDateReader`), worked out once per loaded set rather than on every keystroke in the search box.
+- **The date filter.** When someone types one custom date, `DateRangeFilter` fills the other from the page's `max` (Text Reports and Appointment Reports pass the company's today), not the browser's UTC date, which ran a day past `max` in the evening.
+- **Profit & Loss, the page.** It hands the view the company's today and zone. `ProfitLossInput` carries the zone, and the ledger reads every timestamp as its company day; plain dates (`spent_on`, `bill_date`, `paid_on`) are already days. The view reads periods and the chart's last month from noon on that today.
+
+**Consequence:** both reports count an evening's texts and money on the evening's date, and count the same period on the server as in the browser. The Text Reports table still prints each text's time in the viewer's own zone, as most tables do (TECH_DEBT). No SQL. Still on the UTC day: the Estimates and Contracts date filters, and the commission statements (TECH_DEBT).

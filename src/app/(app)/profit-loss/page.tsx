@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { canViewProfitLoss } from "@/lib/data/accounting-access";
 import { selectAll } from "@/lib/data/select-all";
+import { getCompanyZone } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
 import type {
   PLBill,
   PLBillPayment,
@@ -145,6 +147,12 @@ export default async function ProfitLossPage() {
       )
     : [];
 
+  // The company's calendar, handed down: "this month" and each payment's
+  // day are the office's, not the server's (UTC, a day ahead from 5pm
+  // Pacific) or whatever the browser's clock reads.
+  const zone = await getCompanyZone();
+  const today = isoDateInZone(new Date(), zone);
+
   const jobs: PLJobInfo[] = leads.map((l) => ({
     leadId: l.id,
     name: clientName(l) || "Unnamed job",
@@ -161,6 +169,8 @@ export default async function ProfitLossPage() {
       billPayments={billPayments}
       jobs={jobs}
       vendorNames={vendors.map((v) => ({ id: v.id, name: v.name }))}
+      today={today}
+      zone={zone}
     />
   );
 }

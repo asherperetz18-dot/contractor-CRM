@@ -2,11 +2,12 @@ import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { leadsLiteForMessages } from "@/lib/data/lead-lite";
-import { addDays } from "@/lib/schedule-window";
+import { getCompanyZone } from "@/lib/data/company-today";
+import { isoDateInZone, windowInstants } from "@/lib/company-clock";
 import {
   TEXT_REPORT_COLUMNS,
   parseTextReportQuery,
-  textReportServerWindow,
+  textReportWindow,
   type TextReportRow,
 } from "@/lib/text-reports-window";
 import { TextReportsView } from "./text-reports-view";
@@ -25,12 +26,16 @@ export default async function TextReportsPage({
   // the report uses -- this page used to read every text the company ever
   // sent or received. Every text in the period still comes (selectAll,
   // where a bare select stopped at PostgREST's 1000-row ceiling in
-  // silence), so the numbers count them all.
-  const bounds = textReportServerWindow(query, new Date().toISOString().slice(0, 10));
+  // silence), so the numbers count them all. The days are the company's,
+  // cut at its midnights: a text sent after 5pm Pacific used to land on
+  // the next day. The report counts this same window from the same today.
+  const zone = await getCompanyZone();
+  const today = isoDateInZone(new Date(), zone);
+  const at = windowInstants(textReportWindow(query, today), zone);
   const messages = await selectAll<TextReportRow>((f, t) => {
     let texts = supabase.from("sms_messages").select(TEXT_REPORT_COLUMNS).eq("company_id", companyId);
-    if (bounds.lo) texts = texts.gte("created_at", bounds.lo);
-    if (bounds.hi) texts = texts.lt("created_at", addDays(bounds.hi, 1));
+    if (at.from) texts = texts.gte("created_at", at.from);
+    if (at.before) texts = texts.lt("created_at", at.before);
     return texts
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
@@ -41,5 +46,7 @@ export default async function TextReportsPage({
   // texts never linked to a lead. The whole book used to ride along.
   const leads = await leadsLiteForMessages(supabase, companyId, messages);
 
-  return <TextReportsView query={query} messages={messages} leads={leads} />;
+  return (
+    <TextReportsView query={query} messages={messages} leads={leads} today={today} zone={zone} />
+  );
 }
