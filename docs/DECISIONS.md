@@ -2366,4 +2366,4 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
   - The dashboards' and Marketing Analytics' presets count from the browser's calendar too (TECH_DEBT, "Client components format dates in the browser's zone"), so for a team in the company's zone this is the company's day.
   - Profit & Loss's periods come from the company's today (#178). Its fill is the browser's day, the same day in the company's zone.
 
-**Consequence:** a custom range never starts or ends a day ahead in the evening. No SQL. The known places still reading the browser's UTC date are form defaults, the Calendar's today, the dial queue's booking limit and the Daily Brief's once-a-day popup (TECH_DEBT).
+**Consequence:** on the rep report and the pages that use `DateRangeFilter`, a custom range no longer starts or ends a day ahead in the evening. No SQL. Other screens still read the UTC date, among them form defaults, the Calendar's today, the dial queue's booking date, Licence & Insurance's expired mark and the Daily Brief's once-a-day popup; TECH_DEBT lists every one found. Projects' Signed date range still cuts at UTC midnight (TECH_DEBT).
