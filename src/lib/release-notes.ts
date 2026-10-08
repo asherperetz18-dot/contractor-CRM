@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.255.0",
+    date: "2026-10-08",
+    notes: [
+      "Custom dates now start from today, not tomorrow. On the sales rep report, pressing Custom in the evening opens on this month up to today; before, it could jump a day ahead, or to next month on the last day of the month. On the Dashboard, Dispatch Dashboard, Marketing Analytics and Profit & Loss, typing one custom date in the evening fills the other with today, not tomorrow.",
+    ],
+  },
+  {
     version: "1.254.0",
     date: "2026-10-08",
     notes: [

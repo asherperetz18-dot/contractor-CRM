@@ -162,5 +162,9 @@ test("typing one custom date fills the other with the page's own today, never th
   // filter's max; filling from the browser's UTC date put tomorrow in the
   // box after 5pm Pacific, past its own max.
   const filter = source("../components/date-range-filter.tsx");
-  assert.match(filter, /if \(!next\[other\]\) next\[other\] = max \?\? new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/);
+  // A page without a max (both dashboards, Marketing Analytics, P&L)
+  // fills from the browser's own calendar day, the day the Custom chip's
+  // month to date ends on -- not its UTC date.
+  assert.match(filter, /if \(!next\[other\]\) next\[other\] = max \?\? isoDay\(new Date\(\)\);/);
+  assert.doesNotMatch(filter, /toISOString/);
 });

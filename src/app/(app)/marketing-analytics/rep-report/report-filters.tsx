@@ -23,12 +23,17 @@ export function RepReportFilters({
   days,
   from,
   to,
+  today,
 }: {
   reps: { id: string; name: string }[];
   repId: string;
   days: string;
   from: string;
   to: string;
+  /** The company's today, from the page: the day its period and
+   *  "no outcome recorded" already read. The browser's UTC date runs a
+   *  day ahead from 5pm Pacific. */
+  today: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -63,7 +68,6 @@ export function RepReportFilters({
    */
   function startCustom() {
     if (from || to) return;
-    const today = new Date().toISOString().slice(0, 10);
     const next = new URLSearchParams(params.toString());
     next.set("from", today.slice(0, 8) + "01");
     next.set("to", today);
@@ -82,7 +86,7 @@ export function RepReportFilters({
     if (value) next.set(key, value);
     else next.delete(key);
     if (value && !next.get(key === "from" ? "to" : "from")) {
-      next.set(key === "from" ? "to" : "from", new Date().toISOString().slice(0, 10));
+      next.set(key === "from" ? "to" : "from", today);
     }
     next.delete("days");
     push(next);
