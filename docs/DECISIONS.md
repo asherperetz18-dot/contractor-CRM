@@ -2350,3 +2350,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
   In a browser in the company's zone they read the company's day once drawn; on the server's first draw, "signed this month" reads `signed_at`'s UTC month until the browser takes over. One visible seam: for a browser in a zone behind the company's, on the evening a proposal expires, "Expires within 7 days" (company's today) can drop it a few hours before its card does (browser's clock). Moving expiry onto the company's clock is its own change.
 
 **Consequence:** a document counts on the day it was made, on both pages' filters and on the funnel cards above them. No SQL. The rep report's Custom date boxes still seed from the browser's UTC date (TECH_DEBT).
+
+## 181 — Custom date ranges start from today, not the browser's UTC date
+
+**Date:** 2026-10-08
+
+**Context:** Two date pickers took "today" from `new Date().toISOString().slice(0, 10)`, the browser's UTC date. From 5pm Pacific (4pm in winter) that is already tomorrow.
+- **The rep report's Custom chip** seeded the 1st of that date's month through that date. On an evening it ran a day ahead; on the evening of the 31st it opened on next month's 1st alone (tomorrow), not on the month that was ending.
+- **Typing one of the rep report's date boxes** filled the other with the same date.
+- **The shared `DateRangeFilter`** did the same when the page gave it no `max`: on both dashboards, Marketing Analytics and Profit & Loss, typing one date in the evening filled the other with tomorrow. Its own Custom chip already used the browser's calendar day (`monthToDate`), so the two halves of one filter disagreed.
+
+**Decision:**
+- **The rep report** hands its filters the company's today, the one it already reads its period and "no outcome recorded" against (`companyNow()`, #177). The Custom chip seeds the 1st of that month through it, and a half-typed range fills from it. The boxes get no `max`: the report lists a rep's upcoming appointments, so a range can run past today.
+- **`DateRangeFilter` without a `max`** fills from the browser's own calendar day (`isoDay`), the day its Custom chip's month to date already ends on. Pages that pass a `max` (Text Reports, Appointment Reports, the Contract Board, Team Activity) give the company's today, as before (#178, #180).
+  - The dashboards' and Marketing Analytics' presets count from the browser's calendar too (TECH_DEBT, "Client components format dates in the browser's zone"), so for a team in the company's zone this is the company's day.
+  - Profit & Loss's periods come from the company's today (#178). Its fill is the browser's day, the same day in the company's zone.
+
+**Consequence:** on the rep report and the pages that use `DateRangeFilter`, a custom range no longer starts or ends a day ahead in the evening. No SQL. Other screens still read the UTC date, among them form defaults, the Calendar's today, the dial queue's booking date, Licence & Insurance's expired mark and the Daily Brief's once-a-day popup; TECH_DEBT lists every one found. Projects' Signed date range still cuts at UTC midnight (TECH_DEBT).

@@ -461,6 +461,7 @@ export default async function RepReportPage({
         days={rangeKey}
         from={sp.from ?? ""}
         to={sp.to ?? ""}
+        today={todayISO}
       />
 
       {!chosen || !funnel ? (
