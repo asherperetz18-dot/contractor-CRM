@@ -5,7 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import type { DateWindow } from "@/lib/data/date-range";
-import { companyNow } from "@/lib/data/company-today";
+import { getCompanyZone } from "@/lib/data/company-today";
+import { addDays, dayStartInZone } from "@/lib/company-clock";
 import {
   buildDispatchRollup,
   coerceDispatchRollup,
@@ -18,12 +19,6 @@ import {
 import { loadTaggedStages } from "@/lib/pipeline/company-stages";
 import { preAppointmentStageNames } from "@/lib/pipeline/stage-keys";
 
-/** The day after, in UTC -- the exclusive upper bound for timestamptz
- *  columns, so "to Sep 20" keeps everything stamped during Sep 20. */
-function nextDay(day: string): string {
-  return new Date(new Date(`${day}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
-}
-
 type CohortRow = DispatchInputs["cohort"][number];
 
 /**
@@ -34,7 +29,9 @@ type CohortRow = DispatchInputs["cohort"][number];
  * this falls back to targeted windowed queries reduced by the same
  * tested builder -- slower, identical numbers. Runs as the signed-in
  * user, so RLS scopes every read: a dispatcher who is not a supervisor
- * gets their own leads and the unclaimed pool, nothing more.
+ * gets their own leads and the unclaimed pool, nothing more. Every day
+ * is the company's (0225): today, the floors, and the day each lead,
+ * booking, call and text is filed on.
  */
 export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup> {
   const profile = await getCurrentProfile();
@@ -42,8 +39,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
 
   const supabase = await createClient();
   // The office's calendar for "today"; the real instant for ages.
-  const now = await companyNow();
-  const B = dispatchBoundaries(win, now, Date.now());
+  const B = dispatchBoundaries(win, await getCompanyZone());
 
   const { data, error } = await supabase.rpc("dispatch_rollup", {
     p_company: profile.company_id,
@@ -57,20 +53,26 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
     p_untouched_from: B.untouchedFrom,
     p_results_from: B.resultsFrom,
     p_waiting_from: B.waitingFrom,
+    p_zone: B.zone,
   });
   if (!error && data) return coerceDispatchRollup(data);
 
   // ── Fallback: the same buckets from targeted queries ─────────────
   const companyId = profile.company_id;
+  // Timestamp columns are cut where the company's day starts: a bare
+  // date there would be UTC midnight, the afternoon before on the West
+  // Coast. "To Sep 20" runs up to Sep 21's start, keeping all of Sep 20.
+  const startOf = (day: string) => dayStartInZone(day, B.zone).toISOString();
+  const after = (day: string) => startOf(addDays(day, 1));
   const leadsCreated = (from: string, to: string | null) =>
     selectAll<{ id: string; created_at: string; dispatcher_id: string | null }>((f, t) => {
       let q = supabase
         .from("leads")
         .select("id, created_at, dispatcher_id")
         .eq("company_id", companyId)
-        .gte("created_at", from)
+        .gte("created_at", startOf(from))
         .range(f, t);
-      if (to) q = q.lt("created_at", nextDay(to));
+      if (to) q = q.lt("created_at", after(to));
       return q;
     });
 
@@ -80,9 +82,9 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
         .from("events")
         .select("created_by")
         .eq("company_id", companyId)
-        .gte("created_at", from)
+        .gte("created_at", startOf(from))
         .range(f, t);
-      if (to) q = q.lt("created_at", nextDay(to));
+      if (to) q = q.lt("created_at", after(to));
       return q;
     });
 
@@ -104,9 +106,9 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
         .from("call_logs")
         .select("rep_id, duration_seconds, disposition")
         .eq("company_id", companyId)
-        .gte("created_at", from)
+        .gte("created_at", startOf(from))
         .range(f, t);
-      if (to) q = q.lt("created_at", nextDay(to));
+      if (to) q = q.lt("created_at", after(to));
       return q;
     });
 
@@ -117,8 +119,8 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
       .eq("company_id", companyId)
       .eq("direction", "outbound")
       .or("channel.is.null,channel.neq.rep")
-      .gte("created_at", from);
-    if (to) q = q.lt("created_at", nextDay(to));
+      .gte("created_at", startOf(from));
+    if (to) q = q.lt("created_at", after(to));
     const { count } = await q;
     return count ?? 0;
   };
@@ -154,7 +156,7 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
         // Still waiting for a first appointment -- the same stages the
         // SQL takes (pre_appointment_stage_names, 0195).
         .in("stage", waitingStages)
-        .gte("created_at", B.waitingFrom)
+        .gte("created_at", startOf(B.waitingFrom))
         .range(f, t)
     ),
     supabase
@@ -193,8 +195,8 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
           .from("events")
           .select("id", { count: "exact", head: true })
           .eq("company_id", companyId)
-          .gte("created_at", B.prevFrom!)
-          .lt("created_at", nextDay(B.prevTo!))
+          .gte("created_at", startOf(B.prevFrom!))
+          .lt("created_at", after(B.prevTo!))
       : Promise.resolve({ count: 0 }),
     eventsDated(B.from, B.to),
     hasPrev ? eventsDated(B.prevFrom!, B.prevTo) : Promise.resolve([]),
@@ -209,7 +211,10 @@ export async function getDispatchRollup(win: DateWindow): Promise<DispatchRollup
   const touchIds = new Set<string>();
   for (const l of cohortLeads) touchIds.add(l.id);
   for (const l of prevLeads) touchIds.add(l.id);
-  const untouchedCandidates = waitingLeads.filter((l) => l.created_at >= B.untouchedFrom);
+  // Since the company's midnight untouchedFrom days back, as the SQL's
+  // `(created_at at time zone p_zone)::date >= p_untouched_from`.
+  const untouchedSince = Date.parse(startOf(B.untouchedFrom));
+  const untouchedCandidates = waitingLeads.filter((l) => Date.parse(l.created_at) >= untouchedSince);
   for (const l of untouchedCandidates) touchIds.add(l.id);
   const firstTouch = new Map<string, string>();
   const note = (leadId: string, at: string) => {

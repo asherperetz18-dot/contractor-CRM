@@ -2241,3 +2241,17 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **One formatter per rollup.** Reading a day in a zone builds a date formatter, and building one per row cost about 3 seconds over 50,000 rows. `isoDateReader(zone)` builds it once (about 160 ms).
 
 **Consequence:** the dashboard, Tasks and Payments go by the office's clock at any hour. Needs 0224 to be fast again. The Dispatch Dashboard, Marketing Analytics and the rep report the team panel links to still file by the UTC day. They are not changed here (TECH_DEBT).
+
+## 176 — The Dispatch Dashboard files its leads, calls and texts on the company's day
+
+**Date:** 2026-10-08
+
+**Context:** #175 moved the main dashboard onto the company's day. The Dispatch Dashboard already took its "today" and floors from the company's calendar, but `dispatch_rollup` still filed new leads, booked appointments, calls, texts and how long a lead had waited by the UTC day, which starts at 5pm Pacific (4pm in winter). An evening's leads and calls landed on the next day, so each period ran 5pm to 5pm: Today took in last night's leads, bookings, calls and texts, a custom range left out its last evening, and a lead that came in after 5pm yesterday read as under a day old. The fallback cut its reads at bare dates and a UTC `nextDay`, so it read the same UTC days.
+
+**Decision:** the same change as #175, applied to this page.
+- `dispatchBoundaries(win, zone)` works out today, the window, the previous window, the week strip's end and the untouched, results and waiting floors on the company's calendar, carries the zone, and takes the real instant for ages.
+- `dispatch_rollup` (0225) takes the zone as `p_zone text default 'UTC'` and files every timestamp `at time zone p_zone`. Its body is 0211's with only that swapped, and a test holds it to that. The old signature is dropped, so the database holds one `dispatch_rollup`.
+- The TypeScript mirror counts waiting ages in the company's days (`isoDateReader`). The fallback cuts every timestamp read, the untouched floor included, at the company's midnight.
+- Until 0225 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower: the fallback reads every pre-appointment lead of the last 90 days.
+
+**Consequence:** each Dispatch Dashboard period runs midnight to midnight on the company's clock, the same as the main dashboard's. It needs 0225 to be fast again. Marketing Analytics and the rep report still file by the UTC day (TECH_DEBT).

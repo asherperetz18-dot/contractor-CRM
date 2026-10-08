@@ -1,3 +1,4 @@
+import { isoDateReader, localClockIn } from "../company-clock.ts";
 import { isoDay, prevWindow, type DateWindow } from "./date-range.ts";
 import { NO_DISPOSITION, type EventStatus } from "./types.ts";
 
@@ -9,7 +10,10 @@ import { NO_DISPOSITION, type EventStatus } from "./types.ts";
  * 0171) and buildDispatchRollup is that SQL's tested mirror -- and the
  * server-side fallback until the migration has run. Every clock edge
  * arrives precomputed in DispatchBoundaries and goes to the SQL as a
- * parameter, so the two sides can never disagree about "today".
+ * parameter, so the two sides can never disagree about "today". All of
+ * it is the company's calendar (`zone`), never the server's UTC one,
+ * and both sides file a timestamp -- a lead, a booking, a call, a text
+ * -- on the company's day (0225), so an evening's work stays on its date.
  *
  * The page answers one question -- is every lead being worked fast, and
  * is the calendar filling -- so the buckets are about speed and the
@@ -30,6 +34,8 @@ import { NO_DISPOSITION, type EventStatus } from "./types.ts";
  */
 
 export type DispatchBoundaries = {
+  /** The company's IANA zone: whose calendar every date here is on. */
+  zone: string;
   today: string;
   /** The real instant, for ages measured in minutes. */
   nowIso: string;
@@ -53,11 +59,13 @@ export const UNTOUCHED_DAYS = 7;
 export const RESULTS_DAYS = 14;
 export const REACHED_MINUTES = 60;
 
+/** The cutoffs for `win` on `zone`'s calendar at `instant`. */
 export function dispatchBoundaries(
   win: DateWindow,
-  now: Date,
-  nowMs: number = Date.now()
+  zone: string,
+  instant: Date = new Date()
 ): DispatchBoundaries {
+  const now = localClockIn(instant, zone);
   const prev = prevWindow(win, now);
   const daysFrom = (n: number) =>
     isoDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
@@ -69,8 +77,9 @@ export function dispatchBoundaries(
   const capped: DateWindow = { from, to: win.to };
   const prevCapped = win.from ? prev : prevWindow(capped, now);
   return {
+    zone,
     today: isoDay(now),
-    nowIso: new Date(nowMs).toISOString(),
+    nowIso: instant.toISOString(),
     from,
     to: win.to,
     prevFrom: prevCapped?.from ?? null,
@@ -225,6 +234,9 @@ function byTime(a: TodayVisit, b: TodayVisit): number {
 
 export function buildDispatchRollup(inputs: DispatchInputs): DispatchRollup {
   const B = inputs.boundaries;
+  // The company's day a timestamp falls on: the SQL's
+  // `(ts at time zone p_zone)::date`.
+  const inZone = isoDateReader(B.zone);
 
   // ── Untouched new leads: how many, and how long the oldest has waited
   let oldest: string | null = null;
@@ -255,7 +267,7 @@ export function buildDispatchRollup(inputs: DispatchInputs): DispatchRollup {
   let unclaimedPool = 0;
   const heldBy = new Map<string, number>();
   for (const l of inputs.waiting) {
-    const days = daysBetween(l.created_at.slice(0, 10), B.today);
+    const days = daysBetween(inZone(new Date(l.created_at)), B.today);
     if (days < 1) waiting.under1 += 1;
     else if (days <= 3) waiting.d1_3 += 1;
     else if (days <= 7) waiting.d4_7 += 1;

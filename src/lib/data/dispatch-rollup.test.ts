@@ -8,9 +8,10 @@ import {
   type DispatchInputs,
 } from "./dispatch-rollup.ts";
 
-// Monday, Sep 21 2026, 10:00 company time. Timestamps are UTC ISO.
+// Monday, Sep 21 2026, 10:00 company time, for a company on UTC.
+// Timestamps are UTC ISO.
 const NOW = new Date("2026-09-21T10:00:00Z");
-const B = dispatchBoundaries({ from: "2026-09-15", to: null }, NOW, NOW.getTime());
+const B = dispatchBoundaries({ from: "2026-09-15", to: null }, "UTC", NOW);
 
 function inputs(over: Partial<DispatchInputs> = {}): DispatchInputs {
   return {
@@ -45,8 +46,45 @@ test("boundaries: the week strip, the untouched/waiting/results floors and the p
   assert.equal(B.prevFrom, "2026-09-08");
   assert.equal(B.prevTo, "2026-09-14");
   // A window with no start is capped so the cohort never spans the book.
-  const open = dispatchBoundaries({ from: null, to: "2026-09-21" }, NOW, NOW.getTime());
+  const open = dispatchBoundaries({ from: null, to: "2026-09-21" }, "UTC", NOW);
   assert.equal(open.from, "2026-06-23");
+});
+
+const LA = "America/Los_Angeles";
+// 6:30pm on Oct 7 in Los Angeles: already Oct 8 on the server's UTC clock.
+const EVENING = new Date("2026-10-08T01:30:00Z");
+
+test("boundaries: today and every floor are the company's days, ages run from the real instant", () => {
+  const b = dispatchBoundaries({ from: "2026-10-01", to: null }, LA, EVENING);
+  assert.equal(b.zone, LA);
+  assert.equal(b.today, "2026-10-07");
+  assert.equal(b.weekEnd, "2026-10-13");
+  assert.equal(b.untouchedFrom, "2026-09-30");
+  assert.equal(b.resultsFrom, "2026-09-23");
+  assert.equal(b.waitingFrom, "2026-07-09");
+  // October so far is Oct 1-7 here, so it compares with Sep 1-7 (the
+  // server's clock made it Sep 1-8).
+  assert.deepEqual({ from: b.prevFrom, to: b.prevTo }, { from: "2026-09-01", to: "2026-09-07" });
+  assert.equal(b.nowIso, "2026-10-08T01:30:00.000Z");
+});
+
+test("a waiting lead's age is counted in the company's days, evenings included", () => {
+  // UTC files each of these a day later than it happened in Los Angeles,
+  // which moved them into the bucket below.
+  const R = buildDispatchRollup(
+    inputs({
+      boundaries: dispatchBoundaries({ from: "2026-10-01", to: null }, LA, EVENING),
+      waiting: [
+        // Oct 7, 5:30pm: arrived today.
+        { created_at: "2026-10-08T00:30:00Z", dispatcher_id: null },
+        // Oct 6, 8pm: one day old, not "under a day".
+        { created_at: "2026-10-07T03:00:00Z", dispatcher_id: null },
+        // Oct 3, 7pm: four days old, not three.
+        { created_at: "2026-10-04T02:00:00Z", dispatcher_id: null },
+      ],
+    })
+  );
+  assert.deepEqual(R.waiting, { under1: 1, d1_3: 1, d4_7: 1, d8_14: 0, d15plus: 0 });
 });
 
 test("speed to lead: reached within the hour, and the median minutes to first touch", () => {
