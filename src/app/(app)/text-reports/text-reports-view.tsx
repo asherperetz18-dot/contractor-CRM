@@ -172,19 +172,24 @@ export function TextReportsView({
       )
     : 0;
 
-  const busiestDay = useMemo(() => {
-    // Each text on the company's day it was sent -- an evening's texts
-    // on that evening, not the UTC day after.
+  // Each text's company day -- an evening's texts on that evening, not
+  // the UTC day after -- worked out once per loaded set rather than on
+  // every keystroke in the search box, which on All time is thousands.
+  const dayOfText = useMemo(() => {
     const dayOf = isoDateReader(zone);
+    return new Map(messages.map((m) => [m.id, dayOf(new Date(m.created_at))]));
+  }, [messages, zone]);
+
+  const busiestDay = useMemo(() => {
     const counts = new Map<string, number>();
     for (const m of rows) {
-      const day = dayOf(new Date(m.created_at));
+      const day = dayOfText.get(m.id) ?? "";
       counts.set(day, (counts.get(day) ?? 0) + 1);
     }
     let best: [string, number] | null = null;
     for (const entry of counts) if (!best || entry[1] > best[1]) best = entry;
     return best;
-  }, [rows, zone]);
+  }, [rows, dayOfText]);
 
   return (
     <div>

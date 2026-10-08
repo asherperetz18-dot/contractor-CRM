@@ -139,7 +139,7 @@ test("changing the period loads it in place; the table draws a page at a time an
   assert.match(view, /Show more/);
   // The cards and the busiest day are counted over every row, not the drawn ones.
   assert.match(view, /const sent = rows\.filter\(/);
-  assert.match(view, /for \(const m of rows\) \{\s*const day = dayOf\(/);
+  assert.match(view, /for \(const m of rows\) \{\s*const day = dayOfText\.get\(m\.id\)/);
   assert.ok(TEXT_REPORT_ROWS >= 100 && TEXT_REPORT_ROWS <= 500);
 });
 
@@ -149,8 +149,18 @@ test("the report counts on the company's days, from the today the server hands i
   // which read during render also made the server's first draw differ.
   assert.doesNotMatch(view, /Date\.now\(\)/);
   assert.match(view, /stampedWithin\(\s*textReportWindow\(/);
-  // The busiest day is the company's day each text was sent on.
+  // The busiest day is the company's day each text was sent on, worked
+  // out once per loaded set -- not on every keystroke in the search box.
   assert.match(view, /isoDateReader\(zone\)/);
+  assert.match(view, /const dayOfText = useMemo\(\(\) => \{[\s\S]*?\}, \[messages, zone\]\);/);
   assert.doesNotMatch(view, /iso\.slice\(0, 10\)/);
   assert.match(view, /max=\{today\}/);
+});
+
+test("typing one custom date fills the other with the page's own today, never the server's", () => {
+  // Text Reports and Appointment Reports pass the company's today as the
+  // filter's max; filling from the browser's UTC date put tomorrow in the
+  // box after 5pm Pacific, past its own max.
+  const filter = source("../components/date-range-filter.tsx");
+  assert.match(filter, /if \(!next\[other\]\) next\[other\] = max \?\? new Date\(\)\.toISOString\(\)\.slice\(0, 10\);/);
 });

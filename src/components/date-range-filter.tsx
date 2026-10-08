@@ -60,13 +60,15 @@ export function DateRangeFilter({
 
   /**
    * Typing one edge seeds the other with today, so a half-filled window
-   * never quietly means "since the beginning of time".
+   * never quietly means "since the beginning of time". A page that gives
+   * a `max` gives its own today (the company's), which the browser's UTC
+   * date runs a day past from 5pm Pacific.
    */
   function setDate(key: "from" | "to", day: string) {
     const next = { ...value, [key]: day };
     if (day) {
       const other = key === "from" ? "to" : "from";
-      if (!next[other]) next[other] = new Date().toISOString().slice(0, 10);
+      if (!next[other]) next[other] = max ?? new Date().toISOString().slice(0, 10);
     }
     onChange(next);
   }
