@@ -38,3 +38,23 @@ test("Call Reports names the period a link brought, not the last one picked", ()
     /if \(seenRange !== initialRange\) \{\s*setSeenRange\(initialRange\);\s*if \(initialRange !== rangeKey\) setRangeKey\(initialRange\);/
   );
 });
+
+test("each report asks for its period by the shared rule, remembering what it asked for", () => {
+  // Following an address it didn't ask for must not swallow its own
+  // stale request: click 7 days, then 30 again before the 7 arrive, and
+  // it used to end on the 7 (report-address.ts replays this).
+  for (const path of [
+    "../app/(app)/schedule/schedule-list.tsx",
+    "../app/(app)/text-reports/text-reports-view.tsx",
+    "../app/(app)/appointment-reports/appointment-reports-view.tsx",
+  ]) {
+    const view = source(path);
+    assert.match(view, /const asked = useRef\(loadedQs\);/, path);
+    assert.match(
+      view,
+      /const ask = requestsAddress\(\{ wanted: wantedQs, loaded: loadedQs, sent: asked\.current, pending: windowPending \}\);\s*asked\.current = wantedQs;\s*if \(ask\)/,
+      path
+    );
+    assert.match(view, /\}, \[wantedQs, loadedQs, windowPending, router\]\);/, path);
+  }
+});

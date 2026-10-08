@@ -39,6 +39,15 @@ export function appointmentReportRange(p: { range?: unknown; from?: unknown; to?
   return { preset, from: day(p.from) ?? "", to: day(p.to) ?? "" };
 }
 
+/**
+ * Whether a custom date is still being typed -- a year passes through
+ * 0002-, 0020-, 0202- in the date box. Until it's a real day the report
+ * asks for nothing and stays on the period it has.
+ */
+export function appointmentReportTyping(r: AppointmentReportRange): boolean {
+  return (!!r.from && day(r.from) === null) || (!!r.to && day(r.to) === null);
+}
+
 /** The period as an address: "" for the default, else "?…" with only what applies. */
 export function appointmentReportQuery(r: AppointmentReportRange): string {
   const params = new URLSearchParams();

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { requestsAddress } from "@/lib/report-address";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
@@ -135,11 +136,17 @@ export function ScheduleList({
       setLimit(query.limit);
     }
   }
+  // The address this view last asked for, so its own request arriving
+  // isn't taken for a link -- and going back to the loaded period while
+  // another is on its way still asks, so the router drops that one.
+  const asked = useRef(loadedQs);
   useEffect(() => {
-    if (wantedQs !== loadedQs) {
+    const ask = requestsAddress({ wanted: wantedQs, loaded: loadedQs, sent: asked.current, pending: windowPending });
+    asked.current = wantedQs;
+    if (ask) {
       startWindow(() => router.replace(`/schedule${wantedQs}`, { scroll: false }));
     }
-  }, [wantedQs, loadedQs, router]);
+  }, [wantedQs, loadedQs, windowPending, router]);
   const loading = windowPending || wantedQs !== loadedQs;
 
   // Local calendar days, compared as the same yyyy-mm-dd strings the

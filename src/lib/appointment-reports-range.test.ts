@@ -5,6 +5,7 @@ import {
   APPOINTMENT_REPORT_PRESETS,
   appointmentReportQuery,
   appointmentReportRange,
+  appointmentReportTyping,
   appointmentReportWindow,
 } from "./appointment-reports-range.ts";
 
@@ -116,7 +117,7 @@ test("the page loads one window of appointments, not every one the company ever 
 test("changing the period loads it in place, and a link arriving on the open report is followed", () => {
   assert.match(view, /startWindow\(\(\) => router\.replace\(`\/appointment-reports\$\{wantedQs\}`, \{ scroll: false \}\)\)/);
   // Until the new period arrives, the numbers stay on the one that's loaded.
-  assert.match(view, /const shownRange = loading \? query : range;/);
+  assert.match(view, /const shownRange = loading \|\| typing \? query : range;/);
   // The brief opens from the top bar on this very page: when the address
   // moves somewhere this view didn't ask to go, it follows rather than
   // sending it back to the old period.
@@ -134,4 +135,24 @@ test("the report counts the server's window and reads no clock while it renders"
   // The one clock left marks a result overdue by the hour, and is drawn
   // only once a rep's row is opened -- never in the first render.
   assert.match(view, /const \[expandedRep, setExpandedRep\] = useState<string \| null>\(null\);/);
+});
+
+test("a date still being typed loads nothing, and the report stays on the period it has", () => {
+  // Typing a year into the date box passes through 0002-, 0020-, 0202-:
+  // each went to the address, and the server -- dropping the half-typed
+  // day -- loaded every appointment up to the other edge, then that
+  // answer wiped the box mid-typing.
+  assert.equal(appointmentReportTyping({ preset: "30", from: "0002-10-01", to: "2026-10-08" }), true);
+  assert.equal(appointmentReportTyping({ preset: "30", from: "2026-10-01", to: "0020-10-08" }), true);
+  assert.equal(appointmentReportTyping({ preset: "30", from: "2026-10-01", to: "2026-10-08" }), false);
+  assert.equal(appointmentReportTyping({ preset: "7", from: "", to: "" }), false);
+  assert.match(view, /const typing = appointmentReportTyping\(range\);/);
+  assert.match(view, /const wantedQs = typing\s*\?\s*loadedQs\s*:/);
+  assert.match(view, /const shownRange = loading \|\| typing \? query : range;/);
+});
+
+test("the CSV waits for the period being loaded", () => {
+  // Picking a period then downloading at once saved the old period's rows
+  // under today's date, with nothing to say so.
+  assert.match(view, /disabled=\{inRange\.length === 0 \|\| loading \|\| typing\}/);
 });

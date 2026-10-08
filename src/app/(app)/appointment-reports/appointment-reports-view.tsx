@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { requestsAddress } from "@/lib/report-address";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,8 @@ import { withinWindow } from "@/lib/data/date-range";
 import {
   APPOINTMENT_REPORT_PRESETS,
   appointmentReportQuery,
+  appointmentReportRange,
+  appointmentReportTyping,
   appointmentReportWindow,
   type AppointmentReportRange,
 } from "@/lib/appointment-reports-range";
@@ -64,8 +67,13 @@ export function AppointmentReportsView({
   // new one as all of it.
   const router = useRouter();
   const [windowPending, startWindow] = useTransition();
-  const wantedQs = appointmentReportQuery(range);
   const loadedQs = appointmentReportQuery(query);
+  // Read back the way the server reads the address, and nothing asked
+  // for while a date is half-typed.
+  const typing = appointmentReportTyping(range);
+  const wantedQs = typing
+    ? loadedQs
+    : appointmentReportQuery(appointmentReportRange({ range: range.preset, from: range.from, to: range.to }));
   // The address can also move without this view asking: the Daily Brief
   // opens from the top bar on this very page, and its Showed / No-show
   // tile links here. Follow it, rather than sending it back to the old
@@ -75,13 +83,19 @@ export function AppointmentReportsView({
     setSeenQs(loadedQs);
     if (loadedQs !== wantedQs) setRange(query);
   }
+  // The address this view last asked for, so its own request arriving
+  // isn't taken for a link -- and going back to the loaded period while
+  // another is on its way still asks, so the router drops that one.
+  const asked = useRef(loadedQs);
   useEffect(() => {
-    if (wantedQs !== loadedQs) {
+    const ask = requestsAddress({ wanted: wantedQs, loaded: loadedQs, sent: asked.current, pending: windowPending });
+    asked.current = wantedQs;
+    if (ask) {
       startWindow(() => router.replace(`/appointment-reports${wantedQs}`, { scroll: false }));
     }
-  }, [wantedQs, loadedQs, router]);
+  }, [wantedQs, loadedQs, windowPending, router]);
   const loading = windowPending || wantedQs !== loadedQs;
-  const shownRange = loading ? query : range;
+  const shownRange = loading || typing ? query : range;
   const [repFilter, setRepFilter] = useState("All");
   const [expandedRep, setExpandedRep] = useState<string | null>(null);
 
@@ -168,7 +182,7 @@ export function AppointmentReportsView({
             {inRange.length} appointments that have already happened
           </p>
         </div>
-        <button className="btn-ghost" onClick={downloadCsv} disabled={inRange.length === 0}>
+        <button className="btn-ghost" onClick={downloadCsv} disabled={inRange.length === 0 || loading || typing}>
           Download CSV
         </button>
       </div>
