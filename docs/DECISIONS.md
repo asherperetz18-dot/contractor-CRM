@@ -2261,7 +2261,7 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Date:** 2026-10-08
 
-**Context:** After #175 and #176, Marketing Analytics was the last report on the server's clock (UTC), and in more ways than the dashboards had been:
+**Context:** After #175 and #176, Marketing Analytics and the rep report it opens were still on the server's clock (UTC), Marketing in more ways than the dashboards had been:
 - **Its "today" came from the server.** `marketingBoundaries(win)` read `new Date()` on the server. From 5pm Pacific, today's appointments counted as "no result" on the team table, and the comparison period and the twelve-week strip moved a day early. The rep report already took today from the company's calendar, so the two disagreed every evening.
 - **The page opened on the server's last 30 days** (`presetWindow("30")` on the server).
 - **The SQL cut each period at UTC midnight.** `marketing_analytics_rollup` (0195) also filed estimates sent, contracts signed and the weekly strip by the UTC day. So a period started at 5pm the evening before and, with an end date, ended at 5pm on its last day. A contract signed on a Sunday evening landed in the next week's bar.
@@ -2274,7 +2274,7 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - The TypeScript mirror files the cohort, sends, signatures and weeks by the company's day (`isoDateReader`).
 - The fallback and both drill-down lists cut timestamp reads at the company's midnight (`windowInstants`), so a list holds what its tile counts.
 - The page opens on `presetWindow("30", await companyNow())`.
-- The rep report reads each timestamp as its company day (`isoDateReader(zone)`) before the window check.
+- The rep report compares each timestamp with the period's edges at the company's midnights (`windowInstants`, shared with the drill-downs). It works them out once, which is exact and costs nothing per row. Reading each timestamp's day instead cost about 0.3 s per load over the whole book.
 - Until 0226 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower.
 
-**Consequence:** every report and dashboard now files by the company's day. Marketing Analytics, its team table, the rep report it opens and the main dashboard's team panel agree at any hour. Needs 0226 to be fast again. The lead-rule gap in Marketing's "Exclude bought lists" (TECH_DEBT) is unchanged: this change only swaps the zone.
+**Consequence:** Marketing Analytics, its team table, the rep report it opens and the main dashboard's team panel go by the company's day and agree at any hour. Text Reports, Profit & Loss and the Estimates and Contracts date filters still file by the UTC day (TECH_DEBT). Needs 0226 to be fast again. The lead-rule gap in Marketing's "Exclude bought lists" (TECH_DEBT) is unchanged: this change only swaps the zone.

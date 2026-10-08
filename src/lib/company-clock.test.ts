@@ -8,6 +8,7 @@ import {
   instantOfWallClock,
   isoDateInZone,
   isoDateReader,
+  windowInstants,
   localClockIn,
   utcClockIn,
   wallClockIn,
@@ -60,6 +61,23 @@ test("isoDateReader reads many instants on one zone's calendar, as isoDateInZone
     const at = new Date(Date.UTC(2026, 10, 1, h, 30));
     assert.equal(inLA(at), isoDateInZone(at, LA), at.toISOString());
   }
+});
+
+test("a window of days becomes the instants a timestamp column is cut at, on the zone's midnights", () => {
+  // "Oct 1 to Oct 10" in Los Angeles: from its midnight on the 1st up to
+  // the midnight after the 10th, so the 10th's evening stays in.
+  assert.deepEqual(windowInstants({ from: "2026-10-01", to: "2026-10-10" }, LA), {
+    from: "2026-10-01T07:00:00.000Z",
+    before: "2026-10-11T07:00:00.000Z",
+  });
+  // An open edge stays open.
+  assert.deepEqual(windowInstants({ from: "2026-10-01", to: null }, LA), {
+    from: "2026-10-01T07:00:00.000Z",
+    before: null,
+  });
+  assert.deepEqual(windowInstants({ from: null, to: null }, LA), { from: null, before: null });
+  // Across the November change the day after starts on standard time.
+  assert.equal(windowInstants({ from: null, to: "2026-11-01" }, LA).before, "2026-11-02T08:00:00.000Z");
 });
 
 test("Arizona keeps standard time all summer, so it is not Mountain Time", () => {

@@ -6,7 +6,7 @@
 -- by the UTC day, which on the West Coast starts at 5pm (4pm in winter).
 -- So a period started at 5pm the evening before and, with an end date,
 -- ended at 5pm on its last day; a contract signed on a Sunday evening
--- went into a week the strip didn't show yet.
+-- landed in the next week's bar.
 --
 -- The function now takes the company's time zone (p_zone, sent by the
 -- app). Nothing else changes: the body is 0195's with `at time zone

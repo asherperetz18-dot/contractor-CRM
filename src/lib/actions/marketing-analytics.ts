@@ -5,7 +5,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import type { DateWindow } from "@/lib/data/date-range";
 import { getCompanyZone } from "@/lib/data/company-today";
-import { addDays, dayStartInZone } from "@/lib/company-clock";
+import { dayStartInZone, windowInstants } from "@/lib/company-clock";
 import {
   buildMarketingRollup,
   coerceMarketingRollup,
@@ -43,18 +43,6 @@ export type AnalyticsLead = Pick<
 const FIELDS =
   "id, contact_type, company_name, first_name, last_name, source, stage, value, created_at, won_at, has_appt, assigned_to, lead_cost, phone";
 
-/**
- * A window's edges as instants, for timestamp columns: from the company's
- * midnight on its first day up to the midnight after its last, so "to
- * Sep 20" keeps everything stamped during Sep 20 there. A bare date would
- * be UTC midnight, 5pm the evening before on the West Coast.
- */
-function windowInstants(win: DateWindow, zone: string): { from: string | null; before: string | null } {
-  return {
-    from: win.from ? dayStartInZone(win.from, zone).toISOString() : null,
-    before: win.to ? dayStartInZone(addDays(win.to, 1), zone).toISOString() : null,
-  };
-}
 
 /**
  * The leads created in a window -- one rep's, for the team drill-down.

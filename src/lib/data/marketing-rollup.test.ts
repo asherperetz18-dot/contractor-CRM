@@ -163,8 +163,7 @@ test("an evening's leads, sends and signatures are filed on the company's day", 
     estimates: [
       // Sent and signed Oct 10 at 7:30pm: in the range.
       est({ id: "k1", lead_id: "in", status: "Signed", kind: "contract", assigned_to: "asher", total_cents: 9_000_00, sent_at: "2026-10-11T02:30:00Z", signed_at: "2026-10-11T02:30:00Z" }),
-      // Signed Sunday Oct 11 at 6pm: this week's bar, not a week the
-      // strip doesn't have yet.
+      // Signed Sunday Oct 11 at 6pm: this week's bar, not next week's.
       est({ id: "k2", lead_id: "before", status: "Signed", kind: "contract", assigned_to: "asher", total_cents: 1_000_00, sent_at: "2026-09-30T20:00:00Z", signed_at: "2026-10-12T01:00:00Z" }),
     ],
     events: [],

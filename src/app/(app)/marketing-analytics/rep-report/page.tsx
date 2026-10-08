@@ -1,6 +1,6 @@
 import { clientName } from "@/lib/data/client-name";
 import { companyNow, getCompanyZone } from "@/lib/data/company-today";
-import { isoDateReader } from "@/lib/company-clock";
+import { windowInstants } from "@/lib/company-clock";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
@@ -81,10 +81,11 @@ const RANGE_LABEL: Record<string, string> = {
 type Window = DateWindow;
 const within = withinWindow;
 
-/** The company's day a timestamp falls on, for the window checks: a bare
- *  slice of the UTC string put an evening's lead or signature on the
- *  next day (the server's midnight is 5pm Pacific). */
-type DayOf = (timestamp: string | null) => string | null;
+/** Whether a timestamp falls in the period on the company's calendar --
+ *  between its midnights there. A bare slice of the UTC string put an
+ *  evening's lead or signature on the next day (the server's midnight is
+ *  5pm Pacific). */
+type StampedIn = (timestamp: string | null) => boolean;
 
 /**
  * Targets to measure a rep against.
@@ -187,7 +188,7 @@ function buildFunnel(
   win: Window,
   todayISO: string,
   boughtKeys: string[],
-  dayOf: DayOf
+  stampedIn: StampedIn
 ): Funnel {
   const inRange = (d: string | null) => within(d, win);
 
@@ -195,7 +196,7 @@ function buildFunnel(
   // leads they were given (DECISIONS #156). Their sales still count.
   const mine = leads.filter(
     (l) =>
-      l.assigned_to === repId && inRange(dayOf(l.created_at)) && countsAsLead(l.source, boughtKeys)
+      l.assigned_to === repId && stampedIn(l.created_at) && countsAsLead(l.source, boughtKeys)
   );
 
   // Primary assignee only. A ride-along used to count in the rider's
@@ -230,9 +231,9 @@ function buildFunnel(
   };
   const repEstimates = estimates.filter((e) => repShareBp(e) > 0);
   const sent = repEstimates.filter(
-    (e) => e.status !== "Draft" && inRange(dayOf(e.sent_at ?? e.issued_at ?? e.created_at))
+    (e) => e.status !== "Draft" && stampedIn(e.sent_at ?? e.issued_at ?? e.created_at)
   );
-  const signed = repEstimates.filter((e) => e.status === "Signed" && inRange(dayOf(e.signed_at)));
+  const signed = repEstimates.filter((e) => e.status === "Signed" && stampedIn(e.signed_at));
   // A partnership sale counts for both seats, the dollars split by share.
   const signedCents = signed.reduce((s, e) => s + splitCents(e.total_cents, repShareBp(e)), 0);
 
@@ -303,8 +304,7 @@ function leadRows(
   repId: string,
   leads: RepReportLead[],
   estimates: Estimate[],
-  win: Window,
-  dayOf: DayOf
+  stampedIn: StampedIn
 ): LeadRow[] {
   const signedByLead = new Map<string, number>();
   for (const e of estimates) {
@@ -313,7 +313,7 @@ function leadRows(
   }
 
   return leads
-    .filter((l) => l.assigned_to === repId && within(dayOf(l.created_at), win))
+    .filter((l) => l.assigned_to === repId && stampedIn(l.created_at))
     .map((l) => {
       const signedCents = signedByLead.get(l.id) ?? 0;
       return {
@@ -383,10 +383,19 @@ export default async function RepReportPage({
   // today and the window, and the day each timestamp is filed on.
   const now = await companyNow();
   const todayISO = isoDay(now);
-  const inZone = isoDateReader(zone);
-  const dayOf: DayOf = (timestamp) => (timestamp ? inZone(new Date(timestamp)) : null);
+
   const state = { preset: rangeKey, from: sp.from ?? "", to: sp.to ?? "" };
   const win = resolveWindow(state, now);
+  // The period's edges as instants, worked out once: comparing each
+  // timestamp with them is exact and costs nothing per row.
+  const edges = windowInstants(win, zone);
+  const fromMs = edges.from ? Date.parse(edges.from) : -Infinity;
+  const beforeMs = edges.before ? Date.parse(edges.before) : Infinity;
+  const stampedIn: StampedIn = (timestamp) => {
+    if (!timestamp) return false;
+    const t = Date.parse(timestamp);
+    return t >= fromMs && t < beforeMs;
+  };
 
   // What the printed sheet calls the period. A custom range has to say
   // its actual dates: "Custom" on a document somebody files is useless
@@ -408,7 +417,7 @@ export default async function RepReportPage({
       win,
       todayISO,
       boughtKeys,
-      dayOf
+      stampedIn
     );
 
   const chosen = sp.rep ? salespeople.find((r) => r.id === sp.rep) : null;
@@ -419,7 +428,7 @@ export default async function RepReportPage({
     ? apptRows(chosen.id, events, leadById, win)
     : [];
   const leadLines = chosen
-    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), win, dayOf)
+    ? leadRows(chosen.id, ((leads as Lead[]) ?? []), ((estimates as Estimate[]) ?? []), stampedIn)
     : [];
   const pipelineCents = leadLines
     .filter((l) => !l.sold)
