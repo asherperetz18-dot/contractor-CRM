@@ -28,7 +28,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "Daily Brief: Showed / No-show now opens Appointment Reports on the same days you picked, instead of the last 30 days.",
       "Appointment Reports opens faster: it loads only the period you're looking at instead of every appointment ever, and changing the period loads it in place.",
       "Appointment Reports: in the evening, tomorrow's appointments no longer show up under No Result Yet or in the count of appointments that have already happened.",
-      "Daily Brief: tapping a number while the brief is open over that same page now shows the period you tapped. The Schedule and Text Reports no longer snap back to the period that was there, and Call Reports names the new one.",
+      "Daily Brief: tapping a number while the brief is open over that same page now shows the period you tapped. The Schedule and Text Reports no longer snap back to the period that was there, and Call Reports' picker shows Today or This month when that's the number you tapped.",
     ],
   },
   {

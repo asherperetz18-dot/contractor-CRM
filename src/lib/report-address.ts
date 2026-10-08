@@ -7,11 +7,22 @@
  *
  * Should the report ask for the period being picked (`wanted`)? `sent` is
  * the last address it asked for, `pending` whether that request is still
- * on its way. Going back to the period already loaded while another is on
- * its way still asks: a newer request is what makes the router drop the
- * older one, which would otherwise land and be taken for a link.
+ * on its way, `followed` whether the loaded address has just moved under
+ * it (a link, Back or Forward -- which it follows). Going back by itself
+ * to the period already loaded while another is on its way still asks: a
+ * newer request is what makes the router drop the older one, which would
+ * otherwise land and be taken for a link. Having just followed the
+ * loaded address, it doesn't: the router dropped its request already,
+ * and asking would load the same page twice.
  */
-export function requestsAddress(s: { wanted: string; loaded: string; sent: string; pending: boolean }): boolean {
+export function requestsAddress(s: {
+  wanted: string;
+  loaded: string;
+  sent: string;
+  pending: boolean;
+  followed: boolean;
+}): boolean {
   if (s.wanted === s.sent) return false;
-  return s.wanted !== s.loaded || s.pending;
+  if (s.wanted !== s.loaded) return true;
+  return s.pending && !s.followed;
 }

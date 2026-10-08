@@ -11,16 +11,36 @@ import { requestsAddress } from "./report-address.ts";
  * older request the moment a newer one is sent.
  */
 
-type View = { wanted: string; loaded: string; seen: string; sent: string; onTheWay: string | null };
+type View = {
+  wanted: string;
+  loaded: string;
+  seen: string;
+  sent: string;
+  lastLoaded: string;
+  onTheWay: string | null;
+  asks: string[];
+};
 
 function start(qs: string): View {
-  return { wanted: qs, loaded: qs, seen: qs, sent: qs, onTheWay: null };
+  return { wanted: qs, loaded: qs, seen: qs, sent: qs, lastLoaded: qs, onTheWay: null, asks: [] };
 }
 
 // The view's effect: ask for the wanted address if the rule says so.
 function effect(v: View): View {
-  const ask = requestsAddress({ wanted: v.wanted, loaded: v.loaded, sent: v.sent, pending: v.onTheWay !== null });
-  return { ...v, sent: v.wanted, onTheWay: ask ? v.wanted : v.onTheWay };
+  const ask = requestsAddress({
+    wanted: v.wanted,
+    loaded: v.loaded,
+    sent: v.sent,
+    pending: v.onTheWay !== null,
+    followed: v.loaded !== v.lastLoaded,
+  });
+  return {
+    ...v,
+    sent: v.wanted,
+    lastLoaded: v.loaded,
+    onTheWay: ask ? v.wanted : v.onTheWay,
+    asks: ask ? [...v.asks, v.wanted] : v.asks,
+  };
 }
 
 // The view's render: follow an address it didn't ask for.
@@ -33,6 +53,9 @@ const pick = (v: View, qs: string) => effect({ ...v, wanted: qs });
 const lands = (v: View) => (v.onTheWay === null ? v : effect(render({ ...v, loaded: v.onTheWay, onTheWay: null })));
 // A link is a newer navigation: the router drops whatever this view had on the way.
 const link = (v: View, qs: string) => effect(render({ ...v, loaded: qs, onTheWay: null }));
+// Back or Forward lands outside the view's transition: the router drops
+// its request, but the view still reads it as on the way until it settles.
+const back = (v: View, qs: string) => effect(render({ ...v, loaded: qs }));
 
 test("picking a period asks for it once, and its arrival is not mistaken for a link", () => {
   let v = pick(start(""), "?range=7");
@@ -61,7 +84,19 @@ test("a link that arrives while the report is open is followed, without loading 
   assert.deepEqual([v.wanted, v.loaded, v.onTheWay], ["?range=7", "?range=7", null]);
 });
 
+test("Back while the report's own request is on its way follows, without loading the page again", () => {
+  // Opened from the brief, then Last 7 Days picked and Back pressed before
+  // it loaded: the restored address is followed, and nothing more is
+  // asked -- it used to ask for the very address just restored.
+  let v = link(start(""), "?from=2026-10-05&to=2026-10-08");
+  v = pick(v, "?range=7");
+  v = back(v, "");
+  assert.equal(v.wanted, "");
+  assert.deepEqual(v.asks, ["?range=7"]);
+});
+
 test("nothing is asked for while the period already loaded is the one wanted", () => {
-  assert.equal(requestsAddress({ wanted: "", loaded: "", sent: "", pending: false }), false);
-  assert.equal(requestsAddress({ wanted: "?range=7", loaded: "", sent: "?range=7", pending: true }), false);
+  const settled = { pending: false, followed: false };
+  assert.equal(requestsAddress({ wanted: "", loaded: "", sent: "", ...settled }), false);
+  assert.equal(requestsAddress({ wanted: "?range=7", loaded: "", sent: "?range=7", pending: true, followed: false }), false);
 });

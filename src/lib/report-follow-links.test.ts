@@ -50,11 +50,12 @@ test("each report asks for its period by the shared rule, remembering what it as
   ]) {
     const view = source(path);
     assert.match(view, /const asked = useRef\(loadedQs\);/, path);
+    assert.match(view, /const loadedBefore = useRef\(loadedQs\);/, path);
     assert.match(
       view,
-      /const ask = requestsAddress\(\{ wanted: wantedQs, loaded: loadedQs, sent: asked\.current, pending: windowPending \}\);\s*asked\.current = wantedQs;\s*if \(ask\)/,
+      /const followed = loadedQs !== loadedBefore\.current;\s*loadedBefore\.current = loadedQs;\s*const ask = requestsAddress\(\{\s*wanted: wantedQs,\s*loaded: loadedQs,\s*sent: asked\.current,\s*pending: windowPending,\s*followed,\s*\}\);\s*asked\.current = wantedQs;\s*if \(ask\)/,
       path
     );
-    assert.match(view, /\}, \[wantedQs, loadedQs, windowPending, router\]\);/, path);
+    assert.match(view, /\}, \[wantedQs, loadedQs, windowPending, (typing, )?router\]\);/, path);
   }
 });

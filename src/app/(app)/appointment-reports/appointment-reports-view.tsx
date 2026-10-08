@@ -78,6 +78,10 @@ export function AppointmentReportsView({
   // opens from the top bar on this very page, and its Showed / No-show
   // tile links here. Follow it, rather than sending it back to the old
   // period (adjusting state from a prop, during render, as React advises).
+  // Mid-typing, wanted is the loaded address, so nothing is followed: a
+  // link then can't be told from this view's own earlier request landing,
+  // and the half-typed dates stay until finished (the numbers show the
+  // loaded period meanwhile).
   const [seenQs, setSeenQs] = useState(loadedQs);
   if (seenQs !== loadedQs) {
     setSeenQs(loadedQs);
@@ -87,13 +91,25 @@ export function AppointmentReportsView({
   // isn't taken for a link -- and going back to the loaded period while
   // another is on its way still asks, so the router drops that one.
   const asked = useRef(loadedQs);
+  const loadedBefore = useRef(loadedQs);
   useEffect(() => {
-    const ask = requestsAddress({ wanted: wantedQs, loaded: loadedQs, sent: asked.current, pending: windowPending });
+    // Nothing is asked for while a date is half-typed -- not even the
+    // loaded period again, which would reload it whole.
+    if (typing) return;
+    const followed = loadedQs !== loadedBefore.current;
+    loadedBefore.current = loadedQs;
+    const ask = requestsAddress({
+      wanted: wantedQs,
+      loaded: loadedQs,
+      sent: asked.current,
+      pending: windowPending,
+      followed,
+    });
     asked.current = wantedQs;
     if (ask) {
       startWindow(() => router.replace(`/appointment-reports${wantedQs}`, { scroll: false }));
     }
-  }, [wantedQs, loadedQs, windowPending, router]);
+  }, [wantedQs, loadedQs, windowPending, typing, router]);
   const loading = windowPending || wantedQs !== loadedQs;
   const shownRange = loading || typing ? query : range;
   const [repFilter, setRepFilter] = useState("All");

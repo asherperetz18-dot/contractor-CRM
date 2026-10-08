@@ -149,6 +149,10 @@ test("a date still being typed loads nothing, and the report stays on the period
   assert.match(view, /const typing = appointmentReportTyping\(range\);/);
   assert.match(view, /const wantedQs = typing\s*\?\s*loadedQs\s*:/);
   assert.match(view, /const shownRange = loading \|\| typing \? query : range;/);
+  // Nor is anything asked for while typing -- not even the loaded period
+  // again, which re-loaded it whole when a request was still on its way.
+  assert.match(view, /useEffect\(\(\) => \{(\s*\/\/[^\n]*)*\s*if \(typing\) return;/);
+  assert.match(view, /\}, \[wantedQs, loadedQs, windowPending, typing, router\]\);/);
 });
 
 test("the CSV waits for the period being loaded", () => {

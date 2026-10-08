@@ -140,8 +140,17 @@ export function ScheduleList({
   // isn't taken for a link -- and going back to the loaded period while
   // another is on its way still asks, so the router drops that one.
   const asked = useRef(loadedQs);
+  const loadedBefore = useRef(loadedQs);
   useEffect(() => {
-    const ask = requestsAddress({ wanted: wantedQs, loaded: loadedQs, sent: asked.current, pending: windowPending });
+    const followed = loadedQs !== loadedBefore.current;
+    loadedBefore.current = loadedQs;
+    const ask = requestsAddress({
+      wanted: wantedQs,
+      loaded: loadedQs,
+      sent: asked.current,
+      pending: windowPending,
+      followed,
+    });
     asked.current = wantedQs;
     if (ask) {
       startWindow(() => router.replace(`/schedule${wantedQs}`, { scroll: false }));
