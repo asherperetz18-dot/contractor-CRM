@@ -236,11 +236,11 @@ export type BriefTile =
 /**
  * Where each tile goes: the page that lists what it counts, opened on the
  * same period wherever that page takes one from the link -- the Schedule
- * (appointment dates), Call Reports (an instant) and Text Reports (a
- * day). The others open as the dashboard's cards do. No page lists
- * finished tasks, so Tasks Completed has nowhere to go.
+ * (appointment dates), Call Reports (an instant), Text Reports (a day)
+ * and the Tasks page's Done view (this very period). The others open as
+ * the dashboard's cards do.
  */
-export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Record<BriefTile, string | null> {
+export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Record<BriefTile, string> {
   const { since, sinceDay } = briefPeriodStart(period, now, zone);
   const today = isoDateInZone(now, zone);
   // Call Reports' own presets cover today and this month; a week has none.
@@ -252,7 +252,7 @@ export function briefTileLinks(period: BriefPeriod, now: Date, zone: string): Re
     showed: "/appointment-reports",
     calls: `/call-reports?range=${callRange}&fromTs=${encodeURIComponent(since)}`,
     texts: `/text-reports?from=${sinceDay}`,
-    tasksCompleted: null,
+    tasksCompleted: `/tasks?done=${period}`,
     won: "/marketing-analytics",
   };
 }

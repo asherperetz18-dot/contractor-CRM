@@ -698,6 +698,18 @@ body {
   color: #fff;
   border-color: var(--ink);
 }
+/* A chip that is a link (the Tasks page's Open / Done switch). */
+a.chip {
+  display: inline-block;
+  text-decoration: none;
+}
+@media (max-width: 700px) {
+  .tasks-views .chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+  }
+}
 /* The count on a selected chip: the pill set no text color, so it took
    the chip's white onto its pale background and the number vanished. */
 .chip-active .count-pill {

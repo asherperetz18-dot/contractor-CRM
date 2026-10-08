@@ -21,8 +21,8 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// A tile with somewhere to go is a link to the page behind its number,
-// closing the brief on the way out; one without stays a plain number.
+// Each tile is a link to the page behind its number, closing the brief
+// on the way out.
 function Metric({
   label,
   value,
@@ -33,22 +33,15 @@ function Metric({
   label: string;
   value: string | number;
   hint?: string;
-  href: string | null;
+  href: string;
   close: () => void;
 }) {
-  const body = (
-    <>
+  return (
+    <Link href={href} className="brief-metric" onClick={close}>
       <div className="brief-metric-value mono">{value}</div>
       <div className="brief-metric-label">{label}</div>
       {hint && <div className="brief-metric-hint">{hint}</div>}
-    </>
-  );
-  return href ? (
-    <Link href={href} className="brief-metric" onClick={close}>
-      {body}
     </Link>
-  ) : (
-    <div className="brief-metric">{body}</div>
   );
 }
 
@@ -58,7 +51,7 @@ function StatsGrid({
   close,
 }: {
   s: BriefStats;
-  links: Record<BriefTile, string | null>;
+  links: Record<BriefTile, string>;
   close: () => void;
 }) {
   const showRate = s.showed + s.noShow > 0 ? Math.round((s.showed / (s.showed + s.noShow)) * 100) : null;

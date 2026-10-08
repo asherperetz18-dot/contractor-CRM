@@ -407,9 +407,9 @@ test("every read is paged and goes only as far back as a figure needs", () => {
  * Each tile opens the page that lists what it counts (the owner's rule:
  * a number you can't click through reads as broken), on the same period
  * wherever that page can take one from the link: the Schedule and Call
- * Reports to the instant, Text Reports by day. The rest open as the
- * dashboard's cards do. No page lists finished tasks, so Tasks Completed
- * stays a plain number.
+ * Reports to the instant, Text Reports by day, the Tasks page's Done
+ * view by the brief's own periods. The rest open as the dashboard's
+ * cards do.
  */
 test("each tile opens the page behind its number, on the same period where it can", () => {
   assert.deepEqual(briefTileLinks("today", FRI, LA), {
@@ -419,7 +419,7 @@ test("each tile opens the page behind its number, on the same period where it ca
     showed: "/appointment-reports",
     calls: "/call-reports?range=today&fromTs=2026-10-02T07%3A00%3A00.000Z",
     texts: "/text-reports?from=2026-10-02",
-    tasksCompleted: null,
+    tasksCompleted: "/tasks?done=today",
     won: "/marketing-analytics",
   });
   // The week began Monday Sep 28; Call Reports has no week preset, so it
@@ -428,10 +428,12 @@ test("each tile opens the page behind its number, on the same period where it ca
   assert.equal(week.apptsScheduled, "/schedule?range=custom&from=2026-09-28&to=2026-10-02");
   assert.equal(week.calls, "/call-reports?range=custom&fromTs=2026-09-28T07%3A00%3A00.000Z");
   assert.equal(week.texts, "/text-reports?from=2026-09-28");
+  assert.equal(week.tasksCompleted, "/tasks?done=week");
   const month = briefTileLinks("month", FRI, LA);
   assert.equal(month.apptsScheduled, "/schedule?range=custom&from=2026-10-01&to=2026-10-02");
   assert.equal(month.calls, "/call-reports?range=month&fromTs=2026-10-01T07%3A00%3A00.000Z");
   assert.equal(month.texts, "/text-reports?from=2026-10-01");
+  assert.equal(month.tasksCompleted, "/tasks?done=month");
 });
 
 const modal = readFileSync(new URL("../app/(app)/daily-brief.tsx", import.meta.url), "utf8");

@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.247.0",
+    date: "2026-10-08",
+    notes: [
+      "Tasks: a Done view. Pick Done today, Done this week or Done this month at the top of the Tasks page to see the follow-ups marked done, newest first, with when each was done. The Daily Brief's Tasks Completed number now opens it, on the same period.",
+      "Tasks: a task due today no longer shows as overdue in the evening. The page now goes by your company's clock, the same as the dashboard's Overdue Tasks card that opens it.",
+    ],
+  },
+  {
     version: "1.246.0",
     date: "2026-10-08",
     notes: [

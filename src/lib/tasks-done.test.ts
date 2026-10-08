@@ -1,0 +1,51 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { doneAtLabel, parseDonePeriod } from "./tasks-done.ts";
+
+/**
+ * The Tasks page's Done view: follow-ups marked done today, this week or
+ * this month -- the list behind the Daily Brief's Tasks Completed tile,
+ * on the same periods (briefPeriodStart), so the number tapped is the
+ * number that opens.
+ */
+
+test("only today, week or month opens the Done view", () => {
+  assert.equal(parseDonePeriod("today"), "today");
+  assert.equal(parseDonePeriod("week"), "week");
+  assert.equal(parseDonePeriod("month"), "month");
+  for (const other of [undefined, null, "", "Today", "year", "7d", ["today"], 1]) {
+    assert.equal(parseDonePeriod(other), null, String(other));
+  }
+});
+
+test("a task's done time reads on the company's clock", () => {
+  // 4:41am UTC on Oct 8 is still the evening of Oct 7 in Los Angeles.
+  assert.equal(doneAtLabel("2026-10-08T04:41:00.000Z", "America/Los_Angeles"), "Oct 7, 9:41 PM");
+  assert.equal(doneAtLabel("2026-10-08T04:41:00+00:00", "America/New_York"), "Oct 8, 12:41 AM");
+});
+
+const page = readFileSync(new URL("../app/(app)/tasks/page.tsx", import.meta.url), "utf8");
+
+test("the Done view reads only the period's finished tasks, newest first", () => {
+  assert.match(page, /parseDonePeriod\(/);
+  assert.match(page, /briefPeriodStart\(done, now, zone\)/);
+  const done = page.slice(page.indexOf('.from("lead_tasks")', page.indexOf("if (done)")));
+  assert.match(done, /\.gte\("completed_at", since\)/);
+  assert.match(done, /\.order\("completed_at", \{ ascending: false \}\)/);
+});
+
+test("the Tasks page tells today by the company's clock", () => {
+  // It used the server's (UTC) date: from 5pm Pacific a task due today
+  // showed as overdue, and the Overdue section stopped matching the
+  // dashboard card that opens it, which reads the company's clock.
+  assert.doesNotMatch(page, /isoDay\(new Date\(\)\)/);
+  assert.match(page, /const today = isoDateInZone\(now, zone\);/);
+});
+
+test("switching between Open and Done shows the new view's tasks", () => {
+  // The view keeps its rows in state (so a task marked Done leaves the
+  // list at once); without a key per view, the switch -- a link to this
+  // same page -- would keep showing the old view's rows.
+  assert.match(page, /key=\{done \?\? "open"\}/);
+});
