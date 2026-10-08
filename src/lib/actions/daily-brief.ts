@@ -7,12 +7,12 @@ import { isAdminRole } from "@/lib/data/types";
 import { selectAll } from "@/lib/data/select-all";
 import { getBoughtListKeysCached } from "@/lib/data/company-chrome";
 import {
-  briefEarliestStart,
   briefNumbers,
+  briefReadWindow,
   type BriefAttention,
-  type BriefBook,
   type BriefBreakdown,
   type BriefPeriod,
+  type BriefRows,
   type BriefStats,
 } from "@/lib/daily-brief";
 
@@ -40,79 +40,129 @@ export async function getDailyBrief(): Promise<{ error?: string; brief?: DailyBr
   const companyId = profile.company_id;
   const zone = await getCompanyZone();
   const now = new Date();
-  // The furthest back any period looks.
-  const readFrom = briefEarliestStart(now, zone);
+  const read = briefReadWindow(now, zone);
 
+  // Each read goes only as far as a figure needs. The leads, appointments
+  // and tasks used to be read in full -- every one the company ever had,
+  // some 79 pages of 1,000 at 79,000 contacts -- each time the brief
+  // opened. Every read is still paged (a bare select stops at 1000 rows
+  // without a word), in id order so the pages don't overlap.
   const [
     boughtKeys,
     { data: company },
-    leads,
-    events,
+    newLeads,
+    wonLeads,
+    openRefunds,
+    bookedEvents,
+    datedEvents,
     calls,
     texts,
-    tasks,
+    doneTasks,
+    overdueTasks,
     { data: members },
   ] = await Promise.all([
     getBoughtListKeysCached(companyId),
     supabase.from("company_profile").select("name").eq("company_id", companyId).maybeSingle(),
-    // selectAll: every figure on the brief is a sum over this, and a
-    // bare select stops at 1000. On 1520 leads the morning brief was
-    // reporting two thirds of the business as though it were all of it.
-    selectAll<BriefBook["leads"][number]>((rangeFrom, rangeTo) =>
+    selectAll<BriefRows["newLeads"][number]>((rangeFrom, rangeTo) =>
       supabase
         .from("leads")
-        .select(
-          "id, created_at, stage, stage_key, value, won_at, source, refund_status, refund_requested_at, has_appt"
-        )
+        .select("id, created_at, source")
         .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
         .range(rangeFrom, rangeTo)
     ),
-    // Same cap, same shape: "1000 APPOINTMENTS BOOKED" on a tenant with
-    // 1,100 events was this query's bare select, not the real count.
-    selectAll<BriefBook["events"][number]>((rangeFrom, rangeTo) =>
+    // Won in the window, however long ago they came in.
+    selectAll<BriefRows["wonLeads"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select("id, won_at, value")
+        .eq("company_id", companyId)
+        .gte("won_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["openRefunds"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("leads")
+        .select("id, refund_requested_at")
+        .eq("company_id", companyId)
+        .eq("refund_status", "Requested")
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["bookedEvents"][number]>((rangeFrom, rangeTo) =>
       supabase
         .from("events")
-        .select("id, created_at, date, status, assigned_to, customer_confirmed, rain_alert_pop")
+        .select("id, created_at, assigned_to")
         .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
         .range(rangeFrom, rangeTo)
     ),
-    // Calls and texts had the same bare select: past 1000 of either in
-    // total, the counts were taken over whichever 1000 came back. Only
-    // what the periods cover is read, paged, and in id order so the
-    // pages don't overlap.
-    selectAll<BriefBook["calls"][number]>(
-      (rangeFrom, rangeTo) =>
-        supabase
-          .from("call_logs")
-          .select("id, created_at, duration_seconds, rep_id")
-          .eq("company_id", companyId)
-          .gte("created_at", readFrom)
-          .order("id")
-          .range(rangeFrom, rangeTo)
+    // Dated in the window, up to a week ahead for the unconfirmed and
+    // rain warnings.
+    selectAll<BriefRows["datedEvents"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("events")
+        .select("id, date, status, customer_confirmed, rain_alert_pop")
+        .eq("company_id", companyId)
+        .gte("date", read.sinceDay)
+        .lte("date", read.weekAhead)
+        .order("id")
+        .range(rangeFrom, rangeTo)
     ),
-    selectAll<BriefBook["texts"][number]>((rangeFrom, rangeTo) =>
+    selectAll<BriefRows["calls"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("call_logs")
+        .select("id, created_at, duration_seconds, rep_id")
+        .eq("company_id", companyId)
+        .gte("created_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    selectAll<BriefRows["texts"][number]>((rangeFrom, rangeTo) =>
       supabase
         .from("sms_messages")
         .select("id, created_at, direction")
         .eq("company_id", companyId)
-        .gte("created_at", readFrom)
+        .gte("created_at", read.since)
         .order("id")
         .range(rangeFrom, rangeTo)
     ),
-    selectAll<BriefBook["tasks"][number]>(
-      (rangeFrom, rangeTo) =>
-        supabase
-          .from("lead_tasks")
-          .select("id, lead_id, due_date, completed_at")
-          .eq("company_id", companyId)
-          .range(rangeFrom, rangeTo)
+    selectAll<BriefRows["doneTasks"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, completed_at")
+        .eq("company_id", companyId)
+        .gte("completed_at", read.since)
+        .order("id")
+        .range(rangeFrom, rangeTo)
+    ),
+    // With its lead's stage, so one on a closed lead is skipped without
+    // reading the leads.
+    selectAll<BriefRows["overdueTasks"][number]>((rangeFrom, rangeTo) =>
+      supabase
+        .from("lead_tasks")
+        .select("id, leads(stage_key)")
+        .eq("company_id", companyId)
+        .is("completed_at", null)
+        .lt("due_date", read.today)
+        .order("id")
+        .range(rangeFrom, rangeTo)
     ),
     supabase.from("profiles").select("id, name, email"),
   ]);
 
   const memberRows = (members ?? []) as { id: string; name: string | null; email: string | null }[];
   const nameById = new Map(memberRows.map((m) => [m.id, m.name || m.email || "Unknown"]));
-  const numbers = briefNumbers({ leads, events, calls, texts, tasks }, now, zone, boughtKeys, nameById);
+  const numbers = briefNumbers(
+    { newLeads, wonLeads, openRefunds, bookedEvents, datedEvents, calls, texts, doneTasks, overdueTasks },
+    now,
+    zone,
+    boughtKeys,
+    nameById
+  );
 
   return {
     brief: {

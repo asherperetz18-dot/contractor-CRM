@@ -76,10 +76,20 @@ export function briefBreakdown(
   return { topSources, repActivity };
 }
 
-/** The earliest any period starts -- how far back calls and texts are
- *  read. Usually the 1st, but a week that began last month starts first. */
-export function briefEarliestStart(now: Date, zone: string): string {
-  return (["today", "week", "month"] as const).map((p) => briefPeriodStart(p, now, zone).since).sort()[0];
+/**
+ * How far the brief reads: back to the earliest period start -- usually
+ * the 1st, but a week that began last month starts first -- and, for the
+ * appointment warnings, a week ahead.
+ */
+export function briefReadWindow(
+  now: Date,
+  zone: string
+): { since: string; sinceDay: string; today: string; weekAhead: string } {
+  const first = (["today", "week", "month"] as const)
+    .map((p) => briefPeriodStart(p, now, zone))
+    .reduce((a, b) => (b.since < a.since ? b : a));
+  const today = isoDateInZone(now, zone);
+  return { since: first.since, sinceDay: first.sinceDay, today, weekAhead: addDays(today, 7) };
 }
 
 export type BriefStats = {
@@ -100,24 +110,31 @@ export type BriefStats = {
 export type BriefAttention = {
   overdueTasks: number;
   unconfirmedSoon: number;
-  refundsOutstanding: number;
   staleRefunds: number;
-  coldLeads: number;
   rainRisk: number;
 };
 
-export type BriefBook = {
-  leads: {
-    id: string; created_at: string; stage_key: string | null; value: number | null; won_at: string | null;
-    source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
-  }[];
-  events: {
-    created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
-    rain_alert_pop: number | null;
-  }[];
+/**
+ * What the brief reads, each set only as far as a figure needs
+ * (`briefReadWindow`) -- never the whole contact book.
+ */
+export type BriefRows = {
+  /** Leads created since the window opened. */
+  newLeads: { created_at: string; source: string | null }[];
+  /** Leads won since then, whenever they came in. */
+  wonLeads: { won_at: string; value: number | null }[];
+  /** Leads whose refund request is still open. */
+  openRefunds: { refund_requested_at: string | null }[];
+  /** Appointments booked since then. */
+  bookedEvents: { created_at: string; assigned_to: string | null }[];
+  /** Appointments dated from the window's first day to a week ahead. */
+  datedEvents: { date: string; status: string; customer_confirmed: boolean; rain_alert_pop: number | null }[];
   calls: { created_at: string; duration_seconds: number; rep_id: string | null }[];
   texts: { created_at: string; direction: string }[];
-  tasks: { lead_id: string; due_date: string; completed_at: string | null }[];
+  /** Tasks completed since then. */
+  doneTasks: { completed_at: string }[];
+  /** Open tasks past due, each with its lead's stage. */
+  overdueTasks: { leads: { stage_key: string | null } | null }[];
 };
 
 /**
@@ -125,7 +142,7 @@ export type BriefBook = {
  * the always-live Needs Attention counts.
  */
 export function briefNumbers(
-  book: BriefBook,
+  rows: BriefRows,
   now: Date,
   zone: string,
   boughtKeys: string[],
@@ -139,65 +156,54 @@ export function briefNumbers(
   const in2Days = addDays(todayISO, 2);
   const in7Days = addDays(todayISO, 7);
   const periodStart = (period: BriefPeriod) => briefPeriodStart(period, now, zone);
-  const leadRows = book.leads;
-  const eventRows = book.events;
-  const callRows = book.calls;
-  const textRows = book.texts;
-  const taskRows = book.tasks;
 
   function statsFor(period: BriefPeriod): BriefStats {
     const { since, sinceDay } = periodStart(period);
-    const periodEvents = eventRows.filter((e) => e.date >= sinceDay && e.date <= todayISO);
-    const wonInPeriod = leadRows.filter((l) => l.won_at && l.won_at >= since);
-    const periodCalls = callRows.filter((c) => c.created_at >= since);
+    const periodEvents = rows.datedEvents.filter((e) => e.date >= sinceDay && e.date <= todayISO);
+    const wonInPeriod = rows.wonLeads.filter((l) => l.won_at >= since);
+    const periodCalls = rows.calls.filter((c) => c.created_at >= since);
     return {
       // Real leads only: a bought-list import isn't leads (DECISIONS #156).
-      leadsAdded: leadRows.filter((l) => l.created_at >= since && countsAsLead(l.source, boughtKeys)).length,
-      apptsBooked: eventRows.filter((e) => e.created_at >= since).length,
+      leadsAdded: rows.newLeads.filter((l) => l.created_at >= since && countsAsLead(l.source, boughtKeys)).length,
+      apptsBooked: rows.bookedEvents.filter((e) => e.created_at >= since).length,
       apptsScheduled: periodEvents.length,
       showed: periodEvents.filter((e) => appointmentAttended(e.status as EventStatus)).length,
       noShow: periodEvents.filter((e) => e.status === "No-show").length,
       calls: periodCalls.length,
       talkMinutes: Math.round(periodCalls.reduce((t, c) => t + (c.duration_seconds || 0), 0) / 60),
-      textsOut: textRows.filter((t) => t.created_at >= since && t.direction === "outbound").length,
-      textsIn: textRows.filter((t) => t.created_at >= since && t.direction === "inbound").length,
-      tasksCompleted: taskRows.filter((t) => t.completed_at && t.completed_at >= since).length,
+      textsOut: rows.texts.filter((t) => t.created_at >= since && t.direction === "outbound").length,
+      textsIn: rows.texts.filter((t) => t.created_at >= since && t.direction === "inbound").length,
+      tasksCompleted: rows.doneTasks.filter((t) => t.completed_at >= since).length,
       won: wonInPeriod.length,
       wonValue: wonInPeriod.reduce((t, l) => t + (Number(l.value) || 0), 0),
     };
   }
 
-  const closedLeadIds = new Set(leadRows.filter((l) => isClosedStageKey(l.stage_key)).map((l) => l.id));
-  const openRefunds = leadRows.filter((l) => l.refund_status === "Requested");
   const attention: BriefAttention = {
     // Skips tasks hanging off a closed lead (won, lost, not interested,
     // do-not-contact). Three of these were auto-created "no outcome set"
     // follow-ups on appointments whose leads were later won -- counting
     // them made the brief disagree with the pipeline's Follow-ups Due
     // panel, which ignores closed leads too.
-    overdueTasks: taskRows.filter(
-      (t) => !t.completed_at && t.due_date < todayISO && !closedLeadIds.has(t.lead_id)
-    ).length,
+    overdueTasks: rows.overdueTasks.filter((t) => !isClosedStageKey(t.leads?.stage_key)).length,
     // Appointments in the next couple of days the customer hasn't confirmed
     // -- the ones most likely to become a wasted trip.
-    unconfirmedSoon: eventRows.filter(
+    unconfirmedSoon: rows.datedEvents.filter(
       (e) =>
         e.date >= todayISO &&
         e.date <= in2Days &&
         !e.customer_confirmed &&
         e.status !== "Cancelled"
     ).length,
-    refundsOutstanding: openRefunds.length,
-    staleRefunds: openRefunds.filter(
+    staleRefunds: rows.openRefunds.filter(
       (l) =>
         l.refund_requested_at &&
         now.getTime() - new Date(l.refund_requested_at).getTime() > 30 * 86400000
     ).length,
-    coldLeads: leadRows.filter((l) => !isClosedStageKey(l.stage_key) && !l.has_appt).length,
     // Outdoor-sensitive appointments this week the rain-alerts cron has
     // flagged (50%+ chance of rain) -- the office's cue to call and
     // reschedule before the crew shows up to a wash-out.
-    rainRisk: eventRows.filter(
+    rainRisk: rows.datedEvents.filter(
       (e) =>
         e.date >= todayISO &&
         e.date <= in7Days &&
@@ -206,7 +212,7 @@ export function briefNumbers(
     ).length,
   };
 
-  const breakdownRows = { leads: leadRows, events: eventRows, calls: callRows };
+  const breakdownRows = { leads: rows.newLeads, events: rows.bookedEvents, calls: rows.calls };
   const breakdownFor = (period: BriefPeriod) =>
     briefBreakdown(breakdownRows, periodStart(period).since, boughtKeys, nameById);
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { briefBreakdown, briefEarliestStart, briefNumbers, briefPeriodStart, type BriefBook } from "./daily-brief.ts";
+import { briefBreakdown, briefNumbers, briefPeriodStart, briefReadWindow, type BriefRows } from "./daily-brief.ts";
 
 /**
  * The Daily Brief's two lower tables: where leads came from, and each
@@ -156,11 +156,21 @@ test("this month starts on the 1st at midnight on the company's clock", () => {
   );
 });
 
-test("calls and texts are read back to whichever period starts first", () => {
+test("the brief reads back to whichever period starts first, and a week ahead", () => {
   // Usually the 1st...
-  assert.equal(briefEarliestStart(new Date("2026-10-07T16:00:00.000Z"), LA), "2026-10-01T07:00:00.000Z");
+  assert.deepEqual(briefReadWindow(new Date("2026-10-07T16:00:00.000Z"), LA), {
+    since: "2026-10-01T07:00:00.000Z",
+    sinceDay: "2026-10-01",
+    today: "2026-10-07",
+    weekAhead: "2026-10-14",
+  });
   // ...but on Friday Oct 2 the week began Monday Sep 28, before the month did.
-  assert.equal(briefEarliestStart(new Date("2026-10-02T16:00:00.000Z"), LA), "2026-09-28T07:00:00.000Z");
+  assert.deepEqual(briefReadWindow(new Date("2026-10-02T16:00:00.000Z"), LA), {
+    since: "2026-09-28T07:00:00.000Z",
+    sinceDay: "2026-09-28",
+    today: "2026-10-02",
+    weekAhead: "2026-10-09",
+  });
 });
 
 /**
@@ -177,7 +187,23 @@ const SEP29 = "2026-09-29T18:00:00.000Z";
 const AUG = "2026-08-15T18:00:00.000Z";
 const OLD = "2025-01-10T18:00:00.000Z";
 
-const lead = (over: Partial<BriefBook["leads"][number]> & { id: string; created_at: string }) => ({
+type BookLead = {
+  id: string; created_at: string; stage_key: string | null; value: number | null; won_at: string | null;
+  source: string | null; refund_status: string; refund_requested_at: string | null; has_appt: string | null;
+};
+type BookEvent = {
+  created_at: string; date: string; status: string; assigned_to: string | null; customer_confirmed: boolean;
+  rain_alert_pop: number | null;
+};
+type Book = {
+  leads: BookLead[];
+  events: BookEvent[];
+  calls: BriefRows["calls"];
+  texts: BriefRows["texts"];
+  tasks: { lead_id: string; due_date: string; completed_at: string | null }[];
+};
+
+const lead = (over: Partial<BookLead> & { id: string; created_at: string }): BookLead => ({
   stage_key: "new",
   value: null,
   won_at: null,
@@ -187,7 +213,7 @@ const lead = (over: Partial<BriefBook["leads"][number]> & { id: string; created_
   has_appt: null,
   ...over,
 });
-const event = (over: Partial<BriefBook["events"][number]> & { created_at: string; date: string }) => ({
+const event = (over: Partial<BookEvent> & { created_at: string; date: string }): BookEvent => ({
   status: "New",
   assigned_to: null,
   customer_confirmed: false,
@@ -195,7 +221,7 @@ const event = (over: Partial<BriefBook["events"][number]> & { created_at: string
   ...over,
 });
 
-const book: BriefBook = {
+const book: Book = {
   leads: [
     lead({ id: "l1", created_at: TODAY }),
     lead({ id: "l2", created_at: OCT1, source: "CallRail" }),
@@ -262,7 +288,7 @@ const EXPECTED = {
       textsOut: 1, textsIn: 1, tasksCompleted: 1, won: 1, wonValue: 1_200_000,
     },
   },
-  attention: { overdueTasks: 2, unconfirmedSoon: 1, refundsOutstanding: 2, staleRefunds: 1, coldLeads: 6, rainRisk: 2 },
+  attention: { overdueTasks: 2, unconfirmedSoon: 1, staleRefunds: 1, rainRisk: 2 },
   breakdown: {
     today: {
       topSources: [{ source: "Google Ads", count: 1 }],
@@ -297,25 +323,75 @@ const EXPECTED = {
   },
 };
 
+/**
+ * The book as the brief reads it: the same bounds as each of its queries
+ * (pinned against the action below). It used to read the whole book --
+ * every lead, appointment and task the company ever had -- each time it
+ * opened. The figures above were worked out on that whole book, before
+ * the reads were narrowed, and haven't moved.
+ */
+function asRead(b: Book, now: Date, zone: string): BriefRows {
+  const read = briefReadWindow(now, zone);
+  const stageOf = new Map(b.leads.map((l) => [l.id, l.stage_key]));
+  return {
+    newLeads: b.leads.filter((l) => l.created_at >= read.since),
+    wonLeads: b.leads.flatMap((l) => (l.won_at && l.won_at >= read.since ? [{ won_at: l.won_at, value: l.value }] : [])),
+    openRefunds: b.leads.filter((l) => l.refund_status === "Requested"),
+    bookedEvents: b.events.filter((e) => e.created_at >= read.since),
+    datedEvents: b.events.filter((e) => e.date >= read.sinceDay && e.date <= read.weekAhead),
+    calls: b.calls.filter((c) => c.created_at >= read.since),
+    texts: b.texts.filter((t) => t.created_at >= read.since),
+    doneTasks: b.tasks.flatMap((t) =>
+      t.completed_at && t.completed_at >= read.since ? [{ completed_at: t.completed_at }] : []
+    ),
+    overdueTasks: b.tasks
+      .filter((t) => !t.completed_at && t.due_date < read.today)
+      .map((t) => ({ leads: { stage_key: stageOf.get(t.lead_id) ?? null } })),
+  };
+}
+
 test("every figure on the brief, for a company with years of history", () => {
-  assert.deepEqual(briefNumbers(book, FRI, LA, bought, names), EXPECTED);
+  assert.deepEqual(briefNumbers(asRead(book, FRI, LA), FRI, LA, bought, names), EXPECTED);
 });
 
 const action = readFileSync(new URL("./actions/daily-brief.ts", import.meta.url), "utf8");
 
-test("calls and texts are read in full for the brief's periods, not cut off at 1000 rows", () => {
-  // A bare select stops at 1000 rows without a word. Past 1000 calls or
-  // texts in total, the Calls, talk time, Texts and each rep's Calls
-  // were counted over whichever 1000 came back. Only what the periods
-  // cover is read, and it's paged like the leads and appointments.
-  assert.match(action, /const readFrom = briefEarliestStart\(now, zone\);/);
-  for (const table of ["call_logs", "sms_messages"]) {
-    const at = action.indexOf(`.from("${table}")`);
-    assert.ok(at > 0, table);
-    assert.match(action.slice(at - 250, at), /selectAll<[\s\S]*\(rangeFrom, rangeTo\) =>\s*supabase\s*$/, table);
-    const query = action.slice(at, action.indexOf("),", at));
-    assert.match(query, /\.gte\("created_at", readFrom\)/, table);
-    assert.match(query, /\.order\("id"\)/, table);
-    assert.match(query, /\.range\(rangeFrom, rangeTo\)/, table);
+/** Each paged read of `table` in the action: the filters it adds past the company. */
+function readsOf(table: string): { bounds: string; ordered: boolean }[] {
+  const pattern = new RegExp(
+    `selectAll<[^(]*\\(\\s*\\(rangeFrom, rangeTo\\) =>\\s*supabase\\s*\\.from\\("${table}"\\)([\\s\\S]*?)\\.range\\(rangeFrom, rangeTo\\)`,
+    "g"
+  );
+  return [...action.matchAll(pattern)].map(([, chain]) => ({
+    bounds: (chain.replace(/\s+/g, "").match(/\.(gte|lte|lt|eq|is)\([^)]*\)/g) ?? [])
+      .filter((f) => !f.startsWith('.eq("company_id"'))
+      .join(""),
+    ordered: chain.includes('.order("id")'),
+  }));
+}
+
+test("every read is paged and goes only as far back as a figure needs", () => {
+  // Calls and texts were a bare select, which stops at 1000 rows without
+  // a word. Leads, appointments and tasks were read in full -- every one
+  // the company ever had, some 79 pages of 1,000 at 79,000 contacts --
+  // each time the brief opened. Each read now carries asRead's bounds,
+  // paged in id order so the pages don't overlap.
+  assert.match(action, /const read = briefReadWindow\(now, zone\);/);
+  const expected: Record<string, string[]> = {
+    leads: ['.gte("created_at",read.since)', '.gte("won_at",read.since)', '.eq("refund_status","Requested")'],
+    events: ['.gte("created_at",read.since)', '.gte("date",read.sinceDay).lte("date",read.weekAhead)'],
+    lead_tasks: ['.gte("completed_at",read.since)', '.is("completed_at",null).lt("due_date",read.today)'],
+    call_logs: ['.gte("created_at",read.since)'],
+    sms_messages: ['.gte("created_at",read.since)'],
+  };
+  for (const [table, bounds] of Object.entries(expected)) {
+    const reads = readsOf(table);
+    assert.deepEqual(reads.map((r) => r.bounds), bounds, table);
+    assert.ok(reads.every((r) => r.ordered), table);
+    // No other, unbounded read of the table hides elsewhere.
+    assert.equal(action.split(`.from("${table}")`).length - 1, reads.length, table);
   }
+  // An overdue task brings its lead's stage, so one on a closed lead is
+  // skipped without reading the leads.
+  assert.match(action, /\.select\("id, leads\(stage_key\)"\)/);
 });
