@@ -35,12 +35,16 @@ test("the Done view reads only the period's finished tasks, newest first", () =>
   assert.match(done, /\.order\("completed_at", \{ ascending: false \}\)/);
 });
 
-test("the Tasks page tells today by the company's clock", () => {
-  // It used the server's (UTC) date: from 5pm Pacific a task due today
-  // showed as overdue. The dashboard's Overdue Tasks card, which opens
-  // this page, moved to the company's clock with it, so the two agree.
-  assert.doesNotMatch(page, /isoDay\(new Date\(\)\)/);
-  assert.match(page, /const today = isoDateInZone\(now, zone\);/);
+test("the Tasks page's today is the dashboard's, so Overdue matches the card that opens it", () => {
+  // Both read the server's day for now (from 5pm Pacific, a day ahead).
+  // Moving them to the company's clock has to happen together, with the
+  // dashboard rollup filing calls and money by the company's day as well
+  // (TECH_DEBT): moved alone, the card and this section disagreed every
+  // evening, and the rollup's 14-day calls strip and 12-month chart lost
+  // the evening's calls and money.
+  assert.match(page, /const today = isoDay\(now\);/);
+  const dashboard = readFileSync(new URL("./actions/dashboard.ts", import.meta.url), "utf8");
+  assert.match(dashboard, /const B = rollupBoundaries\(win\);/);
 });
 
 test("switching between Open and Done shows the new view's tasks", () => {

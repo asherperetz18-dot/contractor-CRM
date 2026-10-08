@@ -3,7 +3,7 @@ import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { getCompanyZone } from "@/lib/data/company-today";
 import { selectAll } from "@/lib/data/select-all";
-import { isoDateInZone } from "@/lib/company-clock";
+import { isoDay } from "@/lib/data/date-range";
 import { briefPeriodStart } from "@/lib/daily-brief";
 import { doneAtLabel, parseDonePeriod } from "@/lib/tasks-done";
 import { TasksView, type TaskRow } from "./tasks-view";
@@ -56,10 +56,13 @@ export default async function TasksPage({
   const supabase = await createClient();
   const companyId = profile.company_id;
   const done = parseDonePeriod((await searchParams).done);
-  // The company's clock, as the dashboard's Overdue card reads it.
+  // Done is the Daily Brief's periods, on the company's clock. The open
+  // tasks' today stays the server's day, as the dashboard's Overdue Tasks
+  // card reads it, so the section matches the card that opens it; both
+  // move to the company's clock together (TECH_DEBT).
   const zone = await getCompanyZone();
   const now = new Date();
-  const today = isoDateInZone(now, zone);
+  const today = isoDay(now);
 
   const [tasks, members] = await Promise.all([
     selectAll<TaskRecord>((f, t) => {
