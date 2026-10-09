@@ -43,7 +43,7 @@ export function DialSession({
    *  warns and pauses auto-dial so nobody gets rung twice in hours. */
   callInfo: Record<string, LeadCallInfo>;
   /** The company's today when the session started: the booking step
-   *  opens on it and can't go before it. */
+   *  opens on it, and its picker (`min`) offers nothing earlier. */
   today: string;
   dispositions: CallDispositionRow[];
   /** This company's Appointment Scheduled stage, by its own name (null if

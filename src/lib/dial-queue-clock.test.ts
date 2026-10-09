@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 /**
- * The dial queue's booking step opens on, and can't go before, the
- * company's today. It read the browser's UTC date, already tomorrow from
- * 5pm Pacific, so an evening call couldn't book that evening without
+ * The dial queue's booking step opens on the company's today, and its
+ * picker stops there. It read the browser's UTC date, already tomorrow
+ * from 5pm Pacific, so an evening call couldn't book that evening without
  * typing the date in.
  */
 
