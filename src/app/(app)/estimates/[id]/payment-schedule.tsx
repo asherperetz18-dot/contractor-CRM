@@ -29,6 +29,7 @@ import { RecordPayment } from "./record-payment";
 import { GiveCredit } from "@/components/invoices/give-credit";
 import { StageCredits } from "@/components/invoices/stage-credits";
 import { depositRuleSentence } from "@/lib/deposit-rule";
+import type { QbLine } from "@/lib/quickbooks/invoice-chips";
 
 type Row = {
   key: string;
@@ -60,6 +61,13 @@ function toRow(p: EstimatePayment): Row {
 
 const NO_CREDITS: BillCreditRow[] = [];
 
+const QB_TONE: Record<"good" | "wait" | "bad" | "off", string> = {
+  good: "est-badge-signed",
+  wait: "est-badge-sent",
+  bad: "est-badge-declined",
+  off: "",
+};
+
 // memo: the estimate builder re-renders on every keystroke; this panel's
 // props are stable then, so it sits those renders out.
 export const PaymentSchedule = memo(function PaymentSchedule({
@@ -75,6 +83,7 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   credits = NO_CREDITS,
   canRemoveCredits = false,
   financedBy = null,
+  qbDeposit = null,
 }: {
   estimateId: string;
   totalCents: number;
@@ -93,6 +102,8 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   /** The lender paying what's left (DECISIONS #166): unpaid payments read
    *  "Financing" and aren't billed. */
   financedBy?: string | null;
+  /** Where the deposit stands with QuickBooks (DECISIONS #184). */
+  qbDeposit?: QbLine | null;
 }) {
   const [rows, setRows] = useState<Row[]>(payments.map(toRow));
   /**
@@ -347,6 +358,20 @@ export const PaymentSchedule = memo(function PaymentSchedule({
                   </span>
                 )}
               </div>
+              {qbDeposit && (
+                <div className="qb-chips">
+                  {qbDeposit.chips.map((c) => (
+                    <span key={c.text} className={`est-badge qb-chip ${QB_TONE[c.tone]}`}>
+                      {c.text}
+                    </span>
+                  ))}
+                  {qbDeposit.url && (
+                    <a className="qb-open" href={qbDeposit.url} target="_blank" rel="noopener noreferrer">
+                      Open in QuickBooks ↗
+                    </a>
+                  )}
+                </div>
+              )}
             </td>
             {/* data-label feeds the phone layout, where the header row is
                 hidden and each cell has to name itself. */}

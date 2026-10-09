@@ -4,8 +4,25 @@
  * with node:crypto, so the page's browser code can use it. Pure.
  */
 
-/** A bill, a payment on it, or its receipt (one per bill, keyed by the bill's id). */
-export type RecordType = "bill" | "bill_payment" | "receipt";
+/**
+ * A bill, a payment on it, or its receipt (one per bill, keyed by the
+ * bill's id) -- and from step 3 (DECISIONS #184) a customer, a job, an
+ * invoice (a billed stage or an issued invoice, keyed by its stage), a
+ * deposit invoice (keyed by its contract), a customer payment, a credit
+ * and the $0.00 payment that applies it, and a refund.
+ */
+export type RecordType =
+  | "bill"
+  | "bill_payment"
+  | "receipt"
+  | "customer"
+  | "job"
+  | "invoice"
+  | "deposit"
+  | "customer_payment"
+  | "credit"
+  | "credit_link"
+  | "refund";
 /**
  * sent: in QuickBooks as the CRM has it. waiting: can't go yet, or its
  * last change can't. failed: QuickBooks refused it, or its last change.
@@ -51,7 +68,7 @@ export const inQuickBooks = (r: Pick<SyncRecord, "qb_id" | "status"> | null | un
   !!r?.qb_id && r.status !== "removed" && r.status !== "gone";
 
 /** The QuickBooks Online page for a bill (or bill payment), in the right company. */
-export function qbWebUrl(environment: "sandbox" | "production", kind: "bill" | "billpayment", txnId: string, realmId: string): string {
+export function qbWebUrl(environment: "sandbox" | "production", kind: "bill" | "billpayment" | "invoice", txnId: string, realmId: string): string {
   const host = environment === "production" ? "https://app.qbo.intuit.com" : "https://app.sandbox.qbo.intuit.com";
   return `${host}/app/${kind}?txnId=${encodeURIComponent(txnId)}&companyId=${encodeURIComponent(realmId)}`;
 }
