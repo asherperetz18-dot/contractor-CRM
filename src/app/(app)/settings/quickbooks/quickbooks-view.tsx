@@ -40,7 +40,7 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
  * Settings › QuickBooks: connect the company's QuickBooks Online and match
  * its accounts (DECISIONS #172), then send its bills and bill payments
  * (#173), with their receipts (#174), and its invoices and customer
- * payments (#183).
+ * payments (#184).
  */
 export function QuickBooksView({
   settings,
@@ -485,7 +485,7 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
   );
 }
 
-/** Send invoices to QuickBooks (DECISIONS #183): the switch, the start date, where they go, and how it's going. */
+/** Send invoices to QuickBooks (DECISIONS #184): the switch, the start date, where they go, and how it's going. */
 function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
   const router = useRouter();
   const v = settings.invoices;

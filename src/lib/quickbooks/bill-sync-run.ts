@@ -307,7 +307,7 @@ async function run(
     .maybeSingle<{ qb_prefs: { bookCloseDate?: string | null } | null }>();
   const closeDate = prefsRow?.qb_prefs?.bookCloseDate ?? null;
 
-  // Each bill's job in QuickBooks, once step 3 has added it (DECISIONS #183); else its customer.
+  // Each bill's job in QuickBooks, once step 3 has added it (DECISIONS #184); else its customer.
   const links = await billJobLinks(admin, companyId, billRows);
   const recordOf = new Map(records.map((r) => [`${r.record_type}:${r.record_id}`, r]));
   const lastTagOf = (billId: string) => lastSentTag(recordOf.get(`bill:${billId}`)?.qb_hash);

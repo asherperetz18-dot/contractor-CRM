@@ -23,7 +23,7 @@ import { clientName } from "@/lib/data/client-name";
 /**
  * Settings › QuickBooks: the connection and the account matches (step 1,
  * DECISIONS #172), sending bills and bill payments (step 2, #173), and
- * sending invoices and customer payments (step 3, #183). Office or Admin,
+ * sending invoices and customer payments (step 3, #184). Office or Admin,
  * like the rest of the company's settings.
  */
 
@@ -390,7 +390,7 @@ export async function refreshQuickBooksAccounts(): Promise<{ error?: string; cou
     .update({ accounts: read.accounts, accounts_read_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() })
     .eq("company_id", who.profile.company_id);
   if (error) return { error: isMissingSchemaError(error) ? NEEDS_0221 : error.message };
-  // Products and services too, for invoices (DECISIONS #183); before 0227 there's nowhere to keep them.
+  // Products and services too, for invoices (DECISIONS #184); before 0227 there's nowhere to keep them.
   const items = await readItems(got.access);
   if (!("error" in items)) {
     await who.admin
@@ -495,7 +495,7 @@ export async function saveQuickBooksMatches(input: {
   return {};
 }
 
-// ---------------------------------------------------------------- step 3: invoices and customer payments (DECISIONS #183)
+// ---------------------------------------------------------------- step 3: invoices and customer payments (DECISIONS #184)
 
 const ACCOUNT_DEPOSIT_TYPES = ["Bank", "Other Current Asset"];
 

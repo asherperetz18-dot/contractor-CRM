@@ -6,7 +6,7 @@ import { qbWebUrl, type ChipRecord, type QbChip } from "./bill-status";
 import { creditChipRecord, invoiceQbChips } from "./invoice-status";
 
 /**
- * Where each bill to a customer stands with QuickBooks (DECISIONS #183),
+ * Where each bill to a customer stands with QuickBooks (DECISIONS #184),
  * for the Invoices page and a contract's payment schedule. The connection
  * is server-only and the records are read here, after the page's own gate
  * (View Financials), with the server's client.

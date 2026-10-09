@@ -52,7 +52,7 @@ import {
 } from "./invoice-sync";
 
 /**
- * One company's turn of the QuickBooks invoices job (DECISIONS #183), from
+ * One company's turn of the QuickBooks invoices job (DECISIONS #184), from
  * the five-minute job (/api/cron/quickbooks-sync) or Send now, before its
  * bills' turn (so a bill's job is there to tag it with).
  *

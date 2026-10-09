@@ -496,7 +496,7 @@ export default async function EstimateDetailPage({
         .maybeSingle<{ name: string | null; email: string | null }>()
     : { data: null };
 
-  // The deposit's QuickBooks line (DECISIONS #183), for those who see the company's money.
+  // The deposit's QuickBooks line (DECISIONS #184), for those who see the company's money.
   const qbDeposit =
     canViewFinancials(profile) &&
     (estimate.kind === "contract" || !estimate.kind) &&

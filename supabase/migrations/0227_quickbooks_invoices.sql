@@ -1,5 +1,5 @@
 -- 0227: QuickBooks, step 3 -- invoices and customer payments go to
--- QuickBooks (DECISIONS #183).
+-- QuickBooks (DECISIONS #184).
 --
 -- Once a company turns it on (Settings › QuickBooks › Send invoices to
 -- QuickBooks), each bill to a customer dated from its start date goes to
@@ -55,7 +55,7 @@ alter table public.quickbooks_sync
   ));
 
 comment on table public.quickbooks_sync is
-  'What the CRM sent to each company''s QuickBooks, record by record: bills, bill payments and receipts (DECISIONS #173, #174), customers, jobs, invoices, payments, credits and refunds (#183). Server writes only.';
+  'What the CRM sent to each company''s QuickBooks, record by record: bills, bill payments and receipts (DECISIONS #173, #174), customers, jobs, invoices, payments, credits and refunds (#184). Server writes only.';
 
 commit;
 

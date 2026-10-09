@@ -29,6 +29,7 @@ import {
 } from "@/lib/dial-filters";
 import type { LeadCallInfo } from "@/lib/lead-call-info";
 import { DialSession } from "./dial-session";
+import { isoDateInZone } from "@/lib/company-clock";
 import type { CompanyPhoneNumber } from "@/lib/actions/phone-numbers";
 import { dialNumberOf } from "@/lib/data/phone-match";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
@@ -72,6 +73,7 @@ export function DialQueueView({
   callScript,
   canWrite,
   phoneNumbers,
+  zone,
 }: {
   initialContacts: DialContactPage;
   stages: PipelineStageRow[];
@@ -81,6 +83,8 @@ export function DialQueueView({
   callScript: string | null;
   canWrite: boolean;
   phoneNumbers: CompanyPhoneNumber[];
+  /** The company's IANA zone: a session's today, for its bookings. */
+  zone: string;
 }) {
   const router = useRouter();
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +96,8 @@ export function DialQueueView({
   const [session, setSession] = useState<{
     leads: Lead[];
     callInfo: Record<string, LeadCallInfo>;
+    /** The company's today when the session started. */
+    today: string;
   } | null>(null);
 
   const [callAttempts, setCallAttempts] = useState<CallAttemptsFilter>("All");
@@ -243,7 +249,9 @@ export function DialQueueView({
       const today = new Date();
       const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       const result = await getDialSessionLeads([...selected], midnight.toISOString());
-      if (result.leads.length > 0) setSession(result);
+      // The company's today, for the booking step: the browser's UTC
+      // date is already tomorrow from 5pm Pacific.
+      if (result.leads.length > 0) setSession({ ...result, today: isoDateInZone(new Date(), zone) });
     } finally {
       setStartingSession(false);
     }
@@ -780,6 +788,7 @@ export function DialQueueView({
         <DialSession
           leads={session.leads}
           callInfo={session.callInfo}
+          today={session.today}
           dispositions={dispositions}
           bookingStage={stageNameFor(stages, "appointment_scheduled")}
           reps={reps}

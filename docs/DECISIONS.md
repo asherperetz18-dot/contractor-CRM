@@ -2390,7 +2390,20 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** on Projects, a contract counts on the day and month it was signed, the page and its printout agree on what's overdue and on each job's dates, and template steps fall due on the intended day. No SQL. Projects' Transactions list opens the manual payment form, whose Received on still defaults to the UTC date (TECH_DEBT).
 
-## 183 — QuickBooks, step 3: invoices and customer payments go to QuickBooks, each contract a job
+## 183 — The dial queue books on the company's today
+
+**Date:** 2026-10-09
+
+**Context:** When a dial-queue outcome moves a contact to Appointment Scheduled, the session opens a booking step. Its date started on, and its picker wouldn't go before, `new Date().toISOString().slice(0, 10)`: the browser's UTC date, already tomorrow from 5pm Pacific (4pm in winter). An evening caller booking a visit for that same evening found tomorrow filled in and today greyed out, and had to type the date in. Nothing on the server checked the date, so typing it worked.
+
+**Decision:**
+- The page hands the queue the company's zone. When a session starts, the view works out the company's today (`isoDateInZone(new Date(), zone)`) and the session keeps it, beside its call history from the same moment.
+- The booking step opens on that today and its picker stops at it (`min`).
+- "Already called today" is unchanged: it counts from the rep's own midnight, as it was written to.
+
+**Consequence:** an evening call can book that evening without typing the date. The day is the one the session started on, so a session running past midnight still offers the day before. No SQL.
+
+## 184 — QuickBooks, step 3: invoices and customer payments go to QuickBooks, each contract a job
 
 **Date:** 2026-10-09
 

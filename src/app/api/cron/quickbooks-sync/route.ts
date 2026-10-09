@@ -8,7 +8,7 @@ import { syncCompanyInvoices } from "@/lib/quickbooks/invoice-sync-run";
 import { fetchUntil } from "@/lib/quickbooks/api";
 
 /**
- * Every five minutes (0222, DECISIONS #173, #183): each company that
+ * Every five minutes (0222, DECISIONS #173, #184): each company that
  * turned on "Send invoices to QuickBooks" has its new and changed invoices,
  * customer payments, credits and refunds sent first (adding each job, so
  * its bills can be tagged with it), then, if it sends bills, its bills and

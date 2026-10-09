@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { getCompanyZone } from "@/lib/data/company-today";
 import { getCompanyMembers } from "@/lib/data/company";
 import {
   canUseSalesCenter,
@@ -56,6 +57,9 @@ export default async function DialQueuePage() {
   ]);
   const reps = allReps.filter((r) => r.status === "Active").sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
   const phoneNumbers = await listCompanyPhoneNumbers();
+  // Whose calendar a booking's date is on: the session works out the
+  // company's today from it when it starts.
+  const zone = await getCompanyZone();
 
   return (
     <DialQueueView
@@ -67,6 +71,7 @@ export default async function DialQueuePage() {
       callScript={(companyProfile as Pick<CompanyProfile, "call_script"> | null)?.call_script ?? null}
       canWrite={canWrite}
       phoneNumbers={phoneNumbers}
+      zone={zone}
     />
   );
 }

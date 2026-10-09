@@ -59,7 +59,7 @@ export type SyncBill = {
   memo: string;
   /** The receipt file in storage (vendor_bills.receipt_path), if any. */
   receiptPath: string | null;
-  /** The QuickBooks job (or customer) the bill's line is tagged with, once step 3 has added it (DECISIONS #183). */
+  /** The QuickBooks job (or customer) the bill's line is tagged with, once step 3 has added it (DECISIONS #184). */
   tag?: string | null;
 };
 
@@ -418,12 +418,12 @@ export function planBillSync(p: {
   accounts: { byCategory: Map<string, string>; fallback: string | null };
   /** Send now: everything due is tried, refusals included. */
   force?: boolean;
-  /** QuickBooks' closing date, as the invoices job last read it (DECISIONS #183); null if none or unknown. */
+  /** QuickBooks' closing date, as the invoices job last read it (DECISIONS #184); null if none or unknown. */
   closeDate?: string | null;
 }): SyncStep[] {
   const force = !!p.force;
   const now = p.now.getTime();
-  // Only the bills side's own records: invoices and their money are step 3's (DECISIONS #183).
+  // Only the bills side's own records: invoices and their money are step 3's (DECISIONS #184).
   const records = p.records.filter((r) => BILL_RECORD_TYPES.includes(r.record_type));
   const recordOf = new Map(records.map((r) => [keyOf(r.record_type, r.record_id), r]));
   const billRecord = (id: string) => recordOf.get(keyOf("bill", id)) ?? null;

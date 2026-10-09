@@ -102,7 +102,7 @@ export const PaymentSchedule = memo(function PaymentSchedule({
   /** The lender paying what's left (DECISIONS #166): unpaid payments read
    *  "Financing" and aren't billed. */
   financedBy?: string | null;
-  /** Where the deposit stands with QuickBooks (DECISIONS #183). */
+  /** Where the deposit stands with QuickBooks (DECISIONS #184). */
   qbDeposit?: QbLine | null;
 }) {
   const [rows, setRows] = useState<Row[]>(payments.map(toRow));

@@ -21,10 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.257.0",
+    version: "1.258.0",
     date: "2026-10-09",
     notes: [
       "QuickBooks, step 3: turn on Settings › QuickBooks › Send invoices to QuickBooks, pick a start date and your QuickBooks product or service for job work. From then on, each bill to a customer goes to your QuickBooks as an invoice (issued invoices, billed stages and each contract's deposit), and each payment as a payment on it, with credits and refunds. Each signed contract becomes a job under its customer, and Bills to Pay costs are tagged to it. Customers keep getting only what the CRM sends them. The Invoices page shows where each bill stands, with Open in QuickBooks; bills with sales tax wait and are entered by hand for now. Anything that can't go says why, and anything it says to enter by hand stays that way, so it's never entered twice.",
+    ],
+  },
+  {
+    version: "1.257.0",
+    date: "2026-10-09",
+    notes: [
+      "Booking an appointment from the dial queue in the evening now starts on today, and today can be picked. Before, after 5pm the date started on tomorrow and the calendar wouldn't offer today.",
     ],
   },
   {

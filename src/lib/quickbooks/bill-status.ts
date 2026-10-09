@@ -6,7 +6,7 @@
 
 /**
  * A bill, a payment on it, or its receipt (one per bill, keyed by the
- * bill's id) -- and from step 3 (DECISIONS #183) a customer, a job, an
+ * bill's id) -- and from step 3 (DECISIONS #184) a customer, a job, an
  * invoice (a billed stage or an issued invoice, keyed by its stage), a
  * deposit invoice (keyed by its contract), a customer payment, a credit
  * and the $0.00 payment that applies it, and a refund.

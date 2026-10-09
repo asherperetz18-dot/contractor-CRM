@@ -21,7 +21,7 @@ import {
 
 export type InvoiceListRow = InvoiceRow & {
   customer: string;
-  /** Where it stands with QuickBooks (DECISIONS #183), when invoices go there. */
+  /** Where it stands with QuickBooks (DECISIONS #184), when invoices go there. */
   qb?: { chips: QbChip[]; url: string | null };
 };
 
