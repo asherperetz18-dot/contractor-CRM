@@ -1,5 +1,4 @@
-import { nowInZone } from "@/lib/timezone";
-import { zoneForCompany } from "@/lib/data/company-today";
+import { todayForCompany } from "@/lib/data/company-today";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
@@ -238,7 +237,7 @@ export default async function PortalHomePage() {
 
   // Certificates lapse on the company's calendar, not the server's UTC
   // one -- "valid through Dec 31" holds all of Dec 31 in the office.
-  const companyClock = nowInZone(await zoneForCompany(admin, viewer.companyId));
+  const companyToday = await todayForCompany(admin, viewer.companyId);
 
   return (
     <PortalHome
@@ -256,7 +255,7 @@ export default async function PortalHomePage() {
       // Filtered here rather than in the query: a lapsed certificate shown
       // to a customer is worse than none, and "hide it once it expires"
       // has to hold without anyone remembering to untick a box.
-      documents={(docRows ?? []).filter((d) => !isExpired(d.expires_on, companyClock))}
+      documents={(docRows ?? []).filter((d) => !isExpired(d.expires_on, companyToday))}
       // null until migration 0183 has run: the Notes tab stays hidden
       // rather than offering a box that can't save.
       sharedNotes={sharedNotesError ? null : (sharedNoteRows ?? [])}

@@ -24,7 +24,13 @@ function fileSize(bytes: number | null) {
     : `${Math.round(bytes / 1024)} KB`;
 }
 
-export function CertificatesView() {
+export function CertificatesView({
+  today,
+}: {
+  /** The company's today, from the page: the day the portal hides a
+   *  lapsed certificate on. */
+  today: string;
+}) {
   const [docs, setDocs] = useState<CompanyDocument[] | null>(null);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
@@ -72,8 +78,8 @@ export function CertificatesView() {
   if (error && !docs) return <p className="error-note">{error}</p>;
   if (!docs) return <p className="empty-hint">Loading…</p>;
 
-  const expired = docs.filter((d) => isExpired(d.expires_on));
-  const soon = docs.filter((d) => expiringSoon(d.expires_on));
+  const expired = docs.filter((d) => isExpired(d.expires_on, today));
+  const soon = docs.filter((d) => expiringSoon(d.expires_on, today));
 
   return (
     <div>
@@ -172,7 +178,7 @@ export function CertificatesView() {
           </thead>
           <tbody>
             {docs.map((d) => {
-              const gone = isExpired(d.expires_on);
+              const gone = isExpired(d.expires_on, today);
               return (
                 <tr key={d.id} className={gone ? "rv-cell-dirty" : ""}>
                   <td>
@@ -191,7 +197,7 @@ export function CertificatesView() {
                       ? new Date(`${d.expires_on}T00:00:00`).toLocaleDateString("en-US")
                       : "—"}
                     {gone && <span className="est-tax-note"> · expired</span>}
-                    {expiringSoon(d.expires_on) && (
+                    {expiringSoon(d.expires_on, today) && (
                       <span className="est-tax-note"> · expiring</span>
                     )}
                   </td>

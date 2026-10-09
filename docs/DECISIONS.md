@@ -2434,3 +2434,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** the brief opens each morning the first time an admin loads the CRM that day, wherever they are. No SQL.
 
+## 186 — Licence & Insurance judges expiry on the company's today
+
+**Date:** 2026-10-09
+
+**Context:** A certificate is valid through its expiry day, and the customer portal hides it from the next day on the company's calendar (`isExpired` with the company's clock). Settings › Licence & Insurance called the same helpers with no clock, so they read the browser's UTC date (`new Date().toISOString()`), already tomorrow from 5pm Pacific (4pm in winter). On a certificate's last evening the page said it had "expired and is no longer shown to customers" and marked it "hidden — expired", while the portal was still showing it. "Expires within 30 days" mixed the browser's local calendar (`setDate`) with the UTC date.
+
+**Decision:**
+- **`isExpired(expiresOn, today)` and `expiringSoon(expiresOn, today, days)`** take the company's today as a plain date and read no clock. Expiring soon is `expiresOn` up to `addDays(today, days)`, plain day arithmetic. Without a default, a new caller has to say whose today it means.
+- **The settings page** hands the view the company's today (`companyToday()`), the day it was loaded.
+- **The portal** passes the company's today as a date string (`todayForCompany`) instead of a shifted clock. It hides the same certificates as before.
+
+**Consequence:** the settings page and the portal agree on the evening of a certificate's last day. No SQL.
+
