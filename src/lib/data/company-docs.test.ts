@@ -7,8 +7,8 @@ import { expiringSoon, isExpired } from "./company-docs.ts";
  * A certificate valid "through Dec 31" is valid all of Dec 31 on the
  * company's calendar. The settings page measured from the browser's UTC
  * date, already tomorrow from 5pm Pacific, so on a certificate's last
- * evening it said "expired, no longer shown to customers" while the
- * portal (on the company's day) still showed it.
+ * evening it said it had "expired and is no longer shown to customers"
+ * while the portal (on the company's day) still showed it.
  */
 
 test("a certificate is valid through its whole expiry day", () => {

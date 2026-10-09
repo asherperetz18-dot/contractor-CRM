@@ -2443,7 +2443,7 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Decision:**
 - **`isExpired(expiresOn, today)` and `expiringSoon(expiresOn, today, days)`** take the company's today as a plain date and read no clock. Expiring soon is `expiresOn` up to `addDays(today, days)`, plain day arithmetic. Without a default, a new caller has to say whose today it means.
 - **The settings page** hands the view the company's today (`companyToday()`), the day it was loaded.
-- **The portal** passes the company's today as a date string (`isoDateInZone`) instead of a shifted clock. It hides the same certificates as before.
+- **The portal** passes the company's today as a date string (`todayForCompany`) instead of a shifted clock. It hides the same certificates as before.
 
 **Consequence:** the settings page and the portal agree on the evening of a certificate's last day. No SQL.
 

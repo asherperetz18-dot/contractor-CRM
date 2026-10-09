@@ -1,5 +1,4 @@
-import { isoDateInZone } from "@/lib/company-clock";
-import { zoneForCompany } from "@/lib/data/company-today";
+import { todayForCompany } from "@/lib/data/company-today";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getPortalViewer } from "@/lib/portal/session";
@@ -238,7 +237,7 @@ export default async function PortalHomePage() {
 
   // Certificates lapse on the company's calendar, not the server's UTC
   // one -- "valid through Dec 31" holds all of Dec 31 in the office.
-  const companyToday = isoDateInZone(new Date(), await zoneForCompany(admin, viewer.companyId));
+  const companyToday = await todayForCompany(admin, viewer.companyId);
 
   return (
     <PortalHome

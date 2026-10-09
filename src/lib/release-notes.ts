@@ -24,7 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     version: "1.260.0",
     date: "2026-10-09",
     notes: [
-      "Settings › Licence & Insurance now goes by your company's clock. On a certificate's last valid day it no longer says \"expired, no longer shown to customers\" after 5pm: it stays valid through that whole day, as your customer portal already showed it.",
+      "Settings › Licence & Insurance now goes by your company's clock. On a certificate's last valid day it no longer says it \"has expired and is no longer shown to customers\" after 5pm: it stays valid through that whole day, as your customer portal already showed it.",
     ],
   },
   {
