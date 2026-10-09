@@ -8,6 +8,7 @@ import { isMissingSchemaError } from "@/lib/schema-drift";
 import { exchangeQuickBooksCode, qbApiBase, quickbooksCredentials } from "@/lib/quickbooks/oauth";
 import { readQbAccounts, readQbCompanyName } from "@/lib/quickbooks/connection";
 import { suggestPaymentMatch } from "@/lib/quickbooks/accounts";
+import { readItems } from "@/lib/quickbooks/api";
 
 /**
  * Intuit sends the person back here with a code for the QuickBooks
@@ -87,6 +88,24 @@ export async function GET(req: NextRequest) {
     // Sending bills stops until the owner picks where the new books start
     // (DECISIONS #173); what went to the old company stays recorded under it.
     await admin.from("quickbooks_connections").update({ send_bills: false, send_bills_from: null }).eq("company_id", companyId);
+    // The same for invoices (#184), and its picks were the old company's products and accounts.
+    // Before 0227 these columns don't exist; nothing to reset then.
+    await admin
+      .from("quickbooks_connections")
+      .update({
+        send_invoices: false,
+        send_invoices_from: null,
+        invoice_item_id: null,
+        deposit_item_id: null,
+        cost_item_id: null,
+        payments_account_id: null,
+        stripe_refunds_account_id: null,
+        hand_refunds_account_id: null,
+        items: null,
+        items_read_at: null,
+        qb_prefs: null,
+      })
+      .eq("company_id", companyId);
   }
 
   const now = new Date().toISOString();
@@ -116,6 +135,12 @@ export async function GET(req: NextRequest) {
         ? "QuickBooks needs a database update first: run 0221_quickbooks_connection.sql in Supabase, then connect again."
         : error.message
     );
+  }
+
+  // Its products and services, for invoices (#184); kept once 0227 has run.
+  const items = await readItems(access);
+  if (!("error" in items)) {
+    await admin.from("quickbooks_connections").update({ items: items.items, items_read_at: now }).eq("company_id", companyId);
   }
 
   // "Paid from" accounts whose QuickBooks account is clear, matched now;

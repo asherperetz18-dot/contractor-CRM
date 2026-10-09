@@ -15,6 +15,7 @@ import {
   parseInvoiceQuery,
   type InvoiceStatusGroup,
 } from "@/lib/data/invoice-rows";
+import { invoiceRowsQuickBooks } from "@/lib/quickbooks/invoice-chips";
 import { InvoicesView, type InvoiceListRow } from "./invoices-view";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,9 @@ export default async function InvoicesPage({
         : b.billedAt.localeCompare(a.billedAt)
     )
     .map((r) => ({ ...r, customer: clientName(leadById.get(r.leadId)) || "Unnamed" }));
+  // Where each one stands with QuickBooks (DECISIONS #184), for the rows drawn.
+  const qb = await invoiceRowsQuickBooks(profile.company_id, shown);
+  for (const r of shown) r.qb = qb.get(r.id);
 
   return (
     <InvoicesView

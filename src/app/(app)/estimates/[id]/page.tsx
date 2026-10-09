@@ -13,6 +13,8 @@ import { approvalOnSend, approvalHoldMessage } from "@/lib/estimate-approval-gat
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { EstimateBuilder, type BuilderLead } from "./estimate-builder";
 import { estimateRepLine } from "@/lib/estimate-rep-line";
+import { canViewFinancials } from "@/lib/data/accounting-access";
+import { depositQuickBooks } from "@/lib/quickbooks/invoice-chips";
 import { clientName } from "@/lib/data/client-name";
 import { CompletionEditor } from "./completion-editor";
 import { InvoiceView, type InvoiceLineCost } from "./invoice-view";
@@ -494,9 +496,19 @@ export default async function EstimateDetailPage({
         .maybeSingle<{ name: string | null; email: string | null }>()
     : { data: null };
 
+  // The deposit's QuickBooks line (DECISIONS #184), for those who see the company's money.
+  const qbDeposit =
+    canViewFinancials(profile) &&
+    (estimate.kind === "contract" || !estimate.kind) &&
+    (estimate.status === "Signed" || estimate.status === "Void") &&
+    Number(estimate.deposit_cents ?? 0) > 0
+      ? await depositQuickBooks(profile.company_id, estimate)
+      : null;
+
   return (
     <BillRemindersProvider on={remindersOn} sent={remindersSent}>
       <EstimateBuilder
+        qbDeposit={qbDeposit}
         estimate={estimate}
         customerViews={customerViews}
         items={(items ?? []) as EstimateItem[]}

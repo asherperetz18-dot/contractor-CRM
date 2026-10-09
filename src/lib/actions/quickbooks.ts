@@ -5,7 +5,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { isAdminRole } from "@/lib/data/types";
-import { todayForCompany } from "@/lib/data/company-today";
+import { todayForCompany, zoneForCompany } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
 import { isCompanyLocked, lockedServicesError } from "@/lib/billing/company-lock";
 import { encryptionAvailable, decryptSecret } from "@/lib/crypto/secrets";
 import { isMissingSchemaError } from "@/lib/schema-drift";
@@ -14,12 +15,26 @@ import { quickBooksAccess, readQbAccounts, readQuickBooksConnection } from "@/li
 import { quickBooksReceiptsReady } from "@/lib/quickbooks/receipts-ready";
 import { accountChoices, categoryKey, costCategories, type QbAccount } from "@/lib/quickbooks/accounts";
 import { syncCompanyBills } from "@/lib/quickbooks/bill-sync-run";
+import { FOR_BILLS, syncCompanyInvoices } from "@/lib/quickbooks/invoice-sync-run";
+import { qbDocNumber, SALES_WAIT } from "@/lib/quickbooks/invoice-sync";
+import { fetchUntil, readItems, type QbItem, type QbPrefs } from "@/lib/quickbooks/api";
+import { clientName } from "@/lib/data/client-name";
 
 /**
  * Settings › QuickBooks: the connection and the account matches (step 1,
- * DECISIONS #172), and sending bills and bill payments (step 2, #173).
- * Office or Admin, like the rest of the company's settings.
+ * DECISIONS #172), sending bills and bill payments (step 2, #173), and
+ * sending invoices and customer payments (step 3, #184). Office or Admin,
+ * like the rest of the company's settings.
  */
+
+/** Step 2's record types: its counts and Needs a look leave step 3's out. */
+const BILL_TYPES = ["bill", "bill_payment", "receipt"];
+/** Step 3's, as Settings counts them (customers, jobs and the $0.00 credit links aren't counted). */
+const INVOICE_TYPES = ["invoice", "deposit", "customer_payment", "credit", "refund"];
+// A credit's $0.00 payment (applying it to its invoice) isn't counted as sent on its own, but its trouble is the credit's;
+// so is a customer's or job's that couldn't be added (or was made inactive) for its bills' job.
+const INVOICE_TROUBLE_TYPES = [...INVOICE_TYPES, "credit_link", "customer", "job"];
+const NEEDS_0225 = "Sending invoices needs a database update first: run 0227_quickbooks_invoices.sql in Supabase.";
 
 const NEEDS_0221 = "QuickBooks needs a database update first: run 0221_quickbooks_connection.sql in Supabase.";
 const NEEDS_0222 = "Sending bills needs a database update first: run 0222_quickbooks_bills.sql in Supabase.";
@@ -73,6 +88,41 @@ export type QuickBooksSettings = {
   /** The default first (key ''), then each category the company uses. */
   categories: { key: string; category: string; qbAccountId: string | null }[];
   bills: QuickBooksBillSending;
+  invoices: QuickBooksInvoiceSending;
+};
+
+/** Something on the invoices side that needs a look: waiting, or refused by QuickBooks. */
+export type QuickBooksInvoiceAttention = {
+  customer: string;
+  amountCents: number | null;
+  /** "invoice INV-1006", "payment", "credit", "refund", "deposit invoice EST-1047-D". */
+  what: string;
+  day: string | null;
+  status: "waiting" | "failed" | "gone";
+  reason: string;
+};
+
+export type QuickBooksInvoiceSending = {
+  /** 0227 has run. */
+  ready: boolean;
+  on: boolean;
+  from: string | null;
+  today: string;
+  checkedAt: string | null;
+  items: QbItem[];
+  itemsReadAt: string | null;
+  jobItem: string | null;
+  depositItem: string | null;
+  costItem: string | null;
+  paymentsAccount: string | null;
+  stripeRefundsAccount: string | null;
+  handRefundsAccount: string | null;
+  sendOutside: boolean;
+  /** Accounts payments can go to (Bank, Other Current Asset); refunds by hand come from a Bank account. */
+  choices: { deposit: QbAccount[]; bank: QbAccount[] };
+  prefs: QbPrefs | null;
+  counts: { sent: number; waiting: number; failed: number };
+  attention: QuickBooksInvoiceAttention[];
 };
 
 async function officeAdmin() {
@@ -125,7 +175,10 @@ export async function getQuickBooksSettings(): Promise<QuickBooksSettings | null
     connectedByName = m?.name || m?.email || null;
   }
 
-  const bills = await readBillSending(admin, companyId, connection?.connected ? connection.realmId : null);
+  const [bills, invoices] = await Promise.all([
+    readBillSending(admin, companyId, connection?.connected ? connection.realmId : null),
+    readInvoiceSending(admin, companyId, connection?.connected ? connection.realmId : null, connection?.accounts ?? []),
+  ]);
 
   const matched = new Map((matchRows ?? []).map((r) => [r.category_key, r]));
   const used = costCategories([...(costRows ?? []).map((r) => r.category), ...(vendorRows ?? []).map((r) => r.default_category)]);
@@ -154,6 +207,7 @@ export async function getQuickBooksSettings(): Promise<QuickBooksSettings | null
       ...used.map((c) => ({ key: categoryKey(c), category: c, qbAccountId: matched.get(categoryKey(c))?.qb_account_id ?? null })),
     ],
     bills,
+    invoices,
   };
 }
 
@@ -196,6 +250,7 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
       .select("record_id", { count: "exact", head: true })
       .eq("company_id", companyId)
       .eq("realm_id", realmId)
+      .in("record_type", BILL_TYPES)
       .eq("status", status);
     return n ?? 0;
   };
@@ -209,6 +264,7 @@ async function readBillSending(admin: Admin, companyId: string, realmId: string 
       .select("record_type, record_id, bill_id, status, reason")
       .eq("company_id", companyId)
       .eq("realm_id", realmId)
+      .in("record_type", BILL_TYPES)
       .in("status", ["waiting", "failed", "gone"])
       .order("updated_at", { ascending: false })
       .limit(20)
@@ -334,6 +390,14 @@ export async function refreshQuickBooksAccounts(): Promise<{ error?: string; cou
     .update({ accounts: read.accounts, accounts_read_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() })
     .eq("company_id", who.profile.company_id);
   if (error) return { error: isMissingSchemaError(error) ? NEEDS_0221 : error.message };
+  // Products and services too, for invoices (DECISIONS #184); before 0227 there's nowhere to keep them.
+  const items = await readItems(got.access);
+  if (!("error" in items)) {
+    await who.admin
+      .from("quickbooks_connections")
+      .update({ items: items.items, items_read_at: new Date().toISOString() })
+      .eq("company_id", who.profile.company_id);
+  }
   revalidatePath("/settings/quickbooks");
   return { count: read.accounts.length };
 }
@@ -429,4 +493,332 @@ export async function saveQuickBooksMatches(input: {
   revalidatePath("/settings/quickbooks");
   revalidatePath("/settings/payment-accounts");
   return {};
+}
+
+// ---------------------------------------------------------------- step 3: invoices and customer payments (DECISIONS #184)
+
+const ACCOUNT_DEPOSIT_TYPES = ["Bank", "Other Current Asset"];
+
+/** The send-invoices switch, its matches, QuickBooks' own settings, counts and what's waiting. */
+async function readInvoiceSending(admin: Admin, companyId: string, realmId: string | null, accounts: QbAccount[]): Promise<QuickBooksInvoiceSending> {
+  const today = await todayForCompany(admin, companyId);
+  const sorted = (types: string[]) => accounts.filter((a) => types.includes(a.type)).sort((a, b) => a.name.localeCompare(b.name));
+  const off: QuickBooksInvoiceSending = {
+    ready: true,
+    on: false,
+    from: null,
+    today,
+    checkedAt: null,
+    items: [],
+    itemsReadAt: null,
+    jobItem: null,
+    depositItem: null,
+    costItem: null,
+    paymentsAccount: null,
+    stripeRefundsAccount: null,
+    handRefundsAccount: null,
+    sendOutside: false,
+    choices: { deposit: sorted(ACCOUNT_DEPOSIT_TYPES), bank: sorted(["Bank"]) },
+    prefs: null,
+    counts: { sent: 0, waiting: 0, failed: 0 },
+    attention: [],
+  };
+  const { data: conn, error } = await admin
+    .from("quickbooks_connections")
+    .select(
+      "send_invoices, send_invoices_from, invoices_checked_at, items, items_read_at, invoice_item_id, deposit_item_id, cost_item_id, " +
+        "payments_account_id, stripe_refunds_account_id, hand_refunds_account_id, send_outside_crm, qb_prefs"
+    )
+    .eq("company_id", companyId)
+    .maybeSingle<{
+      send_invoices: boolean;
+      send_invoices_from: string | null;
+      invoices_checked_at: string | null;
+      items: QbItem[] | null;
+      items_read_at: string | null;
+      invoice_item_id: string | null;
+      deposit_item_id: string | null;
+      cost_item_id: string | null;
+      payments_account_id: string | null;
+      stripe_refunds_account_id: string | null;
+      hand_refunds_account_id: string | null;
+      send_outside_crm: boolean;
+      qb_prefs: QbPrefs | null;
+    }>();
+  if (error) return { ...off, ready: !isMissingSchemaError(error) };
+  const base: QuickBooksInvoiceSending = {
+    ...off,
+    on: !!conn?.send_invoices,
+    from: conn?.send_invoices_from ?? null,
+    checkedAt: conn?.invoices_checked_at ?? null,
+    items: Array.isArray(conn?.items) ? conn!.items! : [],
+    itemsReadAt: conn?.items_read_at ?? null,
+    jobItem: conn?.invoice_item_id ?? null,
+    depositItem: conn?.deposit_item_id ?? null,
+    costItem: conn?.cost_item_id ?? null,
+    paymentsAccount: conn?.payments_account_id ?? null,
+    stripeRefundsAccount: conn?.stripe_refunds_account_id ?? null,
+    handRefundsAccount: conn?.hand_refunds_account_id ?? null,
+    sendOutside: !!conn?.send_outside_crm,
+    prefs: conn?.qb_prefs ?? null,
+  };
+  if (!realmId) return base;
+
+  const count = async (status: string) => {
+    const { count: n } = await admin
+      .from("quickbooks_sync")
+      .select("record_id", { count: "exact", head: true })
+      .eq("company_id", companyId)
+      .eq("realm_id", realmId)
+      .in("record_type", status === "sent" ? INVOICE_TYPES : INVOICE_TROUBLE_TYPES)
+      .eq("status", status);
+    return n ?? 0;
+  };
+  type OpenRow = {
+    record_type: string;
+    record_id: string;
+    bill_id: string | null;
+    status: "waiting" | "failed" | "gone";
+    failed_op: string | null;
+    reason: string | null;
+    tried_hash: string | null;
+  };
+  const [sent, waiting, failed, gone, { data: recent }, { data: undoRows }] = await Promise.all([
+    count("sent"),
+    count("waiting"),
+    count("failed"),
+    count("gone"),
+    admin
+      .from("quickbooks_sync")
+      .select("record_type, record_id, bill_id, status, failed_op, reason, tried_hash")
+      .eq("company_id", companyId)
+      .eq("realm_id", realmId)
+      .in("record_type", INVOICE_TROUBLE_TYPES)
+      .in("status", ["waiting", "failed", "gone"])
+      .order("updated_at", { ascending: false })
+      .limit(100)
+      .returns<OpenRow[]>(),
+    // "Take it out of QuickBooks" notes: shown nowhere else, so every one is listed, however old.
+    admin
+      .from("quickbooks_sync")
+      .select("record_type, record_id, bill_id, status, failed_op, reason, tried_hash")
+      .eq("company_id", companyId)
+      .eq("realm_id", realmId)
+      .in("record_type", INVOICE_TROUBLE_TYPES)
+      .eq("status", "waiting")
+      .in("reason", [SALES_WAIT.undoTakenBack, SALES_WAIT.undoFailed])
+      .order("updated_at", { ascending: false })
+      .limit(200)
+      .returns<OpenRow[]>(),
+  ]);
+
+  // Name each one: the customer, the amount, what it is, the day.
+  const undo = undoRows ?? [];
+  const undoKeys = new Set(undo.map((r) => `${r.record_type}:${r.record_id}`));
+  const rows = [...undo, ...(recent ?? []).filter((r) => !undoKeys.has(`${r.record_type}:${r.record_id}`))];
+  const idsOf = (...types: string[]) => rows.filter((r) => types.includes(r.record_type)).map((r) => r.record_id);
+  // The bill each payment, refund or credit is on: it still names one deleted in the CRM since.
+  const billIds = rows.filter((r) => ["customer_payment", "refund", "credit", "credit_link"].includes(r.record_type) && r.bill_id).map((r) => r.bill_id!);
+  const stageIds = [...new Set([...idsOf("invoice"), ...billIds])];
+  const [{ data: stageRows }, { data: moneyRows }, { data: creditRows }] = await Promise.all([
+    stageIds.length
+      ? admin.from("estimate_payments").select("id, estimate_id, name, sort_order, amount_cents, requested_at").eq("company_id", companyId).in("id", stageIds)
+      : Promise.resolve({ data: [] }),
+    idsOf("customer_payment", "refund").length
+      ? admin.from("portal_payments").select("id, estimate_id, amount_cents, paid_at, created_at").eq("company_id", companyId).in("id", idsOf("customer_payment", "refund"))
+      : Promise.resolve({ data: [] }),
+    idsOf("credit", "credit_link").length
+      ? admin.from("bill_credits").select("id, estimate_id, amount_cents, created_at").eq("company_id", companyId).in("id", idsOf("credit", "credit_link"))
+      : Promise.resolve({ data: [] }),
+  ]);
+  type Stage = { id: string; estimate_id: string; name: string | null; sort_order: number; amount_cents: number; requested_at: string | null };
+  type Money = { id: string; estimate_id: string; amount_cents: number; paid_at: string | null; created_at: string };
+  type Credit = { id: string; estimate_id: string; amount_cents: number; created_at: string };
+  const stages = new Map(((stageRows ?? []) as Stage[]).map((x) => [x.id, x]));
+  const money = new Map(((moneyRows ?? []) as Money[]).map((x) => [x.id, x]));
+  const credits = new Map(((creditRows ?? []) as Credit[]).map((x) => [x.id, x]));
+  const docIds = [
+    ...new Set([
+      ...[...stages.values()].map((x) => x.estimate_id),
+      ...[...money.values()].map((x) => x.estimate_id),
+      ...[...credits.values()].map((x) => x.estimate_id),
+      ...idsOf("deposit", "job"),
+      ...billIds,
+    ]),
+  ];
+  const { data: docRows } = docIds.length
+    ? await admin
+        .from("estimates")
+        .select("id, lead_id, kind, doc_number, version, supersedes_id, title, deposit_cents, signed_at")
+        .eq("company_id", companyId)
+        .in("id", docIds)
+    : { data: [] };
+  type Doc = {
+    id: string;
+    lead_id: string;
+    kind: string | null;
+    doc_number: string;
+    version: number | null;
+    supersedes_id: string | null;
+    title: string | null;
+    deposit_cents: number | null;
+    signed_at: string | null;
+  };
+  const docs = new Map(((docRows ?? []) as Doc[]).map((d) => [d.id, d]));
+  const leadIds = [...new Set([...[...docs.values()].map((d) => d.lead_id), ...idsOf("customer")])];
+  const { data: leadRows } = leadIds.length
+    ? await admin.from("leads").select("id, contact_type, company_name, first_name, last_name").eq("company_id", companyId).in("id", leadIds)
+    : { data: [] };
+  const leadName = new Map(
+    ((leadRows ?? []) as { id: string; contact_type: string | null; company_name: string | null; first_name: string | null; last_name: string | null }[]).map((l) => [
+      l.id,
+      clientName(l) || "A customer",
+    ])
+  );
+  const who = (docId: string | undefined) => (docId ? leadName.get(docs.get(docId)?.lead_id ?? "") : undefined) ?? "A customer";
+  /** The contract (or invoice) a record's bill is on: a stage's, or the contract itself for its deposit. */
+  const billDoc = (billId: string | null) => (billId ? (stages.get(billId)?.estimate_id ?? (docs.has(billId) ? billId : undefined)) : undefined);
+  // Days on the company's calendar, as QuickBooks and the Invoices page have them.
+  const zone = await zoneForCompany(admin, companyId);
+  const localDay = (iso: string | null | undefined) => (iso ? isoDateInZone(new Date(iso), zone) : null);
+
+  // A stage paid before it was billed, or taken back off its bill, has no row on the Invoices page: it's listed first.
+  const noRow = (r: (typeof rows)[number]) => {
+    if (r.record_type !== "invoice") return false;
+    const st = stages.get(r.record_id);
+    return !st || !st.requested_at;
+  };
+  const rest = rows.filter((r) => !undoKeys.has(`${r.record_type}:${r.record_id}`));
+  // Every take-it-out note, then up to 20 others (stages with no row first): the notes never crowd those out.
+  const listed = [...undo, ...[...rest.filter(noRow), ...rest.filter((r) => !noRow(r))].slice(0, 20)];
+  const attention: QuickBooksInvoiceAttention[] = listed.map((r) => {
+    const base = { status: r.status, reason: r.reason ?? "" };
+    // "For its bills": wanted only to tag Bills to Pay costs with (else an invoice needed it).
+    const forBills = r.tried_hash === FOR_BILLS;
+    if (r.record_type === "customer") {
+      return { ...base, customer: leadName.get(r.record_id) ?? "A customer", amountCents: null, what: forBills ? "customer, for its bills' job" : "customer", day: null };
+    }
+    if (r.record_type === "job") {
+      const d = docs.get(r.record_id);
+      const name = `job${d ? ` ${qbDocNumber(d)}${d.title ? ` ${d.title}` : ""}` : ""}`;
+      return { ...base, customer: who(r.record_id), amountCents: null, what: forBills ? `${name}, for its bills` : name, day: null };
+    }
+    if (r.record_type === "invoice") {
+      const st = stages.get(r.record_id);
+      const d = st ? docs.get(st.estimate_id) : undefined;
+      // Named as it goes to QuickBooks (a revision's number carries its version).
+      const label = d ? (d.kind === "invoice" ? d.doc_number : `${qbDocNumber(d)} ${st?.name || `stage ${(st?.sort_order ?? 0) + 1}`}`) : "";
+      return { ...base, customer: who(st?.estimate_id), amountCents: st ? Number(st.amount_cents) : null, what: `invoice${label ? ` ${label}` : ""}`, day: localDay(st?.requested_at) };
+    }
+    if (r.record_type === "deposit") {
+      const d = docs.get(r.record_id);
+      return { ...base, customer: who(r.record_id), amountCents: d?.deposit_cents ?? null, what: `deposit invoice${d ? ` ${qbDocNumber(d)}-D` : ""}`, day: localDay(d?.signed_at) };
+    }
+    if (r.record_type === "credit" || r.record_type === "credit_link") {
+      const c = credits.get(r.record_id);
+      const what = `${r.record_type === "credit" ? "credit" : "credit (applying it to its invoice)"}${c ? "" : " (deleted in the CRM)"}`;
+      return { ...base, customer: who(c?.estimate_id ?? billDoc(r.bill_id)), amountCents: c ? Number(c.amount_cents) : null, what, day: localDay(c?.created_at) };
+    }
+    const m = money.get(r.record_id);
+    return {
+      ...base,
+      customer: who(m?.estimate_id ?? billDoc(r.bill_id)),
+      amountCents: m ? Math.abs(Number(m.amount_cents)) : null,
+      what: `${r.record_type === "refund" ? "refund" : "payment"}${m ? "" : " (deleted in the CRM)"}`,
+      day: localDay(m?.paid_at ?? m?.created_at),
+    };
+  }).map((a, i) => (listed[i].failed_op === "change" ? { ...a, what: `${a.what} (its last change)` } : a));
+  return { ...base, counts: { sent, waiting, failed: failed + gone }, attention };
+}
+
+export type InvoiceSendingInput = {
+  on: boolean;
+  from: string | null;
+  jobItem: string | null;
+  depositItem: string | null;
+  costItem: string | null;
+  paymentsAccount: string | null;
+  stripeRefundsAccount: string | null;
+  handRefundsAccount: string | null;
+  sendOutside: boolean;
+};
+
+/**
+ * Turns sending invoices and customer payments to QuickBooks on or off,
+ * with its start date and where they go: only bills dated from it go, so
+ * the ones the bookkeeper already typed into QuickBooks aren't doubled.
+ */
+export async function saveQuickBooksInvoiceSending(input: InvoiceSendingInput): Promise<{ error?: string }> {
+  const who = await officeAdmin();
+  if (!who) return { error: "Only Office or Admin users can change this." };
+  const companyId = who.profile.company_id;
+  const { connection } = await readQuickBooksConnection(who.admin, companyId);
+  if (!connection?.connected) return { error: "Connect QuickBooks first." };
+  const current = await readInvoiceSending(who.admin, companyId, connection.realmId, connection.accounts ?? []);
+  if (!current.ready) return { error: NEEDS_0225 };
+  const itemIds = new Set(current.items.map((i) => i.id));
+  const depositIds = new Set(current.choices.deposit.map((a) => a.id));
+  const bankIds = new Set(current.choices.bank.map((a) => a.id));
+  const pick = (id: string | null, ok: Set<string>) => (id && ok.has(id) ? id : null);
+  if (input.on) {
+    if (await isCompanyLocked(companyId)) return { error: (await lockedServicesError(companyId)) ?? "This company is locked." };
+    if (!isDay(input.from)) return { error: "Pick the date invoices start from." };
+    if (!pick(input.jobItem, itemIds)) return { error: "Pick the QuickBooks product or service for job work." };
+  }
+  const { data, error } = await who.admin
+    .from("quickbooks_connections")
+    .update({
+      send_invoices: !!input.on,
+      send_invoices_from: input.on ? input.from : undefined,
+      invoice_item_id: pick(input.jobItem, itemIds),
+      deposit_item_id: pick(input.depositItem, itemIds),
+      cost_item_id: pick(input.costItem, itemIds),
+      payments_account_id: pick(input.paymentsAccount, depositIds),
+      stripe_refunds_account_id: pick(input.stripeRefundsAccount, depositIds),
+      hand_refunds_account_id: pick(input.handRefundsAccount, bankIds),
+      send_outside_crm: !!input.sendOutside,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("company_id", companyId)
+    .select("company_id");
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0225 : error.message };
+  if (!data?.length) return { error: "Connect QuickBooks first." };
+  revalidatePath("/settings/quickbooks");
+  revalidatePath("/invoices");
+  return {};
+}
+
+/**
+ * Send now, for invoices: this company's new and changed invoices,
+ * payments, credits and refunds go at once, refusals tried again; then its
+ * bills, so a new job tags them. Inside the page's 60-second limit; the
+ * rest goes with the five-minute job.
+ */
+export async function sendInvoicesToQuickBooksNow(): Promise<SendNowResult> {
+  const who = await officeAdmin();
+  if (!who) return { error: "Only Office or Admin users can change this." };
+  const companyId = who.profile.company_id;
+  if (await isCompanyLocked(companyId)) return { error: (await lockedServicesError(companyId)) ?? "This company is locked." };
+  let s;
+  // Both runs inside the page's 60-second limit: every QuickBooks call stops by 45 seconds,
+  // and bills go only if there's room left (else with the five-minute job).
+  const started = Date.now();
+  const fetchImpl = fetchUntil(started + 45_000);
+  try {
+    s = await syncCompanyInvoices(who.admin, companyId, { writeCap: 40, budgetMs: 15_000, force: true, fetchImpl });
+    const { data: conn } = await who.admin.from("quickbooks_connections").select("send_bills").eq("company_id", companyId).maybeSingle<{ send_bills: boolean }>();
+    const left = 45_000 - (Date.now() - started);
+    if (conn?.send_bills && !s.busy && left >= 15_000) {
+      await syncCompanyBills(who.admin, companyId, { writeCap: 20, budgetMs: Math.min(8_000, left - 10_000), fetchImpl });
+    }
+  } catch {
+    return { error: "Sending didn't finish. Try again in a minute; nothing is sent twice." };
+  } finally {
+    revalidatePath("/settings/quickbooks");
+    revalidatePath("/invoices");
+    revalidatePath("/bills");
+  }
+  if (s.busy) return { error: "QuickBooks is already sending this company's invoices. Look again in a minute." };
+  const result = { sent: s.sent, changed: s.changed, removed: s.removed, waiting: s.waiting, failed: s.failed, more: s.more };
+  return s.error ? { ...result, error: s.error } : result;
 }

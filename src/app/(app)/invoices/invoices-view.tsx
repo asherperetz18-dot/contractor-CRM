@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { moneyCents } from "@/lib/data/types";
+import type { QbChip } from "@/lib/quickbooks/bill-status";
 import {
   INVOICE_STATUS_LABEL,
   daysLate,
@@ -18,7 +19,18 @@ import {
   type InvoiceSummary,
 } from "@/lib/data/invoice-rows";
 
-export type InvoiceListRow = InvoiceRow & { customer: string };
+export type InvoiceListRow = InvoiceRow & {
+  customer: string;
+  /** Where it stands with QuickBooks (DECISIONS #184), when invoices go there. */
+  qb?: { chips: QbChip[]; url: string | null };
+};
+
+const QB_TONE: Record<QbChip["tone"], string> = {
+  good: "est-badge-signed",
+  wait: "est-badge-sent",
+  bad: "est-badge-declined",
+  off: "",
+};
 
 /** Rows drawn at a time; the cards above count every bill. */
 const PAGE = 200;
@@ -251,6 +263,20 @@ export function InvoicesView({
                       <td>
                         {r.stage ?? r.title}
                         {r.stage && <div className="est-tax-note">{r.title}</div>}
+                        {r.qb && (
+                          <div className="qb-chips">
+                            {r.qb.chips.map((c) => (
+                              <span key={c.text} className={`est-badge qb-chip ${QB_TONE[c.tone]}`}>
+                                {c.text}
+                              </span>
+                            ))}
+                            {r.qb.url && (
+                              <a className="qb-open" href={r.qb.url} target="_blank" rel="noopener noreferrer">
+                                Open in QuickBooks ↗
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="mono">
                         {r.status === "draft" ? "—" : fmt(r.billedAt)}
