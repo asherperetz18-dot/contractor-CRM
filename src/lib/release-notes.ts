@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.256.0",
+    date: "2026-10-08",
+    notes: [
+      "On Projects, a contract signed after 5pm now counts on the day it was signed: a custom Signed range keeps its last evening and no longer takes in the evening before it starts, and \"New this month\" counts your month. A checklist step due today isn't overdue until tomorrow, on the page and its printout alike.",
+      "The Start date and Completion date columns on Projects no longer show the day before. A checklist template's \"N days after signing\" now counts from the day the contract was signed, not a day late after an evening signing.",
+    ],
+  },
+  {
     version: "1.255.0",
     date: "2026-10-08",
     notes: [

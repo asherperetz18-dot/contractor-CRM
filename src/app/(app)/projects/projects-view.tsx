@@ -22,10 +22,12 @@ import { toggleLedger, type LedgerFilter } from "@/lib/data/job-ledger";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
 import { JobDocuments } from "./job-documents";
 import { ProjectChecklist, type ChecklistItemRow } from "./project-checklist";
+import { dayLabel } from "@/lib/company-clock";
 import {
   chipMatches,
   dateRangeBounds,
   matchesProjectFilters,
+  projectClock,
   projectTotals,
   type ProjectChip,
   type ProjectDateRange,
@@ -201,6 +203,8 @@ export function ProjectsView({
   memberNames,
   canCheckRain,
   focusId,
+  today,
+  zone,
 }: {
   /** In the company's own words (lib/staff-words.ts, DECISIONS #125). */
   title?: string;
@@ -230,7 +234,13 @@ export function ProjectsView({
   canCheckRain: boolean;
   /** ?focus=<estimateId> deep link: show that one project until cleared. */
   focusId?: string;
+  /** The company's today, from the server: what "overdue" and "this
+   *  month" mean, the same on the server's draw as in the browser. */
+  today: string;
+  /** The company's zone: whose midnights the Signed range runs between. */
+  zone: string;
 }) {
+  const clock = useMemo(() => projectClock(today, zone), [today, zone]);
   // The page opens on the jobs being worked right now; "All" is one click
   // away. Falls back to "All" when nothing is in progress, so the first
   // screen is never empty. A focus deep link starts on "All" instead --
@@ -249,10 +259,10 @@ export function ProjectsView({
   const [pendingHold, setPendingHold] = useState<string | null>(null);
   // Jobs with a step past its due date and not checked off. Same
   // overdue test the checklist rows use, so the chip and the row never
-  // disagree. UTC date on both server and client, so the seeded state
-  // below hydrates identically.
+  // disagree. The company's today, handed down: the same on the server
+  // and in the browser, so the seeded state below hydrates identically,
+  // and the same day the printed reports call overdue.
   const overdueEstimates = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
     const late = new Set<string>();
     for (const item of checklistItems) {
       if (item.due_date && !item.completed_at && item.due_date < today) {
@@ -260,7 +270,7 @@ export function ProjectsView({
       }
     }
     return late;
-  }, [checklistItems]);
+  }, [checklistItems, today]);
   // Overdue jobs land with their checklist already open -- late work
   // should not hide behind a chip. Collapsing is one click and lasts
   // for the visit; still overdue tomorrow means open again tomorrow.
@@ -402,8 +412,7 @@ export function ProjectsView({
   // Cancelled contracts don't count as new business, same scope
   // "active" uses everywhere else on this page. Chip only: its stat
   // card gave way to Net accrual, the owner's call.
-  const now = new Date();
-  const newMonthProjects = active.filter((p) => chipMatches(p, "NewMonth", now));
+  const newMonthProjects = active.filter((p) => chipMatches(p, "NewMonth", clock));
   const newThisMonth = newMonthProjects.length;
 
   const shown =
@@ -443,7 +452,7 @@ export function ProjectsView({
   // (they answer "how many are in this bucket"), these just narrow what's
   // visible within it.
   const q = search.trim().toLowerCase();
-  const dateBounds = dateRangeBounds(dateRange, customFrom, customTo);
+  const dateBounds = dateRangeBounds(dateRange, customFrom, customTo, zone);
   const searched = shown.filter((p) =>
     matchesProjectFilters(p, {
       search,
@@ -1174,35 +1183,17 @@ export function ProjectsView({
                   {visibleColumns.has("status") && <td>{STATUS_LABEL[p.status]}</td>}
                   {visibleColumns.has("signedDate") && (
                     <td>
-                      {p.signedAt
-                        ? new Date(p.signedAt).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.signedAt, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("startDate") && (
                     <td>
-                      {p.startDate
-                        ? new Date(p.startDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.startDate, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("completionDate") && (
                     <td>
-                      {p.completionDate
-                        ? new Date(p.completionDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : "—"}
+                      {dayLabel(p.completionDate, zone, "short")}
                     </td>
                   )}
                   {visibleColumns.has("changeOrders") && (
@@ -1347,6 +1338,7 @@ export function ProjectsView({
                         canEdit={canEditChecklist}
                         canRemove={canRemoveChecklist}
                         memberNames={memberNames}
+                        today={today}
                       />
                     </td>
                   </tr>

@@ -1,4 +1,4 @@
-import { dayLabel, isoDateInZone } from "@/lib/company-clock";
+import { calendarDay, dayLabel, isoDateInZone } from "@/lib/company-clock";
 import { getCompanyZone } from "@/lib/data/company-today";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +16,7 @@ import {
   dateRangeBounds,
   matchesProjectFilters,
   PROJECT_CHIPS,
+  projectClock,
   type ProjectChip,
   type ProjectDateRange,
 } from "../project-filters";
@@ -122,7 +123,10 @@ export default async function ProjectsReportPage({
   const range: ProjectDateRange = RANGES.includes(sp.range as ProjectDateRange)
     ? (sp.range as ProjectDateRange)
     : "any";
-  const bounds = dateRangeBounds(range, sp.from ?? "", sp.to ?? "");
+  // One company clock for the list, the same as the page's: the Signed
+  // range between its midnights, "New this month" in its month.
+  const clock = projectClock(todayISO, zone);
+  const bounds = dateRangeBounds(range, sp.from ?? "", sp.to ?? "", zone);
 
   const [{ cards, reps }, { data: company }, { data: checklistRows }] = await Promise.all([
     buildProjectCards(supabase, companyId),
@@ -143,7 +147,7 @@ export default async function ProjectsReportPage({
   const listed = cards
     .filter(
       (p) =>
-        chipMatches(p, chip) &&
+        chipMatches(p, chip, clock) &&
         matchesProjectFilters(p, {
           search: sp.q ?? "",
           client: sp.client ?? "",
@@ -183,9 +187,13 @@ export default async function ProjectsReportPage({
   if (sp.client) scope.push(`client: ${sp.client}`);
   if (sp.rep) scope.push(`rep: ${sp.rep}`);
   if (range === "custom") {
-    if (sp.from && sp.to) scope.push(`signed ${longDate(sp.from)} – ${longDate(sp.to)}`);
-    else if (sp.from) scope.push(`signed since ${longDate(sp.from)}`);
-    else if (sp.to) scope.push(`signed up to ${longDate(sp.to)}`);
+    // The days the list is cut at: a date in the address that isn't a
+    // real day is no edge there, so it isn't named here either.
+    const fromDay = calendarDay(sp.from);
+    const toDay = calendarDay(sp.to);
+    if (fromDay && toDay) scope.push(`signed ${longDate(fromDay)} – ${longDate(toDay)}`);
+    else if (fromDay) scope.push(`signed since ${longDate(fromDay)}`);
+    else if (toDay) scope.push(`signed up to ${longDate(toDay)}`);
   } else if (RANGE_LABEL[range]) {
     scope.push(RANGE_LABEL[range]);
   }

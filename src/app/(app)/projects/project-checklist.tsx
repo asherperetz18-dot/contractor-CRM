@@ -38,6 +38,7 @@ export function ProjectChecklist({
   canEdit,
   canRemove,
   memberNames,
+  today,
 }: {
   estimateId: string;
   items: ChecklistItemRow[];
@@ -46,6 +47,8 @@ export function ProjectChecklist({
   /** Deleting a step is narrower than shaping it: Office/Admin only. */
   canRemove: boolean;
   memberNames: Record<string, string>;
+  /** The company's today, from the page: a step due before it is overdue. */
+  today: string;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -119,7 +122,7 @@ export function ProjectChecklist({
         <ul className="proj-checklist-list">
           {items.map((item) => {
             const overdue =
-              !!item.due_date && !item.completed_at && item.due_date < new Date().toISOString().slice(0, 10);
+              !!item.due_date && !item.completed_at && item.due_date < today;
             return (
               <li key={item.id}>
                 <button

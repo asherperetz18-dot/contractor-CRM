@@ -1,6 +1,7 @@
 // Relative and with the extension, not "@/...": this module runs under
 // node's test runner (via project-filters.test.ts), which resolves no
 // tsconfig path aliases -- same idiom as every *.test.ts import.
+import { addDays, calendarDay, dayEndInZone, dayStartInZone } from "../../../lib/company-clock.ts";
 import { netAccrualCents } from "../../../lib/data/types.ts";
 import type { ProjectCard, ProjectStatus } from "./projects-view";
 
@@ -44,19 +45,44 @@ const CHIP_STATUS: Partial<Record<ProjectChip, ProjectStatus>> = {
   Cancelled: "cancelled",
 };
 
+/**
+ * The company's calendar for these filters, worked out once per draw:
+ * its today, its zone, and this month as the instants between the 1st's
+ * midnight and next month's there. A contract signed at 7pm Pacific on
+ * the 30th is this month's, not the next (UTC) one's.
+ */
+export type ProjectClock = {
+  /** The company's today, YYYY-MM-DD. */
+  today: string;
+  zone: string;
+  /** [the 1st's midnight, next month's 1st's midnight), in ms. */
+  month: [number, number];
+};
+
+export function projectClock(today: string, zone: string): ProjectClock {
+  const first = `${today.slice(0, 8)}01`;
+  // 31 days past any 1st is in the next month.
+  const nextFirst = `${addDays(first, 31).slice(0, 8)}01`;
+  return {
+    today,
+    zone,
+    month: [dayStartInZone(first, zone).getTime(), dayStartInZone(nextFirst, zone).getTime()],
+  };
+}
+
 /** Whether a card belongs under a status chip. Every chip except
  *  Cancelled speaks only for live jobs -- folding a voided contract into
  *  "All" or "Owed" would report money the company is never getting. */
-export function chipMatches(p: ProjectCard, chip: ProjectChip, now: Date = new Date()): boolean {
+export function chipMatches(p: ProjectCard, chip: ProjectChip, clock: ProjectClock): boolean {
   if (chip === "Cancelled") return p.status === "cancelled";
   if (p.status === "cancelled") return false;
   if (chip === "All") return true;
-  // Signed this calendar month. The clock is a parameter so the rule is
-  // testable; the "New this month" chip label counts with this same rule.
+  // Signed this calendar month, the company's. The "New this month"
+  // chip label counts with this same rule.
   if (chip === "NewMonth") {
     if (!p.signedAt) return false;
-    const d = new Date(p.signedAt);
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    const signed = Date.parse(p.signedAt);
+    return signed >= clock.month[0] && signed < clock.month[1];
   }
   // On the accrual figure: bills filed but unpaid count against the
   // job, so it goes red before the cash actually leaves (owner's rule).
@@ -101,11 +127,15 @@ export function projectTotals(cards: ProjectCard[]): {
 
 /** [start, end] ms bounds for "signed on" a job falls in, or null for no
  *  date filter at all. Custom leaves either side open when blank, so
- *  "from" alone means "since then" and "to" alone means "up to then". */
+ *  "from" alone means "since then" and "to" alone means "up to then".
+ *  Custom days are the company's: from the first day's midnight there
+ *  to the last moment of the last day. A date's UTC midnight cut the
+ *  range at 5pm Pacific instead, leaving out the last evening. */
 export function dateRangeBounds(
   range: ProjectDateRange,
   customFrom: string,
-  customTo: string
+  customTo: string,
+  zone: string
 ): [number, number] | null {
   const now = Date.now();
   const DAY = 24 * 60 * 60 * 1000;
@@ -113,9 +143,13 @@ export function dateRangeBounds(
   if (range === "month") return [now - 30 * DAY, now];
   if (range === "year") return [now - 365 * DAY, now];
   if (range === "custom") {
-    const from = customFrom ? new Date(customFrom).getTime() : -Infinity;
+    // A date that isn't a real day (one still being typed, or a bad
+    // address) is no edge rather than a broken range.
+    const fromDay = calendarDay(customFrom);
+    const toDay = calendarDay(customTo);
+    const from = fromDay ? dayStartInZone(fromDay, zone).getTime() : -Infinity;
     // Include the entire "to" day, not just its midnight instant.
-    const to = customTo ? new Date(customTo).getTime() + DAY - 1 : Infinity;
+    const to = toDay ? dayEndInZone(toDay, zone).getTime() : Infinity;
     if (from === -Infinity && to === Infinity) return null;
     return [from, to];
   }

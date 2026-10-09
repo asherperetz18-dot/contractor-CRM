@@ -2367,3 +2367,26 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
   - Profit & Loss's periods come from the company's today (#178). Its fill is the browser's day, the same day in the company's zone.
 
 **Consequence:** on the rep report and the pages that use `DateRangeFilter`, a custom range no longer starts or ends a day ahead in the evening. No SQL. Other screens still read the UTC date, among them form defaults, the Calendar's today, the dial queue's booking date, Licence & Insurance's expired mark and the Daily Brief's once-a-day popup; TECH_DEBT lists every one found. Projects' Signed date range still cuts at UTC midnight (TECH_DEBT).
+
+## 182 — Projects' signed range, month, overdue steps and job dates go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** The Projects page, its crew view and its printed report still read the UTC calendar in these places, a day ahead of the office from 5pm Pacific (4pm in winter) or, for plain dates, a day behind in any US browser.
+- **The Signed range.** `dateRangeBounds` turned each custom date into its UTC midnight (`new Date("YYYY-MM-DD")`), so a range ran from 5pm Pacific the evening before From to 4:59pm on To. A contract signed at 6pm on the To date was left out, and one signed at 6pm the evening before From was counted: the bug #180 fixed for Estimates and Contracts. The printed report uses the same function.
+- **"New this month".** `chipMatches` compared months on the clock of wherever it ran. The printed report runs on the server, in UTC. All month it counted a contract signed on the previous month's last evening as this month's, and from 5pm on this month's last day it had moved on to next month. The page did the same on the server's first draw, then redrew on the browser's clock.
+- **Overdue checklist steps.** The page and the crew view called a step overdue from the UTC date, on purpose so the server's draw and the browser's matched. The printed reports use the company's today, so from 5pm a step due today was overdue on the screen and not on its printout.
+- **The table's dates.** Start date and Completion date are plain dates, printed with `new Date("YYYY-MM-DD")`: UTC midnight, shown on the browser's calendar, so the day before in any US browser, all day. The printed report prints them with `dayLabel` and got them right, so the two disagreed. The Signed date column printed the signature's day on the browser's clock.
+- **Template due dates.** `dueFromOffset` added N days to the signing moment's UTC date, on the server. A contract signed after 5pm Pacific had every "N days after signing" step due a day late, both from the auto-apply template at signing and from a template applied by hand (an unsigned job counted from the UTC date).
+
+**Decision:**
+- **The page hands down the company's today and zone** (the crew view gets today), the way Estimates and Contracts do (#180). Both draws read the same day, so the seeded open checklists still hydrate identically.
+- **`projectClock(today, zone)`** is worked out once per draw: today, the zone, and this month as the instants between the company's midnight on the 1st and on the next month's 1st. `chipMatches` takes it, so "New this month" compares each signature with two numbers.
+- **`dateRangeBounds(range, from, to, zone)`** cuts a custom range at the company's midnights (`dayStartInZone`, `dayEndInZone`). A date that isn't a real day (`calendarDay`) is no edge, as on the Estimates and Contracts filters (#180), and the printed report's scope line names only the days the list is cut at.
+- **A step is overdue** when its due date is before the company's today, on the page, the crew view and both printed reports.
+- **The table prints its dates with `dayLabel(…, zone, "short")`**, as the printed report does: a plain date as itself, a signature on the company's day.
+- **`dueFromOffset(base, days, zone)`** takes the signing day on the company's calendar and adds the days. It moved to its own pure module (`checklist-due.ts`) so a test can run it; `checklist-auto.ts` is server-only. A paper signature, stored at noon UTC on its date, stays on its date. Steps already on a job keep the dates they were given.
+- The rolling presets (last 7 days, 30 days, 12 months) stay as they were: they count back from the moment, not by calendar days.
+
+**Consequence:** on Projects, a contract counts on the day and month it was signed, the page and its printout agree on what's overdue and on each job's dates, and template steps fall due on the intended day. No SQL. Projects' Transactions list opens the manual payment form, whose Received on still defaults to the UTC date (TECH_DEBT).
+
