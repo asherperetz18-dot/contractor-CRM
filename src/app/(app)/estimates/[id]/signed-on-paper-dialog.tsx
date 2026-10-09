@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { markSignedOnPaper } from "@/lib/actions/estimates";
@@ -29,10 +30,10 @@ export function SignedOnPaperDialog({
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [signerName, setSignerName] = useState("");
-  const [signedDate, setSignedDate] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  });
+  // The company's today, the day the server checks the date against: the
+  // default, and the latest day the box offers.
+  const today = useCompanyToday();
+  const [signedDate, setSignedDate] = useState(() => today());
   const [file, setFile] = useState<File | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -96,7 +97,7 @@ export function SignedOnPaperDialog({
             <input
               type="date"
               value={signedDate}
-              max={new Date().toISOString().slice(0, 10)}
+              max={today()}
               onChange={(e) => setSignedDate(e.target.value)}
             />
           </label>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import { switchCompany } from "@/lib/actions/company";
 import { exportCompanyData } from "@/lib/actions/backup";
@@ -183,6 +184,8 @@ function SetupLine({ setup }: { setup: CompanyDirectoryRow["setup"] }) {
  * its own Admin gets from Settings › Backup, without saved keys.
  */
 function ExportCompany({ companyId }: { companyId: string }) {
+  // The file is named for the company's day, not the UTC one.
+  const today = useCompanyToday();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -200,7 +203,7 @@ function ExportCompany({ companyId }: { companyId: string }) {
       const a = document.createElement("a");
       const slug = (res.companyName ?? "company").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       a.href = url;
-      a.download = `crm-export-${slug || "company"}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `crm-export-${slug || "company"}-${today()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setNote({ ok: true, text: `Downloaded ${res.rows?.toLocaleString() ?? 0} rows.` });

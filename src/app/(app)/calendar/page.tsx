@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { companyToday } from "@/lib/data/company-today";
 import { getCompanyMembers } from "@/lib/data/company";
 import type { CalendarRow, Event, PipelineStageRow } from "@/lib/data/types";
 import {
@@ -46,8 +47,8 @@ export default async function CalendarPage({
     const eventDate = data?.date;
     if (eventDate) month = monthOf(eventDate);
   }
-  // UTC, as the board's own "today" is.
-  month ??= monthOf(new Date().toISOString().slice(0, 10));
+  // The company's month, as the board's own "today" is (useCompanyToday).
+  month ??= monthOf(await companyToday());
   const range = monthRange(month);
 
   // Resolved here, not in the appointment window: the lock has to be

@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.261.0",
+    date: "2026-10-09",
+    notes: [
+      "In the evening, new things now start on today, not tomorrow: a new task's due date, a new appointment's date (Calendar and the New Appointment window), a new contact's Date received, a recorded payment's Received on, a completion certificate's date and the Signed on paper date. The Calendar marks today as today after 5pm too, and opens on this month on the last evening of a month.",
+      "Today's appointments stay under Upcoming all evening, in a contact's window and on your customer portal. Downloaded backups, company exports and the Lead Refunds CSV are named with today's date.",
+    ],
+  },
+  {
     version: "1.260.0",
     date: "2026-10-09",
     notes: [

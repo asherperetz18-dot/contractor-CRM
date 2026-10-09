@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { usePathname, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -48,8 +49,10 @@ export function LeadAppointmentsPanel({
   const [rows, setRows] = useState<LeadAppointmentRow[] | null>(null);
   const [error, setError] = useState("");
   // Fixed at mount: "today" moving mid-session would shuffle a row from
-  // one list to the other under the reader.
-  const [todayISO] = useState(() => new Date().toISOString().slice(0, 10));
+  // one list to the other under the reader. The company's day: the UTC
+  // date put today's evening visits under Past from 5pm Pacific.
+  const today = useCompanyToday();
+  const [todayISO] = useState(() => today());
 
   useEffect(() => {
     let cancelled = false;

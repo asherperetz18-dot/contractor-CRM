@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useState, useTransition } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import {
   createCompletionCertificate,
@@ -26,7 +27,10 @@ export const CompletionCertificate = memo(function CompletionCertificate({
   const router = useRouter();
   const [cert, setCert] = useState<CompletionRow | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [completedOn, setCompletedOn] = useState(new Date().toISOString().slice(0, 10));
+  // Completed today on the company's calendar, not the UTC date
+  // (already tomorrow from 5pm Pacific).
+  const today = useCompanyToday();
+  const [completedOn, setCompletedOn] = useState(today());
   const [outstanding, setOutstanding] = useState("");
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();

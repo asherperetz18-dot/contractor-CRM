@@ -259,6 +259,7 @@ export default async function PortalHomePage() {
       // null until migration 0183 has run: the Notes tab stays hidden
       // rather than offering a box that can't save.
       sharedNotes={sharedNotesError ? null : (sharedNoteRows ?? [])}
+      today={companyToday}
       words={await loadCompanyWords(admin, viewer.companyId)}
     />
   );
