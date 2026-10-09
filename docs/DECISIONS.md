@@ -2421,3 +2421,16 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Where it shows.** The Invoices page: a line under each bill ("✓ In QuickBooks · Invoice and payment · Oct 7", "Payment waiting: Goes when the money clears.", "Waiting: This bill includes sales tax…", "Before Oct 1: not sent", "Not sent: this customer is invoiced outside the CRM", "Removed from QuickBooks") with Open in QuickBooks; a contract's payment schedule: the deposit's line. A credit counts as in QuickBooks only once the $0.00 payment that applies it is too; something taken off in the CRM that QuickBooks wouldn't let go of shows in red on its bill. A stage paid before it was billed, or one taken back off its bill that QuickBooks wouldn't delete, has no row on the Invoices page: it shows under Needs a look, listed first. So does a customer or job wanted for bills' job tags that can't be added (or was made inactive), and a change that didn't go says so. Settings: counts (a credit's $0.00 payment included when it's waiting or refused), Needs a look (days on the company's calendar), Send now, when it last ran. Read with the server's client after the page's own gate (View Financials); `quickbooks_sync` stays readable only by the cost roles.
 
 **Consequence:** invoices, customer payments, credits and refunds reach QuickBooks without being typed twice, each on its job. Needs 0227. Bills with sales tax, refunds the customer owes again, Stripe's fees and payouts (the CRM doesn't record them) and job costs that were never a bill (step 4) are still done by hand. Tested end to end against a stand-in for QuickBooks built from Intuit's API rules, not yet on Intuit's practice company: to confirm there before live books are switched on are how a $0.00 payment applies a credit, which accounts a refund can come from, job names, and automatic sales tax (hence the total check).
+
+## 185 — The Daily Brief's once a day is the viewer's own day
+
+**Date:** 2026-10-09
+
+**Context:** The Daily Brief opens on its own once a day for admins: it checks a date stored in the browser (`localStorage`) and stores today's when closed. That date was `new Date().toISOString().slice(0, 10)`, the UTC date, already tomorrow from 5pm Pacific (4pm in winter). A brief closed in the evening was marked seen for the next day, so it didn't open the next morning; and one closed in the morning opened again after 5pm.
+
+**Decision:**
+- **The viewer's own calendar day** (`isoDay(new Date())`, the browser's local date). The popup is about the person's morning; for anyone in the company's zone this is the company's day. It needs no zone from the server: the button sits in the app layout, which doesn't read the company's zone. The layout's cached company read could carry it, but the popup is about the person's own morning, not the office's.
+- **A new storage key** (`crm-daily-brief-seen-day`). The old one holds UTC dates, and one stored on an evening equals the next local day, so keeping the name would skip the first morning after the change. With the new name the old value is ignored; the cost is that an admin who already closed today's brief sees it once more.
+
+**Consequence:** the brief opens each morning the first time an admin loads the CRM that day, wherever they are. No SQL.
+

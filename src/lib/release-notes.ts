@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.259.0",
+    date: "2026-10-09",
+    notes: [
+      "The Daily Brief opens on its own every morning again. If you closed it after 5pm, it used to count as seen for the next day and skip that morning. It may open once more today, the first time you load the CRM after this update.",
+    ],
+  },
+  {
     version: "1.258.0",
     date: "2026-10-09",
     notes: [

@@ -449,3 +449,14 @@ test("following a link out of the brief closes it for the day", () => {
   assert.ok(links.length >= 2, "tiles and Needs Attention both link out");
   for (const l of links) assert.match(l, /onClick=\{close\}/, l);
 });
+
+test("the brief opens once a day by the viewer's own calendar, not the UTC date", () => {
+  // Keyed by the UTC date, a brief closed after 5pm Pacific was marked
+  // seen for the next day, so it didn't open the next morning.
+  assert.match(modal, /window\.localStorage\.getItem\(SEEN_KEY\) === isoDay\(new Date\(\)\)/);
+  assert.match(modal, /window\.localStorage\.setItem\(SEEN_KEY, isoDay\(new Date\(\)\)\)/);
+  assert.doesNotMatch(modal, /toISOString/);
+  // A new name, so a UTC date stored under the old one can't skip the
+  // first morning after the change.
+  assert.match(modal, /const SEEN_KEY = "crm-daily-brief-seen-day";/);
+});
