@@ -1,6 +1,7 @@
 // The .ts extension is what lets `node --test` run this module raw --
 // tsconfig has allowImportingTsExtensions on, and the bundler resolves
 // it the same as the bare name.
+import { isoDateReader } from "../company-clock.ts";
 import { withinWindow, isoDay, type DateWindow } from "./date-range.ts";
 
 /**
@@ -27,6 +28,11 @@ import { withinWindow, isoDay, type DateWindow } from "./date-range.ts";
  * The same dollar therefore never lands twice on either basis: a bill
  * shows on accrual when billed and on cash when paid, never both in one
  * reading.
+ *
+ * Every day is the company's (`zone`): a payment, a signature or a
+ * billed phase counts on the day it happened there, not the UTC day --
+ * from 5pm Pacific that was already tomorrow, and on the 31st, next
+ * month.
  */
 
 export type PLBasis = "cash" | "accrual";
@@ -85,6 +91,8 @@ export type PLBillPayment = {
 };
 
 export type ProfitLossInput = {
+  /** The company's IANA zone: a timestamp counts on its day there. */
+  zone: string;
   payments: PLPayment[];
   phases: PLPhase[];
   contracts: PLContract[];
@@ -172,10 +180,6 @@ export function plPeriodWindow(key: PLPeriodKey, now: Date = new Date()): DateWi
 
 // ── The ledger ───────────────────────────────────────────────────────
 
-/** When a bill counts on the accrual basis: the day it was billed. */
-function billDay(bill: Pick<PLBill, "bill_date" | "created_at">): string {
-  return bill.bill_date ?? bill.created_at;
-}
 
 /**
  * One counted dollar: what it is, which day it belongs to, and where
@@ -195,6 +199,12 @@ type PLEntry =
 function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLEntry[] {
   const leadOfEstimate = new Map(input.contracts.map((c) => [c.id, c.lead_id]));
   const billById = new Map(input.bills.map((b) => [b.id, b]));
+  // The company's day a timestamp falls on. Plain dates (spent_on,
+  // bill_date, paid_on) are already days and are used as they are.
+  const inZone = isoDateReader(input.zone);
+  const dayOf = (timestamp: string) => inZone(new Date(timestamp));
+  // When a bill counts on the accrual basis: the day it was billed.
+  const billDay = (bill: PLBill) => bill.bill_date ?? dayOf(bill.created_at);
   const out: PLEntry[] = [];
   const push = (entry: PLEntry) => {
     if (!entry.cents) return;
@@ -207,7 +217,7 @@ function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLE
       if (p.status !== "succeeded") continue;
       push({
         kind: "income",
-        day: p.paid_at ?? p.created_at,
+        day: dayOf(p.paid_at ?? p.created_at),
         leadId: p.lead_id ?? leadOfEstimate.get(p.estimate_id) ?? null,
         cents: p.amount_cents || 0,
       });
@@ -218,7 +228,7 @@ function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLE
   } else {
     for (const c of input.contracts) {
       if (!c.signed_at) continue;
-      push({ kind: "income", day: c.signed_at, leadId: c.lead_id, cents: c.deposit_cents || 0 });
+      push({ kind: "income", day: dayOf(c.signed_at), leadId: c.lead_id, cents: c.deposit_cents || 0 });
     }
     for (const ph of input.phases) {
       if (!ph.requested_at) continue;
@@ -228,7 +238,7 @@ function ledger(basis: PLBasis, window: DateWindow, input: ProfitLossInput): PLE
       if (leadId === undefined) continue;
       // Less what was credited off it (DECISIONS #154): a credit is
       // income the job no longer earns.
-      push({ kind: "income", day: ph.requested_at, leadId, cents: (ph.amount_cents || 0) - Math.max(0, ph.credit_cents ?? 0) });
+      push({ kind: "income", day: dayOf(ph.requested_at), leadId, cents: (ph.amount_cents || 0) - Math.max(0, ph.credit_cents ?? 0) });
     }
     // Receipts are incurred the day the money was spent on either basis;
     // "bill" rows are excluded because the bill itself is counted below.

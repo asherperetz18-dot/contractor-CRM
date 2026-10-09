@@ -2,12 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addDays,
+  calendarDay,
   dayEndInZone,
   dayLabel,
   dayStartInZone,
   instantOfWallClock,
   isoDateInZone,
   isoDateReader,
+  stampedWithin,
+  windowInstants,
   localClockIn,
   utcClockIn,
   wallClockIn,
@@ -59,6 +62,47 @@ test("isoDateReader reads many instants on one zone's calendar, as isoDateInZone
   for (let h = 0; h < 48; h++) {
     const at = new Date(Date.UTC(2026, 10, 1, h, 30));
     assert.equal(inLA(at), isoDateInZone(at, LA), at.toISOString());
+  }
+});
+
+test("a window of days becomes the instants a timestamp column is cut at, on the zone's midnights", () => {
+  // "Oct 1 to Oct 10" in Los Angeles: from its midnight on the 1st up to
+  // the midnight after the 10th, so the 10th's evening stays in.
+  assert.deepEqual(windowInstants({ from: "2026-10-01", to: "2026-10-10" }, LA), {
+    from: "2026-10-01T07:00:00.000Z",
+    before: "2026-10-11T07:00:00.000Z",
+  });
+  // An open edge stays open.
+  assert.deepEqual(windowInstants({ from: "2026-10-01", to: null }, LA), {
+    from: "2026-10-01T07:00:00.000Z",
+    before: null,
+  });
+  assert.deepEqual(windowInstants({ from: null, to: null }, LA), { from: null, before: null });
+  // Across the November change the day after starts on standard time.
+  assert.equal(windowInstants({ from: null, to: "2026-11-01" }, LA).before, "2026-11-02T08:00:00.000Z");
+});
+
+test("a timestamp is in a window of days when it falls between the zone's midnights", () => {
+  const inOct1to10 = stampedWithin({ from: "2026-10-01", to: "2026-10-10" }, LA);
+  // Oct 10, 7pm in Los Angeles: UTC already calls it the 11th.
+  assert.equal(inOct1to10("2026-10-11T02:00:00Z"), true);
+  // Sep 30, 8pm: UTC calls it Oct 1, but it's the evening before.
+  assert.equal(inOct1to10("2026-10-01T03:00:00Z"), false);
+  // Midnight on the 1st is in; midnight after the 10th is out.
+  assert.equal(inOct1to10("2026-10-01T07:00:00+00:00"), true);
+  assert.equal(inOct1to10("2026-10-11T07:00:00.000Z"), false);
+  // Supabase's microseconds read the same.
+  assert.equal(inOct1to10("2026-10-05T12:00:00.123456+00:00"), true);
+  assert.equal(inOct1to10(null), false);
+  // An open edge lets everything through on that side.
+  assert.equal(stampedWithin({ from: null, to: null }, LA)("1999-01-01T00:00:00Z"), true);
+});
+
+test("a calendar day from an address is kept only when it is a real day", () => {
+  assert.equal(calendarDay("2026-09-30"), "2026-09-30");
+  assert.equal(calendarDay("2028-02-29"), "2028-02-29");
+  for (const bad of ["2026-02-31", "2026-13-01", "abc", "", "0002-01-15", "2026-9-30", undefined, null, 20260930]) {
+    assert.equal(calendarDay(bad), null, String(bad));
   }
 });
 

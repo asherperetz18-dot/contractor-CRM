@@ -6,7 +6,7 @@ import { qbWebUrl, type ChipRecord, type QbChip } from "./bill-status";
 import { creditChipRecord, invoiceQbChips } from "./invoice-status";
 
 /**
- * Where each bill to a customer stands with QuickBooks (DECISIONS #176),
+ * Where each bill to a customer stands with QuickBooks (DECISIONS #183),
  * for the Invoices page and a contract's payment schedule. The connection
  * is server-only and the records are read here, after the page's own gate
  * (View Financials), with the server's client.
@@ -64,7 +64,7 @@ async function context(companyId: string): Promise<Context | null> {
       send_invoices_from: string | null;
       send_outside_crm: boolean;
     }>();
-  // Never connected, or before 0225: nothing to show.
+  // Never connected, or before 0227: nothing to show.
   if (error || !conn?.realm_id) return null;
   const { data: profile } = await admin.from("company_profile").select("timezone").eq("company_id", companyId).maybeSingle<{ timezone: string | null }>();
   return {

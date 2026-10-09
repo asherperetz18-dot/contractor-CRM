@@ -71,7 +71,7 @@ export default async function InvoicesPage({
         : b.billedAt.localeCompare(a.billedAt)
     )
     .map((r) => ({ ...r, customer: clientName(leadById.get(r.leadId)) || "Unnamed" }));
-  // Where each one stands with QuickBooks (DECISIONS #176), for the rows drawn.
+  // Where each one stands with QuickBooks (DECISIONS #183), for the rows drawn.
   const qb = await invoiceRowsQuickBooks(profile.company_id, shown);
   for (const r of shown) r.qb = qb.get(r.id);
 

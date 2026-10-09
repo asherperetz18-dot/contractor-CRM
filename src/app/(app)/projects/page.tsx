@@ -1,5 +1,6 @@
 import { clientName } from "@/lib/data/client-name";
-import { companyToday } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
+import { companyToday, getCompanyZone } from "@/lib/data/company-today";
 import { canEditJobCosts } from "@/lib/data/expense-edit";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -63,6 +64,11 @@ export default async function ProjectsPage({
 
   const supabase = await createClient();
   const companyId = profile.company_id;
+  // The company's calendar, handed down: a contract signed after 5pm
+  // Pacific is that day's, not the UTC day after, and a step due today
+  // isn't overdue until the company's tomorrow.
+  const zone = await getCompanyZone();
+  const today = isoDateInZone(new Date(), zone);
 
   // The cards themselves -- fetch and rollup -- live in project-data.ts,
   // shared with the printable reports so the paper and the screen can
@@ -114,6 +120,8 @@ export default async function ProjectsPage({
       memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
       canCheckRain={isAdminRole(profile)}
       focusId={focus}
+      today={today}
+      zone={zone}
     />
   );
 }
@@ -289,6 +297,7 @@ async function CrewProjects({ companyId }: { companyId: string }) {
       jobs={jobs}
       checklistItems={checklistRows.filter((c) => jobEstimateIds.has(c.estimate_id))}
       memberNames={Object.fromEntries(reps.map((r) => [r.id, r.name ?? ""]))}
+      today={today}
     />
   );
 }

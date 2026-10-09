@@ -33,10 +33,13 @@ export function CrewProjectsView({
   jobs,
   checklistItems,
   memberNames,
+  today,
 }: {
   jobs: CrewJob[];
   checklistItems: ChecklistItemRow[];
   memberNames: Record<string, string>;
+  /** The company's today, from the page: when a step turns overdue. */
+  today: string;
 }) {
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // A lead id from a row's button, "any" from the page-level one.
@@ -125,6 +128,7 @@ export function CrewProjectsView({
             canEdit={false}
             canRemove={false}
             memberNames={memberNames}
+            today={today}
           />
         )}
       </div>

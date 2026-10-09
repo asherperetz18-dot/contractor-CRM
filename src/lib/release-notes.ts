@@ -21,10 +21,62 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.257.0",
+    date: "2026-10-09",
+    notes: [
+      "QuickBooks, step 3: turn on Settings › QuickBooks › Send invoices to QuickBooks, pick a start date and your QuickBooks product or service for job work. From then on, each bill to a customer goes to your QuickBooks as an invoice (issued invoices, billed stages and each contract's deposit), and each payment as a payment on it, with credits and refunds. Each signed contract becomes a job under its customer, and Bills to Pay costs are tagged to it. Customers keep getting only what the CRM sends them. The Invoices page shows where each bill stands, with Open in QuickBooks; bills with sales tax wait and are entered by hand for now. Anything that can't go says why, and anything it says to enter by hand stays that way, so it's never entered twice.",
+    ],
+  },
+  {
+    version: "1.256.0",
+    date: "2026-10-08",
+    notes: [
+      "On Projects, a contract signed after 5pm now counts on the day it was signed: a custom Signed range keeps its last evening and no longer takes in the evening before it starts, and \"New this month\" counts your month. A checklist step due today isn't overdue until tomorrow, on the page and its printout alike.",
+      "The Start date and Completion date columns on Projects no longer show the day before. A checklist template's \"N days after signing\" now counts from the day the contract was signed, not a day late after an evening signing.",
+    ],
+  },
+  {
+    version: "1.255.0",
+    date: "2026-10-08",
+    notes: [
+      "Custom dates now start from today, not tomorrow. On the sales rep report, pressing Custom in the evening opens on this month up to today; before, it could jump a day ahead, or to next month on the last day of the month. On the Dashboard, Dispatch Dashboard, Marketing Analytics and Profit & Loss, typing one custom date in the evening fills the other with today, not tomorrow.",
+    ],
+  },
+  {
+    version: "1.254.0",
+    date: "2026-10-08",
+    notes: [
+      "Estimates & Contracts and the Contract Board now go by your company's clock. An estimate or contract made after 5pm counts on the day it was made, so a created-date range keeps its last evening and no longer takes in the evening before it starts. \"Older than 7 days\" counts your days too.",
+    ],
+  },
+  {
+    version: "1.253.0",
+    date: "2026-10-08",
+    notes: [
+      "Commission statements now go by your company's clock. A job paid off or signed off after 5pm counts on that day, so on the last day of the month it's payable that month, not the next. The statement opens on your company's month, and every date on it is your day.",
+    ],
+  },
+  {
+    version: "1.252.0",
+    date: "2026-10-08",
+    notes: [
+      "Text Reports now goes by your company's clock. A text sent after 5pm counts on the day it was sent, so a date range keeps its last evening and no longer takes in the evening before it starts. The busiest day is your day too.",
+      "Profit & Loss: a payment, deposit or billed stage from the evening counts on that day. On the 31st it stays in that month instead of moving to the next, and This month and This year are your company's.",
+    ],
+  },
+  {
+    version: "1.251.0",
+    date: "2026-10-08",
+    notes: [
+      "Marketing Analytics and the sales rep report now go by your company's clock. Leads, estimates and contracts from after 5pm count on the day they happened, so a date range you pick keeps its last evening and no longer takes in the evening before it starts. A contract signed on a Sunday evening shows in that week's bar instead of the next week's.",
+      "Marketing Analytics: in the evening, today's appointments no longer count as having no result yet on the team table, so it matches the rep report. The page also opens on your last 30 days instead of the server's.",
+    ],
+  },
+  {
     version: "1.250.0",
     date: "2026-10-08",
     notes: [
-      "QuickBooks, step 3: turn on Settings › QuickBooks › Send invoices to QuickBooks, pick a start date and your QuickBooks product or service for job work. From then on, each bill to a customer goes to your QuickBooks as an invoice (issued invoices, billed stages and each contract's deposit), and each payment as a payment on it, with credits and refunds. Each signed contract becomes a job under its customer, and Bills to Pay costs are tagged to it. Customers keep getting only what the CRM sends them. The Invoices page shows where each bill stands, with Open in QuickBooks; bills with sales tax wait and are entered by hand for now.",
+      "Dispatch Dashboard now goes by your company's clock. Each period starts at your midnight instead of the server's (5pm Pacific): Today no longer counts last night's leads, bookings, calls and texts, and a date range you pick keeps its last evening. A lead that came in yesterday evening shows as a day old under Waiting for a first appointment, not under a day.",
     ],
   },
   {

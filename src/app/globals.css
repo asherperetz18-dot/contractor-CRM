@@ -14205,7 +14205,7 @@ textarea.est-item-desc:disabled {
   color: var(--ink-soft);
 }
 
-/* Send invoices to QuickBooks (DECISIONS #176). */
+/* Send invoices to QuickBooks (DECISIONS #183). */
 .qb-picks {
   display: grid;
   gap: 2px;

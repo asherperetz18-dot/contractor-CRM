@@ -5,7 +5,7 @@ import { qbText, qbVendorName } from "./bill-sync.ts";
 import { inQuickBooks, type RecordType, type SyncRecord } from "./bill-status.ts";
 
 /**
- * QuickBooks, step 3 (DECISIONS #176): which bills to customers go to
+ * QuickBooks, step 3 (DECISIONS #183): which bills to customers go to
  * QuickBooks as invoices, which payments, credits and refunds go with
  * them, which change or come out there, and which wait. Pure: the runner
  * (invoice-sync-run.ts) reads the rows, asks this what to do, then does
@@ -601,7 +601,7 @@ type BillState =
   | { kind: "wait"; reason: string }; // its things wait with this reason
 
 // Told to be entered in QuickBooks by hand: once a record says so, it stays so -- it may be there that way, so the
-// CRM never sends it, drops it or calls it done later (DECISIONS #176). By the record's own words.
+// CRM never sends it, drops it or calls it done later (DECISIONS #183). By the record's own words.
 const opening = (f: (x: string) => string) => f("\u0000").split("\u0000")[0];
 const HAND_OPENINGS = [opening(SALES_WAIT.closedByHand), opening(SALES_WAIT.coMoneyOnParent), opening(SALES_WAIT.coMoneyGoesParent)];
 const CHILD_HAND = [

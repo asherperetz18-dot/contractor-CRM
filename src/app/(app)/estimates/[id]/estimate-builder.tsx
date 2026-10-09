@@ -167,7 +167,7 @@ export function EstimateBuilder({
   credits?: BillCreditRow[];
   /** Financing on it (DECISIONS #162); null hides the panel. */
   financing?: FinancingPanelData | null;
-  /** Where the deposit stands with QuickBooks (DECISIONS #176). */
+  /** Where the deposit stands with QuickBooks (DECISIONS #183). */
   qbDeposit?: QbLine | null;
   lead: BuilderLead | null;
   /** The salesperson for the header. Unsigned it follows the lead, so

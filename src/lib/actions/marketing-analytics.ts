@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { selectAll } from "@/lib/data/select-all";
 import type { DateWindow } from "@/lib/data/date-range";
+import { getCompanyZone } from "@/lib/data/company-today";
+import { dayStartInZone, windowInstants } from "@/lib/company-clock";
 import {
   buildMarketingRollup,
   coerceMarketingRollup,
@@ -41,11 +43,6 @@ export type AnalyticsLead = Pick<
 const FIELDS =
   "id, contact_type, company_name, first_name, last_name, source, stage, value, created_at, won_at, has_appt, assigned_to, lead_cost, phone";
 
-/** The day after, in UTC -- the exclusive upper bound for timestamptz
- *  columns, so "to Sep 20" keeps everything stamped during Sep 20. */
-function nextDay(day: string): string {
-  return new Date(new Date(`${day}T00:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10);
-}
 
 /**
  * The leads created in a window -- one rep's, for the team drill-down.
@@ -57,6 +54,7 @@ export async function getAnalyticsLeads(win: DateWindow, repId?: string): Promis
   if (!profile) return [];
 
   const supabase = await createClient();
+  const at = windowInstants(win, await getCompanyZone());
   return selectAll<AnalyticsLead>((f, t) => {
     let q = supabase
       .from("leads")
@@ -65,8 +63,8 @@ export async function getAnalyticsLeads(win: DateWindow, repId?: string): Promis
       .order("created_at", { ascending: false })
       .range(f, t);
     if (repId) q = q.eq("assigned_to", repId);
-    if (win.from) q = q.gte("created_at", win.from);
-    if (win.to) q = q.lt("created_at", nextDay(win.to));
+    if (at.from) q = q.gte("created_at", at.from);
+    if (at.before) q = q.lt("created_at", at.before);
     return q;
   });
 }
@@ -137,14 +135,17 @@ async function spendRows(supabase: SupabaseClient, companyId: string): Promise<S
  * missing and this falls back to windowed queries reduced by the same
  * tested builder -- slower, identical numbers, and the browser never
  * sees raw rows either way. Spend and the bought-list flags (0165) ride
- * alongside; without that migration they read as empty.
+ * alongside; without that migration they read as empty. Every day is the
+ * company's (0226): the window's edges, today, the weekly strip, and the
+ * day each lead, send and signature is filed on.
  */
 export async function getMarketingAnalytics(
   win: DateWindow,
   opts: MarketingOptions
 ): Promise<MarketingAnalytics> {
   const profile = await getCurrentProfile();
-  const B = marketingBoundaries(win);
+  const zone = await getCompanyZone();
+  const B = marketingBoundaries(win, zone);
   if (!profile) {
     return {
       rollup: emptyMarketingRollup(),
@@ -195,6 +196,7 @@ export async function getMarketingAnalytics(
     p_today: B.today,
     p_default_cost: defaultCost,
     p_exclude_sources: excludeSources,
+    p_zone: B.zone,
   });
   if (!error && data) return { rollup: coerceMarketingRollup(data), ...base };
 
@@ -212,7 +214,7 @@ export async function getMarketingAnalytics(
         .eq("company_id", companyId)
         .order("created_at", { ascending: false })
         .range(f, t);
-      if (B.fetchFrom) q = q.gte("created_at", B.fetchFrom);
+      if (B.fetchFrom) q = q.gte("created_at", dayStartInZone(B.fetchFrom, B.zone).toISOString());
       return q;
     }),
     selectAll<MarketingEstimate>((f, t) =>
@@ -284,6 +286,7 @@ export async function getWonWithoutContract(
 
   const supabase = await createClient();
   const companyId = profile.company_id;
+  const at = windowInstants(win, await getCompanyZone());
   let rows = await selectAll<AnalyticsLead>((f, t) => {
     let q = supabase
       .from("leads")
@@ -293,8 +296,8 @@ export async function getWonWithoutContract(
       .eq("stage_key", "won")
       .order("created_at", { ascending: false })
       .range(f, t);
-    if (win.from) q = q.gte("created_at", win.from);
-    if (win.to) q = q.lt("created_at", nextDay(win.to));
+    if (at.from) q = q.gte("created_at", at.from);
+    if (at.before) q = q.lt("created_at", at.before);
     return q;
   });
   if (opts.excludeBoughtLists) {

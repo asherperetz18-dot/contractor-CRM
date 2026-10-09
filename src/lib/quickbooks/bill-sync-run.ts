@@ -299,7 +299,7 @@ async function run(
   );
   const matches = (matchRows.data ?? []) as { category_key: string; qb_account_id: string }[];
 
-  // QuickBooks' closing date, as the invoices job last read it; none before 0225 (the column isn't there).
+  // QuickBooks' closing date, as the invoices job last read it; none before 0227 (the column isn't there).
   const { data: prefsRow } = await admin
     .from("quickbooks_connections")
     .select("qb_prefs")
@@ -307,7 +307,7 @@ async function run(
     .maybeSingle<{ qb_prefs: { bookCloseDate?: string | null } | null }>();
   const closeDate = prefsRow?.qb_prefs?.bookCloseDate ?? null;
 
-  // Each bill's job in QuickBooks, once step 3 has added it (DECISIONS #176); else its customer.
+  // Each bill's job in QuickBooks, once step 3 has added it (DECISIONS #183); else its customer.
   const links = await billJobLinks(admin, companyId, billRows);
   const recordOf = new Map(records.map((r) => [`${r.record_type}:${r.record_id}`, r]));
   const lastTagOf = (billId: string) => lastSentTag(recordOf.get(`bill:${billId}`)?.qb_hash);

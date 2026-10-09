@@ -53,7 +53,7 @@ export function classifyQbError(status: number, json: unknown): QbError {
   if (code === "5010") return { kind: "stale", message: "It changed in QuickBooks meanwhile.", code };
   if (code === "610") return { kind: "notfound", message: said ? `QuickBooks said: ${said}` : "It's no longer in QuickBooks.", code };
   if (code === "6240") return { kind: "duplicate", message: said ? `QuickBooks said: ${said}` : "That name is already used in QuickBooks.", code };
-  // Step 3's refusals, in words that say what to do (DECISIONS #176).
+  // Step 3's refusals, in words that say what to do (DECISIONS #183).
   if (code === "6540") {
     return {
       kind: "validation",
@@ -356,7 +356,7 @@ export async function deleteAttachable(access: QbAccess, current: Record<string,
   return (res.json.Attachable as { Id?: unknown } | undefined)?.Id === id ? { id, syncToken: String(current.SyncToken ?? "0") } : otherRecord();
 }
 
-// ---------------------------------------------------------------- step 3: customers, invoices, payments (DECISIONS #176)
+// ---------------------------------------------------------------- step 3: customers, invoices, payments (DECISIONS #183)
 
 /** QuickBooks' query for one customer or job by its exact name (case doesn't count), inactive ones too. */
 export function customerQuery(name: string): string {

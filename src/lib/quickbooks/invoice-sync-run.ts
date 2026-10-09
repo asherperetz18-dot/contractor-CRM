@@ -52,7 +52,7 @@ import {
 } from "./invoice-sync";
 
 /**
- * One company's turn of the QuickBooks invoices job (DECISIONS #176), from
+ * One company's turn of the QuickBooks invoices job (DECISIONS #183), from
  * the five-minute job (/api/cron/quickbooks-sync) or Send now, before its
  * bills' turn (so a bill's job is there to tag it with).
  *
@@ -272,7 +272,7 @@ export async function syncCompanyInvoices(
   if (connError) {
     return {
       ...summary,
-      error: isMissingSchemaError(connError) ? "QuickBooks needs a database update first: run 0225_quickbooks_invoices.sql in Supabase." : connError.message,
+      error: isMissingSchemaError(connError) ? "QuickBooks needs a database update first: run 0227_quickbooks_invoices.sql in Supabase." : connError.message,
     };
   }
   if (!conn?.realm_id || conn.disconnected_at) return { ...summary, error: "Connect QuickBooks first." };

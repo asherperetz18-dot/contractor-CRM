@@ -9,12 +9,18 @@
  * settled. This file joins the two into balances, and it is pure so
  * payroll maths is tested rather than assumed.
  *
+ * Days are the company's: a line qualifies on the day its last gate
+ * cleared on the company's clock, never the server's (UTC), so a job
+ * paid off after 5pm Pacific on the 30th is that month's payroll.
+ *
  * Two rules the tests pin down:
  *  - Netting is per rep, never across reps. One rep advanced ahead
  *    does not shrink what another rep is owed.
  *  - An advance past what is payable shows as "ahead", not as a
  *    negative due -- it nets against the rep's next qualifying job.
  */
+
+import { windowInstants } from "../company-clock.ts";
 
 export type PayoutKind = "payout" | "advance";
 
@@ -55,8 +61,6 @@ export type RepBalance = {
   /** Paid beyond what is payable -- nets against the next job. */
   aheadCents: number;
 };
-
-const day = (iso: string) => iso.slice(0, 10);
 
 function blank(repId: string): RepBalance {
   return {
@@ -132,9 +136,10 @@ export type PeriodBalance = {
 /**
  * One rep's statement period, read like a bank statement.
  *
- * A line counts on the day it qualified (holds cleared), a payment on
- * the day the money moved; both ends of the period are inclusive, and
- * anything dated after the period belongs to the next statement.
+ * A line counts on the day it qualified (holds cleared) on the
+ * company's calendar (`zone`), a payment on the day the money moved;
+ * both ends of the period are inclusive, and anything dated after the
+ * period belongs to the next statement.
  * Payable lines with no qualifying date are carried in the opening
  * balance -- owed money must appear on every statement until paid.
  *
@@ -146,18 +151,24 @@ export function periodBalance(
   lines: readonly CommissionLineLike[],
   payouts: readonly PayoutLike[],
   from: string,
-  to: string
+  to: string,
+  zone: string
 ): PeriodBalance {
   let openingCents = 0;
   let qualifiedCents = 0;
   let paidCents = 0;
 
+  // The period's first moment and the moment after its last, at the
+  // company's midnights; qualifiedAt is an instant.
+  const edges = windowInstants({ from, to }, zone);
+  const start = Date.parse(edges.from!);
+  const after = Date.parse(edges.before!);
   for (const l of lines) {
     if (!l.payable) continue;
-    const q = l.qualifiedAt ? day(l.qualifiedAt) : null;
-    if (q === null || q < from) openingCents += l.shareCents;
-    else if (q <= to) qualifiedCents += l.shareCents;
-    // q > to: the next statement's business.
+    const q = l.qualifiedAt ? Date.parse(l.qualifiedAt) : null;
+    if (q === null || q < start) openingCents += l.shareCents;
+    else if (q < after) qualifiedCents += l.shareCents;
+    // Later: the next statement's business.
   }
   for (const p of payouts) {
     if (p.paidOn < from) openingCents -= p.amountCents;
@@ -199,7 +210,8 @@ export function periodBalancesByRep(
   lines: readonly CommissionLineLike[],
   payouts: readonly PayoutLike[],
   from: string,
-  to: string
+  to: string,
+  zone: string
 ): Map<string, PeriodBalance> {
   const repIds = new Set<string>();
   for (const l of lines) repIds.add(l.repId);
@@ -213,7 +225,8 @@ export function periodBalancesByRep(
         lines.filter((l) => l.repId === repId),
         payouts.filter((p) => p.repId === repId),
         from,
-        to
+        to,
+        zone
       )
     );
   }

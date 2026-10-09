@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
+import { companyNow, getCompanyZone } from "@/lib/data/company-today";
+import { calendarDay, dayLabel, stampedWithin } from "@/lib/company-clock";
 import {
   isAdminRole,
   moneyCents,
@@ -27,14 +29,6 @@ function iso(d: Date) {
   ).padStart(2, "0")}`;
 }
 
-function longDate(value: string | null) {
-  if (!value) return "—";
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value);
-  return isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
-
 function holdText(holds: CommissionHold[]) {
   return holds.map((h) => COMMISSION_HOLD_LABEL[h]).join(" · ");
 }
@@ -59,9 +53,14 @@ export default async function DispatcherStatementPage({
   if (!profile) return null;
 
   const sp = await searchParams;
-  const now = new Date();
-  const from = sp.from || iso(new Date(now.getFullYear(), now.getMonth(), 1));
-  const to = sp.to || iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  // The company's month and days, not the server's (UTC, a day ahead
+  // from 5pm Pacific); a date in the address that isn't a real day falls
+  // back to this month.
+  const now = await companyNow();
+  const zone = await getCompanyZone();
+  const from = calendarDay(sp.from) ?? iso(new Date(now.getFullYear(), now.getMonth(), 1));
+  const to = calendarDay(sp.to) ?? iso(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const longDate = (value: string | null) => dayLabel(value, zone, "long");
 
   const [{ rows, ratePercent, error }, { data: company }] = await Promise.all([
     getDispatcherCommissions(),
@@ -95,11 +94,11 @@ export default async function DispatcherStatementPage({
     r.jobs.map((j) => ({ ...j, dispatcherName: r.dispatcherName }))
   );
 
-  // Payable lines are dated by when they qualified; held lines have no
-  // date yet, so a period filter would hide them entirely.
-  const payable = lines.filter(
-    (j) => j.qualifiedAt && j.qualifiedAt.slice(0, 10) >= from && j.qualifiedAt.slice(0, 10) <= to
-  );
+  // Payable lines are dated by when they qualified, on the company's
+  // calendar; held lines have no date yet, so a period filter would hide
+  // them entirely.
+  const inPeriod = stampedWithin({ from, to }, zone);
+  const payable = lines.filter((j) => inPeriod(j.qualifiedAt));
   const held = lines.filter((j) => j.holds.length > 0);
   const payableTotal = payable.reduce((s, j) => s + j.payableCents, 0);
   const heldTotal = held.reduce((s, j) => s + j.commissionCents, 0);

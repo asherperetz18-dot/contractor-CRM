@@ -123,7 +123,8 @@ test("carried in, came due, paid, balance", () => {
     ],
     [paid({ paidOn: "2026-08-20", amountCents: 60_000 }), paid({ paidOn: "2026-09-05", amountCents: 30_000 })],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.openingCents, 40_000);
   assert.equal(p.qualifiedCents, 50_000);
@@ -139,7 +140,8 @@ test("the period is inclusive at both ends", () => {
     ],
     [paid({ paidOn: "2026-09-01", amountCents: 1_000 }), paid({ paidOn: "2026-09-30", amountCents: 2_000 })],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.qualifiedCents, 30_000);
   assert.equal(p.paidCents, 3_000);
@@ -150,7 +152,8 @@ test("what qualifies after the period is the next statement's, not carried in ea
     [line({ qualifiedAt: "2026-10-02T10:00:00Z" })],
     [paid({ paidOn: "2026-10-05" })],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.openingCents, 0);
   assert.equal(p.qualifiedCents, 0);
@@ -163,7 +166,8 @@ test("held commission is not on the statement's balance at all", () => {
     [line({ payable: false, qualifiedAt: null, shareCents: 500_000 })],
     [],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.openingCents, 0);
   assert.equal(p.qualifiedCents, 0);
@@ -177,7 +181,8 @@ test("a payable line with no qualifying date is carried in rather than lost", ()
     [line({ qualifiedAt: null, shareCents: 70_000 })],
     [],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.openingCents, 70_000);
   assert.equal(p.closingCents, 70_000);
@@ -188,9 +193,26 @@ test("advances count against the balance the same as payouts, and can run it neg
     [line({ qualifiedAt: "2026-09-10T10:00:00Z", shareCents: 30_000 })],
     [paid({ kind: "advance", paidOn: "2026-09-12", amountCents: 45_000 })],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.equal(p.closingCents, -15_000);
+});
+
+test("a job that clears in the company's evening is that day's payroll on its own clock", () => {
+  // Sep 30, 7pm in Los Angeles is already Oct 1 in UTC. The job paid off
+  // then is September's payroll there -- not October's.
+  const lines = [line({ qualifiedAt: "2026-10-01T02:00:00Z", shareCents: 25_000 })];
+  const LA = "America/Los_Angeles";
+  assert.equal(periodBalance(lines, [], "2026-09-01", "2026-09-30", LA).qualifiedCents, 25_000);
+  // October's statement carries it in as owed rather than counting it as October's.
+  const oct = periodBalance(lines, [], "2026-10-01", "2026-10-31", LA);
+  assert.deepEqual([oct.openingCents, oct.qualifiedCents], [25_000, 0]);
+  // On UTC's clock it was October's.
+  assert.equal(periodBalance(lines, [], "2026-10-01", "2026-10-31", "UTC").qualifiedCents, 25_000);
+  // Midnight on the 1st there is the period's first moment.
+  const atMidnight = [line({ qualifiedAt: "2026-10-01T07:00:00+00:00", shareCents: 1_000 })];
+  assert.equal(periodBalance(atMidnight, [], "2026-10-01", "2026-10-31", LA).qualifiedCents, 1_000);
 });
 
 test("the by-rep period balances keep each rep's statement their own", () => {
@@ -201,7 +223,8 @@ test("the by-rep period balances keep each rep's statement their own", () => {
     ],
     [paid({ repId: "rep-b", paidOn: "2026-09-02", amountCents: 40_000 })],
     "2026-09-01",
-    "2026-09-30"
+    "2026-09-30",
+    "UTC"
   );
   assert.deepEqual(byRep.get("rep-a"), {
     openingCents: 0,

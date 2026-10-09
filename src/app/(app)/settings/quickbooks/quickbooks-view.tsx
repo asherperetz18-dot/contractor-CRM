@@ -40,7 +40,7 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
  * Settings › QuickBooks: connect the company's QuickBooks Online and match
  * its accounts (DECISIONS #172), then send its bills and bill payments
  * (#173), with their receipts (#174), and its invoices and customer
- * payments (#176).
+ * payments (#183).
  */
 export function QuickBooksView({
   settings,
@@ -485,7 +485,7 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
   );
 }
 
-/** Send invoices to QuickBooks (DECISIONS #176): the switch, the start date, where they go, and how it's going. */
+/** Send invoices to QuickBooks (DECISIONS #183): the switch, the start date, where they go, and how it's going. */
 function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
   const router = useRouter();
   const v = settings.invoices;
@@ -567,7 +567,7 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
   return (
     <section className="est-pay">
       <h2 className="est-pay-title">Send invoices to QuickBooks</h2>
-      {!v.ready && <p className="error-note">Sending invoices needs a database update first: run 0225_quickbooks_invoices.sql in Supabase.</p>}
+      {!v.ready && <p className="error-note">Sending invoices needs a database update first: run 0227_quickbooks_invoices.sql in Supabase.</p>}
       <div className="qb-switch-row">
         <div>
           <strong>Invoices and customer payments</strong>

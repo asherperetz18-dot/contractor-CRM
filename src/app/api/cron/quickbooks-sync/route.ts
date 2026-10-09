@@ -8,7 +8,7 @@ import { syncCompanyInvoices } from "@/lib/quickbooks/invoice-sync-run";
 import { fetchUntil } from "@/lib/quickbooks/api";
 
 /**
- * Every five minutes (0222, DECISIONS #173, #176): each company that
+ * Every five minutes (0222, DECISIONS #173, #183): each company that
  * turned on "Send invoices to QuickBooks" has its new and changed invoices,
  * customer payments, credits and refunds sent first (adding each job, so
  * its bills can be tagged with it), then, if it sends bills, its bills and
@@ -28,7 +28,7 @@ async function handlePost(req: NextRequest) {
     .or("send_bills.eq.true,send_invoices.eq.true")
     .not("realm_id", "is", null)
     .is("disconnected_at", null);
-  // Before 0225 there's no invoices switch: bills only.
+  // Before 0227 there's no invoices switch: bills only.
   const { data, error } = both.error
     ? await admin.from("quickbooks_connections").select("company_id, send_bills").eq("send_bills", true).not("realm_id", "is", null).is("disconnected_at", null)
     : both;

@@ -3,7 +3,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * Which job each bill belongs to, for tagging its line in QuickBooks
- * (DECISIONS #176): the contract of the stage it's filed to (a change
+ * (DECISIONS #183): the contract of the stage it's filed to (a change
  * order's or an invoice's contract), else the customer's only signed
  * contract, else just the customer. A bill moved to another job keeps its
  * old stage, so a stage on someone else's job doesn't count. A stage on a

@@ -9,7 +9,9 @@ import {
   isMissingNoteColumn,
   RUN_NOTE_MIGRATION,
 } from "@/lib/data/checklist-note";
-import { normalizeTemplateItems, dueFromOffset, type TemplateItem } from "@/lib/checklist-auto";
+import { normalizeTemplateItems, type TemplateItem } from "@/lib/checklist-auto";
+import { dueFromOffset } from "@/lib/checklist-due";
+import { getCompanyZone } from "@/lib/data/company-today";
 
 export type ChecklistTemplate = {
   id: string;
@@ -167,8 +169,9 @@ export async function applyChecklistTemplate(
   if (!template) return { error: "Template not found." };
 
   // Offsets count from the signing day; an unsigned job counts from
-  // today, which is the only day it has.
+  // today, which is the only day it has. Both are the company's days.
   const base = estimate?.signed_at ?? new Date().toISOString();
+  const zone = await getCompanyZone();
 
   const have = new Set((existing ?? []).map((i) => i.label.trim().toLowerCase()));
   let sort = Math.max(-1, ...(existing ?? []).map((i) => i.sort_order)) + 1;
@@ -179,7 +182,7 @@ export async function applyChecklistTemplate(
       estimate_id: estimateId,
       label: it.label,
       sort_order: sort++,
-      due_date: it.offset_days !== null ? dueFromOffset(base, it.offset_days) : null,
+      due_date: it.offset_days !== null ? dueFromOffset(base, it.offset_days, zone) : null,
     }));
   if (!rows.length) return { added: 0 };
 

@@ -1938,8 +1938,8 @@ test("voiding an invoice names it and its current version", async () => {
   assert.deepEqual(JSON.parse(String(seen!.init.body)), { Id: "500", SyncToken: "2" });
 });
 
-test("0225 adds what step 3 records; the job runs invoices and bills together", () => {
-  const sql = source("../../../supabase/migrations/0225_quickbooks_invoices.sql");
+test("0227 adds what step 3 records; the job runs invoices and bills together", () => {
+  const sql = source("../../../supabase/migrations/0227_quickbooks_invoices.sql");
   assert.match(sql, /add column if not exists send_invoices boolean not null default false/);
   assert.match(sql, /'customer', 'job', 'invoice', 'deposit', 'customer_payment', 'credit', 'credit_link', 'refund'/);
   const cron = source("../../app/api/cron/quickbooks-sync/route.ts");

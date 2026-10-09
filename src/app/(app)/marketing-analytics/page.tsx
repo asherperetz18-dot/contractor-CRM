@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { presetWindow } from "@/lib/data/date-range";
+import { companyNow } from "@/lib/data/company-today";
 import { getMarketingAnalytics } from "@/lib/actions/marketing-analytics";
 import { isAdminRole, type PipelineStageRow } from "@/lib/data/types";
 import { AnalyticsView } from "./analytics-view";
@@ -15,8 +16,9 @@ export default async function MarketingAnalyticsPage() {
     // The default window's numbers, reduced server-side; other ranges
     // are fetched on demand. No lead rows ride to the browser.
     // Bought lists start excluded: they're contacts, not leads (DECISIONS
-    // #156). Must match the view's initial toggle, which reuses this.
-    getMarketingAnalytics(presetWindow("30"), { excludeBoughtLists: true }),
+    // #156). Must match the view's initial toggle, which reuses this. The
+    // last 30 days of the company's calendar, not the server's (UTC).
+    getMarketingAnalytics(presetWindow("30", await companyNow()), { excludeBoughtLists: true }),
     profile ? getCompanyMembers(companyId) : Promise.resolve([]),
     supabase.from("pipeline_stages").select("*").eq("company_id", companyId).order("sort_order", { ascending: true }),
   ]);

@@ -73,6 +73,20 @@ export function isoDateReader(ianaZone: string): (instant: Date) => string {
   };
 }
 
+/**
+ * A YYYY-MM-DD from somewhere untrusted (an address, a form), kept only
+ * when it is a real calendar day from year 1000 on: "2026-02-31", "abc"
+ * and a half-typed "0002-01-15" are not. Null otherwise.
+ */
+export function calendarDay(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    value >= "1000" &&
+    addDays(value, 0) === value
+    ? value
+    : null;
+}
+
 /** `days` after a plain YYYY-MM-DD, as plain calendar arithmetic. */
 export function addDays(isoDay: string, days: number): string {
   const [y, m, d] = isoDay.split("-").map(Number);
@@ -137,6 +151,42 @@ export function dayStartInZone(isoDay: string, ianaZone: string): Date {
  */
 export function dayEndInZone(isoDay: string, ianaZone: string): Date {
   return instantOfWallClock(new Date(`${isoDay}T23:59:59.999Z`), ianaZone);
+}
+
+/**
+ * A window of calendar days as the instants a timestamp column is cut
+ * at: from `ianaZone`'s midnight on its first day up to the midnight
+ * after its last, so "to Sep 20" keeps everything stamped during Sep 20
+ * there. A bare date would be UTC midnight -- 5pm the evening before on
+ * the West Coast. An open edge stays null.
+ */
+export function windowInstants(
+  win: { from: string | null; to: string | null },
+  ianaZone: string
+): { from: string | null; before: string | null } {
+  return {
+    from: win.from ? dayStartInZone(win.from, ianaZone).toISOString() : null,
+    before: win.to ? dayStartInZone(addDays(win.to, 1), ianaZone).toISOString() : null,
+  };
+}
+
+/**
+ * Whether a timestamp falls in a window of days on `ianaZone`'s calendar
+ * -- between its midnights there (`windowInstants`). Built once per
+ * window, so checking a row is a number comparison, not a date format.
+ */
+export function stampedWithin(
+  win: { from: string | null; to: string | null },
+  ianaZone: string
+): (timestamp: string | null | undefined) => boolean {
+  const { from, before } = windowInstants(win, ianaZone);
+  const lo = from ? Date.parse(from) : -Infinity;
+  const hi = before ? Date.parse(before) : Infinity;
+  return (timestamp) => {
+    if (!timestamp) return false;
+    const t = Date.parse(timestamp);
+    return t >= lo && t < hi;
+  };
 }
 
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;

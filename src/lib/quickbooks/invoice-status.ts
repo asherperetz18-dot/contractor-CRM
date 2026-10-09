@@ -1,5 +1,5 @@
 /**
- * Where a bill to a customer stands with QuickBooks (DECISIONS #176), as
+ * Where a bill to a customer stands with QuickBooks (DECISIONS #183), as
  * the Invoices page and a contract's payment schedule show it. Kept apart
  * from invoice-sync.ts, which hashes with node:crypto, so browser code can
  * use it. Pure.

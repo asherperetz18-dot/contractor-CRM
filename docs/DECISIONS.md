@@ -2242,14 +2242,162 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** the dashboard, Tasks and Payments go by the office's clock at any hour. Needs 0224 to be fast again. The Dispatch Dashboard, Marketing Analytics and the rep report the team panel links to still file by the UTC day. They are not changed here (TECH_DEBT).
 
-## 176 — QuickBooks, step 3: invoices and customer payments go to QuickBooks, each contract a job
+## 176 — The Dispatch Dashboard files its leads, calls and texts on the company's day
 
 **Date:** 2026-10-08
+
+**Context:** #175 moved the main dashboard onto the company's day. The Dispatch Dashboard already took its "today" and floors from the company's calendar, but `dispatch_rollup` still filed new leads, booked appointments, calls, texts and how long a lead had waited by the UTC day, which starts at 5pm Pacific (4pm in winter). An evening's leads and calls landed on the next day. So each period started at the server's midnight (5pm Pacific the evening before), and one with an end date (a custom range, or the comparison period behind each change figure) ended at 5pm on its last day. Today took in last night's leads, bookings, calls and texts, a custom range left out its last evening, and a lead that came in after 5pm yesterday read as under a day old. The fallback cut its reads at bare dates and a UTC `nextDay`, so it read the same UTC days.
+
+**Decision:** the same change as #175, applied to this page.
+- `dispatchBoundaries(win, zone)` works out today, the window, the previous window, the week strip's end and the untouched, results and waiting floors on the company's calendar, carries the zone, and takes the real instant for ages.
+- `dispatch_rollup` (0225) takes the zone as `p_zone text default 'UTC'` and files every timestamp `at time zone p_zone`. Its body is 0211's with only that swapped, and a test holds it to that. The old signature is dropped, so the database holds one `dispatch_rollup`.
+- The TypeScript mirror counts waiting ages in the company's days (`isoDateReader`). The fallback cuts every timestamp read at the company's midnight, and picks the untouched alert's candidates the same way (`untouchedCandidates`).
+- Until 0225 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower: the fallback reads every pre-appointment lead of the last 90 days.
+- **The fallback counts leads only, as the SQL has since 0211.** Its two lead reads (the window's new leads, and those waiting for a first appointment) now leave out bought-list and sourceless contacts (`notALeadPattern`, #156). Before, they counted every contact, which nobody saw while the database function answered. With this change the fallback answers until 0225 runs, and without the rule it would have shown every list import as new leads.
+
+**Consequence:** each Dispatch Dashboard period starts, and ends if it has an end date, at the company's midnight, the same as the main dashboard's. It needs 0225 to be fast again. Marketing Analytics and the rep report still file by the UTC day (TECH_DEBT).
+
+## 177 — Marketing Analytics and the rep report go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** After #175 and #176, Marketing Analytics and the rep report it opens were still on the server's clock (UTC), Marketing in more ways than the dashboards had been:
+- **Its "today" came from the server.** `marketingBoundaries(win)` read `new Date()` on the server. From 5pm Pacific, today's appointments counted as "no result" on the team table, and the comparison period and the twelve-week strip moved a day early. The rep report already took today from the company's calendar, so the two disagreed every evening.
+- **The page opened on the server's last 30 days** (`presetWindow("30")` on the server).
+- **The SQL cut each period at UTC midnight.** `marketing_analytics_rollup` (0195) also filed estimates sent, contracts signed and the weekly strip by the UTC day. So a period started at 5pm the evening before and, with an end date, ended at 5pm on its last day. A contract signed on a Sunday evening landed in the next week's bar.
+- **The fallback and the drill-down lists cut at bare dates and a UTC `nextDay`.** These are a rep's leads, and Won without a contract.
+- **The rep report filed each lead, sent estimate and signature by slicing its UTC timestamp.** The dashboard's team panel links each rep there with its window.
+
+**Decision:** the same change as #175 and #176, applied to these pages.
+- `marketingBoundaries(win, zone)` works out today, the comparison period and the strip's Mondays on the company's calendar, and carries the zone.
+- `marketing_analytics_rollup` (0226) takes it as `p_zone text default 'UTC'`. Its body is 0195's with `at time zone 'utc'` read `at time zone p_zone`, and a test holds it to that. That swap moves both readings: a timestamp's day (`created_at at time zone p_zone`) and a day's first instant (`p_from::timestamp at time zone p_zone`). The old signature is dropped.
+- The TypeScript mirror files the cohort, sends, signatures and weeks by the company's day (`isoDateReader`).
+- The fallback and both drill-down lists cut timestamp reads at the company's midnight (`windowInstants`), so a list holds what its tile counts.
+- The page opens on `presetWindow("30", await companyNow())`.
+- The rep report compares each timestamp with the period's edges at the company's midnights (`windowInstants`, shared with the drill-downs). It works them out once, which is exact and costs nothing per row. Reading each timestamp's day instead cost about 0.3 s per load over the whole book.
+- Until 0226 runs, the app's call (it now sends `p_zone`) finds no function and falls back to the mirror. The numbers are the same, on the company's day, but slower.
+
+**Consequence:** Marketing Analytics, its team table, the rep report it opens and the main dashboard's team panel go by the company's day and agree at any hour. Text Reports, Profit & Loss and the Estimates and Contracts date filters still file by the UTC day (TECH_DEBT). Needs 0226 to be fast again. The lead-rule gap in Marketing's "Exclude bought lists" (TECH_DEBT) is unchanged: this change only swaps the zone.
+
+## 178 — Text Reports and Profit & Loss go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** After #175–#177, these two reports still used the server's clock (UTC), whose day starts at 5pm Pacific (4pm in winter).
+- **Text Reports:**
+  - The server loaded a period from the UTC date, a day wider at the start to cover any browser's date, and cut it at UTC midnight.
+  - The view then filtered on the browser's own clock, read while the page rendered, and by each text's UTC day.
+  - The busiest day was a UTC day too.
+  - So a text sent after 5pm on a range's last day was left out, and one from the evening before it started was counted.
+- **Profit & Loss:**
+  - The report runs in the browser on every record, and filed each payment, deposit, billed phase and dateless bill by its UTC day and month. A payment at 7pm on the 31st landed in the next month.
+  - "This month" and the chart's last month came from a clock read during render. On the server's first draw that was UTC, so the evening of a month's last day could draw one month and then flip to the other.
+
+**Decision:**
+- **Text Reports, the window.** It works like Appointment Reports (`appointmentReportWindow`): the server works out the company's today and hands it to the view. `textReportWindow(query, today)` is the one window both use, plain day arithmetic. The server cuts it at the company's midnights (`windowInstants`) and loads exactly it.
+- **Text Reports, the view.** It counts with `stampedWithin(window, zone)`, a check built once per window, so each row costs only a number comparison. It is shared with the rep report, which had the same code inline. The busiest day is each text's company day (`isoDateReader`), worked out once per loaded set rather than on every keystroke in the search box.
+- **The date filter.** When someone types one custom date, `DateRangeFilter` fills the other from the page's `max` (Text Reports and Appointment Reports pass the company's today), not the browser's UTC date, which ran a day past `max` in the evening.
+- **Profit & Loss, the page.** It hands the view the company's today and zone. `ProfitLossInput` carries the zone, and the ledger reads every timestamp as its company day; plain dates (`spent_on`, `bill_date`, `paid_on`) are already days. The view reads periods and the chart's last month from noon on that today.
+
+**Consequence:** both reports count an evening's texts and money on the evening's date, and count the same period on the server as in the browser. The Text Reports table still prints each text's time in the viewer's own zone, as most tables do (TECH_DEBT). No SQL. Still on the UTC day: the Estimates and Contracts date filters, and the commission statements (TECH_DEBT).
+
+## 179 — Commission statements go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** A commission is payroll for the month it qualified: the later of the final payment landing and the completion certificate being signed (`commissionQualifiedAt`). A sales-rep line has a third hold, job costs recorded, which carries no date and doesn't move it (TECH_DEBT). Both statements, dispatcher and sales rep, still used the server's clock (UTC), whose day starts at 5pm Pacific (4pm in winter):
+- They defaulted the period to the server's month, so a statement opened after 5pm on the 30th opened on next month.
+- They listed payable lines by the UTC day of `qualifiedAt`. A job paid off at 7pm on Sep 30 was payable on October's statement.
+- The sales statement's opening and closing balances did the same (`periodBalance`).
+- Every date printed (signed, payable since, payments, the certificate) was the server's day.
+
+**Decision:**
+- **The pages** take today from `companyNow()` and the zone from `getCompanyZone()`.
+  - A period date in the address is kept only when it is a real day (`calendarDay`). Anything else falls back to the company's month, rather than crashing the cut at the company's midnight.
+  - Payable lines are those whose `qualifiedAt` falls between the period's midnights there (`stampedWithin`).
+- **The balances.** `periodBalance` and `periodBalancesByRep` take the zone and compare `qualifiedAt` with the period's edges as instants (`windowInstants`). Payouts keep their plain `paid_on` dates.
+- **Printed dates.** Every date on the statements and the one-job statement prints through `dayLabel(value, zone, "long")`: a timestamp as its company day, a plain date as itself.
+- **What doesn't move.** Two dates still come from the person's own browser, and this change leaves them alone:
+  - the "This month" and "Last month" buttons in the filters, which read it when clicked;
+  - the payout form's default date on /sales-commission, which is the browser's date when that page loads.
+
+**Consequence:** a job that clears on the evening of the last day of a month is that month's payroll, on both statements and in the balance carried forward. No SQL.
+
+**Switching over:** the change re-files lines that qualified between 5pm and midnight Pacific on the last day of an already-paid period. Under the old rule they were on the next statement; now they are on the one that was paid.
+- For September 2026 that is Sep 30's evening. Such a line was not on the September statement paid before this shipped, and no longer shows on October's.
+- On the sales statement, with the payout ledger in, the balance carries it into October's opening. The itemised list doesn't show it.
+- The dispatcher statement has no ledger, so nothing carries it.
+- The owner was told to reopen September's statements and pay any line dated Sep 30 that wasn't on the copy already paid.
+- Hand-recorded payments, financing receipts and paper signatures are stamped at noon UTC (morning in Pacific), so only portal payments and e-signed certificates can fall in that evening. The Estimates and Contracts date filters and the rep report's Custom dates still use the UTC day (TECH_DEBT).
+
+## 180 — The Estimates and Contracts date filters go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** Estimates & Contracts and the Contract Board load every document and filter in the browser. Their "Created" date filter, and the funnel cards it narrows, compared each `created_at` by its UTC day: the window came from the browser's own date, but each document's day was a slice of its UTC timestamp. So a document made after 5pm Pacific (4pm in winter) fell on the next day: a range ending today left it out, and one starting today took in the evening before. The Estimates "Older than 7 days" chip did the same, and on the server's first draw it measured from the server's (UTC) date.
+
+**Decision:**
+- **The pages** hand the views the company's today and zone. Each view works out its window from noon on that today (`resolveWindow`) and counts a document when its `created_at` falls between the window's company midnights (`stampedWithin`).
+  - A custom date still being typed (or otherwise not a real day, `calendarDay`) is no edge, not a broken window.
+  - The date boxes stop at the company's today. On the Contract Board (the shared `DateRangeFilter`), typing one also fills the other with it; Estimates' two plain boxes leave an untyped edge open, as before.
+  - The company's today is the one the page loaded with, as on the other reports (#071, #178). A tab left open past midnight counts a day behind until it reloads, and so does its list of documents.
+- **The follow-up chips** measure against a `followUpClock(today, zone)` worked out once per draw: today, and the company's midnight a week back. A draft made at 7pm Pacific is aged by its own day, and the chips cost a number comparison per document across thousands.
+- **What doesn't move.** Several things still read the clock where the page draws: the server's (UTC) on the first draw, then the browser's.
+  - Whether a document has expired, which decides which funnel card or board column it sits on and its status badge (`effectiveEstimateStatus`).
+  - The Contract Board's stat cards: awaiting, signed this month, expiring, average days to sign.
+  - Its expiry countdowns and no-reply flags.
+
+  In a browser in the company's zone they read the company's day once drawn; on the server's first draw, "signed this month" reads `signed_at`'s UTC month until the browser takes over. One visible seam: for a browser in a zone behind the company's, on the evening a proposal expires, "Expires within 7 days" (company's today) can drop it a few hours before its card does (browser's clock). Moving expiry onto the company's clock is its own change.
+
+**Consequence:** a document counts on the day it was made, on both pages' filters and on the funnel cards above them. No SQL. The rep report's Custom date boxes still seed from the browser's UTC date (TECH_DEBT).
+
+## 181 — Custom date ranges start from today, not the browser's UTC date
+
+**Date:** 2026-10-08
+
+**Context:** Two date pickers took "today" from `new Date().toISOString().slice(0, 10)`, the browser's UTC date. From 5pm Pacific (4pm in winter) that is already tomorrow.
+- **The rep report's Custom chip** seeded the 1st of that date's month through that date. On an evening it ran a day ahead; on the evening of the 31st it opened on next month's 1st alone (tomorrow), not on the month that was ending.
+- **Typing one of the rep report's date boxes** filled the other with the same date.
+- **The shared `DateRangeFilter`** did the same when the page gave it no `max`: on both dashboards, Marketing Analytics and Profit & Loss, typing one date in the evening filled the other with tomorrow. Its own Custom chip already used the browser's calendar day (`monthToDate`), so the two halves of one filter disagreed.
+
+**Decision:**
+- **The rep report** hands its filters the company's today, the one it already reads its period and "no outcome recorded" against (`companyNow()`, #177). The Custom chip seeds the 1st of that month through it, and a half-typed range fills from it. The boxes get no `max`: the report lists a rep's upcoming appointments, so a range can run past today.
+- **`DateRangeFilter` without a `max`** fills from the browser's own calendar day (`isoDay`), the day its Custom chip's month to date already ends on. Pages that pass a `max` (Text Reports, Appointment Reports, the Contract Board, Team Activity) give the company's today, as before (#178, #180).
+  - The dashboards' and Marketing Analytics' presets count from the browser's calendar too (TECH_DEBT, "Client components format dates in the browser's zone"), so for a team in the company's zone this is the company's day.
+  - Profit & Loss's periods come from the company's today (#178). Its fill is the browser's day, the same day in the company's zone.
+
+**Consequence:** on the rep report and the pages that use `DateRangeFilter`, a custom range no longer starts or ends a day ahead in the evening. No SQL. Other screens still read the UTC date, among them form defaults, the Calendar's today, the dial queue's booking date, Licence & Insurance's expired mark and the Daily Brief's once-a-day popup; TECH_DEBT lists every one found. Projects' Signed date range still cuts at UTC midnight (TECH_DEBT).
+
+## 182 — Projects' signed range, month, overdue steps and job dates go by the company's day
+
+**Date:** 2026-10-08
+
+**Context:** The Projects page, its crew view and its printed report still read the UTC calendar in these places, a day ahead of the office from 5pm Pacific (4pm in winter) or, for plain dates, a day behind in any US browser.
+- **The Signed range.** `dateRangeBounds` turned each custom date into its UTC midnight (`new Date("YYYY-MM-DD")`), so a range ran from 5pm Pacific the evening before From to 4:59pm on To. A contract signed at 6pm on the To date was left out, and one signed at 6pm the evening before From was counted: the bug #180 fixed for Estimates and Contracts. The printed report uses the same function.
+- **"New this month".** `chipMatches` compared months on the clock of wherever it ran. The printed report runs on the server, in UTC. All month it counted a contract signed on the previous month's last evening as this month's, and from 5pm on this month's last day it had moved on to next month. The page did the same on the server's first draw, then redrew on the browser's clock.
+- **Overdue checklist steps.** The page and the crew view called a step overdue from the UTC date, on purpose so the server's draw and the browser's matched. The printed reports use the company's today, so from 5pm a step due today was overdue on the screen and not on its printout.
+- **The table's dates.** Start date and Completion date are plain dates, printed with `new Date("YYYY-MM-DD")`: UTC midnight, shown on the browser's calendar, so the day before in any US browser, all day. The printed report prints them with `dayLabel` and got them right, so the two disagreed. The Signed date column printed the signature's day on the browser's clock.
+- **Template due dates.** `dueFromOffset` added N days to the signing moment's UTC date, on the server. A contract signed after 5pm Pacific had every "N days after signing" step due a day late, both from the auto-apply template at signing and from a template applied by hand (an unsigned job counted from the UTC date).
+
+**Decision:**
+- **The page hands down the company's today and zone** (the crew view gets today), the way Estimates and Contracts do (#180). Both draws read the same day, so the seeded open checklists still hydrate identically.
+- **`projectClock(today, zone)`** is worked out once per draw: today, the zone, and this month as the instants between the company's midnight on the 1st and on the next month's 1st. `chipMatches` takes it, so "New this month" compares each signature with two numbers.
+- **`dateRangeBounds(range, from, to, zone)`** cuts a custom range at the company's midnights (`dayStartInZone`, `dayEndInZone`). A date that isn't a real day (`calendarDay`) is no edge, as on the Estimates and Contracts filters (#180), and the printed report's scope line names only the days the list is cut at.
+- **A step is overdue** when its due date is before the company's today, on the page, the crew view and both printed reports.
+- **The table prints its dates with `dayLabel(…, zone, "short")`**, as the printed report does: a plain date as itself, a signature on the company's day.
+- **`dueFromOffset(base, days, zone)`** takes the signing day on the company's calendar and adds the days. It moved to its own pure module (`checklist-due.ts`) so a test can run it; `checklist-auto.ts` is server-only. A paper signature, stored at noon UTC on its date, stays on its date. Steps already on a job keep the dates they were given.
+- The rolling presets (last 7 days, 30 days, 12 months) stay as they were: they count back from the moment, not by calendar days.
+
+**Consequence:** on Projects, a contract counts on the day and month it was signed, the page and its printout agree on what's overdue and on each job's dates, and template steps fall due on the intended day. No SQL. Projects' Transactions list opens the manual payment form, whose Received on still defaults to the UTC date (TECH_DEBT).
+
+## 183 — QuickBooks, step 3: invoices and customer payments go to QuickBooks, each contract a job
+
+**Date:** 2026-10-09
 
 **Context:** Step 2 (#173, #174) sends bills, bill payments and receipts. The owner approved the step 3 mockup and its six recommendations: a job per signed contract, bills with sales tax wait for now, each deposit as its own invoice, a stage money lands on before it's billed goes then, an existing QuickBooks customer is used only on an exact name match (never two CRM customers as one), and invoices get their own start date.
 
 **Decision:**
-- **On per company, from its own start date.** Settings › QuickBooks › Send invoices to QuickBooks: a switch, "Start with invoices dated from" (separate from bills'), the QuickBooks product or service for job work (required), for deposits and for costs billed back (default: the same), where customer payments go (default: Payments to deposit, QuickBooks' Undeposited Funds), where Stripe refunds come out of (default: the same), where refunds recorded by hand come from (a bank account), and whether customers invoiced outside the CRM (Online payments off) are left out (default) or sent. QuickBooks' own settings are read every run and shown: custom transaction numbers, automatically apply credits, sales tax, the closing date. Connecting a different QuickBooks company turns it off and clears the picks. `quickbooks_connections` columns, 0225.
+- **On per company, from its own start date.** Settings › QuickBooks › Send invoices to QuickBooks: a switch, "Start with invoices dated from" (separate from bills'), the QuickBooks product or service for job work (required), for deposits and for costs billed back (default: the same), where customer payments go (default: Payments to deposit, QuickBooks' Undeposited Funds), where Stripe refunds come out of (default: the same), where refunds recorded by hand come from (a bank account), and whether customers invoiced outside the CRM (Online payments off) are left out (default) or sent. QuickBooks' own settings are read every run and shown: custom transaction numbers, automatically apply credits, sales tax, the closing date. Connecting a different QuickBooks company turns it off and clears the picks. `quickbooks_connections` columns, 0227.
 - **What goes.** Every bill to a customer dated from the start date: each issued invoice (one line per CRM line; costs billed back on their own product; the message to the customer kept), each billed stage of a contract or change order (one line: the stage and its description), and each signed contract's deposit (its own invoice, dated the day it was signed). A stage money lands on before it was billed (a lender's payout pays every stage) goes when the money does, dated that day, "Paid before it was billed". Numbers: INV-1004 as is; a stage EST-1047-1 (its place in the schedule), a deposit EST-1047-D (a contract revised and signed again gets its own: EST-1047v2-1, EST-1047v2-D, and its own job; the old version's invoices stay with their money. An edit before signing, which also bumps the version, keeps the plain number) -- only while QuickBooks' custom transaction numbers are on, else QuickBooks numbers them and the CRM's number is in the memo. Every line is sent not taxable; nothing is emailed from QuickBooks and its pay links are off; after each invoice goes, its total is checked against the CRM's (if QuickBooks added tax, it says so and its payments wait).
 - **Customers and jobs.** A customer is found in QuickBooks by exact name (inactive ones too) or added (name, company, contact, email, phone, billing address), only when its first bill goes; a name already used by a QuickBooks vendor or employee, an inactive customer, or one another CRM customer already went to (or is going to, while its add has no answer yet) waits with the reason. A customer or job made inactive or merged away in QuickBooks: when QuickBooks refuses something naming it, the CRM checks, stops using it and looks it up by name again (an inactive one waits, saying so). Each signed contract is a job (a sub-customer, billed with its customer) named "EST-1047 Kitchen remodel"; a change order and an invoice for the contract go on its job, an invoice for no contract on the customer. The CRM never changes or renames them. These aren't QuickBooks Projects.
 - **Payments, credits, refunds.** A payment that has arrived goes on its own invoice (a deposit payment on the deposit invoice), with QuickBooks' payment method found by name or added (Credit card, Bank transfer, Cash, Check, Zelle, Wire, Financing, Other; if QuickBooks doesn't answer, the payment waits for the next run rather than going without it) and the check or loan number; money still clearing waits; more than what's left on the bill waits; money paid before the start date waits, to be entered by hand if it isn't there yet; anything dated in a month QuickBooks' books have closed -- a bill, a payment, a credit, a refund -- waits, to be entered there by hand (a bill's payments with it), and holds its bill's balance; a payment made again after a refund the customer still owes (a bounced check) waits, entered by hand with the refund. A credit given by hand goes as a credit memo applied to the same invoice by a $0.00 payment (that's how QuickBooks applies one); it waits while QuickBooks applies credits on its own, and one more than QuickBooks' copy of the bill has left (paid there, refunded or bounced since, or held by a payment entered there by hand for its day) is entered by hand, never half sent. A payment's change goes to QuickBooks before anything that uses the room it frees on its bill; one raised past what's left on its bill waits, saying QuickBooks keeps its old amount. Something told to be entered by hand and then edited in the CRM keeps its note, which adds that it changed since and to make the same change there (noted again on every change). Change-order money told to go on the other side, whose own bill goes after all, says so and to move it. A refund the customer doesn't owe back goes as a refund receipt -- never before its payment is in QuickBooks (checked as it goes), and only when the CRM took all of it off the bill (the credit it files beside the refund); one only partly taken off waits, to be entered by hand, saying why (its bill was voided or cancelled, the money given back was beyond what the bill asked, or the CRM shows the rest owed again) -- once any other payment on the bill has cleared; one owed again (always for a deposit) or not answered yet waits, entered by hand. A lender's payout goes as the customer's payment, method Financing, at the full amount; its fee is step 4.
@@ -2259,4 +2407,4 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 - **Never twice; what can't go waits.** As #173: a claim per company (`invoices_claimed_until`), every add written down first with its request id and repeated if no answer came, a new request id for every try, answers checked, a failed database read stops the run, refusals back off (15 minutes to daily, a customer or job added for bills too) and go at once when they change or on Send now, closed books and deposited payments wait with what to do. One five-minute job runs a company's invoices, then its bills, so a new job tags them the same run; each side only ever repeats its own unanswered adds. Send now and the five-minute job stop every QuickBooks call inside their time limits (45 of Send now's 60 seconds; bills go only if there's room).
 - **Where it shows.** The Invoices page: a line under each bill ("✓ In QuickBooks · Invoice and payment · Oct 7", "Payment waiting: Goes when the money clears.", "Waiting: This bill includes sales tax…", "Before Oct 1: not sent", "Not sent: this customer is invoiced outside the CRM", "Removed from QuickBooks") with Open in QuickBooks; a contract's payment schedule: the deposit's line. A credit counts as in QuickBooks only once the $0.00 payment that applies it is too; something taken off in the CRM that QuickBooks wouldn't let go of shows in red on its bill. A stage paid before it was billed, or one taken back off its bill that QuickBooks wouldn't delete, has no row on the Invoices page: it shows under Needs a look, listed first. So does a customer or job wanted for bills' job tags that can't be added (or was made inactive), and a change that didn't go says so. Settings: counts (a credit's $0.00 payment included when it's waiting or refused), Needs a look (days on the company's calendar), Send now, when it last ran. Read with the server's client after the page's own gate (View Financials); `quickbooks_sync` stays readable only by the cost roles.
 
-**Consequence:** invoices, customer payments, credits and refunds reach QuickBooks without being typed twice, each on its job. Needs 0225. Bills with sales tax, refunds the customer owes again, Stripe's fees and payouts (the CRM doesn't record them) and job costs that were never a bill (step 4) are still done by hand. Tested end to end against a stand-in for QuickBooks built from Intuit's API rules, not yet on Intuit's practice company: to confirm there before live books are switched on are how a $0.00 payment applies a credit, which accounts a refund can come from, job names, and automatic sales tax (hence the total check).
+**Consequence:** invoices, customer payments, credits and refunds reach QuickBooks without being typed twice, each on its job. Needs 0227. Bills with sales tax, refunds the customer owes again, Stripe's fees and payouts (the CRM doesn't record them) and job costs that were never a bill (step 4) are still done by hand. Tested end to end against a stand-in for QuickBooks built from Intuit's API rules, not yet on Intuit's practice company: to confirm there before live books are switched on are how a $0.00 payment applies a credit, which accounts a refund can come from, job names, and automatic sales tax (hence the total check).

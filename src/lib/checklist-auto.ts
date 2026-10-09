@@ -1,5 +1,7 @@
 import "server-only";
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { dueFromOffset } from "@/lib/checklist-due";
+import { zoneForCompany } from "@/lib/data/company-today";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -23,13 +25,6 @@ export function normalizeTemplateItems(raw: unknown): TemplateItem[] {
     .filter((x): x is TemplateItem => !!x && !!x.label.trim());
 }
 
-/** signing day + N days, as a date column value. */
-export function dueFromOffset(baseIso: string, offsetDays: number): string {
-  const d = new Date(baseIso);
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
  * The moment a contract is signed, the company's auto-apply template
  * (if it has one) becomes the job's checklist, every offset step dated
@@ -44,7 +39,7 @@ export async function applyAutoChecklist(
   signedAtIso: string
 ): Promise<void> {
   try {
-    const [{ data: template }, { data: existing }] = await Promise.all([
+    const [{ data: template }, { data: existing }, zone] = await Promise.all([
       admin
         .from("checklist_templates")
         .select("items")
@@ -58,6 +53,7 @@ export async function applyAutoChecklist(
         .select("id")
         .eq("estimate_id", estimateId)
         .limit(1),
+      zoneForCompany(admin, companyId),
     ]);
     if (!template || (existing ?? []).length) return;
 
@@ -70,7 +66,7 @@ export async function applyAutoChecklist(
         estimate_id: estimateId,
         label: it.label,
         sort_order: i,
-        due_date: it.offset_days !== null ? dueFromOffset(signedAtIso, it.offset_days) : null,
+        due_date: it.offset_days !== null ? dueFromOffset(signedAtIso, it.offset_days, zone) : null,
       }))
     );
   } catch {

@@ -23,7 +23,7 @@ import { clientName } from "@/lib/data/client-name";
 /**
  * Settings › QuickBooks: the connection and the account matches (step 1,
  * DECISIONS #172), sending bills and bill payments (step 2, #173), and
- * sending invoices and customer payments (step 3, #176). Office or Admin,
+ * sending invoices and customer payments (step 3, #183). Office or Admin,
  * like the rest of the company's settings.
  */
 
@@ -34,7 +34,7 @@ const INVOICE_TYPES = ["invoice", "deposit", "customer_payment", "credit", "refu
 // A credit's $0.00 payment (applying it to its invoice) isn't counted as sent on its own, but its trouble is the credit's;
 // so is a customer's or job's that couldn't be added (or was made inactive) for its bills' job.
 const INVOICE_TROUBLE_TYPES = [...INVOICE_TYPES, "credit_link", "customer", "job"];
-const NEEDS_0225 = "Sending invoices needs a database update first: run 0225_quickbooks_invoices.sql in Supabase.";
+const NEEDS_0225 = "Sending invoices needs a database update first: run 0227_quickbooks_invoices.sql in Supabase.";
 
 const NEEDS_0221 = "QuickBooks needs a database update first: run 0221_quickbooks_connection.sql in Supabase.";
 const NEEDS_0222 = "Sending bills needs a database update first: run 0222_quickbooks_bills.sql in Supabase.";
@@ -103,7 +103,7 @@ export type QuickBooksInvoiceAttention = {
 };
 
 export type QuickBooksInvoiceSending = {
-  /** 0225 has run. */
+  /** 0227 has run. */
   ready: boolean;
   on: boolean;
   from: string | null;
@@ -390,7 +390,7 @@ export async function refreshQuickBooksAccounts(): Promise<{ error?: string; cou
     .update({ accounts: read.accounts, accounts_read_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() })
     .eq("company_id", who.profile.company_id);
   if (error) return { error: isMissingSchemaError(error) ? NEEDS_0221 : error.message };
-  // Products and services too, for invoices (DECISIONS #176); before 0225 there's nowhere to keep them.
+  // Products and services too, for invoices (DECISIONS #183); before 0227 there's nowhere to keep them.
   const items = await readItems(got.access);
   if (!("error" in items)) {
     await who.admin
@@ -495,7 +495,7 @@ export async function saveQuickBooksMatches(input: {
   return {};
 }
 
-// ---------------------------------------------------------------- step 3: invoices and customer payments (DECISIONS #176)
+// ---------------------------------------------------------------- step 3: invoices and customer payments (DECISIONS #183)
 
 const ACCOUNT_DEPOSIT_TYPES = ["Bank", "Other Current Asset"];
 

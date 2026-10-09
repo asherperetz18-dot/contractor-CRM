@@ -1,7 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolveWindow } from "./data/date-range.ts";
 import {
   TEXT_REPORT_COLUMNS,
   TEXT_REPORT_PRESETS,
@@ -9,7 +8,7 @@ import {
   parseTextReportQuery,
   textReportQueryString,
   textReportRange,
-  textReportServerWindow,
+  textReportWindow,
   type TextReportQuery,
 } from "./text-reports-window.ts";
 
@@ -60,65 +59,37 @@ test("the filter's state and the address are the same thing", () => {
   }
 });
 
-test("custom dates are absolute, so they are loaded exactly; all time has no edges", () => {
-  assert.deepEqual(textReportServerWindow({ preset: "30", from: "2026-01-01", to: "2026-03-31" }, "2026-10-06"), {
-    lo: "2026-01-01",
-    hi: "2026-03-31",
-  });
-  assert.deepEqual(textReportServerWindow({ preset: "30", from: null, to: "2026-03-31" }, "2026-10-06"), {
-    lo: null,
-    hi: "2026-03-31",
-  });
-  assert.deepEqual(textReportServerWindow({ preset: "all", from: null, to: null }, "2026-10-06"), { lo: null, hi: null });
+test("the window is worked out from the company's today: the server loads it, the report counts it", () => {
+  const q = (range: string) => parseTextReportQuery({ range });
+  assert.deepEqual(textReportWindow(q("7"), "2026-10-08"), { from: "2026-10-01", to: null });
+  assert.deepEqual(textReportWindow(q("30"), "2026-10-08"), { from: "2026-09-08", to: null });
+  assert.deepEqual(textReportWindow(q("90"), "2026-03-01"), { from: "2025-12-01", to: null });
+  assert.deepEqual(textReportWindow(q("all"), "2026-10-08"), { from: null, to: null });
 });
 
-// The browser's own "last 30 days" starts on its local date; the server
-// knows only the UTC date, which can be a day either side. Date and year
-// ends, and the nights clocks change, are where that bites.
-const ZONES = [
-  "Pacific/Pago_Pago",
-  "Pacific/Honolulu",
-  "America/Los_Angeles",
-  "America/New_York",
-  "UTC",
-  "Europe/London",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-  "Pacific/Kiritimati",
-];
-const INSTANTS = [
-  "2026-10-06T12:00:00Z",
-  "2026-10-06T23:59:00Z",
-  "2026-10-07T00:01:00Z",
-  "2026-03-08T07:30:00Z", // US clocks go forward
-  "2026-03-09T07:30:00Z",
-  "2026-11-01T08:30:00Z", // US clocks go back
-  "2026-03-29T23:30:00Z", // London, the night after clocks go forward
-  "2026-04-05T15:30:00Z", // Sydney clocks go back
-  "2026-10-04T16:30:00Z", // Sydney clocks go forward
-  "2027-01-01T00:30:00Z",
-  "2028-02-29T23:30:00Z",
-];
+test("custom dates are absolute, so they are loaded exactly; all time has no edges", () => {
+  assert.deepEqual(textReportWindow({ preset: "30", from: "2026-01-01", to: "2026-03-31" }, "2026-10-06"), {
+    from: "2026-01-01",
+    to: "2026-03-31",
+  });
+  assert.deepEqual(textReportWindow({ preset: "30", from: null, to: "2026-03-31" }, "2026-10-06"), {
+    from: null,
+    to: "2026-03-31",
+  });
+  assert.deepEqual(textReportWindow({ preset: "all", from: null, to: null }, "2026-10-06"), { from: null, to: null });
+});
 
-test("whatever 'today' is where the person is, the server's window holds every text the report counts", () => {
+test("the window is plain day arithmetic: the same in any time zone the page renders in", () => {
   const original = process.env.TZ;
   try {
-    for (const zone of ZONES) {
+    const seen = new Set<string>();
+    for (const zone of ["Pacific/Honolulu", "America/Los_Angeles", "UTC", "Asia/Tokyo", "Pacific/Kiritimati"]) {
       process.env.TZ = zone;
-      for (const at of INSTANTS) {
-        const now = new Date(at);
-        for (const p of TEXT_REPORT_PRESETS) {
-          const q = parseTextReportQuery({ range: p.key });
-          const client = resolveWindow(textReportRange(q), now);
-          const server = textReportServerWindow(q, at.slice(0, 10));
-          const label = `${p.key} in ${zone} at ${at}`;
-          assert.equal(client.to, null, label);
-          assert.equal(server.hi, null, label);
-          if (client.from === null) assert.equal(server.lo, null, label);
-          else assert.ok(server.lo !== null && server.lo <= client.from, `${label}: ${server.lo} > ${client.from}`);
-        }
+      for (const p of TEXT_REPORT_PRESETS) {
+        seen.add(`${p.key}:${JSON.stringify(textReportWindow(parseTextReportQuery({ range: p.key }), "2026-03-08"))}`);
       }
     }
+    assert.equal(seen.size, TEXT_REPORT_PRESETS.length);
   } finally {
     if (original === undefined) delete process.env.TZ;
     else process.env.TZ = original;
@@ -142,11 +113,16 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 test("the page loads one window of texts, newest first, and the contacts behind them", () => {
   const page = source("../app/(app)/text-reports/page.tsx");
   assert.match(page, /const query = parseTextReportQuery\(await searchParams\);/);
-  assert.match(page, /textReportServerWindow\(query, new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\)/);
+  // The company's today, and its midnights: a text sent after 5pm Pacific
+  // used to land on the next day.
+  assert.match(page, /const today = isoDateInZone\(new Date\(\), zone\);/);
+  assert.match(page, /const at = windowInstants\(textReportWindow\(query, today\), zone\);/);
   assert.match(page, /\.select\(TEXT_REPORT_COLUMNS\)/);
   assert.doesNotMatch(page, /\.select\("\*"\)/);
-  assert.match(page, /if \(bounds\.lo\) texts = texts\.gte\("created_at", bounds\.lo\);/);
-  assert.match(page, /if \(bounds\.hi\) texts = texts\.lt\("created_at", addDays\(bounds\.hi, 1\)\);/);
+  assert.match(page, /if \(at\.from\) texts = texts\.gte\("created_at", at\.from\);/);
+  assert.match(page, /if \(at\.before\) texts = texts\.lt\("created_at", at\.before\);/);
+  assert.match(page, /today=\{today\}/);
+  assert.match(page, /zone=\{zone\}/);
   // A tie-breaker, so paging a window past 1,000 texts neither repeats nor skips one.
   assert.match(page, /\.order\("created_at", \{ ascending: false \}\)\s*\.order\("id", \{ ascending: false \}\)/);
   assert.match(page, /leadsLiteForMessages\(supabase, companyId, messages\)/);
@@ -163,6 +139,32 @@ test("changing the period loads it in place; the table draws a page at a time an
   assert.match(view, /Show more/);
   // The cards and the busiest day are counted over every row, not the drawn ones.
   assert.match(view, /const sent = rows\.filter\(/);
-  assert.match(view, /for \(const m of rows\) counts\.set\(/);
+  assert.match(view, /for \(const m of rows\) \{\s*const day = dayOfText\.get\(m\.id\)/);
   assert.ok(TEXT_REPORT_ROWS >= 100 && TEXT_REPORT_ROWS <= 500);
+});
+
+test("the report counts on the company's days, from the today the server hands it", () => {
+  const view = source("../app/(app)/text-reports/text-reports-view.tsx");
+  // One window, from the company's today -- never the browser's clock,
+  // which read during render also made the server's first draw differ.
+  assert.doesNotMatch(view, /Date\.now\(\)/);
+  assert.match(view, /stampedWithin\(\s*textReportWindow\(/);
+  // The busiest day is the company's day each text was sent on, worked
+  // out once per loaded set -- not on every keystroke in the search box.
+  assert.match(view, /isoDateReader\(zone\)/);
+  assert.match(view, /const dayOfText = useMemo\(\(\) => \{[\s\S]*?\}, \[messages, zone\]\);/);
+  assert.doesNotMatch(view, /iso\.slice\(0, 10\)/);
+  assert.match(view, /max=\{today\}/);
+});
+
+test("typing one custom date fills the other with the page's own today, never the server's", () => {
+  // Text Reports and Appointment Reports pass the company's today as the
+  // filter's max; filling from the browser's UTC date put tomorrow in the
+  // box after 5pm Pacific, past its own max.
+  const filter = source("../components/date-range-filter.tsx");
+  // A page without a max (both dashboards, Marketing Analytics, P&L)
+  // fills from the browser's own calendar day, the day the Custom chip's
+  // month to date ends on -- not its UTC date.
+  assert.match(filter, /if \(!next\[other\]\) next\[other\] = max \?\? isoDay\(new Date\(\)\);/);
+  assert.doesNotMatch(filter, /toISOString/);
 });

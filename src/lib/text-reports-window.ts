@@ -1,3 +1,4 @@
+import type { DateWindow } from "./data/date-range.ts";
 import type { SmsMessage } from "./data/types.ts";
 import { addDays } from "./schedule-window.ts";
 
@@ -7,11 +8,12 @@ import { addDays } from "./schedule-window.ts";
  * The period rides in the address (`?range=90`, or `?from=…&to=…` for a
  * custom range) and the server loads only that window -- this page used
  * to load every text the company ever sent or received, every column,
- * and filter in the browser. The report still applies its own exact
- * filter on the browser's own "today"; the server only knows the UTC
- * date, which can be a day either side of it, so a "last N days" window
- * starts a day earlier on the server. Custom dates are absolute and
- * loaded exactly. Pure, so the page, the view and the tests share it.
+ * and filter in the browser. The window is worked out from the company's
+ * today, which the server hands to the report, and its days are the
+ * company's -- cut at its midnights, not UTC's (5pm Pacific) -- so what
+ * the server loads and what the report counts are one and the same, and
+ * no clock is read while the page renders. Pure, so the page, the view
+ * and the tests share it.
  */
 
 export const TEXT_REPORT_PRESETS = [
@@ -63,14 +65,15 @@ export function textReportRange(q: TextReportQuery): { preset: string; from: str
 }
 
 /**
- * What the server loads for a query, as inclusive days (null is open):
- * every text the report could count for any "today" a day either side of
- * the UTC date.
+ * The days a query covers, inclusive (null is open), on the company's
+ * `today`: the server loads exactly these and the report counts exactly
+ * these. "Last 30 days" starts 30 days back, as the date filter's own
+ * presets do; custom dates are absolute.
  */
-export function textReportServerWindow(q: TextReportQuery, utcToday: string): { lo: string | null; hi: string | null } {
-  if (q.from || q.to) return { lo: q.from, hi: q.to };
-  if (q.preset === "all") return { lo: null, hi: null };
-  return { lo: addDays(utcToday, -(Number(q.preset) + 1)), hi: null };
+export function textReportWindow(q: TextReportQuery, today: string): DateWindow {
+  if (q.from || q.to) return { from: q.from, to: q.to };
+  if (q.preset === "all") return { from: null, to: null };
+  return { from: addDays(today, -Number(q.preset)), to: null };
 }
 
 /**
