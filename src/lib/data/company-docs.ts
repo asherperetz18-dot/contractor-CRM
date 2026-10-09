@@ -6,6 +6,11 @@
  * functions.
  */
 
+// Relative and with the extension, not "@/...": this module runs under
+// node's test runner (via company-docs.test.ts), which resolves no
+// tsconfig path aliases -- same idiom as every *.test.ts import.
+import { addDays } from "../company-clock.ts";
+
 export type CompanyDocKind = "license" | "insurance" | "bond" | "other";
 
 export const COMPANY_DOC_KINDS: { value: CompanyDocKind; label: string; hint: string }[] = [
@@ -20,22 +25,22 @@ export function docKindLabel(kind: string): string {
 }
 
 /**
- * Whether a certificate has lapsed.
+ * Whether a certificate has lapsed, against the company's today
+ * (YYYY-MM-DD). The caller says which today: the settings page and the
+ * portal both pass the company's, so they agree about the same evening.
  *
  * Compared as calendar dates rather than instants: a certificate valid
  * "through 31 December" is valid all of that day, and treating the date
  * as midnight would retire it a day early in every timezone west of UTC.
  */
-export function isExpired(expiresOn: string | null, now = new Date()): boolean {
+export function isExpired(expiresOn: string | null, today: string): boolean {
   if (!expiresOn) return false;
-  const today = now.toISOString().slice(0, 10);
   return expiresOn < today;
 }
 
-/** Inside the window where somebody should be chasing a renewal. */
-export function expiringSoon(expiresOn: string | null, days = 30, now = new Date()): boolean {
-  if (!expiresOn || isExpired(expiresOn, now)) return false;
-  const limit = new Date(now);
-  limit.setDate(limit.getDate() + days);
-  return expiresOn <= limit.toISOString().slice(0, 10);
+/** Inside the window where somebody should be chasing a renewal: the
+ *  next `days` of the company's calendar, today included. */
+export function expiringSoon(expiresOn: string | null, today: string, days = 30): boolean {
+  if (!expiresOn || isExpired(expiresOn, today)) return false;
+  return expiresOn <= addDays(today, days);
 }

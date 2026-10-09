@@ -1,4 +1,5 @@
 import { AdminGate } from "@/components/admin-gate";
+import { companyToday } from "@/lib/data/company-today";
 import { CertificatesView } from "./certificates-view";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,9 @@ export default async function CertificatesPage() {
           </p>
         </div>
       </div>
-      <CertificatesView />
+      {/* The company's today: a certificate is valid all of its expiry
+          day there, as the portal counts it. */}
+      <CertificatesView today={await companyToday()} />
     </AdminGate>
   );
 }
