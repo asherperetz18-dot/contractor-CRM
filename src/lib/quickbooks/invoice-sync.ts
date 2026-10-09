@@ -176,6 +176,14 @@ export const SALES_WAIT = {
   coVoidedUnsentChild: "Its change order was voided before the bill went to QuickBooks. Enter this there by hand, with its bill.",
   coVoidedSettling:
     "This change order was voided in the CRM before this bill went to QuickBooks. Waits for the money on it to clear, or for its refund to be answered, before saying what to do.",
+  coOnVersion: (no: string) =>
+    `This change order is already in QuickBooks as one bill on another version of this contract (${no}). Sending it on this version too would count it twice.`,
+  coMoneyOnVersion: (no: string) =>
+    `This change order is in QuickBooks as one bill on another version of this contract (${no}), so this isn't sent on this version's line. Record it in QuickBooks by hand, on that invoice.`,
+  coGoesVersion: (no: string) =>
+    `This change order goes to QuickBooks as one bill on another version of this contract (${no}). Sending it on this version too would count it twice.`,
+  coMoneyGoesVersion: (no: string) =>
+    `This change order goes to QuickBooks as one bill on another version of this contract (${no}), so this isn't sent on this version's line. Record it in QuickBooks by hand, on that invoice once it's there.`,
   coMoneyMoved:
     "This change order goes to QuickBooks on this bill now, not on its other one. Record this there by hand, and take it off the other invoice if it was put there.",
   cancelledSettling:
@@ -689,8 +697,9 @@ const coMoved = (reason: string | null | undefined, st: { kind: string; reason?:
   const side = coSide(reason);
   if (!side || !st) return false;
   if (st.kind === "go") return true;
-  const now = st.kind === "wait" ? coSide(st.reason) : null;
-  return !!now && now !== side;
+  if (st.kind !== "wait" || st.reason === SALES_WAIT.billGone) return false;
+  // Blocked the other way, or not blocked at all now (its own bill told by hand, or waiting to go).
+  return coSide(st.reason) !== side;
 };
 
 export function planSalesSync(p: {
@@ -830,6 +839,9 @@ export function planSalesSync(p: {
   const onParent = (no: string) => ({ reason: SALES_WAIT.coOnParent(no), child: SALES_WAIT.coMoneyOnParent(no) });
   const goesOwn = { reason: SALES_WAIT.coGoesOwn, child: SALES_WAIT.coMoneyGoesOwn };
   const goesParent = (no: string) => ({ reason: SALES_WAIT.coGoesParent(no), child: SALES_WAIT.coMoneyGoesParent(no) });
+  // Another version's copy of the contract's line: called that.
+  const onVersion = (no: string) => ({ reason: SALES_WAIT.coOnVersion(no), child: SALES_WAIT.coMoneyOnVersion(no) });
+  const goesVersion = (no: string) => ({ reason: SALES_WAIT.coGoesVersion(no), child: SALES_WAIT.coMoneyGoesVersion(no) });
   for (const co of p.docs) {
     if (co.kind !== "change_order" || !co.parentId) continue;
     const parent = docById.get(co.parentId);
@@ -855,7 +867,7 @@ export function planSalesSync(p: {
       const kept = mirrorHeld.find((m) => !goneInQb(m));
       const block = kept ? onParent(numberOf(kept)) : coGone;
       for (const x of [...own, ...voidedOwn]) coBlock.set(x.id, block);
-      for (const m of mirrors) if (!heldInQb(m)) coBlock.set(m.id, block);
+      for (const m of mirrors) if (!heldInQb(m)) coBlock.set(m.id, kept ? onVersion(numberOf(kept)) : block);
     } else if (ownAll.some((x) => toldHand("bill", get("invoice", x.id)))) {
       // A side told to be entered by hand goes that way: the other side waits (never told by hand too).
       for (const m of mirrors) if (!toldHand("bill", get("invoice", m.id))) coBlock.set(m.id, goesOwn);
@@ -863,7 +875,7 @@ export function planSalesSync(p: {
       const told = mirrors.find((m) => toldHand("bill", get("invoice", m.id)))!;
       const block = goesParent(numberOf(told));
       for (const x of [...own, ...voidedOwn]) coBlock.set(x.id, block);
-      for (const m of mirrors) if (!toldHand("bill", get("invoice", m.id))) coBlock.set(m.id, block);
+      for (const m of mirrors) if (!toldHand("bill", get("invoice", m.id))) coBlock.set(m.id, goesVersion(numberOf(told)));
     } else {
       // Neither has gone yet: whichever was billed first will; the rest wait.
       const live = mirrors.filter((m) => billedOrPaid(m) && docById.get(m.docId)?.status === "Signed");
@@ -877,7 +889,7 @@ export function planSalesSync(p: {
       else {
         const block = goesParent(numberOf(sides[0].x));
         for (const x of [...own, ...voidedOwn]) coBlock.set(x.id, block);
-        for (const m of [...live, ...dead]) if (m.id !== sides[0].x.id) coBlock.set(m.id, block);
+        for (const m of [...live, ...dead]) if (m.id !== sides[0].x.id) coBlock.set(m.id, goesVersion(numberOf(sides[0].x)));
       }
     }
   }

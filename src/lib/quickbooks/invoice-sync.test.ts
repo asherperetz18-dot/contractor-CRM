@@ -1738,6 +1738,39 @@ test("round 20: a voided change order is called that, never 'the contract was vo
   for (const t of [SALES_WAIT.coVoidedUnsent, SALES_WAIT.coVoidedUnsentChild, SALES_WAIT.coVoidedWithMoney, SALES_WAIT.coVoidedSettling]) assert.doesNotMatch(t, /contract/);
 });
 
+test("round 21: change-order money told to go on its own stages is re-noted when its line becomes the bill entered by hand", () => {
+  const co = contract({ id: "CO1", kind: "change_order", docNumber: "EST-1047-CO1", title: "Add a window", parentId: "C1", depositCents: 0, totalCents: 200_000, signedAt: "2026-10-02T18:00:00Z" });
+  const coStage = stage({ id: "CS1", docId: "CO1", name: "Window", description: null, amountCents: 200_000, requestedAt: null, dueDate: null });
+  const mirror = stage({ id: "M1", docId: "C1", sortOrder: 3, name: "EST-1047-CO1", description: "Add a window", amountCents: 200_000, requestedAt: "2026-10-06T09:00:00Z" });
+  const p2 = money({ id: "P2", docId: "C1", stageId: "M1", amountCents: 200_000, paidAt: "2026-10-06T19:00:00Z" });
+  const csUndo = rec({ record_id: "CS1", bill_id: "CS1", qb_id: null, status: "waiting", reason: SALES_WAIT.undoTakenBack });
+  const p2Told = rec({ record_type: "customer_payment", record_id: "P2", bill_id: "M1", qb_id: null, status: "waiting", reason: SALES_WAIT.coMoneyGoesOwn });
+  const steps = plan({ docs: [contract({ depositCents: 0 }), co], stages: [coStage, mirror], money: [p2], records: [csUndo, p2Told], prefs: { bookCloseDate: "2026-10-31" } });
+  assert.equal(reasonOf(steps, "M1"), `wait:${SALES_WAIT.closedByHand("2026-10-31")}`);
+  assert.equal(reasonOf(steps, "P2"), `wait:${SALES_WAIT.coMoneyMoved}`);
+});
+
+test("round 21: another version's copy of a change order's line is called that, not 'its stages'", () => {
+  const v1 = contract({ status: "Void", familyNumber: "EST-1047" });
+  const v2 = contract({ id: "C2", docNumber: "EST-1047v2", familyNumber: "EST-1047", signedAt: "2026-10-05T18:00:00Z" });
+  const co = contract({ id: "CO1", kind: "change_order", docNumber: "EST-1047-CO1", title: "Add a window", parentId: "C1", depositCents: 0, totalCents: 200_000, signedAt: "2026-10-02T18:00:00Z" });
+  const m1 = stage({ id: "M1", docId: "C1", sortOrder: 3, name: "EST-1047-CO1", description: "Add a window", amountCents: 200_000, requestedAt: "2026-10-03T09:00:00Z" });
+  const m2 = stage({ id: "M2", docId: "C2", sortOrder: 3, name: "EST-1047-CO1", description: "Add a window", amountCents: 200_000, requestedAt: "2026-10-07T09:00:00Z" });
+  const m1Spec = find(plan({ docs: [contract({ depositCents: 0, familyNumber: "EST-1047" })], stages: [m1] }), "create_invoice").spec;
+  const m1Rec = rec({ record_id: "M1", bill_id: "M1", qb_hash: invoiceHash(m1Spec) });
+  const p3 = money({ id: "P3", docId: "C2", stageId: "M2", amountCents: 200_000, paidAt: "2026-10-08T19:00:00Z" });
+  const steps = plan({ docs: [{ ...v1, depositCents: 0 }, { ...v2, depositCents: 0 }, co], stages: [m1, m2], money: [p3], records: [m1Rec] });
+  assert.equal(reasonOf(steps, "M2"), `wait:${SALES_WAIT.coOnVersion("EST-1047")}`);
+  assert.equal(reasonOf(steps, "P3"), `wait:${SALES_WAIT.coMoneyOnVersion("EST-1047")}`);
+});
+
+test("round 21: a change order's line that waits shows its money's 'record it by hand' note too", () => {
+  const line = rec({ record_id: "M1", bill_id: "M1", qb_id: null, status: "waiting", reason: SALES_WAIT.coOnOwn });
+  const pay = rec({ record_type: "customer_payment", record_id: "P1", bill_id: "M1", qb_id: null, status: "waiting", reason: SALES_WAIT.coMoneyOnOwn });
+  const chips = invoiceQbChips({ sending: true, sendFrom: FROM, label: "Invoice", invoice: { day: "2026-10-05", voided: false, outside: false }, record: line, payments: [pay], credits: [], refunds: [], day: (iso) => iso }).chips.map((x) => x.text);
+  assert.deepEqual(chips, [`Waiting: ${SALES_WAIT.coOnOwn}`, `Payment waiting: ${SALES_WAIT.coMoneyOnOwn}`]);
+});
+
 test("round 8: money on a voided contract's stage that was once billed and taken back waits, never dropped", () => {
   const removed = rec({ qb_id: null, status: "removed" });
   const pending = money({ status: "pending", paidAt: null });

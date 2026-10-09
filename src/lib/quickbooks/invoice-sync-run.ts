@@ -1151,8 +1151,10 @@ async function run(
         await stopIf(res.error);
         if (isTransient(res.error)) return countTransient(res.error);
         // Raised past what's left on its bill there: QuickBooks keeps the old amount, and it says so.
+        // (Not when QuickBooks refused it for another reason: in a bank deposit, or books closed -- its own words say so.)
         const raised = current.total !== null && m.amountCents > Math.round(current.total * 100);
-        if (raised && res.error.kind === "validation") await waitAt("customer_payment", m.id, invoice.id, record, hash, SALES_WAIT.raisedPastBill);
+        const otherCause = res.error.code === "6540" || res.error.code === "6210" || /closed|deposit/i.test(res.error.message);
+        if (raised && res.error.kind === "validation" && !otherCause) await waitAt("customer_payment", m.id, invoice.id, record, hash, SALES_WAIT.raisedPastBill);
         else await refusedAt("customer_payment", m.id, invoice.id, record, hash, res.error, "change");
         // Its invoice deleted or voided there since: left alone from now on.
         await recheckInvoice(invoice);

@@ -78,7 +78,21 @@ export function invoiceQbChips(p: {
 
   if (!r || !inQuickBooks(r)) {
     if (!p.sending) return { chips: r && r.status !== "removed" ? [{ tone: "off", text: `Not sent: ${OFF}` }] : [], qbId: null };
-    if (r?.status === "waiting") return { chips: [{ tone: "wait", text: `Waiting${why(r)}` }], qbId: null };
+    if (r?.status === "waiting") {
+      // Change-order money told to be recorded by hand on the other side: said here too (its bill's own words don't).
+      const told: [string, (ChipRecord | null)[]][] = [
+        ["Payment", p.payments],
+        ["Credit", p.credits],
+        ["Refund", p.refunds],
+      ];
+      const extra = told.flatMap(([label, list]) =>
+        list
+          .filter((x) => x?.status === "waiting" && (x.reason ?? "").startsWith("This change order") && x.reason !== r.reason)
+          .slice(0, 1)
+          .map((x): QbChip => ({ tone: "wait", text: `${label} waiting${why(x!)}` }))
+      );
+      return { chips: [{ tone: "wait", text: `Waiting${why(r)}` }, ...extra], qbId: null };
+    }
     if (r?.status === "failed") return { chips: [{ tone: "bad", text: `Didn't go to QuickBooks${why(r)}` }], qbId: null };
     if (p.invoice.outside) return { chips: [{ tone: "off", text: "Not sent: this customer is invoiced outside the CRM (Online payments off)" }], qbId: null };
     if (!p.sendFrom) return { chips: [], qbId: null };
