@@ -4,22 +4,22 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { money } from "@/lib/data/types";
+import { isoDay } from "@/lib/data/date-range";
 import { getDailyBrief, type DailyBrief } from "@/lib/actions/daily-brief";
 import type { BriefPeriod, BriefStats, BriefTile } from "@/lib/daily-brief";
 
-// Shown once a day. Keyed by date so it reappears each morning but never
-// nags on every page load.
-const SEEN_KEY = "crm-daily-brief-seen";
+// Shown once a day. Keyed by the viewer's own calendar day (`isoDay`) so
+// it reappears each morning but never nags on every page load. The UTC
+// date it used before was already tomorrow from 5pm Pacific, so a brief
+// closed that evening didn't open the next morning. Renamed with that
+// change, so a UTC date stored under the old name can't skip a morning.
+const SEEN_KEY = "crm-daily-brief-seen-day";
 
 const PERIOD_LABEL: Record<BriefPeriod, string> = {
   today: "Today",
   week: "This Week",
   month: "This Month",
 };
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 // Each tile is a link to the page behind its number, closing the brief
 // on the way out.
@@ -111,7 +111,7 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
     (async () => {
       await Promise.resolve();
       if (cancelled || typeof window === "undefined") return;
-      if (window.localStorage.getItem(SEEN_KEY) === todayKey()) return;
+      if (window.localStorage.getItem(SEEN_KEY) === isoDay(new Date())) return;
       setOpen(true);
     })();
     return () => {
@@ -135,7 +135,7 @@ export function DailyBriefButton({ isAdmin }: { isAdmin: boolean }) {
 
   function close() {
     setOpen(false);
-    if (typeof window !== "undefined") window.localStorage.setItem(SEEN_KEY, todayKey());
+    if (typeof window !== "undefined") window.localStorage.setItem(SEEN_KEY, isoDay(new Date()));
   }
 
   if (!isAdmin) return null;

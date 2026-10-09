@@ -2403,3 +2403,15 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 
 **Consequence:** an evening call can book that evening without typing the date. The day is the one the session started on, so a session running past midnight still offers the day before. No SQL.
 
+## 184 — The Daily Brief's once a day is the viewer's own day
+
+**Date:** 2026-10-09
+
+**Context:** The Daily Brief opens on its own once a day for admins: it checks a date stored in the browser (`localStorage`) and stores today's when closed. That date was `new Date().toISOString().slice(0, 10)`, the UTC date, already tomorrow from 5pm Pacific (4pm in winter). A brief closed in the evening was marked seen for the next day, so it didn't open the next morning; and one closed in the morning opened again after 5pm.
+
+**Decision:**
+- **The viewer's own calendar day** (`isoDay(new Date())`, the browser's local date). The popup is about the person's morning; for anyone in the company's zone this is the company's day. It needs no zone from the server: the button sits in the app layout, which doesn't read the company's zone, and reading it there would add a database read to every full page load.
+- **A new storage key** (`crm-daily-brief-seen-day`). The old one holds UTC dates, and one stored on an evening equals the next local day, so keeping the name would skip the first morning after the change. With the new name the old value is ignored; the cost is that an admin who already closed today's brief sees it once more.
+
+**Consequence:** the brief opens each morning the first time an admin loads the CRM that day, wherever they are. No SQL.
+

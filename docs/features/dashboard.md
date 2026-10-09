@@ -29,7 +29,7 @@ The desk's own overview at `/dispatch-dashboard`, its own top-level sidebar link
 
 ## Daily Brief
 
-The 📈 button in the top bar (the More sheet on phones), opening on its own once a day for admins. Admin-gated in the server action, not just the button.
+The 📈 button in the top bar (the More sheet on phones), opening on its own once a day for admins: the first load of each of the viewer's own calendar days (DECISIONS #184). Admin-gated in the server action, not just the button.
 
 | Feature | Status | Description | Code |
 |---|---|---|---|
