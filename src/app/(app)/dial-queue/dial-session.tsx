@@ -27,13 +27,10 @@ type QuickEditFields = {
   project_type: string;
 };
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export function DialSession({
   leads,
   callInfo,
+  today,
   dispositions,
   bookingStage,
   reps,
@@ -45,6 +42,9 @@ export function DialSession({
    *  already called today, and when the last call was -- the session
    *  warns and pauses auto-dial so nobody gets rung twice in hours. */
   callInfo: Record<string, LeadCallInfo>;
+  /** The company's today when the session started: the booking step
+   *  opens on it and can't go before it. */
+  today: string;
   dispositions: CallDispositionRow[];
   /** This company's Appointment Scheduled stage, by its own name (null if
    *  it has none): an outcome moving a lead there opens the booking step. */
@@ -292,7 +292,7 @@ export function DialSession({
     if (bookingStage && dispo?.move_to_stage === bookingStage) {
       // Linked cards: start with the customer's own rep when they have
       // one -- still changeable before booking.
-      setBooking({ date: todayISO(), time: "09:00", assignedTo: lead?.assigned_to ?? "" });
+      setBooking({ date: today, time: "09:00", assignedTo: lead?.assigned_to ?? "" });
       return;
     }
     advance(true);
@@ -364,7 +364,7 @@ export function DialSession({
           <input
             type="date"
             value={booking.date}
-            min={todayISO()}
+            min={today}
             onChange={(e) => setBooking((b) => b && { ...b, date: e.target.value })}
           />
         </Field>

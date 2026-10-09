@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.257.0",
+    date: "2026-10-09",
+    notes: [
+      "Booking an appointment from the dial queue in the evening now starts on today, and today can be picked. Before, after 5pm the date started on tomorrow and the calendar wouldn't offer today.",
+    ],
+  },
+  {
     version: "1.256.0",
     date: "2026-10-08",
     notes: [
