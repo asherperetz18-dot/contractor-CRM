@@ -44,6 +44,7 @@ import { taxRateLabel } from "@/lib/data/tax-rate";
 import { AddressAutocompleteInput } from "@/components/ui/address-autocomplete-input";
 import type { ChangeOrderBilling } from "@/lib/data/change-order-rollup";
 import { PaymentSchedule } from "./payment-schedule";
+import type { QbLine } from "@/lib/quickbooks/invoice-chips";
 import { FinancingPanel, type FinancingPanelData } from "./financing-panel";
 import { ChangeOrders } from "./change-orders";
 import { CompletionCertificate } from "./completion-certificate";
@@ -140,6 +141,7 @@ export function EstimateBuilder({
   changeOrderBilling = NO_CHANGE_ORDER_BILLING,
   credits,
   financing = null,
+  qbDeposit = null,
   lead,
   rep,
   voidedByName = null,
@@ -165,6 +167,8 @@ export function EstimateBuilder({
   credits?: BillCreditRow[];
   /** Financing on it (DECISIONS #162); null hides the panel. */
   financing?: FinancingPanelData | null;
+  /** Where the deposit stands with QuickBooks (DECISIONS #176). */
+  qbDeposit?: QbLine | null;
   lead: BuilderLead | null;
   /** The salesperson for the header. Unsigned it follows the lead, so
    *  it is changed on the lead card; signed it is who sold the job. */
@@ -1327,6 +1331,7 @@ export function EstimateBuilder({
         canRemoveCredits={canManageBills}
         // Paying with financing (DECISIONS #166): the lender pays what's left.
         financedBy={financing?.paymentChange?.change?.status === "signed" ? financing.paymentChange.change.lender : null}
+        qbDeposit={qbDeposit}
       />
 
       {/* Financing (DECISIONS #162): send the lender's link, and keep

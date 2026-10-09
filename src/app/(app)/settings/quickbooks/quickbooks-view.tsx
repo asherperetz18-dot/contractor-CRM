@@ -6,9 +6,12 @@ import {
   disconnectQuickBooks,
   refreshQuickBooksAccounts,
   saveQuickBooksBillSending,
+  saveQuickBooksInvoiceSending,
   saveQuickBooksMatches,
   sendBillsToQuickBooksNow,
+  sendInvoicesToQuickBooksNow,
   type QuickBooksSettings,
+  type SendNowResult,
 } from "@/lib/actions/quickbooks";
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -36,7 +39,8 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
 /**
  * Settings › QuickBooks: connect the company's QuickBooks Online and match
  * its accounts (DECISIONS #172), then send its bills and bill payments
- * (#173), with their receipts (#174). Invoices and customer payments come next.
+ * (#173), with their receipts (#174), and its invoices and customer
+ * payments (#176).
  */
 export function QuickBooksView({
   settings,
@@ -159,14 +163,26 @@ export function QuickBooksView({
           </li>
           <li>
             Each bill and payment goes once and is marked <strong>In QuickBooks</strong>, so nothing is entered twice. A
-            change in the CRM (amount, date, vendor) is sent too.
+            change to a bill you pay in the CRM (amount, date, vendor) is sent too.
           </li>
           <li>A bill&apos;s receipt (the photo or PDF attached in the CRM) is attached to it in QuickBooks too.</li>
+          <li>
+            Each bill to a customer goes as an invoice, each payment as a payment on it, and each signed contract as a job
+            under its customer. Customers get only what the CRM sends them: nothing is emailed from QuickBooks.
+          </li>
+          <li>
+            An invoice already in QuickBooks gets its new dates; any other change to it waits, saying so, for you to make
+            there by hand.
+          </li>
           <li>
             A bill voided in the CRM is deleted in QuickBooks (QuickBooks can&apos;t void a bill); a payment deleted in the
             CRM is voided there.
           </li>
-          <li>Anything that can&apos;t go says why, on its row in Bills to Pay, and goes as soon as it&apos;s fixed.</li>
+          <li>
+            Anything that can&apos;t go says why, on its row in Bills to Pay or the Invoices page (or under Needs a look
+            below, for a stage that has no row there), and goes as soon as it&apos;s fixed. Anything it says to enter in
+            QuickBooks by hand stays that way, so it&apos;s never entered twice.
+          </li>
           <li>Disconnect any time. What&apos;s already in QuickBooks stays there.</li>
         </ul>
         <h3 className="qb-subhead">The plan</h3>
@@ -174,19 +190,40 @@ export function QuickBooksView({
           <li>
             Connect, and match your accounts <span className="est-badge est-badge-signed">Live</span>
           </li>
-          <li className="is-now">
-            <strong>Bills, bill payments and their receipts go to QuickBooks</strong>{" "}
-            <span className="est-badge est-badge-signed">Live</span>
+          <li>
+            Bills, bill payments and their receipts go to QuickBooks <span className="est-badge est-badge-signed">Live</span>
           </li>
-          <li>Customers, invoices and customer payments</li>
+          <li className="is-now">
+            <strong>Customers, invoices and customer payments</strong> <span className="est-badge est-badge-signed">Live</span>
+          </li>
           <li>Job costs, including lender fees</li>
         </ol>
       </section>
 
       {connected && <BillSending settings={settings} />}
+      {connected && <InvoiceSending settings={settings} />}
       {connected && <MatchForm settings={settings} />}
     </>
   );
+}
+
+/** What Send now did, in a sentence. */
+function sentMessage(res: SendNowResult): { message: string | null; error: string | null } {
+  const parts = [
+    res.sent ? `${res.sent} sent` : null,
+    res.changed ? `${res.changed} updated` : null,
+    res.removed ? `${res.removed} removed` : null,
+    res.waiting ? `${res.waiting} waiting` : null,
+    res.failed ? `${res.failed} didn't go` : null,
+  ].filter(Boolean);
+  if (res.error && !parts.length) return { message: null, error: res.error };
+  return {
+    message:
+      (parts.length ? `Done: ${parts.join(", ")}.` : "Nothing new to send.") +
+      (res.waiting || res.failed ? " See Needs a look." : "") +
+      (res.more ? " The rest go in the next few minutes." : ""),
+    error: res.error ?? null,
+  };
 }
 
 /** Send bills to QuickBooks: the switch, the start date, and how it's going. */
@@ -219,21 +256,9 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
     setError(null);
     setMessage(null);
     startTransition(async () => {
-      const res = await sendBillsToQuickBooksNow();
-      const parts = [
-        res.sent ? `${res.sent} sent` : null,
-        res.changed ? `${res.changed} updated` : null,
-        res.removed ? `${res.removed} removed` : null,
-        res.waiting ? `${res.waiting} waiting` : null,
-        res.failed ? `${res.failed} didn't go` : null,
-      ].filter(Boolean);
-      if (res.error && !parts.length) return setError(res.error);
-      setMessage(
-        (parts.length ? `Done: ${parts.join(", ")}.` : "Nothing new to send.") +
-          (res.waiting || res.failed ? " See Needs a look." : "") +
-          (res.more ? " The rest go in the next few minutes." : "")
-      );
-      if (res.error) setError(res.error);
+      const out = sentMessage(await sendBillsToQuickBooksNow());
+      setMessage(out.message);
+      setError(out.error);
       router.refresh();
     });
   }
@@ -457,5 +482,261 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
         </p>
       </section>
     </>
+  );
+}
+
+/** Send invoices to QuickBooks (DECISIONS #176): the switch, the start date, where they go, and how it's going. */
+function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
+  const router = useRouter();
+  const v = settings.invoices;
+  const initial = {
+    on: v.on,
+    from: v.from ?? v.today,
+    jobItem: v.jobItem ?? "",
+    depositItem: v.depositItem ?? "",
+    costItem: v.costItem ?? "",
+    paymentsAccount: v.paymentsAccount ?? "",
+    stripeRefundsAccount: v.stripeRefundsAccount ?? "",
+    handRefundsAccount: v.handRefundsAccount ?? "",
+    sendOutside: v.sendOutside,
+  };
+  const [f, setF] = useState(initial);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const changed = JSON.stringify({ ...f, from: f.on ? f.from : initial.from }) !== JSON.stringify(initial);
+  const set = (patch: Partial<typeof f>) => {
+    setF({ ...f, ...patch });
+    setMessage(null);
+  };
+
+  function save() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await saveQuickBooksInvoiceSending({
+        on: f.on,
+        from: f.on ? f.from : null,
+        jobItem: f.jobItem || null,
+        depositItem: f.depositItem || null,
+        costItem: f.costItem || null,
+        paymentsAccount: f.paymentsAccount || null,
+        stripeRefundsAccount: f.stripeRefundsAccount || null,
+        handRefundsAccount: f.handRefundsAccount || null,
+        sendOutside: f.sendOutside,
+      });
+      if (res.error) return setError(res.error);
+      setMessage(
+        f.on
+          ? `Saved. Bills to customers dated from ${fmtDate(f.from)} go to QuickBooks within a few minutes.`
+          : "Saved. Nothing more goes to QuickBooks; what's there stays."
+      );
+      router.refresh();
+    });
+  }
+
+  function sendNow() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const out = sentMessage(await sendInvoicesToQuickBooksNow());
+      setMessage(out.message);
+      setError(out.error);
+      router.refresh();
+    });
+  }
+
+  const pick = (
+    value: string,
+    onChange: (val: string) => void,
+    options: { id: string; name: string; type?: string }[],
+    label: string,
+    empty: string
+  ) => (
+    <select className="qb-select" value={value} onChange={(e) => onChange(e.target.value)} disabled={pending || !v.ready} aria-label={label}>
+      <option value="">{empty}</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.type ? `${o.name} (${o.type})` : o.name}
+        </option>
+      ))}
+    </select>
+  );
+  const p = v.prefs;
+
+  return (
+    <section className="est-pay">
+      <h2 className="est-pay-title">Send invoices to QuickBooks</h2>
+      {!v.ready && <p className="error-note">Sending invoices needs a database update first: run 0225_quickbooks_invoices.sql in Supabase.</p>}
+      <div className="qb-switch-row">
+        <div>
+          <strong>Invoices and customer payments</strong>
+          <div className="est-tax-note">
+            On: each bill to a customer goes a few minutes after it&apos;s billed, and each payment a few minutes after it
+            comes in, or once it clears. Drafts never go.
+          </div>
+        </div>
+        <button
+          type="button"
+          className="ur-toggle-btn"
+          aria-pressed={f.on}
+          aria-label="Send invoices and customer payments to QuickBooks"
+          disabled={pending || !v.ready}
+          onClick={() => set({ on: !f.on })}
+        >
+          <span className={"toggle-track" + (f.on ? " toggle-on" : "")}>
+            <span className="toggle-thumb" />
+          </span>
+        </button>
+      </div>
+      {f.on && (
+        <>
+          <label className="field qb-from">
+            <span className="field-label">Start with invoices dated from</span>
+            <input type="date" value={f.from} onChange={(e) => set({ from: e.target.value })} disabled={pending} />
+          </label>
+          <p className="est-tax-note">
+            Bills to customers dated before this stay out of QuickBooks, and so do their payments, so the ones your bookkeeper
+            already typed in aren&apos;t doubled. This is separate from the start date for Bills to Pay.
+          </p>
+        </>
+      )}
+
+      <h3 className="qb-subhead">Where they go in QuickBooks</h3>
+      {!v.items.length && (
+        <p className="est-tax-note">No products or services read from QuickBooks yet. Click Refresh accounts above.</p>
+      )}
+      <div className="qb-picks">
+        <label className="qb-pick">
+          <span>Product or service for job work</span>
+          {pick(f.jobItem, (val) => set({ jobItem: val }), v.items, "Product or service for job work", "Pick one")}
+        </label>
+        <label className="qb-pick">
+          <span>Deposits</span>
+          {pick(f.depositItem, (val) => set({ depositItem: val }), v.items, "Product or service for deposits", "Same as job work")}
+        </label>
+        <label className="qb-pick">
+          <span>Costs billed back</span>
+          {pick(f.costItem, (val) => set({ costItem: val }), v.items, "Product or service for costs billed back", "Same as job work")}
+        </label>
+        <label className="qb-pick">
+          <span>Customer payments go to</span>
+          {pick(f.paymentsAccount, (val) => set({ paymentsAccount: val }), v.choices.deposit, "Where customer payments go", "Payments to deposit")}
+        </label>
+        <p className="est-tax-note">
+          Payments to deposit is QuickBooks&apos; holding spot for money that hasn&apos;t reached the bank yet (some files call it
+          Undeposited Funds). Your bookkeeper groups these into bank deposits there, as today.
+        </p>
+        <label className="qb-pick">
+          <span>Refunds made in Stripe come out of</span>
+          {pick(f.stripeRefundsAccount, (val) => set({ stripeRefundsAccount: val }), v.choices.deposit, "Where Stripe refunds come out of", "Payments to deposit")}
+        </label>
+        <p className="est-tax-note">Stripe takes them off its next payout, so they come off that bank deposit too.</p>
+        <label className="qb-pick">
+          <span>Refunds you record by hand come from</span>
+          {pick(f.handRefundsAccount, (val) => set({ handRefundsAccount: val }), v.choices.bank, "Where refunds by hand come from", "Pick an account")}
+        </label>
+        <label className="qb-pick">
+          <span>
+            Customers invoiced outside the CRM <span className="est-tax-note">(Online payments off on their client card)</span>
+          </span>
+          <select
+            className="qb-select"
+            value={f.sendOutside ? "send" : "out"}
+            onChange={(e) => set({ sendOutside: e.target.value === "send" })}
+            disabled={pending || !v.ready}
+            aria-label="Customers invoiced outside the CRM"
+          >
+            <option value="out">Leave them out</option>
+            <option value="send">Send them too</option>
+          </select>
+        </label>
+      </div>
+
+      <h3 className="qb-subhead">Your QuickBooks</h3>
+      {p ? (
+        <ul className="qb-prefs">
+          <li>
+            <span>
+              Custom transaction numbers <span className="est-tax-note">(keeps the CRM&apos;s invoice numbers)</span>
+            </span>
+            <span className={p.customNumbers ? "qb-ok" : undefined}>{p.customNumbers ? "On ✓" : "Off: QuickBooks numbers them"}</span>
+          </li>
+          <li>
+            <span>
+              Automatically apply credits <span className="est-tax-note">(keep it off, or QuickBooks puts credits on the oldest invoice)</span>
+            </span>
+            <span className={p.autoApplyCredit ? "qb-bad" : "qb-ok"}>{p.autoApplyCredit ? "On: credits wait" : "Off ✓"}</span>
+          </li>
+          <li>
+            <span>Sales tax</span>
+            <span>{p.salesTax ? (p.automaticTax ? "On, automatic" : "On") : "Off"}</span>
+          </li>
+          <li>
+            <span>Books closed through</span>
+            <span>{p.bookCloseDate ? fmtDate(p.bookCloseDate) : "Not closed"}</span>
+          </li>
+        </ul>
+      ) : (
+        <p className="est-tax-note">Read from QuickBooks on the first run.</p>
+      )}
+
+      {settings.connection?.environment === "sandbox" && (
+        <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
+      )}
+      {error && <p className="error-note">{error}</p>}
+      {message && <p className="hint-note">{message}</p>}
+      {changed && (
+        <div className="est-pay-actions">
+          <button type="button" className="btn-primary" onClick={save} disabled={pending || !v.ready || (f.on && (!f.from || !f.jobItem))}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+
+      {v.on && (
+        <>
+          <div className="qb-counts">
+            <div className="qb-count">
+              <b>{v.counts.sent}</b>
+              <span>In QuickBooks</span>
+            </div>
+            <div className="qb-count">
+              <b>{v.counts.waiting}</b>
+              <span>Waiting</span>
+            </div>
+            <div className={"qb-count" + (v.counts.failed ? " is-failed" : "")}>
+              <b>{v.counts.failed}</b>
+              <span>Didn&apos;t go</span>
+            </div>
+          </div>
+          {v.attention.length > 0 && (
+            <>
+              <h3 className="qb-subhead">Needs a look</h3>
+              <ul className="qb-attention">
+                {v.attention.map((a, i) => (
+                  <li key={i} className={a.status === "waiting" ? undefined : "is-failed"}>
+                    <strong>
+                      {a.customer}
+                      {a.amountCents !== null ? ` · ${money(a.amountCents)}` : ""} {a.what}
+                    </strong>
+                    {a.day ? ` on ${fmtDate(a.day)}` : ""}
+                    <div className="est-tax-note">{a.reason}</div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="est-pay-actions qb-send-row">
+            <button type="button" className="btn-ghost" onClick={sendNow} disabled={pending || changed}>
+              {pending ? "Sending…" : "Send now"}
+            </button>
+            <span className="est-tax-note" suppressHydrationWarning>
+              {v.checkedAt ? `Last checked ${ago(v.checkedAt)}` : "Not checked yet: the first run is within five minutes."}
+            </span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

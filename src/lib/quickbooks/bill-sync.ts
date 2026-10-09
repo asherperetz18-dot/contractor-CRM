@@ -59,6 +59,8 @@ export type SyncBill = {
   memo: string;
   /** The receipt file in storage (vendor_bills.receipt_path), if any. */
   receiptPath: string | null;
+  /** The QuickBooks job (or customer) the bill's line is tagged with, once step 3 has added it (DECISIONS #176). */
+  tag?: string | null;
 };
 
 export type SyncPayment = {
@@ -160,6 +162,9 @@ const dollars = (cents: number) => Math.round(cents) / 100;
 
 // ---------------------------------------------------------------- what is sent
 
+/** Tags a bill's line with its job: not billable, since the CRM bills its own costs back. */
+const jobTag = (tag: string | null | undefined) => (tag ? { CustomerRef: { value: tag }, BillableStatus: "NotBillable" as const } : {});
+
 /** A new bill. With no due date in the CRM it's due on its bill date. */
 export function billBody(bill: SyncBill, ref: { vendorId: string; accountId: string }): QbBillBody {
   const description = qbText(bill.reference, 4000);
@@ -173,14 +178,58 @@ export function billBody(bill: SyncBill, ref: { vendorId: string; accountId: str
         DetailType: "AccountBasedExpenseLineDetail",
         Amount: dollars(bill.amountCents),
         ...(description ? { Description: description } : {}),
-        AccountBasedExpenseLineDetail: { AccountRef: { value: ref.accountId } },
+        AccountBasedExpenseLineDetail: { AccountRef: { value: ref.accountId }, ...jobTag(bill.tag) },
       },
     ],
   };
 }
 
+/**
+ * Moving a bill's job on its lines. The job goes on a line with no customer,
+ * or one carrying the tag the CRM itself last sent on this bill (`lastTag`),
+ * and comes off it when the bill leaves the job. Any other customer on a line
+ * -- even one the CRM also knows -- is the bookkeeper's, and stays.
+ */
+function lineTags(bill: SyncBill, lastTag: string | null) {
+  const detailOf = (l: Record<string, unknown>) => (l.AccountBasedExpenseLineDetail ?? {}) as Record<string, unknown>;
+  const tagOn = (l: Record<string, unknown>) => {
+    const value = (detailOf(l).CustomerRef as { value?: unknown } | undefined)?.value;
+    return value == null ? "" : String(value);
+  };
+  const retag = (l: Record<string, unknown>) =>
+    l.DetailType === "AccountBasedExpenseLineDetail" && (tagOn(l) === "" || (!!lastTag && tagOn(l) === lastTag)) && tagOn(l) !== (bill.tag ?? "");
+  const tagged = (l: Record<string, unknown>) => {
+    if (!retag(l)) return l;
+    const { CustomerRef: _ref, BillableStatus: _billable, ...detail } = detailOf(l);
+    return { ...l, AccountBasedExpenseLineDetail: { ...detail, ...jobTag(bill.tag) } };
+  };
+  return { retag, tagged };
+}
+
+/** The tag the CRM last sent on a bill, kept in its hash (none before step 3). */
+export function lastSentTag(hash: string | null | undefined): string | null {
+  return hash?.split(JOB_HASH)[1] ?? null;
+}
+
+/**
+ * Only the job changed: a sparse change naming just the lines (and the vendor
+ * QuickBooks has), so the dates, memo and amounts stay as QuickBooks has them
+ * -- a bookkeeper's fixes included. Null when no line is the CRM's to move.
+ */
+export function billRetagBody(bill: SyncBill, current: QbBillNow, lastTag: string | null): Record<string, unknown> | null {
+  const { retag, tagged } = lineTags(bill, lastTag);
+  if (!current.lines.some(retag)) return null;
+  return {
+    Id: current.id,
+    SyncToken: current.syncToken,
+    sparse: true,
+    ...(current.vendorRef ? { VendorRef: current.vendorRef } : {}),
+    Line: current.lines.map(tagged),
+  };
+}
+
 /** A bill as QuickBooks has it now: what a change must name and keep. */
-export type QbBillNow = { id: string; syncToken: string; lines: Record<string, unknown>[] };
+export type QbBillNow = { id: string; syncToken: string; lines: Record<string, unknown>[]; vendorRef?: unknown };
 
 /**
  * A change to a bill already in QuickBooks, sparse: the vendor, dates and
@@ -190,7 +239,11 @@ export type QbBillNow = { id: string; syncToken: string; lines: Record<string, u
  * the bookkeeper split into several lines keeps its lines; if its total
  * no longer matches, the change waits for them.
  */
-export function billUpdateBody(bill: SyncBill, current: QbBillNow, ref: { vendorId: string }): { body: Record<string, unknown> } | { wait: string } {
+export function billUpdateBody(
+  bill: SyncBill,
+  current: QbBillNow,
+  ref: { vendorId: string; lastTag?: string | null }
+): { body: Record<string, unknown> } | { wait: string } {
   const amount = dollars(bill.amountCents);
   const description = qbText(bill.reference, 4000);
   const header = {
@@ -202,18 +255,21 @@ export function billUpdateBody(bill: SyncBill, current: QbBillNow, ref: { vendor
     DueDate: bill.dueDate ?? billDay(bill),
     PrivateNote: qbText(bill.memo, 4000),
   };
+  const { retag, tagged } = lineTags(bill, ref.lastTag ?? null);
   const lines = current.lines;
   const near = (a: unknown, b: number) => Math.abs((Number(a) || 0) - b) < 0.005;
   if (lines.length === 1 && lines[0].DetailType === "AccountBasedExpenseLineDetail") {
     const line = lines[0];
-    if (near(line.Amount, amount) && String(line.Description ?? "") === description) return { body: header };
-    const next: Record<string, unknown> = { ...line, Amount: amount };
+    if (near(line.Amount, amount) && String(line.Description ?? "") === description) {
+      return { body: retag(line) ? { ...header, Line: [tagged(line)] } : header };
+    }
+    const next: Record<string, unknown> = { ...tagged(line), Amount: amount };
     if (description) next.Description = description;
     else delete next.Description;
     return { body: { ...header, Line: [next] } };
   }
   const total = lines.reduce((t, l) => t + (Number(l.Amount) || 0), 0);
-  if (near(total, amount)) return { body: header };
+  if (near(total, amount)) return { body: lines.some(retag) ? { ...header, Line: lines.map(tagged) } : header };
   return { wait: WAIT.split };
 }
 
@@ -253,7 +309,7 @@ const sha = (value: unknown) => createHash("sha256").update(JSON.stringify(value
 
 /** What QuickBooks would show of a bill: a change here is sent again. */
 export function billHash(bill: SyncBill): string {
-  return sha([
+  const base = sha([
     "bill",
     qbVendorName(bill.vendorName),
     bill.amountCents,
@@ -262,7 +318,25 @@ export function billHash(bill: SyncBill): string {
     qbText(bill.reference, 4000),
     qbText(bill.memo, 4000),
   ]);
+  // Only a tagged bill's hash says so, kept apart (a change of job alone can be told
+  // apart): a bill without a job hashes as before.
+  return bill.tag ? `${base}${JOB_HASH}${bill.tag}` : base;
 }
+
+const JOB_HASH = ":job:";
+
+/**
+ * Why a sent bill's job was left off in QuickBooks: its books are closed for
+ * the bill's date. Names the closing date it was checked against, so a new
+ * closing date (the books reopened) has it tried again.
+ */
+export function keptOutReason(closeDate: string | null): string {
+  return closeDate
+    ? `Its job is left off in QuickBooks: the books there are closed through ${closeDate}.`
+    : "Its job is left off in QuickBooks: the books there are closed for its date.";
+}
+/** Two bill hashes that differ only in the job. */
+const onlyJobDiffers = (a: string | null, b: string) => !!a && a !== b && a.split(JOB_HASH)[0] === b.split(JOB_HASH)[0];
 
 export function paymentHash(payment: SyncPayment): string {
   return sha([
@@ -302,7 +376,14 @@ export type SyncStep =
   | { op: "void_payment"; recordId: string; record: SyncRecord }
   | { op: "delete_bill"; recordId: string; record: SyncRecord }
   | { op: "drop"; recordType: RecordType; recordId: string }
-  | { op: "settle"; recordType: "bill" | "receipt"; recordId: string }
+  /** Only its job changed: just its lines are sent (billRetagBody). */
+  | { op: "retag_bill"; recordId: string; bill: SyncBill; hash: string; record: SyncRecord }
+  /**
+   * Noted as done. `noted`: a job change QuickBooks' closed books keep out, noted
+   * by that version without changing what was really sent (the hash keeps the tag
+   * the CRM last sent).
+   */
+  | { op: "settle"; recordType: "bill" | "receipt"; recordId: string; noted?: string; noteReason?: string }
   | { op: "wait"; recordType: RecordType; recordId: string; billId: string; reason: string; hash: string }
   | { op: "create_bill" | "update_bill"; recordId: string; bill: SyncBill; hash: string; accountId: string; record: SyncRecord | null }
   | { op: "create_payment"; recordId: string; payment: SyncPayment; hash: string; record: SyncRecord | null }
@@ -323,6 +404,9 @@ export const WAIT = {
 
 const keyOf = (type: RecordType, id: string) => `${type}:${id}`;
 
+/** What the bills job sends and looks after; the rest of quickbooks_sync is the invoices job's. */
+export const BILL_RECORD_TYPES: RecordType[] = ["bill", "bill_payment", "receipt"];
+
 export function planBillSync(p: {
   bills: SyncBill[];
   payments: SyncPayment[];
@@ -334,15 +418,19 @@ export function planBillSync(p: {
   accounts: { byCategory: Map<string, string>; fallback: string | null };
   /** Send now: everything due is tried, refusals included. */
   force?: boolean;
+  /** QuickBooks' closing date, as the invoices job last read it (DECISIONS #176); null if none or unknown. */
+  closeDate?: string | null;
 }): SyncStep[] {
   const force = !!p.force;
   const now = p.now.getTime();
-  const recordOf = new Map(p.records.map((r) => [keyOf(r.record_type, r.record_id), r]));
+  // Only the bills side's own records: invoices and their money are step 3's (DECISIONS #176).
+  const records = p.records.filter((r) => BILL_RECORD_TYPES.includes(r.record_type));
+  const recordOf = new Map(records.map((r) => [keyOf(r.record_type, r.record_id), r]));
   const billRecord = (id: string) => recordOf.get(keyOf("bill", id)) ?? null;
   const paymentRecord = (id: string) => recordOf.get(keyOf("bill_payment", id)) ?? null;
   const billsById = new Map(p.bills.map((b) => [b.id, b]));
   const paymentIds = new Set(p.payments.map((x) => x.id));
-  const paymentRecordsOf = (billId: string) => p.records.filter((r) => r.record_type === "bill_payment" && r.bill_id === billId);
+  const paymentRecordsOf = (billId: string) => records.filter((r) => r.record_type === "bill_payment" && r.bill_id === billId);
   const receiptRecord = (billId: string) => recordOf.get(keyOf("receipt", billId)) ?? null;
 
   const resolves: SyncStep[] = [];
@@ -354,7 +442,7 @@ export function planBillSync(p: {
   // First, anything whose last add never got an answer: repeat it exactly,
   // and leave it (and a bill's payments) alone until the next run.
   const busy = new Set<string>();
-  for (const r of p.records) {
+  for (const r of records) {
     if (!r.doubt) continue;
     busy.add(keyOf(r.record_type, r.record_id));
     resolves.push({ op: "resolve", recordType: r.record_type, recordId: r.record_id, record: r });
@@ -419,14 +507,14 @@ export function planBillSync(p: {
   };
 
   // Payments gone from the CRM: voided in QuickBooks if they went, else forgotten.
-  for (const r of p.records) {
+  for (const r of records) {
     if (r.record_type !== "bill_payment" || paymentIds.has(r.record_id) || isBusy(r)) continue;
     if (inQuickBooks(r)) voidPayment(r);
     else drop(r);
   }
 
   // Bills gone from the CRM altogether: as if voided.
-  for (const r of p.records) {
+  for (const r of records) {
     if (r.record_type !== "bill" || billsById.has(r.record_id) || isBusy(r)) continue;
     if (inQuickBooks(r)) {
       for (const pr of paymentRecordsOf(r.record_id)) if (inQuickBooks(pr)) voidPayment(pr);
@@ -500,6 +588,14 @@ export function planBillSync(p: {
         work.push({ op: "create_bill", recordId: bill.id, bill, hash, accountId, record: rec });
         billGoes = true;
       }
+    } else if (rec!.qb_hash !== hash && onlyJobDiffers(rec!.qb_hash, hash)) {
+      // Only its job changed. In a month QuickBooks has closed: left as it is there. Else just its lines go.
+      // Kept out by closed books before, with this version and this closing date: left so (Send now tries again).
+      const why = keptOutReason(p.closeDate ?? null);
+      const noted = rec!.tried_hash === hash && rec!.status === "sent" && rec!.reason === why;
+      if (p.closeDate && billDay(bill) <= p.closeDate) {
+        if (!noted) work.push({ op: "settle", recordType: "bill", recordId: bill.id, noted: hash, noteReason: why });
+      } else if ((!noted || force) && !resting(rec, hash)) work.push({ op: "retag_bill", recordId: bill.id, bill, hash, record: rec! });
     } else if (rec!.qb_hash !== hash) {
       // Changed since it went (or its last change didn't go): send the change.
       if (!resting(rec, hash)) work.push({ op: "update_bill", recordId: bill.id, bill, hash, accountId: accountId ?? "", record: rec });

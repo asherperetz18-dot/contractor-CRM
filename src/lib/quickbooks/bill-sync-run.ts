@@ -4,7 +4,9 @@ import { leadDisplayName, type ContactType } from "@/lib/data/types";
 import { isMissingSchemaError } from "@/lib/schema-drift";
 import { RECEIPT_BUCKET } from "@/lib/receipts";
 import { quickBooksAccess } from "./connection";
+import { billJobLinks } from "./bill-jobs";
 import {
+  customerStanding,
   createBill,
   createBillPayment,
   createVendor,
@@ -24,12 +26,16 @@ import {
 import type { QbAccount } from "./accounts";
 import { LOOKUP_FAILED } from "./bill-status";
 import {
+  BILL_RECORD_TYPES,
   WAIT,
   inQuickBooks,
   billBody,
   billMemo,
   billPaymentBody,
+  billRetagBody,
   billUpdateBody,
+  keptOutReason,
+  lastSentTag,
   nextTryAt,
   newRequestId,
   planBillSync,
@@ -248,7 +254,10 @@ async function run(
       .range(f, t)
   );
   const have = new Set(recent.map((b) => b.id));
-  const trackedIds = records.map((r) => (r.record_type === "bill" ? r.record_id : r.bill_id ?? "")).filter((id) => id && !have.has(id));
+  const trackedIds = records
+    .filter((r) => BILL_RECORD_TYPES.includes(r.record_type))
+    .map((r) => (r.record_type === "bill" ? r.record_id : r.bill_id ?? ""))
+    .filter((id) => id && !have.has(id));
   const older = await inChunks<BillRow>(trackedIds, (chunk) =>
     admin.from("vendor_bills").select(BILL_COLUMNS).eq("company_id", companyId).in("id", chunk)
   );
@@ -290,6 +299,31 @@ async function run(
   );
   const matches = (matchRows.data ?? []) as { category_key: string; qb_account_id: string }[];
 
+  // QuickBooks' closing date, as the invoices job last read it; none before 0225 (the column isn't there).
+  const { data: prefsRow } = await admin
+    .from("quickbooks_connections")
+    .select("qb_prefs")
+    .eq("company_id", companyId)
+    .maybeSingle<{ qb_prefs: { bookCloseDate?: string | null } | null }>();
+  const closeDate = prefsRow?.qb_prefs?.bookCloseDate ?? null;
+
+  // Each bill's job in QuickBooks, once step 3 has added it (DECISIONS #176); else its customer.
+  const links = await billJobLinks(admin, companyId, billRows);
+  const recordOf = new Map(records.map((r) => [`${r.record_type}:${r.record_id}`, r]));
+  const lastTagOf = (billId: string) => lastSentTag(recordOf.get(`bill:${billId}`)?.qb_hash);
+  const tagOf = (billId: string) => {
+    const link = links.get(billId);
+    if (!link) return null;
+    const last = lastTagOf(billId);
+    for (const r of [link.contractId ? recordOf.get(`job:${link.contractId}`) : undefined, recordOf.get(`customer:${link.leadId}`)]) {
+      if (!r) continue;
+      // Made inactive in QuickBooks (a finished job): bills already on it stay on it; new ones (or one added
+      // again after a void) go on the next one up.
+      if (r.status === "gone" && r.qb_id && r.qb_id === last && inQuickBooks(recordOf.get(`bill:${billId}`))) return last;
+      if (inQuickBooks(r)) return r.qb_id!;
+    }
+    return null;
+  };
   const bills: SyncBill[] = billRows.map((b) => {
     const vendor = b.vendor_id ? vendorById.get(b.vendor_id) : undefined;
     const lead = b.lead_id ? leadById.get(b.lead_id) : undefined;
@@ -311,6 +345,7 @@ async function run(
         ? billMemo({ docNumber: contract?.doc_number ?? null, customer: lead ? leadDisplayName(lead) : null, title: contract?.title ?? null })
         : billMemo({ docNumber: null, customer: null, title: null }),
       receiptPath: b.receipt_path ?? null,
+      tag: tagOf(b.id),
     };
   });
   const payments: SyncPayment[] = paymentRows.map((x) => {
@@ -347,6 +382,7 @@ async function run(
       fallback: matches.find((m) => m.category_key === "")?.qb_account_id ?? null,
     },
     force: opts.force,
+    closeDate,
   });
 
   // ---------------------------------------------------------------- write
@@ -599,6 +635,23 @@ async function run(
     }
     // Refused: QuickBooks didn't add it. The next try is a new request.
     await refusedAt(type, id, billId, record, doubt.hash, res.error, "add");
+    return res.error;
+  };
+
+  /**
+   * A bill refused as naming what isn't there (code 610: "made inactive", or
+   * merged away): if it's the job or customer it's tagged with, that one isn't
+   * used any more, and the bill goes without it (or on the customer) next run.
+   */
+  const recheckTag = async (tag: string | null | undefined) => {
+    if (!tag) return;
+    const res = await customerStanding(access, tag, fetchImpl);
+    if ("error" in res || res.standing === "active") return;
+    const reason = res.standing === "inactive" ? "Made inactive in QuickBooks." : "No longer in QuickBooks (merged or deleted there).";
+    for (const r of records) {
+      if ((r.record_type !== "customer" && r.record_type !== "job") || r.qb_id !== tag || !inQuickBooks(r)) continue;
+      await save(r.record_type, r.record_id, null, { status: "gone", reason, next_try_at: null });
+    }
   };
 
   const doStep = async (step: SyncStep) => {
@@ -610,8 +663,8 @@ async function run(
         await save(step.recordType, step.recordId, step.recordId, {
           status: "sent",
           failed_op: null,
-          reason: null,
-          tried_hash: null,
+          reason: step.noteReason ?? null,
+          tried_hash: step.noted ?? null,
           tries: 0,
           next_try_at: null,
         });
@@ -689,7 +742,49 @@ async function run(
         if ("wait" in vendor) return waitAt("bill", bill.id, bill.id, record, hash, vendor.wait);
         if ("error" in vendor) return vendorTrouble("bill", bill.id, bill.id, record, hash, vendor.error);
         const body = billBody(bill, { vendorId: vendor.id, accountId: step.accountId });
-        await add("bill", bill.id, bill.id, record, { requestId: newRequestId(), body, hash });
+        const refused = await add("bill", bill.id, bill.id, record, { requestId: newRequestId(), body, hash });
+        if (refused?.kind === "notfound") await recheckTag(bill.tag);
+        return;
+      }
+      case "retag_bill": {
+        const { bill, hash, record } = step;
+        // Closed books keep the job change out: noted (the hash keeps the tag really sent), as the planner does.
+        const keptOut = () =>
+          save("bill", bill.id, bill.id, { status: "sent", failed_op: null, reason: keptOutReason(closeDate), tried_hash: hash, tries: 0, next_try_at: null });
+        writes += 1;
+        let result: Awaited<ReturnType<typeof updateBill>> | null = null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const current = await readBill(access, record.qb_id!, fetchImpl);
+          if ("error" in current) {
+            if (current.error.kind === "notfound") {
+              await billGone(bill.id, hash);
+              return;
+            }
+            result = current;
+            break;
+          }
+          const body = billRetagBody(bill, current, lastTagOf(bill.id));
+          // No line is the CRM's to move (the bookkeeper tagged them): noted as done.
+          if (!body) {
+            await save("bill", bill.id, bill.id, sentNow(current.id, hash));
+            return;
+          }
+          // QuickBooks has it dated in a month its books have closed (the bookkeeper may have re-dated it): left as it is.
+          if (closeDate && current.txnDate && current.txnDate <= closeDate) return keptOut();
+          result = await updateBill(access, body, newRequestId(), fetchImpl);
+          if (!("error" in result) || result.error.kind !== "stale") break;
+        }
+        if (result && !("error" in result)) {
+          await save("bill", bill.id, bill.id, sentNow(result.id, hash));
+          summary.changed += 1;
+          return;
+        }
+        const err = result!.error;
+        await stopIf(err);
+        if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
+        if (err.code === "6210" || /books are closed/.test(err.message)) return keptOut();
+        await refusedAt("bill", bill.id, bill.id, record, hash, err, "change");
+        if (err.kind === "notfound") await recheckTag(bill.tag);
         return;
       }
       case "update_bill": {
@@ -711,7 +806,7 @@ async function run(
             result = current;
             break;
           }
-          const update = billUpdateBody(bill, current, { vendorId: vendor.id });
+          const update = billUpdateBody(bill, current, { vendorId: vendor.id, lastTag: lastTagOf(bill.id) });
           if ("wait" in update) return waitAt("bill", bill.id, bill.id, record, hash, update.wait);
           result = await updateBill(access, update.body, newRequestId(), fetchImpl);
           if (!("error" in result) || result.error.kind !== "stale") break;
@@ -725,7 +820,9 @@ async function run(
         await stopIf(err);
         // No answer: QuickBooks keeps what it had; the change goes next run.
         if (err.kind === "transient" || err.kind === "stale") return countTransient(err);
-        return refusedAt("bill", bill.id, bill.id, record, hash, err, "change");
+        await refusedAt("bill", bill.id, bill.id, record, hash, err, "change");
+        if (err.kind === "notfound") await recheckTag(bill.tag);
+        return;
       }
       case "create_payment": {
         const { payment, hash, record } = step;

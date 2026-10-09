@@ -10,6 +10,7 @@ import {
   billPaymentBody,
   billQbChips,
   billUpdateBody,
+  keptOutReason,
   nextTryAt,
   paymentHash,
   paymentQbNote,
@@ -23,6 +24,7 @@ import {
   type SyncBill,
   type SyncPayment,
   type SyncRecord,
+  type SyncStep,
 } from "./bill-sync.ts";
 import {
   attachableBillQuery,
@@ -267,6 +269,52 @@ test("voiding a bill deletes it in QuickBooks, after voiding its payments there"
   assert.deepEqual(ops(plan({ records: [sent({ qb_id: null, status: "removed" })] })), ["create_bill:b1"]);
 });
 
+test("a sent bill that only gains or changes its job, in a month QuickBooks has closed, is left as it is there", () => {
+  const untaggedRec = sent();
+  // Open month: the job goes on it, by itself (just the lines).
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [untaggedRec] })), ["retag_bill:b1"]);
+  // Closed through the bill's date: noted, nothing sent -- and the tag it really sent (none) stays the one it moves later.
+  const closed = plan({ bills: [bill({ tag: "78" })], records: [untaggedRec], closeDate: "2026-10-31" });
+  assert.deepEqual(ops(closed), ["settle:b1"]);
+  const noted = closed[0] as Extract<SyncStep, { op: "settle" }>;
+  assert.equal("hash" in noted, false);
+  assert.equal(noted.noted, billHash(bill({ tag: "78" })));
+  // Already noted under that closing date: nothing more to write.
+  const notedRec = { ...untaggedRec, tried_hash: billHash(bill({ tag: "78" })), reason: keptOutReason("2026-10-31") };
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [notedRec], closeDate: "2026-10-31" })), []);
+  // The books reopened to an earlier date: its job goes after all.
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [notedRec], closeDate: "2026-08-31" })), ["retag_bill:b1"]);
+  // Kept out because QuickBooks has it in a closed month (re-dated there): left while that closing date stands; Send now tries again.
+  const byQbDate = { ...notedRec, reason: keptOutReason("2026-09-30") };
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [byQbDate], closeDate: "2026-09-30" })), []);
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [byQbDate], closeDate: "2026-09-30", force: true })), ["retag_bill:b1"]);
+  // Kept out while no closing date is known (QuickBooks refused it): left until that changes.
+  const unknown = { ...notedRec, reason: keptOutReason(null) };
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78" })], records: [unknown], closeDate: null })), []);
+  // A real change in a closed month still goes (QuickBooks says why if it refuses).
+  assert.deepEqual(ops(plan({ bills: [bill({ tag: "78", amountCents: 330000 })], records: [untaggedRec], closeDate: "2026-10-31" })), ["update_bill:b1"]);
+  // The tag is kept apart in the hash: the bill without it hashes exactly as before.
+  assert.equal(billHash(bill({ tag: "78" })).split(":job:")[0], billHash(bill()));
+});
+
+test("the bills job only repeats its own unanswered adds, never an invoice's or a customer's", () => {
+  const doubt = { requestId: "crm-x", body: {}, hash: "h" };
+  const steps = plan({
+    records: [
+      sent({ record_type: "invoice", record_id: "s1", bill_id: "s1", qb_id: null, status: "waiting", doubt }),
+      sent({ record_type: "customer", record_id: "l1", bill_id: null, qb_id: null, status: "waiting", doubt }),
+      sent({ record_type: "customer_payment", record_id: "m1", bill_id: "s1", qb_id: "300" }),
+      sent({ record_type: "bill_payment", record_id: "p9", bill_id: "b1", qb_id: null, status: "waiting", doubt }),
+    ],
+  });
+  assert.deepEqual(
+    steps.filter((s) => s.op === "resolve").map((s) => s.recordId),
+    ["p9"]
+  );
+  // A customer payment isn't a bill payment gone from the CRM.
+  assert.equal(steps.some((s) => s.op === "void_payment"), false);
+});
+
 test("a payment deleted in the CRM is voided in QuickBooks; one never sent just goes", () => {
   const records = [sent(), sent({ record_type: "bill_payment", record_id: "p9", qb_id: "201" })];
   assert.deepEqual(ops(plan({ records })), ["void_payment:p9"]);
@@ -478,7 +526,9 @@ test("QuickBooks' errors are read for what to do next", () => {
   assert.equal(classifyQbError(400, fault("6240")).kind, "duplicate");
   const v = classifyQbError(400, fault("6000", "Business Validation Error: The account period has closed."));
   assert.equal(v.kind, "validation");
-  assert.equal(v.message, "QuickBooks said: Business Validation Error: The account period has closed.");
+  assert.equal(v.message, "QuickBooks' books are closed for that date. Ask whoever keeps the books to reopen that month, or make it in QuickBooks by hand.");
+  assert.equal(classifyQbError(400, fault("6210")).message, v.message);
+  assert.equal(classifyQbError(400, fault("6000", "Amount is required.")).message, "QuickBooks said: Amount is required.");
 });
 
 test("a vendor is looked up by its exact name, apostrophes escaped, inactive ones too", async () => {
