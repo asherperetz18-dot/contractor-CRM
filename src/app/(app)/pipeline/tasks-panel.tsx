@@ -41,11 +41,16 @@ export function useTaskDraft() {
   const blank = () => ({ title: "", due_date: today(), due_time: "", assigned_to: "" });
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState(blank);
+  // On its way to the server, by Add Task or the window's Save: the other
+  // waits, so a double tap on a slow signal can't add it twice.
+  const [busy, setBusy] = useState(false);
   return {
     showAdd,
     setShowAdd,
     form,
     setForm,
+    busy,
+    setBusy,
     // Something typed into an open form: work that would be lost.
     waiting: showAdd && form.title.trim() !== "",
     reset: () => {
@@ -82,7 +87,7 @@ export function TasksPanel({
   draft?: TaskDraft;
 }) {
   const own = useTaskDraft();
-  const { showAdd, setShowAdd, form, setForm, reset } = draft ?? own;
+  const { showAdd, setShowAdd, form, setForm, busy, setBusy, reset } = draft ?? own;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -105,9 +110,11 @@ export function TasksPanel({
       return;
     }
     setPending(true);
+    setBusy(true);
     setError("");
     const result = await attempt(() => createLeadTask(leadId, form));
     setPending(false);
+    setBusy(false);
     if (result.error) {
       setError(result.error);
       return;
@@ -267,7 +274,7 @@ export function TasksPanel({
               type="button"
               className="btn-primary small"
               onClick={handleAdd}
-              disabled={pending}
+              disabled={pending || busy}
             >
               Add Task
             </button>

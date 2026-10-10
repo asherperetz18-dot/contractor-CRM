@@ -336,7 +336,10 @@ export function EventForm({
   // Captured once on open rather than read during render -- calling the
   // clock mid-render is impure, and the badge doesn't need to tick.
   const [openedAtMs] = useState(() => Date.now());
-  const resultOverdue = !!event && appointmentResultOverdue(event, openedAtMs);
+  // The saved status, not the page's copy: a result saved in this window
+  // clears the red dot without closing it first.
+  const resultOverdue =
+    !!event && appointmentResultOverdue({ ...event, status: baseline.status }, openedAtMs);
   const resultRecorded = !!event && hasAppointmentResult(form.status);
   // Something to save: a new outcome, a note, or a stage change.
   const resultDirty =
@@ -457,7 +460,9 @@ export function EventForm({
       setError("Enter the estimated job value before saving this result.");
       return;
     }
+    const taskStep = !!lead && taskDraft.waiting;
     setPending(true);
+    if (taskStep) taskDraft.setBusy(true);
     setError("");
     const saving = form;
     const outcome = await commitPending({
@@ -478,6 +483,7 @@ export function EventForm({
         : undefined,
     });
     setPending(false);
+    if (taskStep) taskDraft.setBusy(false);
     // Only when something landed: refreshing a tab that couldn't reach
     // the server at all can reload the page out from under the window.
     if (outcome.done.length) router.refresh();
@@ -1395,7 +1401,7 @@ export function EventForm({
                 {footer.save ? "Cancel" : "Close"}
               </button>
               {footer.save && (
-                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
+                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || taskDraft.busy}>
                   {pending ? "Saving…" : "Save"}
                 </button>
               )}

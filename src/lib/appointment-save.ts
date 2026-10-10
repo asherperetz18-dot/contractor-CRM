@@ -10,13 +10,13 @@ import type { EventStatus } from "./data/types.ts";
  */
 
 /**
- * What a server action that never arrived looks like on screen. A tab
- * opened before an update still holds the old build's action ids, and
- * calling one rejects instead of returning an error -- which used to
- * leave the button greyed out with nothing said.
+ * What a save call that never got an answer looks like on screen. A
+ * dropped signal, or an action the server no longer recognises after an
+ * update, rejects instead of returning an error -- which used to leave
+ * the button greyed out with nothing said.
  */
 export const SAVE_UNREACHABLE =
-  "Couldn't reach the CRM to save this. If it was just updated, refresh the page, then try again.";
+  "Couldn't reach the CRM to save this. Check your connection and try again; if it keeps failing, refresh the page.";
 
 export type StepResult = { error?: string } | void | null | undefined;
 

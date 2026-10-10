@@ -61,6 +61,7 @@ test("a call that never reaches the server says so, instead of leaving the butto
     throw new Error("Server Action not found");
   };
   assert.deepEqual(await attempt(lost), { error: SAVE_UNREACHABLE });
+  assert.match(SAVE_UNREACHABLE, /Check your connection/);
   assert.match(SAVE_UNREACHABLE, /refresh the page/);
   assert.deepEqual(await commitPending({ appointment: async () => ({}), task: lost }), {
     error: `Saved the appointment. The new task didn't save: ${SAVE_UNREACHABLE}`,
@@ -148,6 +149,13 @@ test("the window commits everything pending through one Save and keeps a typed t
   // A call that never arrives is reported, not left spinning.
   assert.match(form, /await attempt\(commitResult\)/);
   assert.match(form, /await attempt\(\(\) => deleteEvent\(event\.id\)\)/);
+  // The Result tab's red dot reads the saved status, so it clears once a
+  // result is saved in this window.
+  assert.match(form, /appointmentResultOverdue\(\{ \.\.\.event, status: baseline\.status \}, openedAtMs\)/);
+  // A task already on its way (Add Task) can't be sent again by Save, nor
+  // the other way round -- the slow-signal double tap.
+  assert.match(form, /disabled=\{pending \|\| taskDraft\.busy\}/);
+  assert.match(form, /if \(taskStep\) taskDraft\.setBusy\(true\);/);
 });
 
 test("the task panel takes its draft from the window when given one, and reports a lost call", () => {
@@ -163,4 +171,5 @@ test("the task panel takes its draft from the window when given one, and reports
   // The panel's Cancel throws the draft away, so Save can't add a task
   // the person backed out of.
   assert.match(panel, /onClick=\{reset\}/);
+  assert.match(panel, /disabled=\{pending \|\| busy\}/);
 });
