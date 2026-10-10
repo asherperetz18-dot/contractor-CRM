@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { todayForCompany } from "@/lib/data/company-today";
 import { getPortalViewer } from "@/lib/portal/session";
 import { collectSignatureEvidence } from "@/lib/portal/signature-evidence";
 import { finalizeSignedEstimate } from "@/lib/estimate-signing";
@@ -10,6 +11,7 @@ import { signedNameMatches } from "@/lib/payment-change";
 import {
   computeEstimateTotals,
   depositCents,
+  estimateExpired,
   type EstimateItem,
   type EstimateSigner,
   type EstimateStatus,
@@ -69,9 +71,16 @@ async function loadForViewer(
   return { estimate: data, leadId: viewer.lead.id };
 }
 
-function expired(estimate: EstimateRow): boolean {
+/**
+ * Valid through its last day on the company's calendar -- the same rule
+ * the portal page shows. The server's clock is UTC, already tomorrow from
+ * 5pm Pacific, so judging by it refused a signature on the evening of the
+ * last day (DECISIONS #191).
+ */
+async function expired(estimate: EstimateRow): Promise<boolean> {
   if (!estimate.expires_at) return false;
-  return new Date(`${estimate.expires_at}T23:59:59`).getTime() < Date.now();
+  const today = await todayForCompany(createAdminClient(), estimate.company_id);
+  return estimateExpired(estimate, new Date(`${today}T12:00:00`));
 }
 
 /**
@@ -149,7 +158,7 @@ export async function setOptionalItemAsCustomer(
   if (estimate.status === "Void") {
     return { error: "This document was cancelled. Please ask for an updated one." };
   }
-  if (expired(estimate)) {
+  if (await expired(estimate)) {
     return { error: "This document has expired. Please ask for an updated one." };
   }
 
@@ -255,7 +264,7 @@ export async function signEstimateAsCustomer(
   if (estimate.status === "Void") {
     return { error: "This document was cancelled. Please ask for an updated one." };
   }
-  if (expired(estimate)) {
+  if (await expired(estimate)) {
     return { error: "This document has expired. Please ask for an updated one." };
   }
 

@@ -26,6 +26,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     notes: [
       "Recording a Showed or Won on an appointment now starts from the contact's current job value, so you only type a number when the job is worth something else.",
       "In the Edit Appointment window, a note or a text you're typing stays put when you switch tabs, and Save adds the note too. Save never sends a text: if one is waiting, the window stays open and says so. Every way out of the window (the Text button, a quick text, Edit on contact card, Write estimate, opening an estimate) now asks before throwing away what you typed.",
+      "Customers can now sign a proposal in their portal all through its last valid day. After 5pm Pacific it used to say the proposal had expired. Payment stages in the portal also read Due, not Was due, all through their due day.",
     ],
   },
   {

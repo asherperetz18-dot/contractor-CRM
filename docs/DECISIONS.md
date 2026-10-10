@@ -2513,3 +2513,13 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** nothing typed in the appointment window's tabs is dropped by a tab switch or a way out without asking. The contact window's own Tasks, Notes and Texts drafts are still lost on a tab switch there (TECH_DEBT). No SQL.
 
+## 191 — The customer portal judges a proposal's expiry on the company's today
+
+**Date:** 2026-10-10
+
+**Context:** A proposal is valid through its expiry day. The customer portal judged that with the server's clock: the page called `estimateExpired` with none, and the sign and optional-line actions repeated the check as `expires_at` 23:59:59 against `Date.now()`. The server runs on UTC, already tomorrow from 5pm Pacific (4pm in winter), so on the evening of a proposal's last day the customer saw "This estimate has expired" instead of Sign, a signature was refused, and the optional lines locked. The portal's billed stages had the same seam: `getPortalPhases` called `phaseState` with no clock, so a stage read "Was due" instead of "Due" on the evening of its due date, while the staff Payments page already passes the company's day.
+
+**Decision:** the portal works out the company's today (`todayForCompany`, from the estimate's company) and judges at noon of it, the way the Payments page does (`new Date(`${today}T12:00:00`)`): the expiry check on the page, the same check in signing and in ticking an optional line (`expired()`, now built on `estimateExpired`), and the billed stages' state. No new helper: at noon of a calendar day, the 23:59:59 comparison these helpers already make reduces to comparing days, in whatever zone the server runs.
+
+**Consequence:** a customer can sign, and tick optional lines, until the company's midnight on the last valid day, and a stage reads Due all of its due day. The staff screens' own expiry still reads the browser's clock (by design, #180's "what doesn't move"), and the AI chat's reads the server's (TECH_DEBT). No SQL.
+
