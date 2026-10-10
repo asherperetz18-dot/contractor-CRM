@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   SAVE_UNREACHABLE,
+  SEND_UNREACHABLE,
   appointmentFooter,
   applyLiveState,
   attempt,
@@ -86,6 +87,10 @@ test("a call that never reaches the server says so, instead of leaving the butto
     failedAt: "task",
     done: ["appointment"],
   });
+  // A send that never came back may have gone out: it says to check the
+  // thread rather than inviting a second text.
+  assert.deepEqual(await attempt(lost, SEND_UNREACHABLE), { error: SEND_UNREACHABLE });
+  assert.match(SEND_UNREACHABLE, /check the thread before sending it again/);
   // A plain success, an undefined return and a returned error pass through.
   assert.deepEqual(await attempt(async () => undefined), {});
   assert.deepEqual(await attempt(async () => ({ error: "No." })), { error: "No." });

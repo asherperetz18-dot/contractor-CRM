@@ -196,12 +196,10 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
     .maybeSingle<{ id: string; lead_id: string; status: EstimateStatus; company_id: string }>();
   if (!estimate || estimate.lead_id !== viewer.lead.id) return [];
   if (estimate.status !== "Signed") return [];
-  // A stage is due through its due day on the company's calendar, as the
-  // staff Payments page counts it; the server's UTC clock read "Was due"
-  // from 5pm Pacific on the day itself (DECISIONS #191).
-  const today = await todayForCompany(admin, estimate.company_id);
-
-  const [{ data: phases }, { data: allPayments }, undecided] = await Promise.all([
+  // `today`: a stage is due through its due day on the company's calendar,
+  // as the staff Payments page counts it; the server's UTC clock read
+  // "Was due" from 5pm Pacific on the day itself (DECISIONS #191).
+  const [{ data: phases }, { data: allPayments }, undecided, today] = await Promise.all([
     admin
       .from("estimate_payments")
       .select("*")
@@ -225,6 +223,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         >[]
       >(),
     undecidedRefundIds(admin, "estimate_id", [estimateId]),
+    todayForCompany(admin, estimate.company_id),
   ]);
   // A refund made in Stripe waits on the office's "still owed?" before
   // the customer sees it (#155).

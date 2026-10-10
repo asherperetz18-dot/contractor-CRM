@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { todayForCompany } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
 import { getPortalViewer, readPortalSession } from "@/lib/portal/session";
-import { estimateExpired, withoutUndecidedRefunds, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
+import { companyIanaZone, estimateExpired, withoutUndecidedRefunds, type Estimate, type EstimateItem, type EstimateSigner, type EstimatePayment, type EstimateGroup, type EstimatePhoto, type PortalPayment } from "@/lib/data/types";
 import { undecidedRefundIds } from "@/lib/data/undecided-refunds";
 import { getEstimateTeam } from "@/lib/estimate-team";
 import { invoiceReceiptAttachments } from "@/lib/data/invoice-receipts";
@@ -165,7 +165,7 @@ export default async function PortalEstimatePage({
   // Valid through its last day on the company's calendar. The server's
   // clock is UTC, already tomorrow from 5pm Pacific, so judging by it hid
   // Sign on the evening of the last day (DECISIONS #191).
-  const today = await todayForCompany(admin, estimate.company_id);
+  const today = isoDateInZone(new Date(), companyIanaZone(company?.timezone));
   const isExpired = estimateExpired(estimate, new Date(`${today}T12:00:00`));
   const [phases, depositState, { data: financingRow }, { data: changeRows }, lenders] = await Promise.all([
     getPortalPhases(id),

@@ -33,7 +33,9 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 
 test("the portal page judges expiry on the company's today", () => {
   const page = source("../app/portal/estimates/[id]/page.tsx");
-  assert.match(page, /const today = await todayForCompany\(admin, estimate\.company_id\);/);
+  // From the company row the page already reads: no extra round trip.
+  assert.match(page, /const today = isoDateInZone\(new Date\(\), companyIanaZone\(company\?\.timezone\)\);/);
+  assert.doesNotMatch(page, /todayForCompany/);
   assert.match(page, /const isExpired = estimateExpired\(estimate, new Date\(`\$\{today\}T12:00:00`\)\);/);
 });
 
@@ -48,7 +50,9 @@ test("signing and choosing options judge it the same way", () => {
 
 test("a billed stage reads Due, not Was due, all of its due day", () => {
   const payments = source("./actions/portal-payments.ts");
-  assert.match(payments, /const today = await todayForCompany\(admin, estimate\.company_id\);/);
+  // Read alongside the stages, not before them.
+  assert.match(payments, /const \[\{ data: phases \}, \{ data: allPayments \}, undecided, today\] = await Promise\.all\(\[/);
+  assert.match(payments, /todayForCompany\(admin, estimate\.company_id\),\s*\]\);/);
   assert.match(payments, /state: phaseState\(p, on, new Date\(`\$\{today\}T12:00:00`\)\),/);
   assert.match(payments, /\.select\("id, lead_id, status, company_id"\)/);
 });

@@ -11,7 +11,7 @@ import {
   type RepMessage,
   type RepRecipient,
 } from "@/lib/actions/sms";
-import { attempt } from "@/lib/appointment-save";
+import { SEND_UNREACHABLE, attempt } from "@/lib/appointment-save";
 
 /**
  * The thread is read through a route handler, never a Server Action:
@@ -55,7 +55,22 @@ export function useTextDrafts() {
   // press away from going to the wrong person entirely.
   const [body, setBody] = useState("");
   const [repBody, setRepBody] = useState("");
-  return { body, setBody, repBody, setRepBody, waiting: body.trim() !== "" || repBody.trim() !== "" };
+  // On its way out, and which thread is open: held with the drafts, so a
+  // tab switch mid-send can't bring the text back with Send live and text
+  // it twice, and a draft to the rep reopens on the Rep thread.
+  const [sending, setSending] = useState(false);
+  const [thread, setThread] = useState<"client" | "rep">("client");
+  return {
+    body,
+    setBody,
+    repBody,
+    setRepBody,
+    sending,
+    setSending,
+    thread,
+    setThread,
+    waiting: body.trim() !== "" || repBody.trim() !== "",
+  };
 }
 
 export type TextDrafts = ReturnType<typeof useTextDrafts>;
@@ -78,11 +93,9 @@ export function MessagesPanel({
   const [recipients, setRecipients] = useState<RepRecipient[]>([]);
   const [repTo, setRepTo] = useState("");
   const [jobLabel, setJobLabel] = useState("");
-  const [tab, setTab] = useState<"client" | "rep">("client");
   const [error, setError] = useState("");
   const own = useTextDrafts();
-  const { body, setBody, repBody, setRepBody } = drafts ?? own;
-  const [sending, setSending] = useState(false);
+  const { body, setBody, repBody, setRepBody, sending, setSending, thread: tab, setThread: setTab } = drafts ?? own;
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -167,9 +180,9 @@ export function MessagesPanel({
     if (!text || !phone) return;
     setSending(true);
     setError("");
-    // Through attempt: a send that never reaches the server says so
-    // instead of leaving the button on "Sending…".
-    const result = await attempt(() => sendSms(leadId, phone, text));
+    // Through attempt: a send that never comes back says so instead of
+    // leaving the button on "Sending…", and to check before resending.
+    const result = await attempt(() => sendSms(leadId, phone, text), SEND_UNREACHABLE);
     setSending(false);
     if (result.error) {
       setError(result.error);
@@ -192,7 +205,7 @@ export function MessagesPanel({
     if (!text || !repTo) return;
     setSending(true);
     setError("");
-    const result = await attempt(() => sendRepMessage(leadId, repTo, text));
+    const result = await attempt(() => sendRepMessage(leadId, repTo, text), SEND_UNREACHABLE);
     setSending(false);
     if (result.error) {
       setError(result.error);

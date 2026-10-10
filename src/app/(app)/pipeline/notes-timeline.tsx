@@ -52,7 +52,8 @@ export function NotesTimeline({
   const sorted = [...notes].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   // Both calls go through attempt: one that never reaches the server says
-  // so instead of leaving Add Note on "Adding…", and a refusal is shown.
+  // so instead of leaving Add Note on "Adding…", and an error the server
+  // returns is shown. (A delete the database refuses returns none.)
   async function handleAdd() {
     if (!body.trim()) {
       setError("Type the note first.");

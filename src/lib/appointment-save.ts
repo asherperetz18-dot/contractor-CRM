@@ -1,12 +1,13 @@
 import type { EventStatus } from "./data/types.ts";
 
 /**
- * Saving the Edit Appointment window (DECISIONS #188).
+ * Saving the Edit Appointment window (DECISIONS #188, #190).
  *
- * The window holds three kinds of unsaved work -- the appointment's own
- * fields, a result picked on the Result tab, and a task typed on the
- * Tasks tab -- and its Save used to write only the first and close,
- * dropping the other two without a word.
+ * The window holds the appointment's own fields, a result picked on the
+ * Result tab, a task typed on the Tasks tab, a note typed in Activity &
+ * Notes and a text typed on the Texts tab. Its Save used to write only
+ * the first and close, dropping the rest without a word. It now commits
+ * all but the text, which it never sends.
  */
 
 /**
@@ -19,19 +20,29 @@ export const SAVE_UNREACHABLE =
   "Couldn't reach the CRM to save this. Check your connection and try again; if it keeps failing, refresh the page.";
 
 /**
+ * The same for a text. One that never came back may still have gone out,
+ * so this says to look before sending it again rather than "try again".
+ */
+export const SEND_UNREACHABLE =
+  "Couldn't reach the CRM to send this. Check your connection, and check the thread before sending it again.";
+
+/**
  * `partly`: part of the step landed before the refusal (a result's
  * outcome saved, its stage move didn't), and the error says which.
  */
 export type StepResult = { error?: string; partly?: boolean } | void | null | undefined;
 
 /** Runs one save call, turning a throw into a message the window can show. */
-export async function attempt(fn: () => Promise<StepResult>): Promise<{ error?: string; partly?: boolean }> {
+export async function attempt(
+  fn: () => Promise<StepResult>,
+  unreachable: string = SAVE_UNREACHABLE
+): Promise<{ error?: string; partly?: boolean }> {
   try {
     const result = await fn();
     if (!result?.error) return {};
     return result.partly ? { error: result.error, partly: true } : { error: result.error };
   } catch {
-    return { error: SAVE_UNREACHABLE };
+    return { error: unreachable };
   }
 }
 
@@ -83,16 +94,16 @@ export async function commitPending(
  * Which save button the footer shows.
  *
  * Save Result commits the Result tab alone and keeps the window open, so
- * it is offered only while nothing but the result is waiting. Once an
- * appointment field or a typed task is pending too, two buttons that
- * each save part of the screen is a coin toss -- the footer offers Save,
- * which commits all of it. While Save is working (`saving`) it stays
+ * it is offered only while nothing else Save could commit is waiting.
+ * Once an appointment field, a typed task or a typed note is pending too,
+ * two buttons that each save part of the screen is a coin toss -- the
+ * footer offers Save, which commits all of it. While Save is working (`saving`) it stays
  * Save: the appointment lands first and stops counting as an edit, and
  * swapping in Save Result then would offer to send the result twice.
  *
  * A typed text (`textPending`) is unsaved work -- closing asks -- but
  * nothing Save may commit: sending a text is never a side effect of
- * saving. A typed note counts even in a read-only window, where notes can
+ * saving, so a text never brings Save up on its own. A typed note counts even in a read-only window, where notes can
  * still be allowed; Add Note saves it there.
  */
 export function appointmentFooter(s: {

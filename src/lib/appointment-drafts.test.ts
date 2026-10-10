@@ -25,7 +25,9 @@ test("the window holds the note and text drafts, so they outlive a tab switch", 
 test("Save adds a typed note, and stays open on a typed text it won't send", () => {
   assert.match(form, /note: lead && canAddNotes && noteDraft\.waiting/);
   assert.match(form, /addLeadNote\(lead\.id, noteDraft\.body\)/);
-  assert.match(form, /if \(textDrafts\.waiting\) \{\s*setError\(unsentTextNote\(outcome\.done\.length > 0\)\);\s*return;\s*\}/);
+  assert.match(form, /if \(textDrafts\.waiting\) \{\s*setTextHeld\(outcome\.done\.length > 0\);\s*return;\s*\}/);
+  // The note goes once the text is sent or cleared.
+  assert.match(form, /\{textHeld !== null && textDrafts\.waiting && \(/);
 });
 
 test("every way out of the window asks before dropping unsaved work", () => {
@@ -35,6 +37,8 @@ test("every way out of the window asks before dropping unsaved work", () => {
   assert.match(form, /async function writeEstimate\(\) \{\s*if \(!lead \|\| !leaveOk\(\)\) return;/);
   assert.match(form, /function textPhone\(phone: string, body\?: string\) \{\s*if \(!leaveOk\(\)\) return;/);
   assert.match(form, /function openEstimate\(id: string\) \{\s*if \(!leaveOk\(\)\) return;/);
+  // Delete closes the window too.
+  assert.match(form, /async function handleDelete\(\) \{\s*if \(!event \|\| !leaveOk\(\)\) return;/);
   assert.doesNotMatch(form, /router\.push\(`\/estimates\/\$\{e\.id\}`\)/);
 });
 
@@ -55,6 +59,11 @@ test("the texts panel takes its drafts from the window, and reports a lost call"
   assert.match(panel, /export function useTextDrafts\(\)/);
   assert.match(panel, /drafts\?: TextDrafts;/);
   assert.match(panel, /const own = useTextDrafts\(\);/);
-  assert.match(panel, /await attempt\(\(\) => sendSms\(leadId, phone, text\)\)/);
-  assert.match(panel, /await attempt\(\(\) => sendRepMessage\(leadId, repTo, text\)\)/);
+  assert.match(panel, /await attempt\(\(\) => sendSms\(leadId, phone, text\), SEND_UNREACHABLE\)/);
+  assert.match(panel, /await attempt\(\(\) => sendRepMessage\(leadId, repTo, text\), SEND_UNREACHABLE\)/);
+  // A send in flight and the open thread live with the drafts, so a tab
+  // switch mid-send can't bring the text back with Send live, and a rep
+  // draft reopens on the Rep thread where it was typed.
+  assert.match(panel, /export function useTextDrafts\(\) \{[\s\S]*?const \[sending, setSending\] = useState\(false\);[\s\S]*?const \[thread, setThread\] = useState<"client" \| "rep">\("client"\);/);
+  assert.match(panel, /const \{ body, setBody, repBody, setRepBody, sending, setSending, thread: tab, setThread: setTab \} = drafts \?\? own;/);
 });

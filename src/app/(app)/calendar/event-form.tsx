@@ -223,6 +223,10 @@ export function EventForm({
   const [baseline, setBaseline] = useState<EventInput>(() => toInput(event, initialDate));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // Set when Save stopped on an unsent text (true if it saved something
+  // first). Shown only while the text is still there, so sending or
+  // clearing it takes the note away.
+  const [textHeld, setTextHeld] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>("Appointment");
   const [showQuickText, setShowQuickText] = useState(false);
   const [quickTextOptions, setQuickTextOptions] = useState<{
@@ -253,14 +257,9 @@ export function EventForm({
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
-  // Starts from what the contact is already worth, so a rep confirming an
-  // existing figure doesn't retype it (DECISIONS #189). It used to start
-  // empty with that figure as grey placeholder text: a box that looked
-  // filled while Save Result stayed greyed out.
-  const [resultValue, setResultValue] = useState(() => {
-    const opening = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) : null;
-    return opening?.value && opening.value > 0 ? String(opening.value) : "";
-  });
+  // What the rep typed in the job value box; null until they type. Until
+  // then the box shows what the contact is worth (resultValue, below).
+  const [typedValue, setTypedValue] = useState<string | null>(null);
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
   // Tracks whether the user actually toggled each confirmation badge, so a
@@ -350,12 +349,13 @@ export function EventForm({
   const resultOverdue =
     !!event && appointmentResultOverdue({ ...event, status: baseline.status }, openedAtMs);
   const resultRecorded = !!event && hasAppointmentResult(form.status);
-  // Something to save: a new outcome, a note, or a stage change.
-  const resultDirty =
-    !!pendingOutcome ||
-    resultNote.trim().length > 0 ||
-    (!!resultStage && !!lead && resultStage !== lead.stage);
 
+  // Starts from what the contact is worth, live, so a rep confirming an
+  // existing figure doesn't retype it and a refresh that brings a newer
+  // figure moves an untouched box with it (DECISIONS #189). It used to
+  // start empty with that figure as grey placeholder text: a box that
+  // looked filled while Save Result stayed greyed out.
+  const resultValue = typedValue ?? (lead && lead.value > 0 ? String(lead.value) : "");
   const outcomeNeedsValue = VALUED_OUTCOMES.includes(
     (pendingOutcome || form.status) as EventStatus
   );
@@ -363,6 +363,15 @@ export function EventForm({
   const resultValueOk =
     !outcomeNeedsValue ||
     (resultValue.trim() !== "" && Number.isFinite(parsedResultValue) && parsedResultValue > 0);
+  // Something to save: a new outcome, a note, a stage change, or a new
+  // job value on a Showed or Won. On one already recorded the value alone
+  // is the edit; it counted as nothing, so Save Result stayed greyed out
+  // and closing dropped the new figure.
+  const resultDirty =
+    !!pendingOutcome ||
+    resultNote.trim().length > 0 ||
+    (!!resultStage && !!lead && resultStage !== lead.stage) ||
+    (outcomeNeedsValue && resultValueOk && !!lead && parsedResultValue !== lead.value);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -487,6 +496,7 @@ export function EventForm({
     if (taskStep) taskDraft.setBusy(true);
     if (noteStep) noteDraft.setBusy(true);
     setError("");
+    setTextHeld(null);
     const saving = form;
     const outcome = await commitPending({
       // Only when one of its own fields changed: writing the whole row from
@@ -528,14 +538,14 @@ export function EventForm({
     }
     // Save never sends a text, and closing would drop it without a word.
     if (textDrafts.waiting) {
-      setError(unsentTextNote(outcome.done.length > 0));
+      setTextHeld(outcome.done.length > 0);
       return;
     }
     onSaved();
   }
 
   async function handleDelete() {
-    if (!event) return;
+    if (!event || !leaveOk()) return;
     setPending(true);
     setError("");
     const result = await attempt(() => deleteEvent(event.id));
@@ -1213,7 +1223,7 @@ export function EventForm({
                 // in it, not to grey out a button elsewhere.
                 autoFocus
                 value={resultValue}
-                onChange={(e) => setResultValue(e.target.value)}
+                onChange={(e) => setTypedValue(e.target.value)}
                 placeholder={lead.value ? String(lead.value) : "18000"}
                 disabled={readOnly || resultPending || pending}
               />
@@ -1427,6 +1437,9 @@ export function EventForm({
       {(!lead || tab !== "Lead") && (
         <>
           {error && <p className="error-note">{error}</p>}
+          {textHeld !== null && textDrafts.waiting && (
+            <p className="error-note">{unsentTextNote(textHeld)}</p>
+          )}
           {/* Pinned to the bottom of the modal: this form is taller than
               the viewport, so Save used to sit below the fold and had to
               be scrolled to before anything could be committed. */}
