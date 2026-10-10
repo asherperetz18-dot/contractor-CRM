@@ -174,8 +174,8 @@ What: `snapshotLead` keeps the tables listed in `LEAD_CHILDREN` and relinks `REL
 What: the window now holds its Tasks, Notes and Texts drafts and its own buttons ask before leaving, but:
 - **Ways out that aren't the window's own don't ask**, here or in the appointment window: a popup toast (it sits above the window and navigates straight away), the browser's Back (or Android's), a reload, or closing the tab. Nothing registers a `beforeunload` or back-button guard.
 - **An edit to a contact's fields made less than a second before closing is dropped.** Autosave waits a second after the last keystroke, and closing the window cancels the wait.
-- **A task or note added here doesn't appear in its list or badge until the window is reopened.** The lists come from the snapshot the window opened with, and `router.refresh` doesn't reload it.
+- **The pipeline board's digest (follow-ups due, warnings, cold leads) doesn't see a task or note changed in the window** when the window is closed with the X or Close: only Save and Delete refetch the board. The window's own lists do update (#201).
 - **Editing or answering a shared note, and a call note on the Calls tab, are still held inside their panels**, so a tab switch throws them away.
 
-Why: each is its own change. Impact: a last-second edit lost, a list that looks like the add failed. Where: `src/app/(app)/pipeline/lead-form.tsx`, `lead-notes-pane.tsx` (`SharedNotesList`), `calls-panel.tsx`, `pipeline-board.tsx`, `contacts-table.tsx`.
+Why: each is its own change. Impact: a last-second edit lost, a digest a step behind. Where: `src/app/(app)/pipeline/lead-form.tsx`, `lead-notes-pane.tsx` (`SharedNotesList`), `calls-panel.tsx`, `pipeline-board.tsx`, `contacts-table.tsx`.
 

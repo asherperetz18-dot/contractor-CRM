@@ -133,6 +133,7 @@ export function LeadForm({
   onCancel,
   onSaved,
   onDeleted,
+  onPanelsChanged,
 }: {
   lead?: Lead;
   reps: Profile[];
@@ -167,6 +168,10 @@ export function LeadForm({
   onCancel: () => void;
   onSaved: () => void;
   onDeleted?: () => void;
+  /** A task, note or file changed: the host reloads the three lists
+   *  (DECISIONS #201). They come from the snapshot the window opened
+   *  with, which router.refresh doesn't reach. */
+  onPanelsChanged?: () => void;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -436,6 +441,10 @@ export function LeadForm({
 
   function refresh() {
     startTransition(() => router.refresh());
+  }
+
+  function panelsChanged() {
+    onPanelsChanged?.();
   }
 
   // Autosaves write the database but no longer re-render the page --
@@ -1406,7 +1415,7 @@ export function LeadForm({
             reps={reps}
             members={allMembers}
             readOnly={readOnly}
-            onChanged={refresh}
+            onChanged={panelsChanged}
             draft={taskDraft}
           />
         )}
@@ -1417,7 +1426,7 @@ export function LeadForm({
             notes={notes ?? []}
             reps={allMembers ?? reps}
             readOnly={readOnly}
-            onChanged={refresh}
+            onChanged={panelsChanged}
             clientName={clientName(form)}
             drafts={notesDrafts}
           />
@@ -1435,7 +1444,7 @@ export function LeadForm({
             files={files ?? []}
             reps={reps}
             readOnly={readOnly}
-            onChanged={refresh}
+            onChanged={panelsChanged}
           />
         )}
 

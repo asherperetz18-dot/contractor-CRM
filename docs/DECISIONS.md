@@ -2662,3 +2662,13 @@ No SQL.
 
 **Consequence:** every delete in these two windows asks once and says what it removes. The counts are what the window loaded. What a restore can't bring back (shared notes, the file-delete history, bill and receptionist-call links) and that a Sales rep with the delete grant can't open Trash are logged in TECH_DEBT. No SQL.
 
+## 201 — The contact window's task, note and file lists reload after a change
+
+**Date:** 2026-10-10
+
+**Context:** the contact window shows the tasks, notes and files `getLeadCard` returned when it opened, held in the host's state (the pipeline board or the Contacts page). After a change each panel called `router.refresh`, which re-renders the page, but both hosts copy their data into state once, so nothing reached the window: a task or note added there didn't show in its list or count until the window was reopened, and looked as if the add had failed. The appointment window doesn't have this problem: its lists are page props, which `router.refresh` does reload.
+
+**Decision:** the window tells its host (`onPanelsChanged`), and the host reloads the open contact through `getLeadCard` and lays only the three lists over the window (`withFreshPanels`, `src/lib/lead-window-lists.ts`). The lead stays the same object and the window stays mounted, so its fields, tab and drafts are untouched. A reload that lands after the window closed or moved to another contact, found nothing, or had a list fail to load (which `getLeadCard` used to read as empty, now `listsFailed`) changes nothing. The panels' `router.refresh` is gone: their actions already revalidate the page, and it queued each reload behind a full page render. Tasks now load oldest first, so a reload doesn't shuffle them.
+
+**Consequence:** a task, note or file added, completed or deleted shows in its list and count straight away. The board's digest still updates only on Save or Delete (TECH_DEBT). No SQL.
+
