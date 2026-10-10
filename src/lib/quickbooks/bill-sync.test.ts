@@ -621,7 +621,8 @@ test("the job runs company by company, one run at a time per company, only on it
   // A failed read stops the run: never read as "nothing sent" or "everything deleted".
   assert.doesNotMatch(run, /selectAll\s*[<(]/);
   // A different QuickBooks company: sending stops until the owner picks the start date for it.
-  assert.match(source("../../app/api/oauth/quickbooks/callback/route.ts"), /send_bills: false/);
+  // (The callback clears through clearForNewCompany, DECISIONS #192.)
+  assert.match(source("./connect-reset.ts"), /send_bills: false/);
   const actions = source("../actions/quickbooks.ts");
   assert.match(actions, /isCompanyLocked\(/);
   assert.match(actions, /syncCompanyBills\(/);

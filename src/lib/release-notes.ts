@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.264.0",
+    date: "2026-10-10",
+    notes: [
+      "Settings › QuickBooks gets ready for real QuickBooks companies (the CRM still connects Intuit's practice companies for now). After the switch, a company still connected to a practice company will see \"Connect again\" instead of \"Connected\", and Bills to Pay and the Invoices page won't show QuickBooks lines for it. Connecting a different QuickBooks company now says sending was turned off, and stops with a message if it can't clear the old company's accounts. The privacy page now says what goes to a company's own QuickBooks.",
+    ],
+  },
+  {
     version: "1.263.0",
     date: "2026-10-10",
     notes: [

@@ -4,6 +4,8 @@ import { companyIanaZone } from "@/lib/data/types";
 import { isoDateInZone } from "@/lib/company-clock";
 import { qbWebUrl, type ChipRecord, type QbChip } from "./bill-status";
 import { creditChipRecord, invoiceQbChips } from "./invoice-status";
+import { quickbooksCredentials } from "./oauth";
+import { onOtherSide } from "./connection-side";
 
 /**
  * Where each bill to a customer stands with QuickBooks (DECISIONS #184),
@@ -66,6 +68,8 @@ async function context(companyId: string): Promise<Context | null> {
     }>();
   // Never connected, or before 0227: nothing to show.
   if (error || !conn?.realm_id) return null;
+  // Connected on the other side of Intuit: nothing goes, and what went isn't in these books (DECISIONS #192).
+  if (onOtherSide(conn.environment, quickbooksCredentials()?.environment)) return null;
   const { data: profile } = await admin.from("company_profile").select("timezone").eq("company_id", companyId).maybeSingle<{ timezone: string | null }>();
   return {
     admin,

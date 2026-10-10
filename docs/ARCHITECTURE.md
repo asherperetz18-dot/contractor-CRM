@@ -37,7 +37,7 @@ Started by the database on the minute (UTC), not by GitHub, whose timers ran lat
 | `callrail-backfill` | — | Syncs/backfills CallRail call data into leads. |
 | `backup` (nightly, GitHub Actions) | nightly | Full data export, same logic the manual Backup settings page uses. Locked with the `BACKUP_PASSPHRASE` secret (gpg, AES-256) before it is stored as an Actions artifact; the job refuses to run without the secret (DECISIONS #098). |
 | `google-calendar-sync` | every 15 min | Pull then push for every connected Google Calendar (per-rep and company-wide). |
-| `quickbooks-sync` | every 5 min (scheduled by 0222) | Sends new and changed bills and bill payments to the QuickBooks of each company that turned sending on; voids and deletes there what the CRM voided or deleted (DECISIONS #173). |
+| `quickbooks-sync` | every 5 min (scheduled by 0222) | For each company that turned sending on: first its invoices, deposits, customer payments, credits and refunds (DECISIONS #184), then its bills, bill payments and receipts (#173, #174). Voids and deletes there what the CRM voided or deleted. |
 | `bill-reminders` | hourly (scheduled by 0208) | Automatic payment reminders for companies that switched them on: 3 days before a bill is due, on the day, then weekly up to 3 times; 9am-6pm company time (DECISIONS #152). |
 
 Jobs that work company by company go through `runForEachCompany` (`src/lib/cron/run-companies.ts`, DECISIONS #126): each company in its own try/catch, a turning order, and a four-minute budget, so one company's failure or a slow outside service never stops the rest. A new per-company job should use it too; `src/lib/cron/each-company.test.ts` lists the jobs that must.

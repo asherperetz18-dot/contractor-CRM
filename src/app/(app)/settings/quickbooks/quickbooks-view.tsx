@@ -13,6 +13,7 @@ import {
   type QuickBooksSettings,
   type SendNowResult,
 } from "@/lib/actions/quickbooks";
+import { otherSideNote } from "@/lib/quickbooks/connection-side";
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
@@ -45,10 +46,13 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
 export function QuickBooksView({
   settings,
   justConnected,
+  newCompany = false,
   connectError,
 }: {
   settings: QuickBooksSettings;
   justConnected: boolean;
+  /** A different QuickBooks company than before: its picks were cleared and sending turned off (DECISIONS #192). */
+  newCompany?: boolean;
   connectError: string | null;
 }) {
   const router = useRouter();
@@ -57,6 +61,8 @@ export function QuickBooksView({
   const [pending, startTransition] = useTransition();
   const c = settings.connection;
   const connected = !!c?.connected;
+  // Connected on the other side of Intuit: nothing goes until it connects again (DECISIONS #192).
+  const otherSide = otherSideNote(c, settings.configured ? settings.environment : null);
 
   function run(action: () => Promise<{ error?: string; count?: number }>, done: (r: { count?: number }) => string) {
     setError(null);
@@ -73,7 +79,9 @@ export function QuickBooksView({
     <>
       {justConnected && !connectError && (
         <p className="hint-note" style={{ color: "var(--success)" }}>
-          ✓ Connected to QuickBooks. Check the matches below, then save them.
+          {newCompany
+            ? "✓ Connected to QuickBooks. This is a different QuickBooks company, so sending bills and invoices is off and its accounts start fresh: check the matches below and save them, then pick the start dates and turn sending on again."
+            : "✓ Connected to QuickBooks. Check the matches below, then save them."}
         </p>
       )}
       {connectError && <p className="error-note">{connectError}</p>}
@@ -84,7 +92,8 @@ export function QuickBooksView({
       <section className="est-pay">
         <h2 className="est-pay-title">
           QuickBooks
-          {connected && <span className="est-badge est-badge-signed">Connected</span>}
+          {connected && !otherSide && <span className="est-badge est-badge-signed">Connected</span>}
+          {otherSide && <span className="est-badge est-badge-declined">Connect again</span>}
           {connected && c?.environment === "sandbox" && <span className="est-badge est-badge-financing">Practice company</span>}
         </h2>
 
@@ -96,35 +105,42 @@ export function QuickBooksView({
           </p>
         ) : connected ? (
           <>
-            <div className="qb-status">
-              Connected to <strong>{c?.companyName || "your QuickBooks company"}</strong> (QuickBooks Online)
+            <div className={`qb-status${otherSide ? " is-other" : ""}`}>
+              {otherSide ? "Last connected to " : "Connected to "}
+              <strong>{c?.companyName || "your QuickBooks company"}</strong> (QuickBooks Online)
               <div className="est-tax-note">
                 {[c?.connectedByName ? `by ${c.connectedByName}` : null, c?.connectedAt ? fmtDay(c.connectedAt) : null]
                   .filter(Boolean)
                   .join(" · ")}
               </div>
             </div>
+            {otherSide && <p className="error-note">{otherSide}</p>}
             {c?.lastError && <p className="error-note">{c.lastError}</p>}
             <div className="est-pay-actions">
-              {c?.lastError && /connect again/i.test(c.lastError) && (
+              {(otherSide || (c?.lastError && /connect again/i.test(c.lastError))) && (
                 <a className="btn-primary" href="/api/oauth/quickbooks/authorize">
                   Connect again
                 </a>
               )}
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={pending}
-                onClick={() => run(refreshQuickBooksAccounts, (r) => `Read ${r.count ?? 0} accounts from QuickBooks.`)}
-              >
-                Refresh accounts
-              </button>
+              {!otherSide && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={pending}
+                  onClick={() => run(refreshQuickBooksAccounts, (r) => `Read ${r.count ?? 0} accounts from QuickBooks.`)}
+                >
+                  Refresh accounts
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-danger-ghost"
                 disabled={pending}
                 onClick={() => {
-                  if (!window.confirm("Disconnect QuickBooks? Nothing in QuickBooks changes; your matches are kept for when you connect again.")) {
+                  const ask = otherSide
+                    ? "Disconnect QuickBooks? Nothing in QuickBooks changes. Connecting a different company means picking its accounts again."
+                    : "Disconnect QuickBooks? Nothing in QuickBooks changes; your matches are kept for when you connect again.";
+                  if (!window.confirm(ask)) {
                     return;
                   }
                   run(disconnectQuickBooks, () => "Disconnected. Nothing in QuickBooks changed.");
@@ -200,9 +216,10 @@ export function QuickBooksView({
         </ol>
       </section>
 
-      {connected && <BillSending settings={settings} />}
-      {connected && <InvoiceSending settings={settings} />}
-      {connected && <MatchForm settings={settings} />}
+      {/* On the other side of Intuit nothing goes, and its picks are cleared on connecting again: hidden until then. */}
+      {connected && !otherSide && <BillSending settings={settings} />}
+      {connected && !otherSide && <InvoiceSending settings={settings} />}
+      {connected && !otherSide && <MatchForm settings={settings} />}
     </>
   );
 }
@@ -303,7 +320,7 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
           </p>
         </>
       )}
-      {settings.connection?.environment === "sandbox" && (
+      {settings.connection?.environment === "sandbox" && settings.environment === "sandbox" && (
         <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
       )}
       {error && <p className="error-note">{error}</p>}
@@ -681,7 +698,7 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
         <p className="est-tax-note">Read from QuickBooks on the first run.</p>
       )}
 
-      {settings.connection?.environment === "sandbox" && (
+      {settings.connection?.environment === "sandbox" && settings.environment === "sandbox" && (
         <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
       )}
       {error && <p className="error-note">{error}</p>}

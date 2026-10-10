@@ -9,6 +9,7 @@ import { exchangeQuickBooksCode, qbApiBase, quickbooksCredentials } from "@/lib/
 import { readQbAccounts, readQbCompanyName } from "@/lib/quickbooks/connection";
 import { suggestPaymentMatch } from "@/lib/quickbooks/accounts";
 import { readItems } from "@/lib/quickbooks/api";
+import { clearForNewCompany } from "@/lib/quickbooks/connect-reset";
 
 /**
  * Intuit sends the person back here with a code for the QuickBooks
@@ -26,9 +27,9 @@ export async function GET(req: NextRequest) {
   const targetRaw = req.cookies.get("qb_oauth_target")?.value;
 
   const settingsUrl = new URL("/settings/quickbooks", req.url);
-  const done = (error?: string) => {
+  const done = (error?: string, newCompany = false) => {
     if (error) settingsUrl.searchParams.set("error", error);
-    else settingsUrl.searchParams.set("connected", "1");
+    else settingsUrl.searchParams.set("connected", newCompany ? "new" : "1");
     const res = NextResponse.redirect(settingsUrl);
     res.cookies.delete("qb_oauth_state");
     res.cookies.delete("qb_oauth_target");
@@ -75,38 +76,10 @@ export async function GET(req: NextRequest) {
   const accounts = "accounts" in accountsRead ? accountsRead.accounts : [];
 
   const admin = createAdminClient();
-  // A different QuickBooks company than before: the old matches are its
-  // accounts, not this one's.
-  const { data: before } = await admin
-    .from("quickbooks_connections")
-    .select("realm_id")
-    .eq("company_id", companyId)
-    .maybeSingle<{ realm_id: string | null }>();
-  if (before?.realm_id && before.realm_id !== realmId) {
-    await admin.from("payment_accounts").update({ qb_account_id: null }).eq("company_id", companyId);
-    await admin.from("quickbooks_expense_accounts").delete().eq("company_id", companyId);
-    // Sending bills stops until the owner picks where the new books start
-    // (DECISIONS #173); what went to the old company stays recorded under it.
-    await admin.from("quickbooks_connections").update({ send_bills: false, send_bills_from: null }).eq("company_id", companyId);
-    // The same for invoices (#184), and its picks were the old company's products and accounts.
-    // Before 0227 these columns don't exist; nothing to reset then.
-    await admin
-      .from("quickbooks_connections")
-      .update({
-        send_invoices: false,
-        send_invoices_from: null,
-        invoice_item_id: null,
-        deposit_item_id: null,
-        cost_item_id: null,
-        payments_account_id: null,
-        stripe_refunds_account_id: null,
-        hand_refunds_account_id: null,
-        items: null,
-        items_read_at: null,
-        qb_prefs: null,
-      })
-      .eq("company_id", companyId);
-  }
+  // A different QuickBooks company than before, or the other side of
+  // Intuit: the old picks are its accounts, not this one's (DECISIONS #192).
+  const cleared = await clearForNewCompany(admin, companyId, { realmId, environment: creds.environment });
+  if (cleared.error) return done(cleared.error);
 
   const now = new Date().toISOString();
   const { error } = await admin.from("quickbooks_connections").upsert(
@@ -156,5 +129,5 @@ export async function GET(req: NextRequest) {
     const match = suggestPaymentMatch(a, accounts);
     if (match) await admin.from("payment_accounts").update({ qb_account_id: match }).eq("id", a.id).eq("company_id", companyId);
   }
-  return done();
+  return done(undefined, !!cleared.cleared);
 }
