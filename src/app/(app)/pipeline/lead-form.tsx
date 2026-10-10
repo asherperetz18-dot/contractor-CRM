@@ -18,6 +18,7 @@ import { PropertyPeek } from "@/components/ui/property-peek";
 import { LeadViewTrail } from "./lead-view-trail";
 import { LeadPhoneHero } from "./lead-phone-hero";
 import { usePhoneWidth } from "../use-phone-width";
+import { useHoldUnsaved } from "../use-hold-unsaved";
 import { dialNumberOf } from "@/lib/data/phone-match";
 import {
   addHour as addHourTo,
@@ -526,6 +527,9 @@ export function LeadForm({
     saver.abandon();
     return true;
   }
+
+  // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
+  useHoldUnsaved(draftsWaiting || (!!lead && !readOnly && autosaveDirty), leaveSaved);
 
   // The X and the backdrop sit outside the fieldset that `pending` disables.
   const closingRef = useRef(false);

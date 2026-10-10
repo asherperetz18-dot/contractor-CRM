@@ -66,6 +66,7 @@ import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
 import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
+import { useHoldUnsaved } from "../use-hold-unsaved";
 import { NotesTimeline, useNoteDraft } from "../pipeline/notes-timeline";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
@@ -665,6 +666,8 @@ export function EventForm({
   function leaveOk() {
     return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
   }
+  // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
+  useHoldUnsaved(isDirty, leaveOk);
 
   function requestClose() {
     if (!leaveOk()) return;

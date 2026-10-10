@@ -2686,3 +2686,17 @@ No SQL.
 
 **Consequence:** a change made in the window's last second is kept, a change that can't be saved is never dropped without a word through the window's own exits, and the stage buttons, Create Job and booking can't be undone by a save still waiting. Left in TECH_DEBT: the save still writes the whole row, so a change made elsewhere while the window is open is put back by the next edit; and an incomplete change is still lost on a route the window doesn't control, a reload or closing the tab. No SQL.
 
+## 203 — A popup alert, a reload or closing the tab asks before dropping a window's unsaved work
+
+**Date:** 2026-10-10
+
+**Context:** the contact and appointment windows ask before their own buttons drop what's typed (#197, #190). Popup alerts sit above an open window and navigated straight away, re-opening another record or leaving the page, so a typed task, note, text or unsaved change went without a word. A reload, closing the tab or the update popup's Refresh now did the same. Nothing outside a window knew it held anything.
+
+**Decision:**
+- **An app-wide hold** (`src/lib/unsaved-work.ts`, `useHoldUnsaved`). While a window has unsaved work it holds its own leave check there: the appointment window its discard question, the contact window `leaveSaved` (its drafts question, then its fields' save, #202). It lets go as soon as nothing is unsaved.
+- **A popup alert runs that check before navigating**; choosing to stay keeps the alert.
+- **The browser asks before unloading** while anything is held: a `beforeunload` listener added only then, since one can keep a page out of the back/forward cache. The browser shows its own words; iPhones never ask.
+- **Back isn't intercepted.** This Next.js offers no way to stop it in the App Router, every workaround traced (a guard history entry, a capturing `popstate` handler) breaks against Next's own history writes or this app's, and the Android app's Back never reaches the page. Logged with the fix that would cover it, draft recovery per record in `sessionStorage`.
+
+**Consequence:** an alert, a reload, closing the tab and Refresh now ask before a window's unsaved work goes. Back, iPhone reloads, a link reached with Tab and a post-deploy double prompt stay in TECH_DEBT. No SQL.
+
