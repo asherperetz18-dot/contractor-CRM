@@ -43,8 +43,16 @@ export async function addLeadNote(
 
 export async function deleteLeadNote(id: string): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const { error } = await supabase.from("lead_notes").delete().eq("id", id);
+  // .select() so a delete the policy refused (only Office and Admin may
+  // delete notes) surfaces as an error rather than as silence: it matched
+  // no row and the note stayed with nothing said (DECISIONS #192). The
+  // .eq("id") already needs the row readable, so this hides no permitted
+  // delete.
+  const { data, error } = await supabase.from("lead_notes").delete().eq("id", id).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "That note couldn't be deleted — your role may not have permission." };
+  }
 
   revalidatePath("/pipeline");
   revalidatePath("/contacts");

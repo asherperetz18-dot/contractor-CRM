@@ -520,11 +520,18 @@ export async function createLeadTask(
 
 export async function completeLeadTask(taskId: string) {
   const supabase = await createClient();
-  const { error } = await supabase
+  // .select() so a tick the policy refused (Field and Production, or a
+  // scoped dispatcher off their own leads) says so instead of leaving the
+  // task open without a word (DECISIONS #192).
+  const { data, error } = await supabase
     .from("lead_tasks")
     .update({ completed_at: new Date().toISOString() })
-    .eq("id", taskId);
+    .eq("id", taskId)
+    .select("id");
   if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "Couldn't mark that task done — your role may not have permission." };
+  }
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
   revalidatePath("/tasks");
@@ -533,8 +540,13 @@ export async function completeLeadTask(taskId: string) {
 
 export async function deleteLeadTask(taskId: string) {
   const supabase = await createClient();
-  const { error } = await supabase.from("lead_tasks").delete().eq("id", taskId);
+  // The same for a delete: Dispatch, Field and Production may not delete
+  // tasks (0070), and a refusal matched no row and returned success.
+  const { data, error } = await supabase.from("lead_tasks").delete().eq("id", taskId).select("id");
   if (error) return { error: error.message };
+  if (!data?.length) {
+    return { error: "That task couldn't be deleted — your role may not have permission." };
+  }
   revalidatePath("/pipeline");
   revalidatePath("/contacts");
   return {};

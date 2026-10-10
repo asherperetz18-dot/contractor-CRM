@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.264.0",
+    date: "2026-10-10",
+    notes: [
+      "If your role isn't allowed to delete a note, or to tick off or delete a task, the CRM now tells you, instead of leaving it there without a word.",
+    ],
+  },
+  {
     version: "1.263.0",
     date: "2026-10-10",
     notes: [

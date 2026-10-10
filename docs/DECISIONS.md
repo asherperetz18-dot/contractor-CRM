@@ -2526,3 +2526,13 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** a customer can sign, and tick optional lines, until the company's midnight on the last valid day, and a stage reads Due all of its due day. The staff screens' own expiry still reads the clock where the page draws (the server's UTC on the first draw, then the browser's), which #180 left for its own change, and the AI chat's reads the server's (both in TECH_DEBT). No SQL.
 
+## 192 — A refused note delete or task tick says so
+
+**Date:** 2026-10-10
+
+**Context:** `deleteLeadNote`, `completeLeadTask` and `deleteLeadTask` checked only for a database error. Row security doesn't raise one: a delete or update it refuses matches no row and succeeds with nothing done. So a Sales or Dispatch member pressing a note's ✕ (only Office and Admin may delete notes), a Field or Production member ticking or deleting a task in the appointment window, or a dispatcher deleting a task, saw the panel refresh with the note or task still there and nothing said.
+
+**Decision:** each asks for the row back (`.select("id")`) and returns an error when there is none, the way `deleteEvent`, `setEventResult` and `moveLeadStage` already do: "That note couldn't be deleted — your role may not have permission.", "Couldn't mark that task done — your role may not have permission." (word for word what the Tasks page already says) and "That task couldn't be deleted — your role may not have permission." The panels already show the error. Asking for the row back needs no visibility the `.eq("id")` didn't already need, so no permitted change can read as refused. The buttons still show to roles that can't use them; hiding them means threading the role through four paths into the panels (TECH_DEBT).
+
+**Consequence:** a refusal is said where it happens. A second ✕ on a row already gone reads the same way. No SQL.
+
