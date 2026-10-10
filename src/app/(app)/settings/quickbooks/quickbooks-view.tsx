@@ -64,7 +64,7 @@ export function QuickBooksView({
   // Connected on the other side of Intuit: nothing goes until it connects again (DECISIONS #192).
   const otherSide = otherSideNote(c, settings.configured ? settings.environment : null);
 
-  function run(action: () => Promise<{ error?: string; count?: number }>, done: (r: { count?: number }) => string) {
+  function run<R extends { error?: string }>(action: () => Promise<R>, done: (r: R) => string) {
     setError(null);
     setMessage(null);
     startTransition(async () => {
@@ -127,7 +127,13 @@ export function QuickBooksView({
                   type="button"
                   className="btn-ghost"
                   disabled={pending}
-                  onClick={() => run(refreshQuickBooksAccounts, (r) => `Read ${r.count ?? 0} accounts from QuickBooks.`)}
+                  onClick={() =>
+                    run(refreshQuickBooksAccounts, (r) =>
+                      r.itemsError
+                        ? `Read ${r.count ?? 0} accounts from QuickBooks. ${r.itemsError}`
+                        : `Read ${r.count ?? 0} accounts${r.items !== undefined ? ` and ${r.items} products and services` : ""} from QuickBooks.`
+                    )
+                  }
                 >
                   Refresh accounts
                 </button>
@@ -552,6 +558,19 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
     });
   }
 
+  /** The products and services list, read on the spot: invoices can't be turned on without one picked. */
+  function readProducts() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await refreshQuickBooksAccounts();
+      if (res.error) return setError(res.error);
+      if (res.itemsError) return setError(res.itemsError);
+      setMessage(`Read ${res.items ?? 0} products and services from QuickBooks.`);
+      router.refresh();
+    });
+  }
+
   function sendNow() {
     setError(null);
     setMessage(null);
@@ -621,7 +640,16 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
 
       <h3 className="qb-subhead">Where they go in QuickBooks</h3>
       {!v.items.length && (
-        <p className="est-tax-note">No products or services read from QuickBooks yet. Click Refresh accounts above.</p>
+        <div className="est-pay-actions">
+          <span className="est-tax-note">
+            {v.itemsReadAt
+              ? "Your QuickBooks has no active service or non-inventory products. Add one to its Products and services list, then read them again."
+              : "Products and services haven't been read from QuickBooks yet."}
+          </span>
+          <button type="button" className="btn-ghost" onClick={readProducts} disabled={pending || !v.ready}>
+            {pending ? "Reading…" : v.itemsReadAt ? "Read them again" : "Read products and services"}
+          </button>
+        </div>
       )}
       <div className="qb-picks">
         <label className="qb-pick">
@@ -708,6 +736,8 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
           <button type="button" className="btn-primary" onClick={save} disabled={pending || !v.ready || (f.on && (!f.from || !f.jobItem))}>
             {pending ? "Saving…" : "Save"}
           </button>
+          {f.on && !f.jobItem && <span className="est-tax-note">Pick the product or service for job work to turn this on.</span>}
+          {f.on && f.jobItem && !f.from && <span className="est-tax-note">Pick the start date to turn this on.</span>}
         </div>
       )}
 

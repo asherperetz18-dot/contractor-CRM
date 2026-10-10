@@ -21,7 +21,7 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    version: "1.265.0",
+    version: "1.266.0",
     date: "2026-10-10",
     notes: [
       "If your role isn't allowed to delete a note, or to tick off or delete a task, the CRM now tells you, instead of leaving it there without a word.",
@@ -29,6 +29,13 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       "The AI assistant now goes by your company's clock: it no longer calls a proposal expired on the evening of its last day, it dates documents written or signed in the evening on the right day, and it shows call times in your time zone instead of in UTC, hours ahead.",
       "In a contact's window, a task, note, shared note or text you're typing now stays put when you switch tabs, and closing the window, a stage button, Delete or opening an estimate asks before throwing it away.",
       "Opening another appointment or contact from a pop-up while one is already open now opens it fresh, instead of carrying over what you'd typed or changed in the first one.",
+    ],
+  },
+  {
+    version: "1.265.0",
+    date: "2026-10-10",
+    notes: [
+      "Settings › QuickBooks › Send invoices to QuickBooks: when no products or services are listed, a \"Read products and services\" button now reads them from QuickBooks right there, and says what to do if QuickBooks has none. A greyed-out Save now says what's missing. Refresh accounts also says how many products and services it read.",
     ],
   },
   {
