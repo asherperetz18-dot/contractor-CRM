@@ -2648,3 +2648,17 @@ No SQL.
 **Decision:** `estimateExpired` exempts Void, like the other end states. Clearing `expires_at` on void was rejected: existing voids would need a hand-run backfill, and the voided copy still prints its "Valid until" date.
 
 **Consequence:** a lapsed void stays Void everywhere expiry is read: the Voided card, Declined's and the Closed column's totals, the board card's badge and reason, and the AI chat's funnel. The portal already checked Void before expiry, so nothing changes there. A lapsed draft still reads Expired (TECH_DEBT). No SQL.
+
+## 200 — Delete asks first, in both windows, and says what goes with the record
+
+**Date:** 2026-10-10
+
+**Context:** the contact window's Delete removed the contact with its estimates, signed contracts and their payments, tasks, notes and files on one click when nothing was typed; #197 had made it ask only about a typed draft. The appointment window's Delete was the same, and an appointment has no trash. Inside the windows a task's ✕ and a visit photo's Remove asked nothing (a bucket photo is gone for good), and the contact's Files ✕ dropped the server's answer, so a refused delete looked done.
+
+**Decision:**
+- **One question, worded from the record.** `contactDeleteConfirm` (`src/lib/contact-delete.ts`) names the contact, counts its estimates (how many signed, what's paid), tasks, notes and files, says appointments and texts stay unlinked, and that an Office or Admin user can restore it from Settings → Trash for 30 days. Someone who can't see estimates is told "any estimates or contracts", without counts or money. `appointmentDeleteConfirm` (`appointment-save.ts`) names the type, the person, the day and the time, says it can't be undone and that its notes and photos stay on the contact, and offers Cancelled instead unless it already is. Each adds a line when a draft or unsaved change would go too, and replaces the window's `leaveOk()` in `handleDelete`, so nobody is asked twice.
+- **The panels' deletes ask too.** A task's ✕ names the task. A visit photo's Remove and a contact file's ✕ use the job photos' wording (`deletePhotoConfirm`), told where the ✕ was pressed so it stops saying "this job" elsewhere; it says whether the file can come back (Drive's trash for 30 days, or not at all).
+- **A refusal or lost call says so.** The contact delete, a visit photo's Remove and a file's ✕ run through `attempt`; the Files tab shows the error. `deleteLead`'s delete gained `.select("id")` (as #194), so a delete the policy refused is reported and its trash copy removed. Delete also cancels a pending autosave, so a last-second edit can't write the contact as it's deleted.
+
+**Consequence:** every delete in these two windows asks once and says what it removes. The counts are what the window loaded. What a restore can't bring back (shared notes, the file-delete history, bill and receptionist-call links) and that a Sales rep with the delete grant can't open Trash are logged in TECH_DEBT. No SQL.
+

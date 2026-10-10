@@ -51,6 +51,8 @@ import {
   type DuplicateLeadMatch,
 } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
+import { attempt } from "@/lib/appointment-save";
+import { contactDeleteConfirm } from "@/lib/contact-delete";
 import {
   createPortalLinkForStaff,
   setPortalPaymentsDisabled,
@@ -520,11 +522,30 @@ export function LeadForm({
   }
 
   async function handleDelete() {
-    if (!lead || !leaveOk()) return;
+    if (!lead) return;
+    const onFile = estimateIndex?.byLead[lead.id];
+    if (
+      !window.confirm(
+        contactDeleteConfirm({
+          name: clientName(form) || leadDisplayName(lead),
+          estimates: estimateIndex?.canView ? (onFile?.estimates ?? []) : null,
+          paidCents: estimateIndex?.canView ? (onFile?.paidCents ?? 0) : 0,
+          tasks: tasks?.length ?? 0,
+          notes: notes?.length ?? 0,
+          files: files?.length ?? 0,
+          draftsWaiting,
+        })
+      )
+    )
+      return;
+    // An edit from the last second would otherwise write the contact
+    // while it's being deleted.
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     setPending(true);
-    const result = await deleteLead(lead.id);
+    setError("");
+    const result = await attempt(() => deleteLead(lead.id));
     setPending(false);
-    if (result?.error) {
+    if (result.error) {
       setError(result.error);
       return;
     }

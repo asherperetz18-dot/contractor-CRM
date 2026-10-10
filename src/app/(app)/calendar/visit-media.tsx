@@ -8,6 +8,8 @@ import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 import { FilePreview } from "@/components/ui/file-preview";
 import { driveFileId } from "@/lib/files/preview";
 import { leadPhotoThumbUrl } from "@/lib/data/types";
+import { deletePhotoConfirm } from "@/lib/data/lead-file-deletions";
+import { attempt } from "@/lib/appointment-save";
 
 function sizeLabel(bytes: number | null) {
   if (bytes == null) return "";
@@ -84,10 +86,12 @@ export function VisitMedia({
   }
 
   async function remove(f: VisitFile) {
+    if (!window.confirm(deletePhotoConfirm(f.file_name, f.storage_provider, "visit"))) return;
     setBusy("Removing…");
-    const res = await deleteLeadFile(f.id);
+    setError("");
+    const res = await attempt(() => deleteLeadFile(f.id));
     setBusy(null);
-    if (res?.error) return setError(res.error);
+    if (res.error) return setError(res.error);
     await reload();
   }
 

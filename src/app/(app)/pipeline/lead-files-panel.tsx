@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { LeadFile, Profile } from "@/lib/data/types";
 import { attachmentIsImage, leadPhotoThumbUrl } from "@/lib/data/types";
 import { FilePreview } from "@/components/ui/file-preview";
 import { driveFileId } from "@/lib/files/preview";
 import { deleteLeadFile } from "@/lib/actions/lead-files";
+import { deletePhotoConfirm } from "@/lib/data/lead-file-deletions";
+import { attempt } from "@/lib/appointment-save";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 
@@ -50,9 +52,17 @@ export function LeadFilesPanel({
 
   const sorted = [...files].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
+  // A refused delete ("Only Office or Admin can delete files.") used to
+  // look like success: the result was dropped (DECISIONS #200).
+  const [deleteError, setDeleteError] = useState("");
   async function handleDelete(file: LeadFile) {
-    if (!confirm(`Delete "${file.file_name}"?`)) return;
-    await deleteLeadFile(file.id);
+    if (!window.confirm(deletePhotoConfirm(file.file_name, file.storage_provider, "contact"))) return;
+    setDeleteError("");
+    const res = await attempt(() => deleteLeadFile(file.id));
+    if (res.error) {
+      setDeleteError(res.error);
+      return;
+    }
     onChanged();
   }
 
@@ -129,6 +139,8 @@ export function LeadFilesPanel({
           ))}
         </div>
       )}
+
+      {deleteError && <p className="error-note">{deleteError}</p>}
 
       {!readOnly && (
         <div style={{ marginTop: 10 }}>

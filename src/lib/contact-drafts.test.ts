@@ -27,7 +27,9 @@ test("every way out of the contact window asks before dropping what was typed", 
   assert.match(form, /const draftsWaiting = taskDraft\.waiting \|\| notesDrafts\.waiting \|\| textDrafts\.waiting;/);
   assert.match(form, /function leaveOk\(\) \{\s*return !draftsWaiting \|\| window\.confirm\(/);
   assert.match(form, /function handleClose\(\) \{\s*if \(!leaveOk\(\)\) return;/);
-  for (const fn of ["handleDelete", "handleConvert", "handleBook"]) {
+  // Delete asks its own one question, which carries the draft warning
+  // (contact-delete.test.ts).
+  for (const fn of ["handleConvert", "handleBook"]) {
     assert.match(form, new RegExp(`async function ${fn}\\(\\) \\{\\s*if \\(!lead \\|\\| !leaveOk\\(\\)\\) return;`), fn);
   }
   // Before its own question, so the stage move isn't confirmed and then

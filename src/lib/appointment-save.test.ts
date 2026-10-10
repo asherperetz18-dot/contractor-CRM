@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import type { EventStatus } from "./data/types.ts";
 import {
   SAVE_UNREACHABLE,
   SEND_UNREACHABLE,
+  appointmentDeleteConfirm,
   appointmentFooter,
   applyLiveState,
   attempt,
@@ -282,4 +284,34 @@ test("the task panel takes its draft from the window when given one, and reports
   // edited out from under it.
   assert.match(panel, /onClick=\{cancelAdd\}\s*disabled=\{busy\}/);
   assert.equal((panel.match(/disabled=\{busy\}/g) ?? []).length, 5);
+});
+
+const booked = {
+  eventType: "Estimate",
+  who: "Jane Smith",
+  date: "2025-10-14",
+  time: "09:00:00",
+  endTime: "10:00:00",
+  status: "New" as EventStatus,
+  dirty: false,
+};
+
+test("Delete names the appointment it removes, and says it can't be undone", () => {
+  // It was one click with nothing typed, and an appointment has no trash
+  // (DECISIONS #200).
+  const message = appointmentDeleteConfirm(booked);
+  assert.match(message, /^Delete the Estimate appointment with Jane Smith on Tue, Oct 14 at 9:00 AM – 10:00 AM\?/);
+  assert.match(message, /can't be undone/);
+  assert.match(message, /notes and photos stay on Jane Smith's contact/);
+  assert.match(message, /set Status to Cancelled instead/);
+  assert.doesNotMatch(message, /unsaved/);
+});
+
+test("Delete's question fits what's on screen: cancelled, unsaved, no contact, no time", () => {
+  assert.doesNotMatch(appointmentDeleteConfirm({ ...booked, status: "Cancelled" }), /Cancelled instead/);
+  assert.match(appointmentDeleteConfirm({ ...booked, dirty: true }), /Your unsaved changes to it are discarded too\./);
+  const orphan = appointmentDeleteConfirm({ ...booked, who: null });
+  assert.match(orphan, /^Delete this Estimate appointment on Tue, Oct 14 at 9:00 AM – 10:00 AM\?/);
+  assert.doesNotMatch(orphan, /contact/);
+  assert.match(appointmentDeleteConfirm({ ...booked, time: null, endTime: null }), /on Tue, Oct 14\?/);
 });

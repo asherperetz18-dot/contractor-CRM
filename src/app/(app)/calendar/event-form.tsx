@@ -54,6 +54,7 @@ import { sendSms } from "@/lib/actions/sms";
 import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import {
+  appointmentDeleteConfirm,
   appointmentFooter,
   applyLiveState,
   attempt,
@@ -562,7 +563,21 @@ export function EventForm({
   }
 
   async function handleDelete() {
-    if (!event || !leaveOk()) return;
+    if (!event) return;
+    if (
+      !window.confirm(
+        appointmentDeleteConfirm({
+          eventType: event.event_type,
+          who: lead ? leadDisplayName(lead) : null,
+          date: event.date,
+          time: event.time,
+          endTime: event.end_time,
+          status: event.status,
+          dirty: isDirty,
+        })
+      )
+    )
+      return;
     setPending(true);
     setError("");
     const result = await attempt(() => deleteEvent(event.id));

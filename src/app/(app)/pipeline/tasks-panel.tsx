@@ -140,7 +140,8 @@ export function TasksPanel({
     onChanged();
   }
 
-  async function handleDelete(taskId: string) {
+  async function handleDelete(taskId: string, title: string) {
+    if (!window.confirm(`Delete the task "${title}"?`)) return;
     setPending(true);
     setError("");
     const result = await attempt(() => deleteLeadTask(taskId));
@@ -202,7 +203,7 @@ export function TasksPanel({
                 <button
                   type="button"
                   className="icon-btn"
-                  onClick={() => handleDelete(t.id)}
+                  onClick={() => handleDelete(t.id, t.title)}
                   disabled={pending}
                   aria-label="Delete task"
                 >

@@ -106,3 +106,17 @@ test("the delete confirm warns it is everywhere, not just this job", () => {
 test("a Drive photo's confirm says it can be recovered from Drive's trash", () => {
   assert.match(deletePhotoConfirm("kitchen.jpg", "google_drive"), /Google Drive trash for 30 days/);
 });
+
+test("outside a job, the delete confirm names where the file lives and drops the job hint", () => {
+  // The visit's Remove and the contact's Files ✕ used the job's words, or
+  // none (DECISIONS #200).
+  const visit = deletePhotoConfirm("a.jpg", "supabase", "visit");
+  assert.match(visit, /this visit, the contact's Files, and any job it's filed under/);
+  assert.match(visit, /can't be undone/);
+  assert.doesNotMatch(visit, /this job|Remove from job/);
+  const contact = deletePhotoConfirm("a.jpg", "google_drive", "contact");
+  assert.match(contact, /the contact's Files, any visit, and any job it's filed under/);
+  assert.match(contact, /Google Drive trash for 30 days/);
+  assert.doesNotMatch(contact, /this job|Remove from job/);
+  assert.equal(deletePhotoConfirm("a.jpg", "supabase", "job"), deletePhotoConfirm("a.jpg", "supabase"));
+});
