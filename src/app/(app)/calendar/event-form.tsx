@@ -412,11 +412,11 @@ export function EventForm({
     // result as unsaved, hid Save Result and never said "✓ Result saved".
     setBaseline((b) => ({ ...b, status: outcome }));
 
-    // From here the outcome is on record, so a refusal says so rather
-    // than "the result didn't save".
+    // From here the outcome is on record, so a refusal -- or a call that
+    // never arrives -- says so rather than "the result didn't save".
     if (chosenStage !== lead.stage) {
-      const stageResult = await moveLeadStage(lead.id, chosenStage);
-      if (stageResult?.error) {
+      const stageResult = await attempt(() => moveLeadStage(lead.id, chosenStage));
+      if (stageResult.error) {
         return {
           error: `The outcome is saved, but the contact didn't move to ${chosenStage}: ${stageResult.error}`,
           partly: true,
@@ -424,8 +424,8 @@ export function EventForm({
       }
     }
     if (resultNote.trim()) {
-      const noteResult = await addLeadNote(lead.id, resultNote.trim(), event.id);
-      if (noteResult?.error) {
+      const noteResult = await attempt(() => addLeadNote(lead.id, resultNote.trim(), event.id));
+      if (noteResult.error) {
         return { error: `The outcome is saved, but the result note didn't: ${noteResult.error}`, partly: true };
       }
     }

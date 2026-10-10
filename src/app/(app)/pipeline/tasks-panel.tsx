@@ -238,6 +238,7 @@ export function TasksPanel({
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Follow up call"
+              disabled={busy}
             />
           </Field>
           <Field label="Due Date">
@@ -245,6 +246,7 @@ export function TasksPanel({
               type="date"
               value={form.due_date}
               onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+              disabled={busy}
             />
           </Field>
           <Field label="Due Time (optional)">
@@ -252,6 +254,7 @@ export function TasksPanel({
               type="time"
               value={form.due_time}
               onChange={(e) => setForm((f) => ({ ...f, due_time: e.target.value }))}
+              disabled={busy}
             />
           </Field>
           <Field label="Assigned To">
@@ -260,6 +263,7 @@ export function TasksPanel({
             <select
               value={form.assigned_to}
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
+              disabled={busy}
             >
               <option value="">Me — assign to myself</option>
               {repDropdownOptions(reps, [form.assigned_to]).map((r) => (
@@ -284,11 +288,14 @@ export function TasksPanel({
               Add Task
             </button>
             {/* Clears the draft as well as hiding it, so the window's Save
-                can't add a task the person backed out of. */}
+                can't add a task the person backed out of. Held, like the
+                fields above, while the task is on its way: what's sent is
+                what was on screen when it was sent. */}
             <button
               type="button"
               className="btn-ghost small"
               onClick={cancelAdd}
+              disabled={busy}
             >
               Cancel
             </button>

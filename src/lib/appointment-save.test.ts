@@ -185,6 +185,10 @@ test("the window commits everything pending through one Save and keeps a typed t
   assert.doesNotMatch(form, /const \[openedWith\] = useState/);
   // A call that never arrives is reported, not left spinning.
   assert.match(form, /await attempt\(commitResult\)/);
+  // Once the outcome is on record, a stage move or note that never
+  // arrives is reported as half-saved too, not as "the result didn't save".
+  assert.match(form, /await attempt\(\(\) => moveLeadStage\(lead\.id, chosenStage\)\)/);
+  assert.match(form, /await attempt\(\(\) => addLeadNote\(lead\.id, resultNote\.trim\(\), event\.id\)\)/);
   assert.match(form, /await attempt\(\(\) => deleteEvent\(event\.id\)\)/);
   // The Result tab's red dot reads the saved status, so it clears once a
   // result is saved in this window.
@@ -212,4 +216,8 @@ test("the task panel takes its draft from the window when given one, and reports
   assert.match(panel, /onClick=\{cancelAdd\}/);
   assert.match(panel, /function cancelAdd\(\) \{\s*setError\(""\);\s*reset\(\);/);
   assert.match(panel, /disabled=\{pending \|\| busy\}/);
+  // While the window's Save is sending the task, it can't be cancelled or
+  // edited out from under it.
+  assert.match(panel, /onClick=\{cancelAdd\}\s*disabled=\{busy\}/);
+  assert.equal((panel.match(/disabled=\{busy\}/g) ?? []).length, 5);
 });
