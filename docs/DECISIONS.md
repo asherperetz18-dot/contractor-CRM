@@ -2526,6 +2526,42 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** a customer can sign, and tick optional lines, until the company's midnight on the last valid day, and a stage reads Due all of its due day. The staff screens' own expiry still reads the clock where the page draws (the server's UTC on the first draw, then the browser's), which #180 left for its own change, and the AI chat's reads the server's (both in TECH_DEBT). No SQL.
 
+## 192 — Ready for real QuickBooks: a practice connection says Connect again, and connecting stops rather than half-clearing
+
+**Date:** 2026-10-10
+
+**Context:** The CRM connects to Intuit's practice companies until `QUICKBOOKS_ENVIRONMENT` is `production` (#172). A check before switching to real books found these gaps:
+- After the switch, a company still connected to a practice company sends nothing: `quickBooksAccess` refuses a login made on the other side, without writing `last_error`. Yet Settings went on saying "Connected" and "Practice company", with no Connect again button. Bills to Pay, the Invoices page and the payment schedule went on saying "goes to QuickBooks in a few minutes", and "In QuickBooks" for what went to the practice company.
+- When a different QuickBooks company was connected, the sign-in callback cleared the old company's picks (#173, #184) only if it could read the current connection. A failed read was ignored. The new login was then saved with sending on, the old start dates, and the old company's "paid from" matches, cost accounts, products and payment accounts. The next run could post to real books with the practice company's account ids. The clearing writes' errors were ignored too, and afterwards nothing said sending had been turned off.
+- The privacy page didn't mention QuickBooks, which #087 asks for whenever an integration receives personal data. Intuit also asks for a privacy policy link before it issues production keys.
+
+**Decision:**
+- **The other side.** `onOtherSide` and `otherSideNote` (`src/lib/quickbooks/connection-side.ts`) tell when a connection was made on the other side of Intuit. Settings then shows:
+  - a **Connect again** badge instead of Connected, and the box reads "Last connected to …" in amber, not green;
+  - the reason, and the Connect again button;
+  - no Refresh accounts, sending sections or matches, since nothing goes and they're cleared on connecting again;
+  - a Disconnect prompt that doesn't promise the matches are kept.
+
+  Bills to Pay, and the Invoices page and payment schedule (`invoice-chips.ts`), show no QuickBooks lines for such a connection. "This sends to your practice company" shows only while the CRM is still on practice companies.
+- **Clearing first.** The clearing moved into `clearForNewCompany` (`src/lib/quickbooks/connect-reset.ts`). It runs before the new login is saved, and counts a different company id, *or* a different side of Intuit, as a new company. It turns both switches off first, then clears the invoice picks, the "paid from" matches and the cost accounts, every write scoped to the company. A failed read or write stops the connection with an error, saying sending to the previous company may already be off. The old connection stays connected, but whatever was already cleared stays cleared. Each step is safe to repeat, so connecting the new company again finishes the job. A step whose columns don't exist yet is skipped:
+  - before 0221, there's nothing to clear;
+  - before 0222, there's no bills switch to turn off;
+  - before 0227, there are no invoice picks.
+
+  When it cleared, the callback returns `connected=new`, and Settings says sending is off: check the matches, pick the start dates, turn sending on again.
+- **Privacy.** The privacy page gets its own sentence for QuickBooks, which is the company's own account rather than a service working for us. If the company connects it, the CRM sends what the company turns on: customers (names, contact details and addresses), vendors, bills, invoices, payments and receipts. These are kept in the company's QuickBooks under Intuit's terms. Customers and vendors stay there even if deleted in the CRM, and so does anything sent before the company disconnects or closes its CRM account. (While sending is on, a deleted bill, credit or refund is deleted in QuickBooks too, and a deleted payment or cancelled invoice is voided: #173, #184.) Its date moves. The Play Data safety answers don't change: the company sends this because it chose to connect, and no new kind of data is collected.
+
+**Consequence:** on the day the CRM switches to real books, each company still on a practice company sees at once that it must connect again, and no screen implies its bills or invoices are going. A connection is never saved with the previous company's picks. What went to a practice company stays recorded under its company id, so nothing is skipped or changed in the real company.
+
+Not changed:
+- The sync records are keyed by QuickBooks company id only, so a practice and a real company with the same id would share them. Intuit's ids aren't known to collide, but that isn't confirmed.
+- The terms page Intuit also asks for waits for the owner's wording.
+- Switching back to sandbox works the same way in reverse: every real company stops sending, and Settings warns that connecting a practice company clears what's picked for the real one. The variable should go back to production before anyone reconnects (noted in `.env.local.example`).
+- A Settings page on a deployment without the Intuit keys shows no other side, the same as Bills to Pay and the Invoices page (`onOtherSide` with no CRM side is false).
+- The five-minute job's read of QuickBooks' settings is in TECH_DEBT, since Intuit meters reads on its free tier.
+
+No SQL.
+
 ## 193 — A refused note delete or task tick says so
 
 **Date:** 2026-10-10

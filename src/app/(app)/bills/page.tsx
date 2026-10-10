@@ -16,6 +16,8 @@ import { getVendors } from "@/lib/actions/vendors";
 import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
 import type { BillsQuickBooks, ChipRecord } from "@/lib/quickbooks/bill-status";
 import { quickBooksReceiptsReady } from "@/lib/quickbooks/receipts-ready";
+import { quickbooksCredentials } from "@/lib/quickbooks/oauth";
+import { onOtherSide } from "@/lib/quickbooks/connection-side";
 import { BillsView } from "./bills-view";
 
 export const dynamic = "force-dynamic";
@@ -157,6 +159,10 @@ async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient
     }>();
   // Never connected, or before 0222: nothing to show.
   if (error || !conn?.realm_id) return null;
+  // Connected on the other side of Intuit (a practice company after the
+  // switch to real books): nothing goes, and what went isn't in these books
+  // (DECISIONS #192). Settings says to connect again.
+  if (onOtherSide(conn.environment, quickbooksCredentials()?.environment)) return null;
   const [records, receipts] = await Promise.all([
     selectAll<ChipRecord>((f, t) =>
       supabase

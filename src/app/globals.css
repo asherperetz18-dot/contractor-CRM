@@ -14046,6 +14046,11 @@ textarea.est-item-desc:disabled {
   font-size: 13.5px;
   max-width: 560px;
 }
+/* Connected on the other side of Intuit: nothing goes (DECISIONS #192). */
+.qb-status.is-other {
+  border-color: #e6d2a3;
+  background: #fdf8ec;
+}
 .qb-subhead {
   margin: 16px 0 6px;
   font-size: 14px;
