@@ -6,6 +6,7 @@ import { Field } from "@/components/ui/field";
 import type { LeadTask, Profile } from "@/lib/data/types";
 import { repBylineName, repDropdownOptions } from "@/lib/data/rep-options";
 import { completeLeadTask, createLeadTask, deleteLeadTask } from "@/lib/actions/leads";
+import { attempt } from "@/lib/appointment-save";
 
 function formatDueTime(time: string | null) {
   if (!time) return "";
@@ -27,6 +28,40 @@ function formatDueDate(dateStr: string) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/**
+ * The task being typed, held by whoever owns it. The panel unmounts on a
+ * tab switch, so a draft kept inside it vanished the moment someone
+ * clicked over to Result -- a window that wants the draft to survive (and
+ * its own Save to commit it) holds it with this hook and passes it in.
+ */
+export function useTaskDraft() {
+  // A new task is due today on the company's calendar, not the UTC day
+  // (already tomorrow from 5pm Pacific).
+  const today = useCompanyToday();
+  const blank = () => ({ title: "", due_date: today(), due_time: "", assigned_to: "" });
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState(blank);
+  // On its way to the server, by Add Task or the window's Save: the other
+  // waits, so a double tap on a slow signal can't add it twice.
+  const [busy, setBusy] = useState(false);
+  return {
+    showAdd,
+    setShowAdd,
+    form,
+    setForm,
+    busy,
+    setBusy,
+    // Something typed into an open form: work that would be lost.
+    waiting: showAdd && form.title.trim() !== "",
+    reset: () => {
+      setForm(blank());
+      setShowAdd(false);
+    },
+  };
+}
+
+export type TaskDraft = ReturnType<typeof useTaskDraft>;
+
 export function TasksPanel({
   leadId,
   tasks,
@@ -34,6 +69,7 @@ export function TasksPanel({
   members,
   readOnly,
   onChanged,
+  draft,
 }: {
   leadId: string;
   tasks: LeadTask[];
@@ -46,14 +82,14 @@ export function TasksPanel({
   members?: Profile[];
   readOnly?: boolean;
   onChanged: () => void;
+  // Held by the host so it outlives a tab switch; the panel keeps its own
+  // when none is given.
+  draft?: TaskDraft;
 }) {
-  const [showAdd, setShowAdd] = useState(false);
+  const own = useTaskDraft();
+  const { showAdd, setShowAdd, form, setForm, busy, setBusy, reset } = draft ?? own;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  // A new task is due today on the company's calendar, not the UTC day
-  // (already tomorrow from 5pm Pacific).
-  const today = useCompanyToday();
-  const [form, setForm] = useState({ title: "", due_date: today(), due_time: "", assigned_to: "" });
 
   const open = tasks.filter((t) => !t.completed_at);
   const done = tasks.filter((t) => t.completed_at);
@@ -65,32 +101,54 @@ export function TasksPanel({
     return roster.find((r) => r.id === id)?.name || null;
   }
 
+  // Each call goes through attempt: one that never reaches the server
+  // says so instead of leaving the buttons greyed out, and an error the
+  // server returns is shown rather than swallowed.
   async function handleAdd() {
-    if (!form.title.trim()) return;
+    if (!form.title.trim()) {
+      setError("Type what the task is first.");
+      return;
+    }
     setPending(true);
+    setBusy(true);
     setError("");
-    const result = await createLeadTask(leadId, form);
+    const result = await attempt(() => createLeadTask(leadId, form));
     setPending(false);
-    if (result?.error) {
+    setBusy(false);
+    if (result.error) {
       setError(result.error);
       return;
     }
-    setForm({ title: "", due_date: today(), due_time: "", assigned_to: "" });
-    setShowAdd(false);
+    reset();
     onChanged();
+  }
+
+  function cancelAdd() {
+    setError("");
+    reset();
   }
 
   async function handleComplete(taskId: string) {
     setPending(true);
-    await completeLeadTask(taskId);
+    setError("");
+    const result = await attempt(() => completeLeadTask(taskId));
     setPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     onChanged();
   }
 
   async function handleDelete(taskId: string) {
     setPending(true);
-    await deleteLeadTask(taskId);
+    setError("");
+    const result = await attempt(() => deleteLeadTask(taskId));
     setPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     onChanged();
   }
 
@@ -180,6 +238,7 @@ export function TasksPanel({
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="Follow up call"
+              disabled={busy}
             />
           </Field>
           <Field label="Due Date">
@@ -187,6 +246,7 @@ export function TasksPanel({
               type="date"
               value={form.due_date}
               onChange={(e) => setForm((f) => ({ ...f, due_date: e.target.value }))}
+              disabled={busy}
             />
           </Field>
           <Field label="Due Time (optional)">
@@ -194,6 +254,7 @@ export function TasksPanel({
               type="time"
               value={form.due_time}
               onChange={(e) => setForm((f) => ({ ...f, due_time: e.target.value }))}
+              disabled={busy}
             />
           </Field>
           <Field label="Assigned To">
@@ -202,6 +263,7 @@ export function TasksPanel({
             <select
               value={form.assigned_to}
               onChange={(e) => setForm((f) => ({ ...f, assigned_to: e.target.value }))}
+              disabled={busy}
             >
               <option value="">Me — assign to myself</option>
               {repDropdownOptions(reps, [form.assigned_to]).map((r) => (
@@ -221,14 +283,19 @@ export function TasksPanel({
               type="button"
               className="btn-primary small"
               onClick={handleAdd}
-              disabled={pending}
+              disabled={pending || busy}
             >
               Add Task
             </button>
+            {/* Clears the draft as well as hiding it, so the window's Save
+                can't add a task the person backed out of. Held, like the
+                fields above, while the task is on its way: what's sent is
+                what was on screen when it was sent. */}
             <button
               type="button"
               className="btn-ghost small"
-              onClick={() => setShowAdd(false)}
+              onClick={cancelAdd}
+              disabled={busy}
             >
               Cancel
             </button>

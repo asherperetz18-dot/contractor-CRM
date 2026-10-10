@@ -21,6 +21,15 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.262.0",
+    date: "2026-10-10",
+    notes: [
+      "The Edit Appointment window no longer loses a task or a result. Its Save now saves your changes to the appointment, a result you picked and a task you typed, all in one go (no need to press Add Task first). If one part can't be saved, the window stays open and says which part didn't save and why.",
+      "A task you're typing stays put when you switch tabs, and closing the window with Cancel or the X asks before throwing it away. After Save Result the window shows \"✓ Result saved\" and the red dot on Result clears, instead of looking unsaved, and Save Result no longer disappears when someone confirmed the appointment by text after you opened the page.",
+      "If Save, Save Result or Delete in that window can't reach the CRM (a dropped signal, for example), it now says so and the button works again, instead of staying greyed out. The same goes for Add Task, ☐ and ✕ in an appointment's or a contact's task list.",
+    ],
+  },
+  {
     version: "1.261.0",
     date: "2026-10-09",
     notes: [
