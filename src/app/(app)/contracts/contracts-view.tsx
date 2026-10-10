@@ -120,7 +120,8 @@ export function ContractsView({
   // fell in. `asOf`, noon of the company's today, judges expiry: columns,
   // badges, totals, countdowns (DECISIONS #194). The clock where the page
   // drew filed a contract under Closed from 5pm Pacific on its last day on
-  // the server's first draw, while the browser said Sent.
+  // the server's first draw, while the browser still had it awaiting a
+  // signature.
   const now = new Date();
   const asOf = new Date(`${today}T12:00:00`);
   const leadById = new Map(leads.map((l) => [l.id, l]));

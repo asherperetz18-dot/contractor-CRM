@@ -1171,7 +1171,7 @@ export function PipelineBoard({
       {editing && (
         // Keyed by the contact, so opening another one while this window
         // is open starts a fresh window rather than carrying this one's
-        // drafts across (DECISIONS #196).
+        // fields and drafts across (DECISIONS #196).
         <LeadForm
           key={editing.lead.id}
           lead={editing.lead}
