@@ -27,6 +27,7 @@ export function LeadEstimateButton({
   paidCents,
   canView,
   canCreate,
+  leaveOk,
 }: {
   leadId: string;
   /** Handed down from the page, not fetched. The chip used to arrive a
@@ -36,6 +37,9 @@ export function LeadEstimateButton({
   paidCents: number;
   canView: boolean;
   canCreate: boolean;
+  /** Asked before leaving the page for an estimate: the window it sits in
+   *  may hold unsaved drafts (DECISIONS #197). */
+  leaveOk?: () => boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -77,6 +81,7 @@ export function LeadEstimateButton({
       setListOpen((v) => !v);
       return;
     }
+    if (leaveOk && !leaveOk()) return;
     setError(null);
     startTransition(async () => {
       const res = await openOrCreateEstimateForLead(leadId);
@@ -118,7 +123,10 @@ export function LeadEstimateButton({
               key={e.id}
               type="button"
               className="lead-est-item"
-              onClick={() => router.push(`/estimates/${e.id}${backQuery}`)}
+              onClick={() => {
+                if (leaveOk && !leaveOk()) return;
+                router.push(`/estimates/${e.id}${backQuery}`);
+              }}
             >
               <span className="mono">{e.doc_number}</span>
               <span className="lead-est-title">{e.title || "Untitled"}</span>
@@ -131,6 +139,7 @@ export function LeadEstimateButton({
               type="button"
               className="lead-est-item lead-est-new"
               onClick={() => {
+                if (leaveOk && !leaveOk()) return;
                 setListOpen(false);
                 startTransition(async () => {
                   const res = await openOrCreateEstimateForLead(leadId);

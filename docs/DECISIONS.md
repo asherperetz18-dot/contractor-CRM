@@ -2579,3 +2579,48 @@ No SQL.
 - **Who a message is from is decided when it's shown.** `senderLabel` matches the sender's phone to the roster and to the client's four numbers, so adding a crew member's phone to their profile names every message they ever sent.
 
 **Consequence:** a project's WhatsApp group becomes part of its record without anyone forwarding anything. The cost is a Whapi subscription per bot number and the ban risk the owner accepted. The privacy page names Whapi and what passes through it (#087). Shortcuts are in TECH_DEBT.
+
+## 194 — A refused note delete or task tick says so
+
+**Date:** 2026-10-10
+
+**Context:** `deleteLeadNote`, `completeLeadTask` and `deleteLeadTask` checked only for a database error. Row security doesn't raise one: a delete or update it refuses matches no row and succeeds with nothing done. So a Sales or Dispatch member pressing a note's ✕ (only Office and Admin may delete notes), a Field or Production member ticking or deleting a task in the appointment window, or a dispatcher deleting a task, saw the panel refresh with the note or task still there and nothing said.
+
+**Decision:** each asks for the row back (`.select("id")`) and returns an error when there is none, the way `deleteEvent`, `setEventResult` and `moveLeadStage` already do: "That note couldn't be deleted — your role may not have permission.", "Couldn't mark that task done — your role may not have permission." (word for word what the Tasks page already says) and "That task couldn't be deleted — your role may not have permission." The panels already show the error. Asking for the row back needs no visibility the `.eq("id")` didn't already need, so no permitted change can read as refused. The buttons still show to roles that can't use them; hiding them means threading the role through four paths into the panels (TECH_DEBT).
+
+**Consequence:** a refusal is said where it happens. A second ✕ on a row already gone reads the same way. No SQL.
+
+## 195 — Estimates and the Contract Board judge expiry on the company's today
+
+**Date:** 2026-10-10
+
+**Context:** #180 left estimate expiry on the clock where the page draws: the server's UTC on the first draw, then the browser's. A proposal is valid through its expiry day, but from 5pm Pacific on that day the server's first draw already called it Expired: off the Proposals card and onto Declined on the Estimates funnel, into the Closed column on the Contract Board, out of Awaiting and Expiring soon, with no countdown. The browser then drew it as still awaiting a signature (Sent or Viewed), so the page changed under the reader, and a browser in another zone judged on its own day. Since #191 the customer portal lets the customer sign all of that day.
+
+**Decision:** both views judge expiry at noon of the company's today (`asOf = new Date(`${today}T12:00:00`)`, the today the pages already hand them), the way the portal does. The shared helpers take it as an optional last argument with the old default: `inFunnelBucket`, `funnelCardStats`, `isPendingChangeOrder`, `columnTotalCents`. On the Contract Board the real moment stays for what is counted from a timestamp, so `noReplyDays`, `matchesScope` and `boardCardStats` take both: `now` for no-reply days, the month a signature fell in and the 90-day average (#182: rolling windows count back from the moment), `asOf` for expiry. A noon-of-today date is no instant to count a duration to: it falls hours apart on a UTC server and in a Pacific browser. The expiry countdown moves with expiry, so "Expires today" and the column agree.
+
+**Consequence:** Estimates, the Contract Board and the portal agree that a proposal is valid through its last day on the company's calendar, the server's first draw and the browser's agree, and the board's Expiring soon matches the Estimates "Expires within 7 days" chip. The day is the one the page loaded, as for the date filters. Expiry gaps the clock doesn't touch (voided and draft documents with a lapsed date, screens that never check expiry) are in TECH_DEBT. No SQL.
+
+## 196 — The AI chat reads the company's day and clock
+
+**Date:** 2026-10-10
+
+**Context:** The chat's context already carried the company's today, but judged estimate status by the server's clock (UTC): from 5pm Pacific on a proposal's last day it listed the proposal as Expired and counted it under "Lost" instead of "Awaiting signature", and a change order on its last day dropped out of "Change orders pending signature". It also dated each document's created and signed day by its UTC day, so an evening document or e-signature read as tomorrow, and showed each call's UTC wall time with no zone, so for a Pacific company every call read 7 hours late (8 in winter) all day, and from 5pm (4pm in winter) on tomorrow; other zones were off by their own offset.
+
+**Decision:** the route hands the context the company's zone with its today (`getCompanyZone`, then `isoDateInZone`). The context judges expiry at noon of that today through the same optional clock as Estimates (#195), dates documents with `isoDateReader(zone)` and times calls with `wallClockIn(…, zone)`, still as `YYYY-MM-DD HH:MM`.
+
+**Consequence:** the chat agrees with the Estimates page and the portal on what is still awaiting a signature, and "what did we write, sign or call today?" counts the company's day. The rolling 30-day call window still counts back from the moment, as a rolling window should (#182). No SQL.
+
+## 197 — The contact window holds its drafts and asks before its buttons leave
+
+**Date:** 2026-10-10
+
+**Context:** #188 and #190 made the appointment window hold what is typed in its Tasks, Notes and Texts tabs. The contact window kept the old way: the drafts lived inside their panels, which unmount on a tab switch, and nothing asked before closing. Its fields autosave, so it has no Save, and its close had no question at all. A task, an internal note, a shared note or a text typed there was thrown away by a tab switch (a shared note also by switching to Internal), the X, Close, Delete, the stage buttons, booking, Create Job, or opening an estimate or an appointment.
+
+**Decision:**
+- **The window holds the drafts** (`useTaskDraft`, `useTextDrafts`, and `useNotesPaneDrafts` for the Notes tab: the internal note, which side is open, and the shared note with its tag), passed down as in the appointment window. A shared note's in-flight flag lives with it, so a tab switch mid-share can't share it twice, and its calls go through `attempt`.
+- **Every button that leaves the window asks** "Discard what you've typed on this contact?" while a draft is waiting (`leaveOk`): the X, the backdrop and Close, Delete, the stage buttons, Confirm & Add to Calendar, Create Job, and leaving for an estimate or an appointment (`LeadEstimateButton` and `LeadAppointmentsPanel` take it as an optional prop). Nothing is committed for you: there is no Save, and Add Task, Add Note, Share note and Send stay the commits.
+- **Each window is its record's own.** A popup toast or a link can open another contact, or another appointment, while one is open. The hosts re-rendered the same window for the new record, so the first one's drafts and fields stayed in it, ready to be added or saved onto the second (the contact window's autosave would write them there on the next keystroke). The contact window (Contacts, Pipeline) and the appointment window (Calendar, Schedule) are now keyed by the record, so the new one opens fresh.
+- **A shared note's refresh after a share goes through `attempt` too**, so one that never arrives can't leave Share stuck on.
+
+**Consequence:** a task, an internal note, a new shared note or a text being typed in the contact window is no longer dropped by a tab switch or by one of the window's buttons without asking, and no window carries one record's work into another. What it still loses (an edit in the last second before closing, shared-note edits and answers, a call note) and its Delete without a question are in TECH_DEBT. No SQL.
+

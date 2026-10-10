@@ -303,10 +303,13 @@ export function EstimatesView({
   // The company's calendar, not the browser's or the server's: a
   // document made after 5pm Pacific is that day's. A date still being
   // typed is no edge rather than a broken window.
-  const dateWindow = resolveWindow(
-    { preset: datePreset, from: dateFrom, to: dateTo },
-    new Date(`${today}T12:00:00`)
-  );
+  // Noon of the company's today: the date window above counts from it,
+  // and every expiry below is judged on it (DECISIONS #195). The clock
+  // where the page drew put a proposal under Declined from 5pm Pacific on
+  // its last day on the server's first draw, while the browser still had
+  // it awaiting a signature.
+  const asOf = new Date(`${today}T12:00:00`);
+  const dateWindow = resolveWindow({ preset: datePreset, from: dateFrom, to: dateTo }, asOf);
   const madeInWindow = stampedWithin({ from: calendarDay(dateWindow.from), to: calendarDay(dateWindow.to) }, zone);
   const scoped = estimates.filter((e) => {
     const lead = leadById.get(e.lead_id);
@@ -332,12 +335,12 @@ export function EstimatesView({
   // reads as the rep's number, and somebody quotes it as theirs.
   const counts = BUCKETS.map((b) => ({
     ...b,
-    ...funnelCardStats(scoped, b.key, repFilter, peopleFor),
+    ...funnelCardStats(scoped, b.key, repFilter, peopleFor, asOf),
   }));
 
   const active = BUCKETS.find((b) => b.key === bucket)!;
-  const wholeBucket = estimates.filter((e) => inFunnelBucket(e, active.key));
-  const inThisBucket = scoped.filter((e) => inFunnelBucket(e, active.key));
+  const wholeBucket = estimates.filter((e) => inFunnelBucket(e, active.key, asOf));
+  const inThisBucket = scoped.filter((e) => inFunnelBucket(e, active.key, asOf));
 
   // Options come from what is actually in the bucket, never from the
   // full list of reps or statuses.
@@ -354,14 +357,14 @@ export function EstimatesView({
     .map((id) => ({ id, label: repName(id) }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const statusOptions = [...new Set(wholeBucket.map((e) => effectiveEstimateStatus(e)))]
+  const statusOptions = [...new Set(wholeBucket.map((e) => effectiveEstimateStatus(e, asOf)))]
     .sort()
     .map((s) => ({ id: s, label: s }));
 
   const beforeChips = inThisBucket.filter(
     (e) =>
       matchesRepFilter(peopleFor(e), repFilter) &&
-      (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e)))
+      (statusFilter.size === 0 || statusFilter.has(effectiveEstimateStatus(e, asOf)))
   );
   const followUp = (e: EstimateListRow) => ({ ...e, views: viewsByEstimate[e.id]?.count ?? 0 });
   const chipClock = followUpClock(today, zone);
@@ -613,7 +616,7 @@ export function EstimatesView({
                 const lead = leadById.get(e.lead_id);
                 const [salesperson, ...team] = seatsFor(e);
                 const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
-                const status = effectiveEstimateStatus(e);
+                const status = effectiveEstimateStatus(e, asOf);
                 // Nobody owes a signature on a document that is over.
                 // Expired belongs here too: the price lapsed, so a partial
                 // signature on it is history rather than an outstanding ask.

@@ -64,10 +64,10 @@ import {
 // deleted, and a button that moves a lead to a stage this company
 // doesn't have would just fail.
 const QUICK_EXIT_KEYS: StageKey[] = ["not_interested", "lost"];
-import { TasksPanel } from "./tasks-panel";
+import { TasksPanel, useTaskDraft } from "./tasks-panel";
 import { repDropdownOptions } from "@/lib/data/rep-options";
-import { LeadNotesPane } from "./lead-notes-pane";
-import { MessagesPanel } from "./messages-panel";
+import { LeadNotesPane, useNotesPaneDrafts } from "./lead-notes-pane";
+import { MessagesPanel, useTextDrafts } from "./messages-panel";
 import {
   DispatcherPicker,
   type DispatcherPickerBootstrap,
@@ -177,6 +177,19 @@ export function LeadForm({
   );
   const [showBooking, setShowBooking] = useState(false);
   const [tab, setTab] = useState<Tab>(initialTab ?? "Overview");
+  // What's being typed on the Tasks, Notes and Texts tabs, held here so a
+  // tab switch doesn't throw it away and leaving the window can ask
+  // first (DECISIONS #197). The fields above autosave; these don't.
+  const taskDraft = useTaskDraft();
+  const notesDrafts = useNotesPaneDrafts();
+  const textDrafts = useTextDrafts();
+  const draftsWaiting = taskDraft.waiting || notesDrafts.waiting || textDrafts.waiting;
+  // Every way out asks before dropping a draft: the X, Close, Delete, the
+  // stage buttons, booking, Create Job, and leaving for an estimate or an
+  // appointment.
+  function leaveOk() {
+    return !draftsWaiting || window.confirm("Discard what you've typed on this contact?");
+  }
   const tabsRowRef = useRef<HTMLDivElement>(null);
   const isPhone = usePhoneWidth();
   // Opened straight onto a tab (a phone card's Text button): bring the
@@ -345,7 +358,7 @@ export function LeadForm({
   // the stage dropdown and a save. Confirmed first because it drops them
   // from the active pipeline, and logged so there's a record of who did it.
   async function handleQuickExit(stage: string) {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     const who = clientName(form) || "this contact";
     if (!confirm(`Move ${who} to ${stage}? They'll drop out of the active pipeline.`)) return;
 
@@ -430,6 +443,7 @@ export function LeadForm({
   // refresh.
   const needsRefreshOnClose = useRef(false);
   function handleClose() {
+    if (!leaveOk()) return;
     if (needsRefreshOnClose.current) {
       needsRefreshOnClose.current = false;
       refresh();
@@ -506,7 +520,7 @@ export function LeadForm({
   }
 
   async function handleDelete() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     setPending(true);
     const result = await deleteLead(lead.id);
     setPending(false);
@@ -519,7 +533,7 @@ export function LeadForm({
   }
 
   async function handleConvert() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     setPending(true);
     const result = await convertLeadToJob(lead);
     setPending(false);
@@ -532,7 +546,7 @@ export function LeadForm({
   }
 
   async function handleBook() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     setPending(true);
     const contactName = clientName(form);
     const result = await bookAppointmentForLead(lead.id, lead.stage, {
@@ -978,6 +992,7 @@ export function LeadForm({
               paidCents={estimateIndex?.byLead[lead.id]?.paidCents ?? 0}
               canView={!!estimateIndex?.canView}
               canCreate={!!estimateIndex?.canCreate}
+              leaveOk={leaveOk}
             />
             {/* One-click exits from the pipeline. Each is shown only if the
                 stage exists for this company and isn't the current one, so
@@ -1360,7 +1375,7 @@ export function LeadForm({
         )}
 
         {lead && tab === "Appointments" && (
-          <LeadAppointmentsPanel leadId={lead.id} reps={reps} />
+          <LeadAppointmentsPanel leadId={lead.id} reps={reps} leaveOk={leaveOk} />
         )}
 
         {lead && tab === "Tasks" && (
@@ -1371,6 +1386,7 @@ export function LeadForm({
             members={allMembers}
             readOnly={readOnly}
             onChanged={refresh}
+            draft={taskDraft}
           />
         )}
 
@@ -1382,11 +1398,12 @@ export function LeadForm({
             readOnly={readOnly}
             onChanged={refresh}
             clientName={clientName(form)}
+            drafts={notesDrafts}
           />
         )}
 
         {lead && tab === "Texts" && (
-          <MessagesPanel leadId={lead.id} phone={form.phone} readOnly={readOnly} />
+          <MessagesPanel leadId={lead.id} phone={form.phone} readOnly={readOnly} drafts={textDrafts} />
         )}
 
         {lead && tab === "Calls" && <CallsPanel leadId={lead.id} readOnly={readOnly} />}

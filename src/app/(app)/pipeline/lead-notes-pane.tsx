@@ -16,9 +16,41 @@ import {
   getSharedNotes,
   setSharedNotePinned,
 } from "@/lib/actions/shared-notes";
-import { NotesTimeline } from "./notes-timeline";
+import { NotesTimeline, useNoteDraft } from "./notes-timeline";
+import { attempt } from "@/lib/appointment-save";
 
 type Side = "internal" | "shared";
+
+/**
+ * What's being typed on the Notes tab, held by whoever owns it: the
+ * internal note, which side is open, and the shared note with its tag.
+ * The pane unmounts on a tab switch, and the shared side on a switch to
+ * Internal, so a draft kept inside them vanished -- the contact window
+ * holds this and passes it in (DECISIONS #197).
+ */
+export function useNotesPaneDrafts() {
+  const note = useNoteDraft();
+  const [side, setSide] = useState<Side>("internal");
+  const [sharedBody, setSharedBody] = useState("");
+  const [sharedKind, setSharedKind] = useState<SharedNoteKind | null>(null);
+  // On its way to the client, held here so a tab switch mid-share can't
+  // bring it back with Share live and share it twice.
+  const [sharing, setSharing] = useState(false);
+  return {
+    note,
+    side,
+    setSide,
+    sharedBody,
+    setSharedBody,
+    sharedKind,
+    setSharedKind,
+    sharing,
+    setSharing,
+    waiting: note.waiting || sharedBody.trim() !== "",
+  };
+}
+
+export type NotesPaneDrafts = ReturnType<typeof useNotesPaneDrafts>;
 
 function when(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -43,6 +75,7 @@ export function LeadNotesPane({
   readOnly,
   onChanged,
   clientName,
+  drafts,
 }: {
   leadId: string;
   notes: LeadNote[];
@@ -50,8 +83,13 @@ export function LeadNotesPane({
   readOnly?: boolean;
   onChanged: () => void;
   clientName: string;
+  // Held by the window so they outlive a tab switch; the pane keeps its
+  // own when none are given.
+  drafts?: NotesPaneDrafts;
 }) {
-  const [side, setSide] = useState<Side>("internal");
+  const own = useNotesPaneDrafts();
+  const d = drafts ?? own;
+  const { side, setSide } = d;
   const [shared, setShared] = useState<SharedNote[] | null | undefined>(undefined);
   const [canWrite, setCanWrite] = useState(false);
   const [me, setMe] = useState<string | null>(null);
@@ -108,7 +146,14 @@ export function LeadNotesPane({
       </div>
 
       {side === "internal" ? (
-        <NotesTimeline leadId={leadId} notes={notes} reps={reps} readOnly={readOnly} onChanged={onChanged} />
+        <NotesTimeline
+          leadId={leadId}
+          notes={notes}
+          reps={reps}
+          readOnly={readOnly}
+          onChanged={onChanged}
+          draft={d.note}
+        />
       ) : (
         <SharedNotesList
           leadId={leadId}
@@ -118,6 +163,7 @@ export function LeadNotesPane({
           me={me}
           clientName={clientName}
           onChanged={load}
+          draft={d}
         />
       )}
     </div>
@@ -132,6 +178,7 @@ function SharedNotesList({
   me,
   clientName,
   onChanged,
+  draft,
 }: {
   leadId: string;
   notes: SharedNote[] | null | undefined;
@@ -140,9 +187,16 @@ function SharedNotesList({
   me: string | null;
   clientName: string;
   onChanged: () => Promise<void>;
+  draft: NotesPaneDrafts;
 }) {
-  const [body, setBody] = useState("");
-  const [kind, setKind] = useState<SharedNoteKind | null>(null);
+  const {
+    sharedBody: body,
+    setSharedBody: setBody,
+    sharedKind: kind,
+    setSharedKind: setKind,
+    sharing,
+    setSharing,
+  } = draft;
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<{ id: string; body: string } | null>(null);
@@ -156,16 +210,20 @@ function SharedNotesList({
     return r?.name || r?.email || "Someone on the team";
   }
 
+  // Through attempt, the call and the refresh after it: one that never
+  // reaches the server says so instead of leaving its button on
+  // "Sharing…" for good. A refresh that fails after the change landed
+  // still counts as done -- the note is there; the list catches up later.
   async function run(key: string, action: () => Promise<{ error?: string }>) {
     setBusy(key);
     setError("");
-    const res = await action();
+    const res = await attempt(action);
     if (res.error) {
       setBusy("");
       setError(res.error);
       return false;
     }
-    await onChanged();
+    await attempt(onChanged);
     setBusy("");
     return true;
   }
@@ -351,9 +409,12 @@ function SharedNotesList({
             <button
               type="button"
               className="btn-primary small"
-              disabled={busy === "add" || !body.trim()}
+              disabled={busy === "add" || sharing || !body.trim()}
               onClick={async () => {
-                if (await run("add", () => addSharedNote(leadId, body, kind))) {
+                setSharing(true);
+                const shared = await run("add", () => addSharedNote(leadId, body, kind));
+                setSharing(false);
+                if (shared) {
                   setBody("");
                   setKind(null);
                 }

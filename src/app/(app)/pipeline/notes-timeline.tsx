@@ -53,7 +53,7 @@ export function NotesTimeline({
 
   // Both calls go through attempt: one that never reaches the server says
   // so instead of leaving Add Note on "Adding…", and an error the server
-  // returns is shown. (A delete the database refuses returns none.)
+  // returns -- a delete your role may not make included -- is shown.
   async function handleAdd() {
     if (!body.trim()) {
       setError("Type the note first.");
