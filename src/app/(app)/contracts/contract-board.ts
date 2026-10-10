@@ -112,7 +112,7 @@ type NoReplyDoc = Pick<Estimate, "status" | "expires_at" | "sent_at" | "viewed_a
  * and an expired one is over, with nobody owed a reply on it.
  *
  * Two clocks: `now`, the real moment the days are counted to, and
- * `asOf`, the company's day the expiry is judged on (DECISIONS #193).
+ * `asOf`, the company's day the expiry is judged on (DECISIONS #194).
  * A noon-of-today date is no instant to count a duration to: it falls
  * hours apart on a UTC server and in a Pacific browser.
  */

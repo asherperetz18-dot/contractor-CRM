@@ -26,7 +26,7 @@ type Side = "internal" | "shared";
  * internal note, which side is open, and the shared note with its tag.
  * The pane unmounts on a tab switch, and the shared side on a switch to
  * Internal, so a draft kept inside them vanished -- the contact window
- * holds this and passes it in (DECISIONS #195).
+ * holds this and passes it in (DECISIONS #196).
  */
 export function useNotesPaneDrafts() {
   const note = useNoteDraft();

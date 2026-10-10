@@ -118,7 +118,7 @@ export function ContractsView({
   // Two clocks. `now` is the real moment, for durations counted from a
   // timestamp (no reply, average days to sign) and the month a signature
   // fell in. `asOf`, noon of the company's today, judges expiry: columns,
-  // badges, totals, countdowns (DECISIONS #193). The clock where the page
+  // badges, totals, countdowns (DECISIONS #194). The clock where the page
   // drew filed a contract under Closed from 5pm Pacific on its last day on
   // the server's first draw, while the browser said Sent.
   const now = new Date();

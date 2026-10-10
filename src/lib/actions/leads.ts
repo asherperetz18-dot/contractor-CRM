@@ -522,7 +522,7 @@ export async function completeLeadTask(taskId: string) {
   const supabase = await createClient();
   // .select() so a tick the policy refused (Field and Production, or a
   // scoped dispatcher off their own leads) says so instead of leaving the
-  // task open without a word (DECISIONS #192).
+  // task open without a word (DECISIONS #193).
   const { data, error } = await supabase
     .from("lead_tasks")
     .update({ completed_at: new Date().toISOString() })

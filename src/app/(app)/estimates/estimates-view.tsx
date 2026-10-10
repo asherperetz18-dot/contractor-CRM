@@ -304,7 +304,7 @@ export function EstimatesView({
   // document made after 5pm Pacific is that day's. A date still being
   // typed is no edge rather than a broken window.
   // Noon of the company's today: the date window above counts from it,
-  // and every expiry below is judged on it (DECISIONS #193). The clock
+  // and every expiry below is judged on it (DECISIONS #194). The clock
   // where the page drew put a proposal under Declined from 5pm Pacific on
   // its last day on the server's first draw, while the browser still had
   // it awaiting a signature.

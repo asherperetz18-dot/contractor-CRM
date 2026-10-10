@@ -54,7 +54,7 @@ export function inFunnelBucket(
   e: Pick<Estimate, "kind" | "status" | "expires_at">,
   key: FunnelCardKey,
   /** The clock to judge expiry by: noon of the company's today on the
-   *  staff screens and in the AI chat (DECISIONS #193). */
+   *  staff screens and in the AI chat (DECISIONS #194). */
   now: Date = new Date()
 ): boolean {
   if (e.kind === "invoice") return false;

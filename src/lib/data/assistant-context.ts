@@ -170,7 +170,7 @@ export type AssistantContextInput = {
   companyName: string;
   todayISO: string;
   /** The company's IANA zone: documents are dated and calls timed on its
-   *  clock, not the server's UTC (DECISIONS #194). */
+   *  clock, not the server's UTC (DECISIONS #195). */
   zone: string;
   stages: string[];
   team: { id: string; name: string }[];
@@ -310,7 +310,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
     const none = new Set<string>();
     const noRep = () => [];
     // Expiry on the company's today, as the Estimates page and the portal
-    // judge it (DECISIONS #193, #194): the server's clock called a proposal
+    // judge it (DECISIONS #194, #195): the server's clock called a proposal
     // Expired from 5pm Pacific on its last day.
     const asOf = new Date(`${input.todayISO}T12:00:00`);
     const dayOf = isoDateReader(input.zone);
@@ -463,7 +463,7 @@ export function buildAssistantContext(input: AssistantContextInput): string {
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, MAX_CALLS_IN_CONTEXT);
     // On the company's clock: the UTC wall time read a 10am call as 17:00
-    // all day, and from 5pm put it on tomorrow (DECISIONS #194).
+    // all day, and from 5pm put it on tomorrow (DECISIONS #195).
     const pad = (n: number) => String(n).padStart(2, "0");
     const callTime = (iso: string) => {
       const w = wallClockIn(new Date(iso), input.zone);

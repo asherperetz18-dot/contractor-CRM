@@ -13,7 +13,7 @@ import {
 
 /**
  * Estimates, Contracts and the Contract Board judged a proposal's expiry
- * by the clock where the page drew (DECISIONS #193): the server's UTC on
+ * by the clock where the page drew (DECISIONS #194): the server's UTC on
  * the first draw -- already tomorrow from 5pm Pacific -- then the
  * browser's. On a proposal's last evening the server's page filed it
  * under Lost and Closed while the browser said Sent, and the portal let
