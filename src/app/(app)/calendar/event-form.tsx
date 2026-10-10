@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useCompanyToday } from "@/components/company-zone-context";
 import { usePathname, useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { PropertyPeek } from "@/components/ui/property-peek";
@@ -71,6 +70,10 @@ type Tab =
   | "Texts"
   | "Notes";
 
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 /** What a rep can record as the result of an appointment they attended. */
 const OUTCOME_STATUSES: EventStatus[] = ["Showed", "Won", "No-show", "Cancelled"];
 
@@ -117,12 +120,10 @@ function friendlyWhen(dateStr: string, timeStr: string, endTimeStr: string): str
   return timeLabel ? `${dayLabel} at ${timeLabel}` : dayLabel;
 }
 
-/** `today` is the company's (useCompanyToday): a new appointment's day
- *  when nothing picked one. */
-function toInput(today: string, event?: Event, initialDate?: string): EventInput {
+function toInput(event?: Event, initialDate?: string): EventInput {
   return {
     title: event?.title ?? "",
-    date: event?.date ?? initialDate ?? today,
+    date: event?.date ?? initialDate ?? todayISO(),
     time: event?.time ?? "09:00",
     end_time: event?.end_time ?? "",
     event_type: event?.event_type ?? "Estimate",
@@ -212,11 +213,10 @@ export function EventForm({
   // Everything downstream reads this, so the lock reaches all 20-odd
   // controls without each one having to remember the second reason.
   const readOnly = readOnlyProp || lockedByOtherDispatcher;
-  const today = useCompanyToday();
-  const [form, setForm] = useState<EventInput>(toInput(today(), event, initialDate));
+  const [form, setForm] = useState<EventInput>(toInput(event, initialDate));
   // Snapshot of how the appointment looked when opened, so closing can
   // tell "nothing touched" from "about to lose work".
-  const [openedWith] = useState<EventInput>(() => toInput(today(), event, initialDate));
+  const [openedWith] = useState<EventInput>(() => toInput(event, initialDate));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("Appointment");

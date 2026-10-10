@@ -184,7 +184,7 @@ function SetupLine({ setup }: { setup: CompanyDirectoryRow["setup"] }) {
  * its own Admin gets from Settings › Backup, without saved keys.
  */
 function ExportCompany({ companyId }: { companyId: string }) {
-  // The file is named for the company's day, not the UTC one.
+  // The file is named for the signed-in company's day, not the UTC one.
   const today = useCompanyToday();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);

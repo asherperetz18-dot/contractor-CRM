@@ -2452,19 +2452,19 @@ The shared account can't simply be used for any recording on it. `call_logs` is 
 **Date:** 2026-10-09
 
 **Context:** After #175–#186, the reports, dashboards and their pickers went by the company's day, but the screens that set a default date or mark today still took it from `new Date().toISOString().slice(0, 10)`, the UTC date, already tomorrow from 5pm Pacific (4pm in winter):
-- **Default dates:** a new task's due date, a new contact's Date received and the contact window's booking date, the appointment wizard (and the Date received it saves for a contact it creates), the Calendar's event form, a manual payment's Received on, a completion certificate's Completed on.
+- **Default dates:** a new task's due date, a new contact's Date received and the contact window's booking date, the appointment wizard (and the Date received it saves for a contact it creates), a manual payment's Received on, a completion certificate's Completed on.
 - **Limits:** the Signed on paper date stopped at the UTC date, and its default was the browser's local day.
-- **Today marks:** the Calendar's today, and the month it opened on (its server page read the server's UTC date, on purpose, so the board's server and browser draws matched); the contact window's and the customer portal's upcoming and past visits.
+- **Today marks:** the Calendar's today, and the month it opened on (its server page read the server's UTC date to agree with the board's own today, also the UTC date); the contact window's and the customer portal's upcoming and past visits.
 - **Download names:** the backup, the platform admin's company export and the Lead Refunds CSV.
 
-So in the evening each of these started on, marked or named tomorrow, and today's evening visits were filed under Past.
+So in the evening each of these started on, offered, marked or named tomorrow, and today's evening visits were filed under Past.
 
 **Decision:**
 - **The app layout hands every screen the company's zone** (`CompanyZoneProvider`), from the company row it already reads through the cached chrome (`getCompanyChrome` now selects `timezone`; saving Company Profile drops that cache). No extra database read, the same way the time format is handed down.
-- **`useCompanyToday()`** returns a function that reads today in that zone when called (`isoDateInZone(new Date(), zone)`). The server's first draw and the browser's give the same day, so a default date or the Calendar's today hydrates cleanly, which the UTC date was there for. Outside the app shell it gives the browser's own day.
-- Every screen above calls it: in the initial state of a form, its reset, the Calendar's Today button and today mark, and a download's name. The contact window's list keeps its today fixed from when it opens, as before.
+- **`useCompanyToday()`** returns a function that reads today in that zone when called (`isoDateInZone(new Date(), zone)`). The server's first draw and the browser's give the same day, so a default date or the Calendar's today hydrates cleanly. Outside the app shell it gives the browser's own day.
+- Every screen above calls it: in the initial state of a form, its reset, the Calendar's Today button and today mark, and a download's name (the signed-in company's day, also for a platform admin's export of another company). The contact window's list keeps its today fixed from when it opens, as before. The Calendar's appointment window only opens saved appointments, so its unreachable fallback date was left alone.
 - **The Calendar's page** opens on the month of `companyToday()`, the same day the board marks.
 - **The customer portal** is outside the app shell. Its page already works out the company's today for certificates (#186) and now hands that day to the visit lists.
 
-**Consequence:** the screens above take today from the company's calendar. What reads a calendar day as it is on purpose: the Schedule's server window (UTC, a day wider, #143), the reminder crons (the company's wall clock), and dates read from an imported file. Client formatters and the dashboards' presets still use the browser's zone (TECH_DEBT); the zone is now in hand for them. No SQL.
+**Consequence:** the screens above take today from the company's calendar. What reads a calendar day as it is on purpose: the Schedule's server window (UTC, a day wider, #143), the reminder crons (the company's wall clock), and dates read from an imported file. Client formatters, the dashboards' presets and some form defaults that already read the browser's own day still use the browser's zone, and the review found server pages and a database default that still read the UTC day (both in TECH_DEBT). No SQL.
 

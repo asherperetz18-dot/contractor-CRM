@@ -34,7 +34,6 @@ const sites = [
   "../app/(app)/pipeline/tasks-panel.tsx",
   "../app/(app)/pipeline/lead-form.tsx",
   "../app/(app)/schedule/appointment-wizard.tsx",
-  "../app/(app)/calendar/event-form.tsx",
   "../app/(app)/calendar/calendar-board.tsx",
   "../app/(app)/estimates/[id]/record-payment.tsx",
   "../app/(app)/estimates/[id]/completion-certificate.tsx",
@@ -46,7 +45,7 @@ const sites = [
   "../app/(app)/lead-refunds/lead-refunds-view.tsx",
 ];
 
-test("every default date, today mark and dated file name in the app comes from the company's day", () => {
+test("the screens that took today from the UTC date take it from the company's day", () => {
   for (const path of sites) {
     const s = source(path);
     assert.match(s, /const today = useCompanyToday\(\);/, path);
