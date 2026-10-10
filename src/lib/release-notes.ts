@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.265.0",
+    date: "2026-10-10",
+    notes: [
+      "Settings › QuickBooks › Send invoices to QuickBooks: when no products or services are listed, a \"Read products and services\" button now reads them from QuickBooks right there, and says what to do if QuickBooks has none. A greyed-out Save now says what's missing. Refresh accounts also says how many products and services it read.",
+    ],
+  },
+  {
     version: "1.264.0",
     date: "2026-10-10",
     notes: [
