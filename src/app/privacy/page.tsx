@@ -96,6 +96,12 @@ export default function PrivacyPage() {
           QuickBooks even if they&apos;re deleted in the CRM, and so does anything sent before your company disconnects
           QuickBooks or closes its CRM account.
         </p>
+        <p>
+          If your company connects a WhatsApp number through Whapi.Cloud, the messages, photos, videos and documents
+          posted in the WhatsApp groups that number is in, with each sender&apos;s WhatsApp name and phone number, pass
+          through Whapi to the CRM. Those from a group your company links to a project are shown on that project and
+          its files are saved with it.
+        </p>
         <p>We may also disclose information if the law requires it.</p>
 
         <h2>How long it is kept</h2>

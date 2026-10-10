@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.266.0",
+    date: "2026-10-10",
+    notes: [
+      "Project WhatsApp groups: connect a second WhatsApp number (the project bot) in Settings › WhatsApp Groups and add it to your projects' WhatsApp groups. On Projects, each job has a new brown 💬 WhatsApp chip: link the job's group (or several — one with the client, one for the crew) and everything said in it shows there, with the client and your team marked. Photos posted in the group are copied into the job's Photos automatically, and videos and documents into its files. Linking a group also brings in its last 100 messages.",
+    ],
+  },
+  {
     version: "1.265.0",
     date: "2026-10-10",
     notes: [

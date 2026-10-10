@@ -363,6 +363,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       { title: "Email Templates", desc: "Manage email templates for proposals, notifications, bulk outreach", icon: "📄" },
       { title: "Chat & Messaging", desc: "Chat provider configuration, webhooks, SMS, WhatsApp", icon: "💬" },
+      {
+        title: "WhatsApp Groups",
+        desc: "Connect a project bot number — every message and photo in a project's WhatsApp group lands on that project",
+        icon: "💬",
+        href: "/settings/whatsapp-groups",
+      },
       { title: "Short Links", desc: "Create and manage short URLs with domain routing and analytics", icon: "🔗" },
     ],
   },

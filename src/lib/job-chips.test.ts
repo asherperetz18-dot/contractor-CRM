@@ -25,6 +25,7 @@ const ALL_KINDS: JobChipKind[] = [
   "bills",
   "permits",
   "photos",
+  "whatsapp",
   "client",
   "report",
   "certificate",
@@ -72,9 +73,10 @@ test("every chip shares the one pill shape", () => {
 });
 
 test("each non-money idea keeps its own color", () => {
-  // Checklist blue, permits indigo, photos purple, client rose,
-  // report slate: one color per idea, so no two of them may collide.
-  const others: JobChipKind[] = ["checklist", "permits", "photos", "client", "report"];
+  // Checklist blue, permits indigo, photos purple, the job's WhatsApp
+  // group brown, client rose, report slate: one color per idea, so no
+  // two of them may collide.
+  const others: JobChipKind[] = ["checklist", "permits", "photos", "whatsapp", "client", "report"];
   const classes = others.map((k) => jobChipClass(k));
   assert.equal(new Set(classes).size, others.length);
   for (const kind of others) {
@@ -94,4 +96,10 @@ test("the Production Board's status chips reuse the idea they belong to", () => 
   assert.equal(jobChipGroup("certificate"), "records");
   assert.equal(jobChipClass("started"), jobChipClass("checklist"));
   assert.equal(jobChipGroup("started"), "progress");
+});
+
+test("the job's WhatsApp group is a record in its own brown -- never the money green", () => {
+  assert.match(jobChipClass("whatsapp"), /proj-chip-chat/);
+  assert.doesNotMatch(jobChipClass("whatsapp"), /proj-chip-in|proj-chip-out/);
+  assert.equal(jobChipGroup("whatsapp"), "records");
 });

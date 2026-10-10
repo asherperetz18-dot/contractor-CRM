@@ -17,6 +17,7 @@ import { jobChipClass } from "@/lib/job-chips";
 import { Modal } from "@/components/ui/modal";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
 import { JobPhotos } from "./job-photos";
+import { JobWhatsApp } from "./job-whatsapp";
 import { JobLedger } from "./job-ledger";
 import { toggleLedger, type LedgerFilter } from "@/lib/data/job-ledger";
 import { NewInvoiceModal } from "@/components/invoices/new-invoice-modal";
@@ -284,6 +285,7 @@ export function ProjectsView({
     "any" | { leadId: string; estimateId: string } | null
   >(null);
   const [photosFor, setPhotosFor] = useState<{ leadId: string; estimateId: string; label: string } | null>(null);
+  const [whatsAppFor, setWhatsAppFor] = useState<{ estimateId: string; label: string } | null>(null);
   const openLedgersRaw = useSyncExternalStore(
     subscribeLedgers,
     getOpenLedgersSnapshot,
@@ -553,6 +555,13 @@ export function ProjectsView({
           canFile={canFileDocs}
           canDelete={canDeletePhotos}
           onClose={() => setPhotosFor(null)}
+        />
+      )}
+      {whatsAppFor && (
+        <JobWhatsApp
+          estimateId={whatsAppFor.estimateId}
+          jobLabel={whatsAppFor.label}
+          onClose={() => setWhatsAppFor(null)}
         />
       )}
       {documentsFor && (
@@ -1108,6 +1117,13 @@ export function ProjectsView({
                           onClick={() => setPhotosFor({ leadId: p.leadId, estimateId: p.estimateId, label: p.customer })}
                         >
                           📷 Photos
+                        </button>
+                        <button
+                          type="button"
+                          className={jobChipClass("whatsapp")}
+                          onClick={() => setWhatsAppFor({ estimateId: p.estimateId, label: p.customer })}
+                        >
+                          💬 WhatsApp
                         </button>
                         {/* The person behind the job: the full client card on
                             Contacts (calls, texts, appointments, files), via
