@@ -149,10 +149,9 @@ What: the footer Save now commits the appointment, a picked result, a typed task
 - The insert policy on `lead_tasks` (0070) admits Office, Sales and Dispatch only, so a Field or Production member who can edit the appointment gets "Couldn't create that task — your role may not have permission." The same message shows for a task with its due date cleared. (A ☐ or ✕ the database refuses now says so, DECISIONS #192, but the buttons still show to roles that can't use them.)
 - The window's task list shows no due times: the Calendar and Schedule load tasks without `due_time` (`src/lib/data/appointment-context.ts`).
 - Once any of the appointment's own fields is edited, Save writes the whole row from the page's copy (`updateEvent` → `toRow`), so a reschedule made since the page loaded (a drag on the board, the Google Calendar sync, someone else's edit) is put back, along with seat, title and job changes, and the moved date makes `rescheduleResets` clear the follow-up and rain-alert stamps. The re-read on open refreshes only confirmations and status; Save skips the write only when nothing on the appointment changed. Fix: write only the fields the person changed (against the baseline), or re-read date and time on open too.
-- The contact window (`lead-form.tsx`) doesn't hold its panels' drafts: a task, note or text typed on its Tasks, Notes or Texts tab is still thrown away by a tab switch there, and its close doesn't count them.
 - The Photos tab's delete, Text Rep Info and Write estimate don't catch a call that never reaches the server, so their button can stay greyed out. Off this window, the Tasks page's ☐ (`tasks-view.tsx`) stays greyed out the same way. A note's ✕ shows to everyone who can add notes, though only Office and Admin may delete one; since DECISIONS #192 a refused delete says so.
 
-Why: these were found while fixing the lost task and result, and each is its own change (the cron one needs an `event_id` on `lead_tasks`). Impact: an extra open task after a result, an undone reschedule, a misleading or silent refusal, a lost draft in the contact window. Where: `src/app/api/cron/no-show-followups/route.ts`, `src/app/(app)/calendar/event-form.tsx`, `src/lib/actions/events.ts`, `src/app/(app)/tasks/tasks-view.tsx`, `src/app/(app)/pipeline/tasks-panel.tsx`, `notes-timeline.tsx`, `messages-panel.tsx`, `src/app/(app)/calendar/visit-media.tsx`, `src/app/(app)/pipeline/lead-form.tsx`, `src/lib/actions/leads.ts`, `src/lib/actions/lead-notes.ts`, `supabase/migrations/0070_dispatcher_write_access.sql`.
+Why: these were found while fixing the lost task and result, and each is its own change (the cron one needs an `event_id` on `lead_tasks`). Impact: an extra open task after a result, an undone reschedule, a misleading refusal. Where: `src/app/api/cron/no-show-followups/route.ts`, `src/app/(app)/calendar/event-form.tsx`, `src/lib/actions/events.ts`, `src/app/(app)/tasks/tasks-view.tsx`, `src/app/(app)/pipeline/tasks-panel.tsx`, `notes-timeline.tsx`, `messages-panel.tsx`, `src/app/(app)/calendar/visit-media.tsx`, `src/app/(app)/pipeline/lead-form.tsx`, `src/lib/actions/leads.ts`, `src/lib/actions/lead-notes.ts`, `supabase/migrations/0070_dispatcher_write_access.sql`.
 
 **Estimate expiry has gaps the clock fix didn't touch (found while making DECISIONS #193).**
 What:
@@ -162,4 +161,13 @@ What:
 - **The expiry day is the day the page loaded.** A tab left open past midnight keeps judging on yesterday until it reloads, the same as the date filters (#180).
 
 Why: each is its own change; the first two change what a status means. Impact: a cancelled job reads as a lost sale, and some screens call a lapsed proposal Sent. Where: `src/lib/data/types.ts` (`estimateExpired`), `src/lib/actions/estimates.ts` (void, send), `src/app/(app)/pipeline/lead-estimate-button.tsx`, `src/lib/data/lead-estimate-index.ts`, `src/app/(app)/calendar/event-form.tsx`, `src/app/(app)/estimates/[id]/change-orders.tsx`, `src/lib/data/global-search.ts`, `src/lib/estimate-flow-status.ts`, `src/lib/data/dashboard-rollup.ts`.
+
+**The contact window still loses some work (found while making DECISIONS #195).**
+What: the window now holds its Tasks, Notes and Texts drafts and asks before every way out, but:
+- **Delete removes the contact without asking**, unless a draft is waiting. `handleDelete` has no confirmation of its own.
+- **An edit to a contact's fields made less than a second before closing is dropped.** Autosave waits a second after the last keystroke, and closing the window cancels the wait.
+- **A task or note added here doesn't appear in its list or badge until the window is reopened.** The lists come from the snapshot the window opened with, and `router.refresh` doesn't reload it.
+- **Editing or answering a shared note, and a call note on the Calls tab, are still held inside their panels**, so a tab switch throws them away.
+
+Why: each is its own change. Impact: a contact deleted by one click, a last-second edit lost, a list that looks like the add failed. Where: `src/app/(app)/pipeline/lead-form.tsx`, `lead-notes-pane.tsx` (`SharedNotesList`), `calls-panel.tsx`, `pipeline-board.tsx`, `contacts-table.tsx`.
 

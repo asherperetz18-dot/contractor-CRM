@@ -2556,3 +2556,15 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** the chat agrees with the Estimates page and the portal on what is still awaiting a signature, and "what did we write, sign or call today?" counts the company's day. The rolling 30-day call window still counts back from the moment, as a rolling window should (#182). No SQL.
 
+## 195 — The contact window holds its drafts and asks before any way out
+
+**Date:** 2026-10-10
+
+**Context:** #188 and #190 made the appointment window hold what is typed in its Tasks, Notes and Texts tabs. The contact window kept the old way: the drafts lived inside their panels, which unmount on a tab switch, and nothing asked before closing. Its fields autosave, so it has no Save, and its close had no question at all. A task, an internal note, a shared note or a text typed there was thrown away by a tab switch (a shared note also by switching to Internal), the X, Close, Delete, the stage buttons, booking, Create Job, or opening an estimate or an appointment.
+
+**Decision:**
+- **The window holds the drafts** (`useTaskDraft`, `useTextDrafts`, and `useNotesPaneDrafts` for the Notes tab: the internal note, which side is open, and the shared note with its tag), passed down as in the appointment window. A shared note's in-flight flag lives with it, so a tab switch mid-share can't share it twice, and its calls go through `attempt`.
+- **Every way out asks** "Discard what you've typed on this contact?" while a draft is waiting (`leaveOk`): the X, the backdrop and Close, Delete, the stage buttons, Confirm & Add to Calendar, Create Job, and leaving for an estimate or an appointment (`LeadEstimateButton` and `LeadAppointmentsPanel` take it as an optional prop). Nothing is committed for you: there is no Save, and Add Task, Add Note, Share note and Send stay the commits.
+
+**Consequence:** nothing typed in the contact window's Tasks, Notes or Texts tab is dropped by a tab switch or a way out without asking. What it still loses (an edit in the last second before closing, shared-note edits and answers, a call note) and its Delete without a question are in TECH_DEBT. No SQL.
+

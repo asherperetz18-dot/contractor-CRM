@@ -40,9 +40,13 @@ function longDate(day: string): string {
 export function LeadAppointmentsPanel({
   leadId,
   reps,
+  leaveOk,
 }: {
   leadId: string;
   reps: Profile[];
+  /** Asked before leaving for the Calendar: the window it sits in may
+   *  hold unsaved drafts (DECISIONS #195). */
+  leaveOk?: () => boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -76,6 +80,7 @@ export function LeadAppointmentsPanel({
    * customer went.
    */
   function openAppointment(eventId: string) {
+    if (leaveOk && !leaveOk()) return;
     const back = `${pathname}?openLead=${leadId}`;
     router.push(`/calendar?openEvent=${eventId}&from=${encodeURIComponent(back)}`);
   }
