@@ -51,9 +51,10 @@ import { repDisplayName, repDropdownOptions } from "@/lib/data/rep-options";
 import { customerTeamSegments } from "@/lib/customer-team-line";
 import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
-import { moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
+import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
-import { TasksPanel } from "../pipeline/tasks-panel";
+import { appointmentFooter, applyLiveState, attempt, commitPending } from "@/lib/appointment-save";
+import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
 import { MessagesPanel } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
@@ -214,9 +215,12 @@ export function EventForm({
   // controls without each one having to remember the second reason.
   const readOnly = readOnlyProp || lockedByOtherDispatcher;
   const [form, setForm] = useState<EventInput>(toInput(event, initialDate));
-  // Snapshot of how the appointment looked when opened, so closing can
-  // tell "nothing touched" from "about to lose work".
-  const [openedWith] = useState<EventInput>(() => toInput(event, initialDate));
+  // How the appointment stands on the server, so closing can tell
+  // "nothing touched" from "about to lose work". Taken when the window
+  // opens and moved along with whatever the server says or this window
+  // saves since -- a rep's YES read on open, or a result just saved, is
+  // not an edit (DECISIONS #188).
+  const [baseline, setBaseline] = useState<EventInput>(() => toInput(event, initialDate));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("Appointment");
@@ -249,8 +253,8 @@ export function EventForm({
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
-  // Seeded from what the lead is already worth, so a rep confirming an
-  // existing figure does not retype it.
+  // Starts empty, so a Showed or Won asks for the value even when the
+  // lead already has one (TECH_DEBT).
   const [resultValue, setResultValue] = useState("");
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
@@ -262,6 +266,9 @@ export function EventForm({
     rep: false,
     status: false,
   });
+  // A task typed on the Tasks tab, held here rather than in the panel so
+  // it survives a tab switch and the footer's Save can commit it.
+  const taskDraft = useTaskDraft();
 
   /**
    * Re-reads what the server holds the moment this opens.
@@ -272,19 +279,17 @@ export function EventForm({
    * reading "Unconfirmed" while the database said otherwise.
    *
    * Anything the person has already touched is left alone, so this can
-   * never overwrite a change being made right now.
+   * never overwrite a change being made right now. The baseline takes the
+   * server's values too: they are what is saved, so the window doesn't
+   * count them as unsaved work -- which used to hide Save Result.
    */
   useEffect(() => {
     if (!event?.id) return;
     let cancelled = false;
     getEventLiveState(event.id).then((live) => {
       if (cancelled || !live) return;
-      setForm((f) => ({
-        ...f,
-        customer_confirmed: confirmTouched.customer ? f.customer_confirmed : live.customer_confirmed,
-        rep_confirmed: confirmTouched.rep ? f.rep_confirmed : live.rep_confirmed,
-        status: confirmTouched.status ? f.status : live.status,
-      }));
+      setForm((f) => applyLiveState(f, live, confirmTouched));
+      setBaseline((b) => applyLiveState(b, live));
     });
     return () => {
       cancelled = true;
@@ -370,92 +375,126 @@ export function EventForm({
     if (!resultStage && lead) setResultStage(suggestedStageFor(outcome, lead.stage, followUpStage));
   }
 
-  async function saveResult() {
-    if (!lead || !event) return;
+  /**
+   * Writes the picked result, returning the first refusal for the caller
+   * to show. Save Result runs it alone; the footer's Save runs it after
+   * the appointment's own fields.
+   */
+  async function commitResult(): Promise<{ error?: string }> {
+    if (!lead || !event) return {};
     const outcome = (pendingOutcome || form.status) as EventStatus;
     // Checked here as well as on the button. The button is the courtesy;
     // this is the rule, and a Showed with no value is the exact hole it
     // exists to close.
     if (VALUED_OUTCOMES.includes(outcome) && !resultValueOk) {
-      setError("Enter the estimated job value before saving this result.");
-      return;
+      return { error: "Enter the estimated job value before saving this result." };
     }
     const chosenStage = resultStage || suggestedStageFor(outcome, lead.stage, followUpStage);
-    setResultPending(true);
-    setError("");
 
     // The value goes first, because the server now refuses a Showed on a
     // lead worth nothing -- writing the outcome first would have it
     // reject the very save that was about to supply the number.
     if (VALUED_OUTCOMES.includes(outcome) && parsedResultValue > 0 && parsedResultValue !== lead.value) {
       const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
-      if (valueResult?.error) {
-        setResultPending(false);
-        setError(valueResult.error);
-        return;
-      }
+      if (valueResult?.error) return { error: valueResult.error };
     }
 
     // Then the outcome: it's the thing the red badge and the follow-up
     // cron both read, so it must land even if a later step fails.
     // Everything after it is optional detail.
     const statusResult = await setEventResult(event.id, outcome);
-    if (statusResult?.error) {
-      setResultPending(false);
-      setError(statusResult.error);
-      return;
-    }
+    if (statusResult?.error) return { error: statusResult.error };
     set("status", outcome);
+    // Saved, so not an edit: without this the window counted its own
+    // result as unsaved, hid Save Result and never said "✓ Result saved".
+    setBaseline((b) => ({ ...b, status: outcome }));
 
     if (chosenStage !== lead.stage) {
       const stageResult = await moveLeadStage(lead.id, chosenStage);
-      if (stageResult?.error) {
-        setResultPending(false);
-        setError(stageResult.error);
-        return;
-      }
+      if (stageResult?.error) return { error: stageResult.error };
     }
     if (resultNote.trim()) {
       const noteResult = await addLeadNote(lead.id, resultNote.trim(), event.id);
-      if (noteResult?.error) {
-        setResultPending(false);
-        setError(noteResult.error);
-        return;
-      }
+      if (noteResult?.error) return { error: noteResult.error };
     }
-    setResultPending(false);
+    // Cleared once it has all landed, so a later step failing in the
+    // footer's Save can't make a retry add the note twice.
     setResultNote("");
     setResultStage("");
     setPendingOutcome("");
     setResultSaved(true);
+    return {};
+  }
+
+  async function saveResult() {
+    setResultPending(true);
+    setError("");
+    const result = await attempt(commitResult);
+    setResultPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     router.refresh();
   }
 
+  /**
+   * The footer's Save: everything the window holds, in order -- the
+   * appointment's own fields, then a picked result, then a typed task.
+   * It used to write the appointment alone and close, so a result or a
+   * task entered on another tab was dropped without a word. A refusal
+   * stops it with the window open, saying what saved and what didn't.
+   */
   async function handleSave() {
     if (!form.title.trim()) {
       setError("Title is required.");
       return;
     }
-    setPending(true);
-    setError("");
-    const result = event
-      ? await updateEvent(event.id, form, confirmTouched)
-      : await createEvent(form);
-    setPending(false);
-    if (result?.error) {
-      setError(result.error);
+    // Before anything is written, so a missing job value can't leave the
+    // appointment saved and its result not.
+    if (resultDirty && !resultValueOk) {
+      setTab("Result");
+      setError("Enter the estimated job value before saving this result.");
       return;
     }
-    router.refresh();
+    setPending(true);
+    setError("");
+    const saving = form;
+    const outcome = await commitPending({
+      appointment: async () => {
+        const result = event
+          ? await updateEvent(event.id, saving, confirmTouched)
+          : await createEvent(saving);
+        if (!result?.error) setBaseline(saving);
+        return result;
+      },
+      result: resultDirty ? commitResult : undefined,
+      task: lead && taskDraft.waiting
+        ? async () => {
+            const result = await createLeadTask(lead.id, taskDraft.form);
+            if (!result?.error) taskDraft.reset();
+            return result;
+          }
+        : undefined,
+    });
+    setPending(false);
+    // Only when something landed: refreshing a tab that couldn't reach
+    // the server at all can reload the page out from under the window.
+    if (outcome.done.length) router.refresh();
+    if (outcome.error) {
+      setError(outcome.error);
+      return;
+    }
     onSaved();
   }
 
   async function handleDelete() {
     if (!event) return;
     setPending(true);
-    const result = await deleteEvent(event.id);
+    setError("");
+    const result = await attempt(() => deleteEvent(event.id));
     setPending(false);
-    if (result?.error) {
+    if (result.error) {
       setError(result.error);
       return;
     }
@@ -504,14 +543,28 @@ export function EventForm({
    * work to a stray click on the backdrop -- without any of that.
    *
    * The unsaved result note counts too: that tab says nothing is stored
-   * until Save Result, which makes it exactly the thing people lose.
+   * until it is saved, which makes it exactly the thing people lose. So
+   * does a task typed on the Tasks tab.
    */
-  const formDirty = !readOnly && JSON.stringify(form) !== JSON.stringify(openedWith);
-  // resultDirty, not its parts: a chosen stage counts too. Listing the
-  // note and the outcome by hand left the stage out, so picking DNC and
-  // closing threw it away without a word -- the change most likely to be
-  // made on its own was the one change nothing was watching.
-  const isDirty = !readOnly && (formDirty || resultDirty);
+  const formDirty = !readOnly && JSON.stringify(form) !== JSON.stringify(baseline);
+  /**
+   * Which save button the footer shows (appointmentFooter). Save Result
+   * commits the Result tab alone, so it is offered only while the result
+   * is all that's waiting; with an appointment edit or a typed task
+   * pending too, the footer offers Save, which commits all of it.
+   *
+   * resultDirty, not its parts: a chosen stage counts too. Listing the
+   * note and the outcome by hand left the stage out, so picking DNC and
+   * closing threw it away without a word.
+   */
+  const footer = appointmentFooter({
+    tab,
+    readOnly,
+    formDirty,
+    resultDirty,
+    taskPending: taskDraft.waiting,
+  });
+  const isDirty = footer.dirty;
 
   function requestClose() {
     if (isDirty && !window.confirm("Discard your unsaved changes to this appointment?")) return;
@@ -534,20 +587,6 @@ export function EventForm({
    * find their way back to another tab to do it.
    */
   const selfSaving = tab === "Texts" || tab === "Photos";
-
-  /**
-   * When the footer's Save is a trap rather than a courtesy.
-   *
-   * It writes the appointment fields and closes -- which on the Result tab
-   * means shutting the modal on an outcome or stage the user had chosen
-   * but not yet committed, since those go through Save Result. Two save
-   * buttons on one screen, only one of which saves what you just changed,
-   * is a coin toss nobody knows they are playing.
-   *
-   * So it appears there only when the appointment itself has been edited,
-   * which is the only case it has anything to do.
-   */
-  const footerSaveHidden = (selfSaving && !isDirty) || (tab === "Result" && !formDirty);
 
   function callPhone(phone: string) {
     window.dispatchEvent(
@@ -1149,7 +1188,9 @@ export function EventForm({
             />
           </Field>
           <p className="hint-note">
-            Nothing here is saved until you press Save Result.
+            {footer.saveResult
+              ? "Nothing here is saved until you press Save Result."
+              : "Nothing here is saved until you press Save, which saves it with your other changes."}
             {followUpStage && <> No-show and Cancelled suggest {followUpStage}; change the stage if it belongs elsewhere.</>}
           </p>
         </div>
@@ -1195,6 +1236,7 @@ export function EventForm({
           members={allMembers}
           readOnly={readOnly}
           onChanged={() => router.refresh()}
+          draft={taskDraft}
         />
       )}
 
@@ -1332,10 +1374,12 @@ export function EventForm({
                   describes, rebuilt one tab deeper. A greyed-out button
                   with no reason beside it is how people conclude the app
                   is broken. */}
-              {lead && event && tab === "Result" && !readOnly && !formDirty && (
+              {tab === "Result" && (footer.saveResult || (footer.save && resultDirty)) && (
                 <span className="est-tax-note">
                   {!resultValueOk ? (
                     "Enter the job value to save this result."
+                  ) : !footer.saveResult ? (
+                    "Not saved yet — Save stores it with your other changes."
                   ) : resultDirty ? (
                     "Not saved yet — press Save Result."
                   ) : resultSaved ? (
@@ -1348,14 +1392,14 @@ export function EventForm({
             </div>
             <div>
               <button type="button" className="btn-ghost" onClick={requestClose}>
-                {readOnly || footerSaveHidden ? "Close" : "Cancel"}
+                {footer.save ? "Cancel" : "Close"}
               </button>
-              {!readOnly && !footerSaveHidden && (
+              {footer.save && (
                 <button type="button" className="btn-primary" onClick={handleSave} disabled={pending}>
                   {pending ? "Saving…" : "Save"}
                 </button>
               )}
-              {lead && event && tab === "Result" && !readOnly && !formDirty && (
+              {footer.saveResult && (
                 <button
                   type="button"
                   className="btn-primary"

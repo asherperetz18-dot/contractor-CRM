@@ -144,3 +144,15 @@ What: 0211 prices a bought-list contact at $0 but leaves a contact with no sourc
 
 **The iPhone app has no Speaker button.**
 What: the dialer's Speaker button (DECISIONS #111) comes from the Android app's own CallAudio plugin, and the iPhone app has no Swift counterpart, so on iPhone the button is hidden (DECISIONS #171). Why: the TestFlight pipeline came first, and the plugin can't be tested without an iPhone build to install. Impact: iPhone users can't switch a CRM call to the loudspeaker from the dialer. Fix: a Swift `CallAudio` plugin with `isSpeakerOn`/`setSpeaker` over `AVAudioSession.overrideOutputAudioPort`, registered in the app, plus a name/method test like `call-audio.test.ts`.
+
+**The appointment window still has gaps around results and tasks (DECISIONS #188).**
+What: the footer Save now commits the appointment, a picked result and a typed task, but:
+- The 8pm "no outcome set" follow-up task the no-show cron adds stays open after a result is recorded. `lead_tasks` has no link to the appointment, only a title.
+- A Showed or Won asks for the job value even when the lead already has one: the value box starts empty.
+- The insert policy on `lead_tasks` (0070) admits Office, Sales and Dispatch only, so a Field or Production member who can edit the appointment gets "Couldn't create that task — your role may not have permission." The same message shows for a task with its due date cleared.
+- The window's task list shows no due times: the Calendar and Schedule load tasks without `due_time` (`src/lib/data/appointment-context.ts`).
+- Sending the rep's info, Write estimate and quick texts don't catch a call that never reaches the server, so on a stale tab their button can stay greyed out.
+- The contact window's Tasks tab keeps its own draft, which a tab switch still throws away.
+
+Why: these were found while fixing the lost task and result, and each is its own change (the cron one needs an `event_id` on `lead_tasks`). Impact: an extra open task after a missed appointment's result, a retyped value, a misleading refusal. Where: `src/app/api/cron/no-show-followups/route.ts`, `src/app/(app)/calendar/event-form.tsx`, `src/app/(app)/pipeline/tasks-panel.tsx`, `src/app/(app)/pipeline/lead-form.tsx`, `supabase/migrations/0070_dispatcher_write_access.sql`.
+

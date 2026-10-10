@@ -2468,3 +2468,23 @@ So in the evening each of these started on, offered, marked or named tomorrow, a
 
 **Consequence:** the screens above take today from the company's calendar. What reads a calendar day as it is on purpose: the Schedule's server window (UTC, a day wider, #143), the reminder crons (the company's wall clock), and dates read from an imported file. Client formatters, the dashboards' presets and some form defaults that already read the browser's own day still use the browser's zone, and the review found server pages and a database default that still read the UTC day (both in TECH_DEBT). No SQL.
 
+## 188 — The appointment window's Save commits everything pending
+
+**Date:** 2026-10-10
+
+**Context:** A user typed a task and picked a result in the Edit Appointment window and neither was saved. The window holds three kinds of unsaved work, and its footer Save wrote only the first and closed:
+- **The appointment's own fields** went through `updateEvent`.
+- **A picked result** (outcome, stage, note, job value) was saved only by Save Result, which the footer hid whenever an appointment field had changed. Save on any other tab closed the window on it.
+- **A typed task** was saved only by the Tasks tab's Add Task. The draft lived inside the task panel, which unmounts on a tab switch, so switching to Result threw it away, and Cancel, the X and Save closed over it without a word.
+
+Two more things made a saved result look lost. The window compared the form with how the appointment looked on open, so writing the result's status into the form made it read as an unsaved edit: Save Result vanished and "✓ Result saved" never showed. The re-read of confirmations and status on open did the same whenever a rep or customer had replied since the page loaded. And a server action called from a tab opened before a deploy rejects instead of returning an error, which left the button greyed out with no message. That is the likely cause of this report: the report came minutes after the 1.261.0 deploy.
+
+**Decision:**
+- **The footer Save commits, in order, the appointment, then a picked result, then a typed task** (`commitPending` in `src/lib/appointment-save.ts`). The appointment goes first because the result rewrites its status. It stops at the first refusal with the window open; when more than one thing was waiting, the message says what saved, what didn't and why, and what is still waiting. A Showed or Won with no job value is refused before anything is written, on the Result tab.
+- **One save button on the Result tab** (`appointmentFooter`). Save Result, which keeps the window open, shows only while the result is all that's waiting; with an appointment edit or a typed task pending too, Save shows instead and commits everything. The tab's hint and the footer note say which.
+- **The task draft is held by the window** (`useTaskDraft`, passed to `TasksPanel` as `draft`), so it survives tab switches, counts as unsaved work when closing, and is what Save commits. The panel's own Cancel now clears it, so Save can't add a task the person backed out of. Hosts that pass no draft (the contact window) keep the panel's own, as before.
+- **The window compares against what the server holds, not what it opened with.** The baseline takes the server's re-read values (`applyLiveState`) and a saved result's status, so neither counts as an edit; the appointment's own fields join it once saved.
+- **Every save call in the window and the task panel goes through `attempt`**, which turns a rejected call into "Couldn't reach the CRM to save this. If it was just updated, refresh the page, then try again." and always releases the button. The footer Save refreshes the page only when something landed, so a tab that can't reach the server isn't reloaded out from under the window.
+
+**Consequence:** nothing entered in the window is dropped by Save or by a tab switch, and a failed save says so. The window's other buttons (sending the rep's info, Write estimate, quick texts) still don't catch a lost call, and the contact window's task draft is still lost on a tab switch (TECH_DEBT). No SQL.
+
