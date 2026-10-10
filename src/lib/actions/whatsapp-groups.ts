@@ -36,6 +36,7 @@ import {
 
 const APP_ORIGIN = "https://crm.aibuildpros.com";
 const MIGRATION = "supabase/migrations/0228_whatsapp_groups.sql";
+const CLIENT_FILES_MIGRATION = "supabase/migrations/0229_whatsapp_client_files.sql";
 const PAGE = 60;
 
 export type WhatsAppStatus = {
@@ -185,7 +186,9 @@ export type JobWhatsApp = {
   connected: boolean;
   /** May link and unlink groups: the people who run the paperwork. */
   canLink: boolean;
-  groups: { id: string; name: string }[];
+  /** showToClient: the client's own group, whose files the portal shows;
+   *  otherwise a crew group, office-only (DECISIONS #198). */
+  groups: { id: string; name: string; showToClient: boolean }[];
   /** Oldest first, the way a chat reads. */
   messages: JobWhatsAppMessage[];
   hasMore: boolean;
@@ -225,16 +228,20 @@ export async function getJobWhatsApp(estimateId: string, before?: string): Promi
       .eq("company_id", profile.company_id)
       .not("api_token_enc", "is", null)
       .maybeSingle(),
+    // "*": before 0229 there is no show_to_client, and the groups must
+    // still show -- as crew groups, which is what they are until marked.
     supabase
       .from("whatsapp_group_links")
-      .select("group_id, group_name")
+      .select("*")
       .eq("company_id", profile.company_id)
       .eq("estimate_id", estimateId)
       .order("linked_at", { ascending: true }),
   ]);
   if (linksError) return { ...EMPTY, migrationMissing: true };
 
-  const groups = (links ?? []).map((l) => ({ id: l.group_id as string, name: (l.group_name as string) || "Unnamed group" }));
+  const groups = ((links ?? []) as { group_id: string; group_name: string; show_to_client?: boolean | null }[]).map(
+    (l) => ({ id: l.group_id, name: l.group_name || "Unnamed group", showToClient: l.show_to_client === true })
+  );
   const base = { connected: !!conn, canLink: canEditChecklists(profile), groups };
   if (!groups.length) return { ...base, messages: [], hasMore: false };
 
@@ -387,12 +394,22 @@ export async function listWhatsAppGroupChoices(
   return { options: groupOptions(groups, labelled, estimateId) };
 }
 
+/** A write that names show_to_client before 0229 has run. */
+function clientFilesError(message: string): string {
+  return /show_to_client/.test(message) ? `Run ${CLIENT_FILES_MIGRATION} in the Supabase SQL editor first.` : message;
+}
+
 /**
- * Puts a group on this job -- moving it, if it was on another -- then
- * reads the group's recent history and copies its files in, after the
- * answer.
+ * Puts a group on this job -- moving it, if it was on another -- as the
+ * client's group (its files reach the portal) or a crew group
+ * (office-only), then reads the group's recent history and copies its
+ * files in, after the answer.
  */
-export async function linkWhatsAppGroup(estimateId: string, groupId: string): Promise<{ error?: string }> {
+export async function linkWhatsAppGroup(
+  estimateId: string,
+  groupId: string,
+  showToClient: boolean
+): Promise<{ error?: string }> {
   const profile = await requireLinker();
   if (!profile) return { error: "Only Office, Admin or Production users can link groups." };
   if (!(await visibleJob(estimateId, profile.company_id))) return { error: "That job isn't available." };
@@ -412,12 +429,13 @@ export async function linkWhatsAppGroup(estimateId: string, groupId: string): Pr
         group_id: group.id,
         group_name: group.name,
         estimate_id: estimateId,
+        show_to_client: showToClient,
         linked_by: profile.id,
         linked_at: new Date().toISOString(),
       },
       { onConflict: "company_id,group_id" }
     );
-  if (error) return { error: error.message };
+  if (error) return { error: clientFilesError(error.message) };
 
   const companyId = profile.company_id;
   after(async () => {
@@ -440,4 +458,26 @@ export async function unlinkWhatsAppGroup(estimateId: string, groupId: string): 
     .eq("estimate_id", estimateId)
     .eq("group_id", groupId);
   return error ? { error: error.message } : {};
+}
+
+/**
+ * Marks a job's group as the client's (its photos and files show in the
+ * customer portal) or a crew group (office-only). Applies to what was
+ * already copied too: the portal decides by the group, not per file.
+ */
+export async function setWhatsAppGroupForClient(
+  estimateId: string,
+  groupId: string,
+  showToClient: boolean
+): Promise<{ error?: string }> {
+  const profile = await requireLinker();
+  if (!profile) return { error: "Only Office, Admin or Production users can change a group." };
+  if (!(await visibleJob(estimateId, profile.company_id))) return { error: "That job isn't available." };
+  const { error } = await createAdminClient()
+    .from("whatsapp_group_links")
+    .update({ show_to_client: showToClient })
+    .eq("company_id", profile.company_id)
+    .eq("estimate_id", estimateId)
+    .eq("group_id", groupId);
+  return error ? { error: clientFilesError(error.message) } : {};
 }

@@ -8,6 +8,7 @@ import {
   getJobWhatsApp,
   linkWhatsAppGroup,
   listWhatsAppGroupChoices,
+  setWhatsAppGroupForClient,
   unlinkWhatsAppGroup,
   type JobWhatsApp as JobWhatsAppData,
   type JobWhatsAppMessage,
@@ -21,7 +22,9 @@ const WHEN: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", hour:
  * ONE job's WhatsApp groups (DECISIONS #193): what was said in them,
  * oldest at the top like a chat, with each photo copied into the job's
  * Photos and shown here too. Office/Admin/Production link a group the
- * project bot number is in; everyone who can see the job reads it.
+ * project bot number is in, as the client's group (its files reach the
+ * customer portal) or a crew group (office-only, DECISIONS #198);
+ * everyone who can see the job reads it.
  */
 export function JobWhatsApp({
   estimateId,
@@ -35,6 +38,9 @@ export function JobWhatsApp({
   const [data, setData] = useState<JobWhatsAppData | null>(null);
   const [choices, setChoices] = useState<GroupChoice[] | null>(null);
   const [pick, setPick] = useState("");
+  // Crew until someone says otherwise: a wrong "crew" hides a photo, a
+  // wrong "client" shows the customer what the crew said among itself.
+  const [pickForClient, setPickForClient] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -75,6 +81,7 @@ export function JobWhatsApp({
     if (res.error) return setError(res.error);
     setChoices(res.options ?? []);
     setPick(res.options?.[0]?.id ?? "");
+    setPickForClient(false);
   }
 
   async function link() {
@@ -83,13 +90,27 @@ export function JobWhatsApp({
     if (choice.linkedTo && !confirm(`"${choice.name}" is on ${choice.linkedTo}. Move it to this job?`)) return;
     setError("");
     setBusy("Linking…");
-    const res = await linkWhatsAppGroup(estimateId, choice.id);
+    const res = await linkWhatsAppGroup(estimateId, choice.id, pickForClient);
     setBusy("");
     if (res.error) return setError(res.error);
     setChoices(null);
     setNote(
       `Linked "${choice.name}". Its last 100 messages and their photos are coming in now — close and reopen in a minute to see them all.`
     );
+    await reload();
+  }
+
+  async function setForClient(group: { id: string; name: string }, showToClient: boolean) {
+    const ask = showToClient
+      ? `Make "${group.name}" the client's group? Its photos, videos and documents will show in the client's portal.`
+      : `Make "${group.name}" a crew group? Its photos, videos and documents will be taken off the client's portal.`;
+    if (!confirm(ask)) return;
+    setError("");
+    setNote("");
+    setBusy("Saving…");
+    const res = await setWhatsAppGroupForClient(estimateId, group.id, showToClient);
+    setBusy("");
+    if (res.error) return setError(res.error);
     await reload();
   }
 
@@ -119,19 +140,34 @@ export function JobWhatsApp({
               <p className="empty-hint">No WhatsApp group on this job yet.</p>
             ) : (
               data.groups.map((g) => (
-                <span key={g.id} className="wa-group">
-                  💬 {g.name}
+                <div key={g.id} className="wa-group-row">
+                  <span className="wa-group">💬 {g.name}</span>
+                  <span className="wa-group-who">
+                    {g.showToClient
+                      ? "Client group — its photos and files show in the client's portal"
+                      : "Crew group — its photos and files stay office-only"}
+                  </span>
                   {data.canLink && (
-                    <button
-                      type="button"
-                      className="btn-ghost small"
-                      disabled={!!busy}
-                      onClick={() => void unlink(g)}
-                    >
-                      Unlink
-                    </button>
+                    <span className="wa-group-actions">
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        disabled={!!busy}
+                        onClick={() => void setForClient(g, !g.showToClient)}
+                      >
+                        {g.showToClient ? "Make crew group" : "Make client group"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        disabled={!!busy}
+                        onClick={() => void unlink(g)}
+                      >
+                        Unlink
+                      </button>
+                    </span>
                   )}
-                </span>
+                </div>
               ))
             )}
           </div>
@@ -164,6 +200,27 @@ export function JobWhatsApp({
                       </option>
                     ))}
                   </select>
+                  <fieldset className="wa-who-pick">
+                    <legend>Who is in this group?</legend>
+                    <label>
+                      <input
+                        type="radio"
+                        name="wa-who"
+                        checked={!pickForClient}
+                        onChange={() => setPickForClient(false)}
+                      />{" "}
+                      Crew or office only — its photos and files stay office-only
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="wa-who"
+                        checked={pickForClient}
+                        onChange={() => setPickForClient(true)}
+                      />{" "}
+                      The client is in it — its photos and files show in the client&apos;s portal
+                    </label>
+                  </fieldset>
                   <button type="button" className="btn-primary small" disabled={!!busy || !pick} onClick={() => void link()}>
                     Link
                   </button>

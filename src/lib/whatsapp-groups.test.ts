@@ -358,13 +358,27 @@ test("the webhook checks its secret before it files anything", () => {
 
 test("linking and unlinking check the role and the job before writing", () => {
   const actions = source("./actions/whatsapp-groups.ts");
-  for (const name of ["linkWhatsAppGroup", "unlinkWhatsAppGroup"]) {
+  for (const name of ["linkWhatsAppGroup", "unlinkWhatsAppGroup", "setWhatsAppGroupForClient"]) {
     const fn = actions.slice(actions.indexOf(`export async function ${name}`));
     const next = fn.indexOf("\nexport ", 1);
     const body = next > 0 ? fn.slice(0, next) : fn;
-    const write = body.search(/\.(upsert|delete)\(/);
+    const write = body.search(/\.(upsert|delete|update)\(/);
     assert.ok(write > 0, `${name} writes`);
     assert.ok(body.indexOf("requireLinker()") > 0 && body.indexOf("requireLinker()") < write, `${name}: role first`);
     assert.ok(body.indexOf("visibleJob(") > 0 && body.indexOf("visibleJob(") < write, `${name}: job first`);
   }
+});
+
+test("the portal's Photos tab leaves out what a crew group posted", () => {
+  const page = source("../app/portal/home/page.tsx");
+  assert.match(page, /hiddenWhatsAppFiles\(/);
+  // Filtered before the list reaches the page, never in the browser.
+  assert.ok(page.indexOf("hiddenWhatsAppFiles(") < page.indexOf("<PortalHome"), "filtered on the server");
+});
+
+test("0229 adds the client/crew switch, crew (office-only) by default", () => {
+  const sql = source("../../supabase/migrations/0229_whatsapp_client_files.sql");
+  assert.match(sql, /add column if not exists show_to_client boolean not null default false/);
+  assert.match(sql, /whatsapp_group_messages \(lead_file_id\)/);
+  assert.match(source("./schema-drift.ts"), /0229_whatsapp_client_files\.sql/);
 });

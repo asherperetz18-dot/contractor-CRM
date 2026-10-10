@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { portalCanReadFile, staffCanReadFile } from "./file-access-rules.ts";
+import { hiddenWhatsAppFiles, portalCanReadFile, staffCanReadFile } from "./file-access-rules.ts";
 
 /**
  * Who may open a private file (DECISIONS #108).
@@ -119,4 +119,77 @@ test("a customer opens a receipt only when their own sent invoice shows it", asy
   // A cost that was never billed back: internal, not the customer's.
   const internal = fakeDb({ ...base, estimate_items: [] });
   assert.equal(await portalCanReadFile(internal.client, viewer, "lead-files", path), false);
+});
+
+// ---- WhatsApp group copies (DECISIONS #198) ------------------------------
+//
+// A photo copied from a job's WhatsApp group is a lead file like any
+// other, so the portal would show it. Only a group the office marked as
+// the client's own shares its files; a crew group's stay office-only,
+// and so do a group's once it's unlinked.
+
+const WA_FILES = {
+  lead_files: [
+    { id: "crew-photo", lead_id: LEAD, file_path: `${LEAD}/1-crew.jpg` },
+    { id: "client-photo", lead_id: LEAD, file_path: `${LEAD}/2-client.jpg` },
+    { id: "orphan-photo", lead_id: LEAD, file_path: `${LEAD}/3-unlinked.jpg` },
+    { id: "own-upload", lead_id: LEAD, file_path: `${LEAD}/4-upload.jpg` },
+  ],
+  whatsapp_group_messages: [
+    { company_id: CO, lead_file_id: "crew-photo", group_id: "crew@g.us" },
+    { company_id: CO, lead_file_id: "client-photo", group_id: "client@g.us" },
+    { company_id: CO, lead_file_id: "orphan-photo", group_id: "gone@g.us" },
+  ],
+  whatsapp_group_links: [
+    { company_id: CO, group_id: "crew@g.us", show_to_client: false },
+    { company_id: CO, group_id: "client@g.us", show_to_client: true },
+  ],
+};
+
+test("hiddenWhatsAppFiles: crew-group and unlinked-group copies, nothing else", async () => {
+  const { client } = fakeDb(WA_FILES);
+  const hidden = await hiddenWhatsAppFiles(client, CO, ["crew-photo", "client-photo", "orphan-photo", "own-upload"]);
+  assert.deepEqual([...hidden].sort(), ["crew-photo", "orphan-photo"]);
+});
+
+test("hiddenWhatsAppFiles: nothing to check asks nothing", async () => {
+  const { client, asked } = fakeDb(WA_FILES);
+  assert.equal((await hiddenWhatsAppFiles(client, CO, [])).size, 0);
+  assert.deepEqual(asked, []);
+});
+
+test("hiddenWhatsAppFiles: another company's groups never decide", async () => {
+  const { client } = fakeDb({
+    ...WA_FILES,
+    whatsapp_group_links: [{ company_id: "co-2", group_id: "crew@g.us", show_to_client: true }],
+  });
+  assert.ok((await hiddenWhatsAppFiles(client, CO, ["crew-photo"])).has("crew-photo"));
+});
+
+test("a customer can't open a crew group's photo, but can open the client group's", async () => {
+  const { client } = fakeDb(WA_FILES);
+  assert.equal(await portalCanReadFile(client, viewer, "lead-files", `${LEAD}/1-crew.jpg`), false);
+  assert.equal(await portalCanReadFile(client, viewer, "lead-files", `${LEAD}/3-unlinked.jpg`), false);
+  assert.equal(await portalCanReadFile(client, viewer, "lead-files", `${LEAD}/2-client.jpg`), true);
+  assert.equal(await portalCanReadFile(client, viewer, "lead-files", `${LEAD}/4-upload.jpg`), true);
+});
+
+test("a crew photo the office attached to a sent document still opens there", async () => {
+  const sent = fakeDb({
+    ...WA_FILES,
+    estimate_files: [{ id: "ef1", estimate_id: "est-1", lead_file_id: "crew-photo" }],
+    estimates: [{ id: "est-1", lead_id: LEAD, status: "Sent" }],
+  });
+  assert.equal(await portalCanReadFile(sent.client, viewer, "lead-files", `${LEAD}/1-crew.jpg`), true);
+  const draft = fakeDb({
+    ...WA_FILES,
+    estimate_files: [{ id: "ef1", estimate_id: "est-1", lead_file_id: "crew-photo" }],
+    estimates: [{ id: "est-1", lead_id: LEAD, status: "Draft" }],
+  });
+  assert.equal(await portalCanReadFile(draft.client, viewer, "lead-files", `${LEAD}/1-crew.jpg`), false);
+});
+
+test("staff still open every WhatsApp copy", async () => {
+  const { client } = fakeDb(WA_FILES);
+  assert.equal(await staffCanReadFile(client, "lead-files", `${LEAD}/1-crew.jpg`), true);
 });

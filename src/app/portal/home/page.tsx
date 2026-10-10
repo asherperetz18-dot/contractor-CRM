@@ -18,6 +18,7 @@ import { portalStaffIds, toPortalStaff } from "@/lib/portal/portal-staff";
 import type { SharedNote } from "@/lib/data/shared-notes";
 import { PortalHome, type PortalDoc, type PortalEstimate, type PortalInvoice } from "./portal-home";
 import { loadCompanyWords } from "@/lib/load-company-words";
+import { hiddenWhatsAppFiles } from "@/lib/files/file-access-rules";
 
 type EstimateRow = {
   id: string;
@@ -239,11 +240,20 @@ export default async function PortalHomePage() {
   // one -- "valid through Dec 31" holds all of Dec 31 in the office.
   const companyToday = await todayForCompany(admin, viewer.companyId);
 
+  // What a crew WhatsApp group posted is copied into the job's files but
+  // stays office-only (DECISIONS #198).
+  const allFiles = (files as PortalFile[]) ?? [];
+  const crewOnly = await hiddenWhatsAppFiles(
+    admin,
+    viewer.companyId,
+    allFiles.map((f) => f.id)
+  );
+
   return (
     <PortalHome
       lead={viewer.lead}
       events={(events as Event[]) ?? []}
-      files={(files as PortalFile[]) ?? []}
+      files={allFiles.filter((f) => !crewOnly.has(f.id))}
       messages={(messages as SmsMessage[]) ?? []}
       reps={toPortalStaff(staffRows ?? [])}
       estimates={estimates}

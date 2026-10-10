@@ -11916,13 +11916,56 @@ textarea.est-item-desc:disabled {
    the conversation oldest-first like a chat. The groups wear the row
    chip's brown; the client's messages sit on the Client chip's rose,
    the team's on a quiet grey. */
-.wa-groups,
+.wa-groups {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+/* One linked group: its name, whether the client sees its files, and
+   the buttons -- wrapping to lines of their own on a phone. */
+.wa-group-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.wa-group-who {
+  flex: 1 1 220px;
+  font-size: 12px;
+  color: #6b6658;
+}
+.wa-group-row + .wa-group-row {
+  border-top: 1px solid #ece8df;
+  padding-top: 8px;
+}
+/* The buttons always on their own line, so every group reads alike. */
+.wa-group-actions {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .wa-link-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+}
+/* The client-or-crew choice, on its own full-width line. */
+.wa-who-pick {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+}
+.wa-who-pick legend {
+  padding: 0;
+  margin-bottom: 2px;
+  font-weight: 600;
 }
 .wa-link-row select {
   flex: 1 1 220px;
