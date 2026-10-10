@@ -2562,6 +2562,24 @@ Not changed:
 
 No SQL.
 
+
+## 193 — Project WhatsApp groups go through Whapi.Cloud on a separate bot number, and only listen
+
+**Date:** 2026-10-10
+
+**Context:** The owner wants each project's WhatsApp group, the one with the client, crew and subs, captured on the project, texts and photos alike. Meta's official Groups API doesn't fit: it needs an Official Business Account (the verified badge, given mostly to well-known brands), caps a group at 8 people including the business, and can only use groups it creates, joined by invite link. A contractor's existing groups and their size rule it out. Twilio has no real group support. The owner chose an unofficial gateway after being told the risk: WhatsApp can ban a number it sees as automated.
+
+**Decision:**
+- **Whapi.Cloud, on a dedicated number.** Each company connects one "project bot" WhatsApp number, never its main business line, by pasting the Whapi channel token in Settings › WhatsApp Groups (Office/Admin). Connect checks the token with `/health`, refuses a channel with no number signed in, and registers our webhook with `PATCH /settings`, after reading the list so any other hook the channel feeds is kept (`withOurWebhook`). The token and the webhook secret are encrypted like the Twilio and QuickBooks keys, in `whatsapp_connections`, which no CRM user can read (0228).
+- **It only listens.** Nothing is ever sent to a group. A number that only reads is far less likely to be banned, and a ban loses only that number: what was saved stays.
+- **The webhook trusts its secret, then files everything.** Whapi signs nothing, so the URL carries `?c=<company>&t=<secret>`, compared in constant time before anything is read (PrimeCall's pattern, #079). Every group message is stored, linked or not, once per WhatsApp message id, so Whapi's retries never double one; a database failure answers 500 so Whapi retries. Texts and pasted links are kept; photos, videos, voice notes and documents are kept with Whapi's media id. System notices, reactions, stickers, polls and private chats are not (`groupMessagesFromWebhook`, tested against Whapi's published `Message` type). A sender WhatsApp hides behind a `@lid` is shown by name, never taken for a phone.
+- **A group belongs to one project; a project can have several.** Office/Admin/Production link a group from the job's 💬 WhatsApp chip on Projects, from the groups the bot is actually in (one with the client and one for the crew is common). Picking a group that's on another job moves it, after a confirm. Linking reads the group's last 100 messages, so what was said before the link shows.
+- **Files are copied into the job after the answer.** `saveGroupMedia` runs in `after()`: it downloads the bytes from Whapi, puts them in the `lead-files` bucket and writes a `lead_files` row filed under the contract (`estimate_id`, #120). That's what the job's Photos and Permits & files already read, so nothing new is needed to see them. Each row is claimed before it's copied (an update that must match the attempt count it read), so overlapping runs never file a photo twice. A failed copy is retried when the group's next message arrives, three tries in all. Anything over 50 MB is left in WhatsApp and says so.
+- **Who sees it is who sees the project.** Links and messages are written only by the server. They're read under RLS: a link through `estimates`' own policy, a message through its group's link. A rep scoped to their own customers sees only those customers' groups. Field crews, whom RLS refuses every estimate, don't get the chip. They're in the WhatsApp group already, and its photos reach them through the job's Photos.
+- **Who a message is from is decided when it's shown.** `senderLabel` matches the sender's phone to the roster and to the client's four numbers, so adding a crew member's phone to their profile names every message they ever sent.
+
+**Consequence:** a project's WhatsApp group becomes part of its record without anyone forwarding anything. The cost is a Whapi subscription per bot number and the ban risk the owner accepted. The privacy page names Whapi and what passes through it (#087). Shortcuts are in TECH_DEBT.
+
 ## 194 — A refused note delete or task tick says so
 
 **Date:** 2026-10-10
