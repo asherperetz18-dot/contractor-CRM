@@ -2624,3 +2624,17 @@ No SQL.
 
 **Consequence:** a task, an internal note, a new shared note or a text being typed in the contact window is no longer dropped by a tab switch or by one of the window's buttons without asking, and no window carries one record's work into another. What it still loses (an edit in the last second before closing, shared-note edits and answers, a call note) and its Delete without a question are in TECH_DEBT. No SQL.
 
+
+## 198 — A WhatsApp group is the client's or the crew's, and only the client's files reach the portal
+
+**Date:** 2026-10-10
+
+**Context:** #193 copies a job's WhatsApp group photos, videos and documents into the job's files (`lead_files`). The customer portal's Photos tab lists every lead file, and `/api/files` lets a portal customer open any file on their own lead. So a crew-only group's posts (a sub's invoice, a damage photo, a voice note) would have reached the client. The owner chose a switch per group over showing everything or nothing.
+
+**Decision:**
+- **The group decides, not each file.** `whatsapp_group_links.show_to_client` (0229), default false: a group is a crew group, office-only, until someone marks it the client's. Groups linked before 0229 start as crew groups. A file is hidden from the customer when it's a WhatsApp copy whose group isn't marked, including a group no longer linked (`hiddenWhatsAppFiles`, `src/lib/files/file-access-rules.ts`, tested). Switching a group applies at once to everything already copied from it, because nothing is stamped on the files.
+- **Both doors check it.** The portal's Photos tab filters on the server before the list reaches the page. `portalCanReadFile` refuses such a file too, so a copied link doesn't open it. The one exception: a crew photo the office put on one of the customer's own non-draft documents still opens there, because attaching it was a deliberate share.
+- **Picked when linking, switched any time.** The link step asks "Who is in this group?", with crew pre-picked: a wrong "crew" hides a photo, a wrong "client" shows the customer what the crew said among itself. Each linked group shows which it is, with a button to switch (Office/Admin/Production, after a confirm that names the effect).
+- **Before 0229 runs**, nothing can be marked, so every WhatsApp copy stays off the portal. Linking or switching says to run the file first.
+
+**Consequence:** the client sees what their own group shares and nothing from the crew's. Group text messages never reach the portal, whichever kind the group is. The cost is a lookup per portal file request, served by a new index on `whatsapp_group_messages (lead_file_id)`.

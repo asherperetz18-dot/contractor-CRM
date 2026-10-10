@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.268.0",
+    date: "2026-10-10",
+    notes: [
+      "Project WhatsApp groups: each linked group is now either the client's group or a crew group. Photos, videos and documents from a crew group stay office-only and no longer show in the client's portal; only the client's group shares its files there. When you link a group you pick which it is (crew unless you say otherwise), and the job's 💬 WhatsApp window has a button to switch it later. Groups linked before today start as crew groups.",
+    ],
+  },
+  {
     version: "1.267.0",
     date: "2026-10-10",
     notes: [
