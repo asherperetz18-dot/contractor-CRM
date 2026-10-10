@@ -12,11 +12,14 @@ import { estimateExpired, type Estimate } from "./types.ts";
  * certificates are not change orders and carry no money at all.
  */
 export function isPendingChangeOrder(
-  e: Pick<Estimate, "kind" | "status" | "expires_at">
+  e: Pick<Estimate, "kind" | "status" | "expires_at">,
+  /** The clock to judge expiry by: noon of the company's today on the
+   *  staff screens and in the AI chat (DECISIONS #193). */
+  now: Date = new Date()
 ): boolean {
   if (e.kind !== "change_order") return false;
   // The expiry date over the stored status, same as the other cards:
   // nothing sweeps statuses on a timer, and a lapsed offer is not pending.
-  if (estimateExpired(e)) return false;
+  if (estimateExpired(e, now)) return false;
   return e.status === "Draft" || e.status === "Sent" || e.status === "Viewed";
 }

@@ -115,7 +115,14 @@ export function ContractsView({
   // dialog opens by itself.
   const [creating, setCreating] = useQuickCreate("/contracts", canCreate);
 
+  // Two clocks. `now` is the real moment, for durations counted from a
+  // timestamp (no reply, average days to sign) and the month a signature
+  // fell in. `asOf`, noon of the company's today, judges expiry: columns,
+  // badges, totals, countdowns (DECISIONS #193). The clock where the page
+  // drew filed a contract under Closed from 5pm Pacific on its last day on
+  // the server's first draw, while the browser said Sent.
   const now = new Date();
+  const asOf = new Date(`${today}T12:00:00`);
   const leadById = new Map(leads.map((l) => [l.id, l]));
   const repById = new Map(reps.map((r) => [r.id, r]));
   const signersByEstimate = new Map<string, EstimateSigner[]>();
@@ -143,11 +150,11 @@ export function ContractsView({
 
   // The server already sends only kind='contract'; the guard keeps a
   // stray attached document from ever becoming a board card.
-  const boardDocs = contracts.filter((e) => boardColumnFor(e) !== null);
+  const boardDocs = contracts.filter((e) => boardColumnFor(e, asOf) !== null);
 
   // The company's calendar for the date filter: a contract made after
   // 5pm Pacific is that day's. A date still being typed is no edge.
-  const win = resolveWindow(range, new Date(`${today}T12:00:00`));
+  const win = resolveWindow(range, asOf);
   const madeInWindow = stampedWithin({ from: calendarDay(win.from), to: calendarDay(win.to) }, zone);
   const filtered = boardDocs.filter((e) => {
     if (!matchesRepFilter(peopleFor(e), repFilter)) return false;
@@ -169,8 +176,8 @@ export function ContractsView({
 
   // The cards answer for the filtered slice, computed BEFORE the scope:
   // clicking one card must not zero out its neighbours.
-  const stats = boardCardStats(filtered, now);
-  const scoped = filtered.filter((e) => matchesScope(e, scope, now));
+  const stats = boardCardStats(filtered, now, asOf);
+  const scoped = filtered.filter((e) => matchesScope(e, scope, now, asOf));
 
   const grouped: Record<BoardColumnKey, Estimate[]> = {
     draft: [],
@@ -180,7 +187,7 @@ export function ContractsView({
     closed: [],
   };
   for (const e of scoped) {
-    const col = boardColumnFor(e);
+    const col = boardColumnFor(e, asOf);
     if (col) grouped[col].push(e);
   }
 
@@ -342,17 +349,17 @@ export function ContractsView({
                   <span>{col.label}</span>
                   <span className="count-pill">{docs.length}</span>
                 </div>
-                <div className="cb-col-total mono">{moneyCents(columnTotalCents(docs))}</div>
+                <div className="cb-col-total mono">{moneyCents(columnTotalCents(docs, asOf))}</div>
               </div>
               <div className="cb-col-body">
                 {docs.length === 0 && <div className="cb-col-empty">Nothing here</div>}
                 {visible.map((e) => {
-                  const status = effectiveEstimateStatus(e);
+                  const status = effectiveEstimateStatus(e, asOf);
                   const [salesperson, ...team] = seatsFor(e);
                   const sig = signatureProgress(signersByEstimate.get(e.id) ?? []);
                   const views = viewsByEstimate[e.id];
-                  const expiresIn = daysUntilExpiry(e, now);
-                  const silentDays = noReplyDays(e, now);
+                  const expiresIn = daysUntilExpiry(e, asOf);
+                  const silentDays = noReplyDays(e, now, asOf);
                   const awaiting = status === "Sent" || status === "Viewed";
                   return (
                     <div

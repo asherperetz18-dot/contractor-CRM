@@ -52,13 +52,16 @@ export function effectiveEstimateStatus(
  */
 export function inFunnelBucket(
   e: Pick<Estimate, "kind" | "status" | "expires_at">,
-  key: FunnelCardKey
+  key: FunnelCardKey,
+  /** The clock to judge expiry by: noon of the company's today on the
+   *  staff screens and in the AI chat (DECISIONS #193). */
+  now: Date = new Date()
 ): boolean {
   if (e.kind === "invoice") return false;
   return key === "co_pending"
-    ? isPendingChangeOrder(e)
+    ? isPendingChangeOrder(e, now)
     : (key === "changes" ? !isSellableKind(e.kind) : isSellableKind(e.kind)) &&
-        FUNNEL_CARD_STATUSES[key].includes(effectiveEstimateStatus(e));
+        FUNNEL_CARD_STATUSES[key].includes(effectiveEstimateStatus(e, now));
 }
 
 /**
@@ -103,20 +106,22 @@ export function funnelCardStats<T extends FunnelCardDoc>(
   docs: T[],
   key: FunnelCardKey,
   repFilter: ReadonlySet<string>,
-  peopleOf: (doc: T) => readonly string[]
+  peopleOf: (doc: T) => readonly string[],
+  /** The clock to judge expiry by, as inFunnelBucket. */
+  now: Date = new Date()
 ): { count: number; totalCents: number } {
-  const rows = docs.filter((e) => matchesRepFilter(peopleOf(e), repFilter) && inFunnelBucket(e, key));
+  const rows = docs.filter((e) => matchesRepFilter(peopleOf(e), repFilter) && inFunnelBucket(e, key, now));
   return {
     count: rows.length,
     totalCents: rows
       // Cancelled work is not money. Without this the Voided card would
       // report the value of everything that was called off as though it
       // were a pipeline worth chasing.
-      .filter((e) => effectiveEstimateStatus(e) !== "Void")
+      .filter((e) => effectiveEstimateStatus(e, now) !== "Void")
       // Signed ones only for Attached's total. A draft is a proposal,
       // and adding it here would report money nobody has agreed to as
       // though the job had grown.
-      .filter((e) => key !== "changes" || effectiveEstimateStatus(e) === "Signed")
+      .filter((e) => key !== "changes" || effectiveEstimateStatus(e, now) === "Signed")
       .reduce((sum, e) => sum + (e.total_cents || 0), 0),
   };
 }

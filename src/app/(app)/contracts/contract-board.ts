@@ -53,10 +53,11 @@ export function boardColumnFor(e: ColumnDoc, now: Date = new Date()): BoardColum
 /** A column head's money. Voided contracts are excluded -- cancelled
  *  work is not money (the funnel's Voided card learned this first). */
 export function columnTotalCents(
-  docs: Pick<Estimate, "status" | "expires_at" | "total_cents">[]
+  docs: Pick<Estimate, "status" | "expires_at" | "total_cents">[],
+  now: Date = new Date()
 ): number {
   return docs
-    .filter((e) => effectiveEstimateStatus(e) !== "Void")
+    .filter((e) => effectiveEstimateStatus(e, now) !== "Void")
     .reduce((sum, e) => sum + (e.total_cents || 0), 0);
 }
 
@@ -109,9 +110,14 @@ type NoReplyDoc = Pick<Estimate, "status" | "expires_at" | "sent_at" | "viewed_a
  * flagging -- NO_REPLY_DAYS or more. Null otherwise: a viewed document
  * is a different conversation (the customer is reading, not ignoring),
  * and an expired one is over, with nobody owed a reply on it.
+ *
+ * Two clocks: `now`, the real moment the days are counted to, and
+ * `asOf`, the company's day the expiry is judged on (DECISIONS #193).
+ * A noon-of-today date is no instant to count a duration to: it falls
+ * hours apart on a UTC server and in a Pacific browser.
  */
-export function noReplyDays(e: NoReplyDoc, now: Date = new Date()): number | null {
-  if (effectiveEstimateStatus(e, now) !== "Sent" || e.viewed_at || !e.sent_at) return null;
+export function noReplyDays(e: NoReplyDoc, now: Date = new Date(), asOf: Date = now): number | null {
+  if (effectiveEstimateStatus(e, asOf) !== "Sent" || e.viewed_at || !e.sent_at) return null;
   const days = Math.floor((now.getTime() - new Date(e.sent_at).getTime()) / DAY_MS);
   return days >= NO_REPLY_DAYS ? days : null;
 }
@@ -144,14 +150,21 @@ export type BoardScope = "awaiting" | "signedMonth" | "expiring";
 
 type ScopeDoc = ColumnDoc & Pick<Estimate, "signed_at">;
 
-export function matchesScope(e: ScopeDoc, scope: BoardScope | null, now: Date = new Date()): boolean {
+/** `asOf` judges expiry (awaiting, expiring); `now` is the real moment,
+ *  for the month a signature fell in -- as noReplyDays. */
+export function matchesScope(
+  e: ScopeDoc,
+  scope: BoardScope | null,
+  now: Date = new Date(),
+  asOf: Date = now
+): boolean {
   if (!scope) return true;
   if (scope === "awaiting") {
-    const col = boardColumnFor(e, now);
+    const col = boardColumnFor(e, asOf);
     return col === "sent" || col === "viewed";
   }
   if (scope === "signedMonth") return signedThisMonth(e, now);
-  return isExpiringSoon(e, now);
+  return isExpiringSoon(e, asOf);
 }
 
 type StatsDoc = ColumnDoc & Pick<Estimate, "total_cents" | "sent_at" | "signed_at">;
@@ -169,16 +182,18 @@ export type BoardCardStats = {
  * unfiltered card above a filtered board gets quoted as the filtered
  * number (the estimates funnel learned this first).
  */
-export function boardCardStats(docs: StatsDoc[], now: Date = new Date()): BoardCardStats {
-  const board = docs.filter((e) => boardColumnFor(e, now) !== null);
+export function boardCardStats(docs: StatsDoc[], now: Date = new Date(), asOf: Date = now): BoardCardStats {
+  const board = docs.filter((e) => boardColumnFor(e, asOf) !== null);
   const tally = (rows: StatsDoc[]) => ({
     count: rows.length,
     totalCents: rows.reduce((sum, e) => sum + (e.total_cents || 0), 0),
   });
   return {
-    awaiting: tally(board.filter((e) => matchesScope(e, "awaiting", now))),
+    awaiting: tally(board.filter((e) => matchesScope(e, "awaiting", now, asOf))),
     signedMonth: tally(board.filter((e) => signedThisMonth(e, now))),
-    expiring: tally(board.filter((e) => isExpiringSoon(e, now))),
+    expiring: tally(board.filter((e) => isExpiringSoon(e, asOf))),
+    // A rolling window back from the real moment, against signature
+    // timestamps (#182): not a calendar day.
     avgDays: avgDaysToSign(board, now),
   };
 }

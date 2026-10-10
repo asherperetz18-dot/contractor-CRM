@@ -2536,3 +2536,13 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** a refusal is said where it happens. A second ✕ on a row already gone reads the same way. No SQL.
 
+## 193 — Estimates and the Contract Board judge expiry on the company's today
+
+**Date:** 2026-10-10
+
+**Context:** #180 left estimate expiry on the clock where the page draws: the server's UTC on the first draw, then the browser's. A proposal is valid through its expiry day, but from 5pm Pacific on that day the server's first draw already called it Expired: off Awaiting signature and onto Lost on the Estimates funnel, into the Closed column on the Contract Board, out of Awaiting and Expiring soon, with no countdown. The browser then drew it as Sent, so the page changed under the reader, and a browser in another zone judged on its own day. Since #191 the customer portal lets the customer sign all of that day.
+
+**Decision:** both views judge expiry at noon of the company's today (`asOf = new Date(`${today}T12:00:00`)`, the today the pages already hand them), the way the portal does. The shared helpers take it as an optional last argument with the old default: `inFunnelBucket`, `funnelCardStats`, `isPendingChangeOrder`, `columnTotalCents`. On the Contract Board the real moment stays for what is counted from a timestamp, so `noReplyDays`, `matchesScope` and `boardCardStats` take both: `now` for no-reply days, the month a signature fell in and the 90-day average (#182: rolling windows count back from the moment), `asOf` for expiry. A noon-of-today date is no instant to count a duration to: it falls hours apart on a UTC server and in a Pacific browser. The expiry countdown moves with expiry, so "Expires today" and the column agree.
+
+**Consequence:** Estimates, the Contract Board and the portal agree that a proposal is valid through its last day on the company's calendar, the server's first draw and the browser's agree, and the board's Expiring soon matches the Estimates "Expires within 7 days" chip. The day is the one the page loaded, as for the date filters. Expiry gaps the clock doesn't touch (voided and draft documents with a lapsed date, screens that never check expiry) are in TECH_DEBT. No SQL.
+

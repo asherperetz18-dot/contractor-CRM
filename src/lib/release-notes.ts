@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-10-10",
     notes: [
       "If your role isn't allowed to delete a note, or to tick off or delete a task, the CRM now tells you, instead of leaving it there without a word.",
+      "Estimates and the Contract Board now keep a proposal as Sent all through its last valid day. After 5pm Pacific it could already show as Expired or Closed, while your customer could still sign it in the portal.",
     ],
   },
   {
