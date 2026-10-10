@@ -46,10 +46,13 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
 export function QuickBooksView({
   settings,
   justConnected,
+  newCompany = false,
   connectError,
 }: {
   settings: QuickBooksSettings;
   justConnected: boolean;
+  /** A different QuickBooks company than before: its picks were cleared and sending turned off (DECISIONS #192). */
+  newCompany?: boolean;
   connectError: string | null;
 }) {
   const router = useRouter();
@@ -76,7 +79,9 @@ export function QuickBooksView({
     <>
       {justConnected && !connectError && (
         <p className="hint-note" style={{ color: "var(--success)" }}>
-          ✓ Connected to QuickBooks. Check the matches below, then save them.
+          {newCompany
+            ? "✓ Connected to QuickBooks. This is a different QuickBooks company, so sending bills and invoices is off and its accounts start fresh: check the matches below and save them, then pick the start dates and turn sending on again."
+            : "✓ Connected to QuickBooks. Check the matches below, then save them."}
         </p>
       )}
       {connectError && <p className="error-note">{connectError}</p>}
@@ -100,8 +105,9 @@ export function QuickBooksView({
           </p>
         ) : connected ? (
           <>
-            <div className="qb-status">
-              Connected to <strong>{c?.companyName || "your QuickBooks company"}</strong> (QuickBooks Online)
+            <div className={`qb-status${otherSide ? " is-other" : ""}`}>
+              {otherSide ? "Last connected to " : "Connected to "}
+              <strong>{c?.companyName || "your QuickBooks company"}</strong> (QuickBooks Online)
               <div className="est-tax-note">
                 {[c?.connectedByName ? `by ${c.connectedByName}` : null, c?.connectedAt ? fmtDay(c.connectedAt) : null]
                   .filter(Boolean)
@@ -116,20 +122,25 @@ export function QuickBooksView({
                   Connect again
                 </a>
               )}
-              <button
-                type="button"
-                className="btn-ghost"
-                disabled={pending}
-                onClick={() => run(refreshQuickBooksAccounts, (r) => `Read ${r.count ?? 0} accounts from QuickBooks.`)}
-              >
-                Refresh accounts
-              </button>
+              {!otherSide && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={pending}
+                  onClick={() => run(refreshQuickBooksAccounts, (r) => `Read ${r.count ?? 0} accounts from QuickBooks.`)}
+                >
+                  Refresh accounts
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-danger-ghost"
                 disabled={pending}
                 onClick={() => {
-                  if (!window.confirm("Disconnect QuickBooks? Nothing in QuickBooks changes; your matches are kept for when you connect again.")) {
+                  const ask = otherSide
+                    ? "Disconnect QuickBooks? Nothing in QuickBooks changes. Connecting a different company means picking its accounts again."
+                    : "Disconnect QuickBooks? Nothing in QuickBooks changes; your matches are kept for when you connect again.";
+                  if (!window.confirm(ask)) {
                     return;
                   }
                   run(disconnectQuickBooks, () => "Disconnected. Nothing in QuickBooks changed.");
@@ -205,9 +216,10 @@ export function QuickBooksView({
         </ol>
       </section>
 
-      {connected && <BillSending settings={settings} />}
-      {connected && <InvoiceSending settings={settings} />}
-      {connected && <MatchForm settings={settings} />}
+      {/* On the other side of Intuit nothing goes, and its picks are cleared on connecting again: hidden until then. */}
+      {connected && !otherSide && <BillSending settings={settings} />}
+      {connected && !otherSide && <InvoiceSending settings={settings} />}
+      {connected && !otherSide && <MatchForm settings={settings} />}
     </>
   );
 }

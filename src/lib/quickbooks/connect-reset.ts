@@ -13,6 +13,7 @@ const STOPPED = "QuickBooks wasn't connected: the CRM couldn't clear the setting
  * (DECISIONS #173, #184, #192). Sending stops first, so nothing goes while
  * the picks are half cleared; then the "paid from" matches and the cost
  * accounts go. What went to the old company stays recorded under its id.
+ * `cleared` says it happened, so Settings can say sending is off.
  *
  * Any read or write that fails stops the connection with an error, and the
  * old one stays as it was: the old company's accounts must never be sent
@@ -23,7 +24,7 @@ export async function clearForNewCompany(
   admin: Admin,
   companyId: string,
   next: { realmId: string; environment: QbEnvironment }
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; cleared?: boolean }> {
   const { data: before, error: readError } = await admin
     .from("quickbooks_connections")
     .select("realm_id, environment")
@@ -33,8 +34,9 @@ export async function clearForNewCompany(
   if (readError) return isMissingSchemaError(readError) ? {} : { error: STOPPED };
   if (!before?.realm_id || (before.realm_id === next.realmId && before.environment === next.environment)) return {};
 
+  // Before 0222 there's no bills switch to turn off.
   const bills = await admin.from("quickbooks_connections").update({ send_bills: false, send_bills_from: null }).eq("company_id", companyId);
-  if (bills.error) return { error: STOPPED };
+  if (bills.error && !isMissingSchemaError(bills.error)) return { error: STOPPED };
   // Its products and accounts were the old company's. Before 0227 these columns don't exist; nothing to clear then.
   const invoices = await admin
     .from("quickbooks_connections")
@@ -57,5 +59,5 @@ export async function clearForNewCompany(
   if (paidFrom.error) return { error: STOPPED };
   const costs = await admin.from("quickbooks_expense_accounts").delete().eq("company_id", companyId);
   if (costs.error) return { error: STOPPED };
-  return {};
+  return { cleared: true };
 }

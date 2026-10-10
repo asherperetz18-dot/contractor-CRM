@@ -24,7 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     version: "1.264.0",
     date: "2026-10-10",
     notes: [
-      "QuickBooks is ready for real books. When the CRM switches from Intuit's practice companies to real QuickBooks, Settings › QuickBooks shows \"Connect again\" on a company still connected to a practice company, instead of \"Connected\" while nothing goes. Connecting a different QuickBooks company now stops with a message if the CRM can't clear what was picked for the old one, so the old accounts are never used. The privacy page now lists Intuit QuickBooks Online.",
+      "Settings › QuickBooks gets ready for real QuickBooks companies (the CRM still connects Intuit's practice companies for now). After the switch, a company still connected to a practice company will see \"Connect again\" instead of \"Connected\", and Bills to Pay and the Invoices page won't show QuickBooks lines for it. Connecting a different QuickBooks company now says sending was turned off, and stops with a message if it can't clear the old company's accounts. The privacy page now says what goes to a company's own QuickBooks.",
     ],
   },
   {

@@ -83,13 +83,18 @@ export default function PrivacyPage() {
           <li>Supabase (database and sign-in) and Vercel (hosting)</li>
           <li>Twilio and CallRail (calls and texts), and Resend (email)</li>
           <li>Stripe (payments; we never see or store full card numbers)</li>
-          <li>Intuit QuickBooks Online (accounting, if your company connects it)</li>
           <li>Google (maps, plus Drive and Calendar if your company connects them)</li>
           <li>Meta (Facebook lead forms, if your company connects them)</li>
           <li>PropertyRadar (property details for an address)</li>
           <li>Anthropic (the CRM&apos;s AI features)</li>
           <li>Sentry (error reports)</li>
         </ul>
+        <p>
+          If your company connects its own QuickBooks Online (Intuit), the CRM sends it what your company turns on:
+          customers (names, contact details and addresses), vendors, bills, invoices, payments and receipts. These are
+          kept in your company&apos;s QuickBooks account under Intuit&apos;s terms, and deleting something in the CRM
+          doesn&apos;t remove it from QuickBooks.
+        </p>
         <p>We may also disclose information if the law requires it.</p>
 
         <h2>How long it is kept</h2>

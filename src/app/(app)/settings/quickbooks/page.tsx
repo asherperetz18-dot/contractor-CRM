@@ -22,7 +22,14 @@ export default async function QuickBooksPage({
           <p className="module-sub">Send your bills, invoices and payments to QuickBooks Online, so nobody types them twice.</p>
         </div>
       </div>
-      {settings && <QuickBooksView settings={settings} justConnected={sp.connected === "1"} connectError={sp.error ?? null} />}
+      {settings && (
+        <QuickBooksView
+          settings={settings}
+          justConnected={sp.connected === "1" || sp.connected === "new"}
+          newCompany={sp.connected === "new"}
+          connectError={sp.error ?? null}
+        />
+      )}
     </AdminGate>
   );
 }

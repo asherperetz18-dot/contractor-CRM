@@ -27,9 +27,9 @@ export async function GET(req: NextRequest) {
   const targetRaw = req.cookies.get("qb_oauth_target")?.value;
 
   const settingsUrl = new URL("/settings/quickbooks", req.url);
-  const done = (error?: string) => {
+  const done = (error?: string, newCompany = false) => {
     if (error) settingsUrl.searchParams.set("error", error);
-    else settingsUrl.searchParams.set("connected", "1");
+    else settingsUrl.searchParams.set("connected", newCompany ? "new" : "1");
     const res = NextResponse.redirect(settingsUrl);
     res.cookies.delete("qb_oauth_state");
     res.cookies.delete("qb_oauth_target");
@@ -129,5 +129,5 @@ export async function GET(req: NextRequest) {
     const match = suggestPaymentMatch(a, accounts);
     if (match) await admin.from("payment_accounts").update({ qb_account_id: match }).eq("id", a.id).eq("company_id", companyId);
   }
-  return done();
+  return done(undefined, !!cleared.cleared);
 }
