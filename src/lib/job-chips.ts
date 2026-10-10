@@ -8,7 +8,8 @@
  *                                Production Board card)
  *   indigo = the paperwork pile (permits & files, a signed completion
  *            certificate on a Production Board card)
- *   purple = photos · rose = the client · slate = the printed report
+ *   purple = photos · brown = the job's WhatsApp group · rose = the
+ *   client · slate = the printed report
  *
  * Both views read this map instead of hardcoding classes, so the office
  * table and the crew cards can't drift apart, and a new chip has to
@@ -26,6 +27,7 @@ export type JobChipKind =
   | "bills"
   | "permits"
   | "photos"
+  | "whatsapp"
   | "client"
   | "report"
   | "certificate"
@@ -52,6 +54,7 @@ const CHIP_GROUP: Record<JobChipKind, JobChipGroup> = {
   bills: "moneyOut",
   permits: "records",
   photos: "records",
+  whatsapp: "records",
   client: "records",
   report: "records",
   certificate: "records",
@@ -75,6 +78,8 @@ const CHIP_COLOR: Record<JobChipKind, string> = {
   bills: "proj-chip-out",
   permits: "proj-chip-paper",
   photos: "proj-photo-chip",
+  // What was said on the job: its own brown, kept clear of money green.
+  whatsapp: "proj-chip-chat",
   client: "proj-client-chip",
   report: "proj-chip-report",
   certificate: "proj-chip-paper",

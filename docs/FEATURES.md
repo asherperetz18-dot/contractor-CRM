@@ -6,7 +6,7 @@ What exists, split by domain since the full inventory is too large for one file.
 - [Sales Pipeline & Leads](features/sales-pipeline-leads.md) — the pipeline board, dialer, CSV import, refunds, contacts.
 - [Estimates, Contracts & Projects](features/estimates-contracts-projects.md) — estimate builder, e-signature, payment schedules, change orders, completion certificates, the project/production board.
 - [Billing, Payments & Commissions](features/billing-payments-commissions.md) — bills to pay, collections, P&L, dispatcher and sales-rep commissions, Stripe.
-- [Scheduling & Communications](features/scheduling-communications.md) — schedule/calendar, SMS, voice, CallRail, inbound email, call/text reporting.
+- [Scheduling & Communications](features/scheduling-communications.md) — schedule/calendar, SMS, voice, CallRail, inbound email, project WhatsApp groups, call/text reporting.
 - [Marketing & Analytics](features/marketing-analytics.md) — the marketing dashboard (sources as a funnel, weekly trend, team, spend by source, bought-list toggle), rep performance report, Facebook Lead Ads, social links.
 - [Time Clock & Tracking](features/time-clock-tracking.md) — clock in/out, live location while on the clock, automatic job arrivals, the location check at clock-in, Team Map, Timesheets.
 - [Admin, Settings & Platform](features/admin-settings-platform.md) — auth/onboarding, the customer portal shell, platform admin, and the company Settings grid.

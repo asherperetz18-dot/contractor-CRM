@@ -100,6 +100,9 @@ export const BACKUP_TABLES = [
   "location_pings",
   "site_visits",
   "tracking_notices",
+  // Project WhatsApp groups and everything said in them (0228, #193).
+  "whatsapp_group_links",
+  "whatsapp_group_messages",
 ] as const;
 
 /**
@@ -114,6 +117,7 @@ export const BACKUP_LEFT_OUT: Record<string, string> = {
   google_drive_connection: "a Google sign-in, not data",
   google_calendar_connections: "a Google sign-in, not data",
   quickbooks_connections: "a QuickBooks sign-in, not data: connecting again takes one click",
+  whatsapp_connections: "a WhatsApp service key, not data: connecting again takes one paste",
   meta_secrets_legacy: "an old Facebook key kept only for a rollback",
   user_devices: "which phones and browsers signed in",
   notification_reads: "which alerts a person has seen",
