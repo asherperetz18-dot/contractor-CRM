@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { effectiveEstimateStatus, funnelCardStats, inFunnelBucket } from "./data/funnel-cards.ts";
 import { isPendingChangeOrder } from "./data/pending-change-orders.ts";
+import { estimateExpired } from "./data/types.ts";
 import {
   boardCardStats,
   boardColumnFor,
@@ -64,8 +65,8 @@ test("on its last day a proposal is awaiting a signature everywhere, in any zone
 });
 
 test("a column's money, and the board's cards, judge expiry on the same day", () => {
-  // Voiding keeps expires_at: on its last day it is still Void on the
-  // company's clock, its money out of the column and the Voided card.
+  // Voiding keeps expires_at, and a void never lapses (DECISIONS #199):
+  // it stays Void, its money out of the column and on the Voided card.
   const voided = { ...lastDay, status: "Void" as const };
   inZone("UTC", () => {
     const asOf = new Date("2026-10-09T12:00:00");
@@ -115,4 +116,16 @@ test("the Contract Board judges expiry on the company's today, and keeps the rea
   assert.match(view, /effectiveEstimateStatus\(e, asOf\)/);
   assert.match(view, /daysUntilExpiry\(e, asOf\)/);
   assert.match(view, /noReplyDays\(e, now, asOf\)/);
+});
+
+test("a voided document is never expired, however long ago its date passed", () => {
+  // Voiding keeps expires_at -- signing version 2 voids version 1, whose
+  // date is usually weeks gone -- and it used to read Expired, moving to
+  // Declined as a lost sale with its whole value.
+  const voided = { ...lastDay, status: "Void" as const };
+  const next = new Date("2026-10-10T12:00:00");
+  assert.equal(estimateExpired(voided, next), false);
+  assert.equal(effectiveEstimateStatus(voided, next), "Void");
+  assert.equal(inFunnelBucket(voided, "declined", next), false);
+  assert.equal(inFunnelBucket(voided, "void", next), true);
 });

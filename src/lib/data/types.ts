@@ -3097,7 +3097,9 @@ export const DEFAULT_PAYMENT_PHASES: { name: string; description: string }[] = [
 ];
 
 export function estimateExpired(e: Pick<Estimate, "expires_at" | "status">, now = new Date()): boolean {
-  if (e.status === "Signed" || e.status === "Declined") return false;
+  // An end state never lapses. Voiding keeps expires_at (the voided copy
+  // still prints "Valid until"), and a void stays Void (DECISIONS #199).
+  if (e.status === "Signed" || e.status === "Declined" || e.status === "Void") return false;
   if (!e.expires_at) return false;
   return new Date(`${e.expires_at}T23:59:59`).getTime() < now.getTime();
 }

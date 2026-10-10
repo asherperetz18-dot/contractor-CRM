@@ -12,6 +12,7 @@ import {
   noReplyDays,
   signedThisMonth,
 } from "./contract-board.ts";
+import { effectiveEstimateStatus } from "../../../lib/data/funnel-cards.ts";
 import type { EstimateStatus } from "../../../lib/data/types.ts";
 
 /**
@@ -183,4 +184,12 @@ test("search matches text across the card and amounts by digits", () => {
     matchesBoardSearch({ ...card, docNumber: "Q-9", address: "42 Palm Ave" }, "1"),
     false
   );
+});
+
+test("a voided contract past its expiry stays Void: Closed, out of the column's money", () => {
+  const voided = doc({ status: "Void", expires_at: "2026-08-01", total_cents: 7_000 });
+  assert.equal(boardColumnFor(voided, NOW), "closed");
+  // The card's badge and its void reason read this, not "Expired <date>".
+  assert.equal(effectiveEstimateStatus(voided, NOW), "Void");
+  assert.equal(columnTotalCents([doc({ status: "Declined", total_cents: 5_000 }), voided], NOW), 5_000);
 });

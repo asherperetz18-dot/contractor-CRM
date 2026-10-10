@@ -2638,3 +2638,13 @@ No SQL.
 - **Before 0229 runs**, nothing can be marked, so every WhatsApp copy stays off the portal. Linking or switching says to run the file first.
 
 **Consequence:** the client sees what their own group shares and nothing from the crew's. Group text messages never reach the portal, whichever kind the group is. The cost is a lookup per portal file request, served by a new index on `whatsapp_group_messages (lead_file_id)`.
+
+## 199 — A voided document never expires
+
+**Date:** 2026-10-10
+
+**Context:** `estimateExpired` exempted only Signed and Declined, and voiding never clears `expires_at` (a manual void, a cancelled invoice, and the automatic void of version 1 when version 2 is signed). Nearly every contract has a date, so a void past it read Expired: it left the Voided card for Declined, its whole value counted as a lost sale there and in the Contract Board's Closed column, and its board card said "Expired <date>" instead of why it was voided. The common case is the superseded version 1, whose date is usually weeks gone by the time version 2 is signed. #195 logged this gap.
+
+**Decision:** `estimateExpired` exempts Void, like the other end states. Clearing `expires_at` on void was rejected: existing voids would need a hand-run backfill, and the voided copy still prints its "Valid until" date.
+
+**Consequence:** a lapsed void stays Void everywhere expiry is read: the Voided card, Declined's and the Closed column's totals, the board card's badge and reason, and the AI chat's funnel. The portal already checked Void before expiry, so nothing changes there. A lapsed draft still reads Expired (TECH_DEBT). No SQL.
