@@ -83,6 +83,7 @@ export default function PrivacyPage() {
           <li>Supabase (database and sign-in) and Vercel (hosting)</li>
           <li>Twilio and CallRail (calls and texts), and Resend (email)</li>
           <li>Stripe (payments; we never see or store full card numbers)</li>
+          <li>Intuit QuickBooks Online (accounting, if your company connects it)</li>
           <li>Google (maps, plus Drive and Calendar if your company connects them)</li>
           <li>Meta (Facebook lead forms, if your company connects them)</li>
           <li>PropertyRadar (property details for an address)</li>

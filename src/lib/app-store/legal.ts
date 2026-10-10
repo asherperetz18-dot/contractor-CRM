@@ -5,7 +5,7 @@
 export const PRIVACY_CONTACT_EMAIL = "info@aibuildpros.com";
 
 /** Shown at the top of both pages; change it whenever their text changes. */
-export const LEGAL_UPDATED = "September 27, 2026";
+export const LEGAL_UPDATED = "October 10, 2026";
 
 /** How long after a request an account is deleted. */
 export const DELETION_DAYS = 30;

@@ -2526,3 +2526,19 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** a customer can sign, and tick optional lines, until the company's midnight on the last valid day, and a stage reads Due all of its due day. The staff screens' own expiry still reads the clock where the page draws (the server's UTC on the first draw, then the browser's), which #180 left for its own change, and the AI chat's reads the server's (both in TECH_DEBT). No SQL.
 
+## 192 — Ready for real QuickBooks: a practice connection says Connect again, and connecting stops rather than half-clearing
+
+**Date:** 2026-10-10
+
+**Context:** The CRM connects to Intuit's practice companies until `QUICKBOOKS_ENVIRONMENT` is `production` (#172). A check before switching to real books found two gaps and a missing line:
+- A company still connected to a practice company after the switch sent nothing (`quickBooksAccess` refuses a login made on the other side, without writing `last_error`), while Settings went on saying "Connected" and "Practice company", with no Connect again button.
+- When a different QuickBooks company was connected, the sign-in callback cleared the old company's picks (#173, #184) only if it could read the current connection. A failed read was ignored: the new login was then saved with sending still on, the old start dates, and the old company's "paid from" matches, cost accounts, products and payment accounts, so the next run could post to real books with the practice company's account ids. The clearing writes' own errors were ignored too.
+- The privacy page didn't list Intuit QuickBooks, and #087 asks for it whenever an integration receives personal data. Intuit also asks for a privacy policy link before it issues production keys.
+
+**Decision:**
+- `otherSideNote` (`src/lib/quickbooks/connection-side.ts`) says when a connection was made on the other side of Intuit. Settings then shows a **Connect again** badge instead of Connected, the note ("…nothing goes to QuickBooks until you connect your real company"), and the Connect again button. "This sends to your practice company" shows only while the CRM is still on practice companies.
+- The clearing moved into `clearForNewCompany` (`src/lib/quickbooks/connect-reset.ts`). It runs before the new login is saved, and counts a different company id *or* a different side of Intuit as a new company. It turns both switches off first, then clears the invoice picks, the "paid from" matches and the cost accounts. A failed read or write stops the connection with an error and keeps the old one as it was, with sending off if that write went through. Each step is safe to repeat, so connecting again finishes the job. Before 0221 there's nothing to clear, and before 0227 the invoice columns are skipped, as before.
+- The privacy page lists "Intuit QuickBooks Online (accounting, if your company connects it)", and its date moves. The Play Data safety answers don't change: QuickBooks gets the company's own bills, invoices and customers because the company connected it, and no new kind of data is collected.
+
+**Consequence:** on the day the CRM switches to real books, each company still on a practice company sees at once that it must connect again. A connection is never saved with the previous company's picks. What went to a practice company stays recorded under its company id, so nothing is skipped or changed in the real company. Not changed: the sync records are keyed by QuickBooks company id only, so a practice and a real company with the same id would share them. Intuit's ids aren't known to collide, but that isn't confirmed. The terms page Intuit also asks for waits for the owner's wording. The five-minute job's read of QuickBooks' settings is in TECH_DEBT, since Intuit meters reads on its free tier. No SQL.
+

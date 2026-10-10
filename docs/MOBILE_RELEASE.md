@@ -119,6 +119,7 @@ The account is an Organization, so Play's 12-tester, 14-day closed test (a rule 
   - *Device or other IDs:* a random device ID the CRM makes to tell a person's devices apart, for analytics.
   - *App info and performance (crash logs):* error reports, for app functionality.
   - Data is encrypted in transit: yes. Users can ask for deletion: yes (the page in 3e).
+  - QuickBooks (DECISIONS #192) changes none of these. A company that connects its own QuickBooks has its bills, invoices and customers sent there because it asked for that, and no new kind of data is collected. The privacy page lists it.
 - **Location permissions:** the app asks for location only while in use and keeps it running through a foreground service (the "On the clock" notification). It never asks for "Allow all the time", so no *background location* declaration is needed.
 - **Foreground service:** type *location*. Purpose: sharing the crew member's location with their employer while they are clocked in. Play asks for a short video: clock in, show the notification, clock out.
 

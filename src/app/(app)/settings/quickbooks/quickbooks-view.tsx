@@ -13,6 +13,7 @@ import {
   type QuickBooksSettings,
   type SendNowResult,
 } from "@/lib/actions/quickbooks";
+import { otherSideNote } from "@/lib/quickbooks/connection-side";
 
 const fmtDay = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
@@ -57,6 +58,8 @@ export function QuickBooksView({
   const [pending, startTransition] = useTransition();
   const c = settings.connection;
   const connected = !!c?.connected;
+  // Connected on the other side of Intuit: nothing goes until it connects again (DECISIONS #192).
+  const otherSide = otherSideNote(c, settings.environment);
 
   function run(action: () => Promise<{ error?: string; count?: number }>, done: (r: { count?: number }) => string) {
     setError(null);
@@ -84,7 +87,8 @@ export function QuickBooksView({
       <section className="est-pay">
         <h2 className="est-pay-title">
           QuickBooks
-          {connected && <span className="est-badge est-badge-signed">Connected</span>}
+          {connected && !otherSide && <span className="est-badge est-badge-signed">Connected</span>}
+          {otherSide && <span className="est-badge est-badge-declined">Connect again</span>}
           {connected && c?.environment === "sandbox" && <span className="est-badge est-badge-financing">Practice company</span>}
         </h2>
 
@@ -104,9 +108,10 @@ export function QuickBooksView({
                   .join(" · ")}
               </div>
             </div>
+            {otherSide && <p className="error-note">{otherSide}</p>}
             {c?.lastError && <p className="error-note">{c.lastError}</p>}
             <div className="est-pay-actions">
-              {c?.lastError && /connect again/i.test(c.lastError) && (
+              {(otherSide || (c?.lastError && /connect again/i.test(c.lastError))) && (
                 <a className="btn-primary" href="/api/oauth/quickbooks/authorize">
                   Connect again
                 </a>
@@ -303,7 +308,7 @@ function BillSending({ settings }: { settings: QuickBooksSettings }) {
           </p>
         </>
       )}
-      {settings.connection?.environment === "sandbox" && (
+      {settings.connection?.environment === "sandbox" && settings.environment === "sandbox" && (
         <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
       )}
       {error && <p className="error-note">{error}</p>}
@@ -681,7 +686,7 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
         <p className="est-tax-note">Read from QuickBooks on the first run.</p>
       )}
 
-      {settings.connection?.environment === "sandbox" && (
+      {settings.connection?.environment === "sandbox" && settings.environment === "sandbox" && (
         <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
       )}
       {error && <p className="error-note">{error}</p>}
