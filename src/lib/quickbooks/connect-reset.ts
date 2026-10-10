@@ -4,7 +4,8 @@ import type { QbEnvironment } from "./oauth.ts";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
-const STOPPED = "QuickBooks wasn't connected: the CRM couldn't clear the settings picked for your previous QuickBooks company. Please try connecting again.";
+const STOPPED =
+  "QuickBooks wasn't connected: the CRM couldn't finish clearing the settings picked for your previous QuickBooks company, so sending there may already be off. Please try connecting again.";
 
 /**
  * Connecting a different QuickBooks company than before, or one on the
@@ -15,10 +16,11 @@ const STOPPED = "QuickBooks wasn't connected: the CRM couldn't clear the setting
  * accounts go. What went to the old company stays recorded under its id.
  * `cleared` says it happened, so Settings can say sending is off.
  *
- * Any read or write that fails stops the connection with an error, and the
- * old one stays as it was: the old company's accounts must never be sent
- * to the new one. Each step is safe to repeat, so connecting again
- * finishes the job.
+ * Any read or write that fails stops the connection with an error: the old
+ * company's accounts must never be sent to the new one. The old connection
+ * stays connected, but whatever was already cleared stays cleared (sending
+ * off first, then its invoice picks, then its matches). Each step is safe
+ * to repeat, so connecting the new company again finishes the job.
  */
 export async function clearForNewCompany(
   admin: Admin,

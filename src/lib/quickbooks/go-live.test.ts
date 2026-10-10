@@ -31,6 +31,12 @@ test("a real company while the CRM is on practice companies says so too", () => 
   assert.match(note, /nothing goes to QuickBooks/i);
 });
 
+test("while QuickBooks isn't set up on the CRM there's no other side to speak of", () => {
+  assert.equal(otherSideNote({ connected: true, environment: "production" }, null), null);
+  const view = source("../../app/(app)/settings/quickbooks/quickbooks-view.tsx");
+  assert.match(view, /otherSideNote\(c, settings\.configured \? settings\.environment : null\)/);
+});
+
 test("the same side, a disconnected company, or none: nothing to say", () => {
   assert.equal(otherSideNote({ connected: true, environment: "sandbox" }, "sandbox"), null);
   assert.equal(otherSideNote({ connected: true, environment: "production" }, "production"), null);
@@ -222,6 +228,8 @@ test("the privacy page says what goes to a company's own QuickBooks and that it 
   // Not among the services that work for us: it's the company's own account.
   assert.doesNotMatch(page, /<li>[^<]*QuickBooks/);
   assert.match(page, /If your company connects its own QuickBooks Online \(Intuit\), the CRM sends it what your company turns on:/);
-  assert.match(page, /doesn&apos;t remove it from QuickBooks\./);
+  // Only what stays: deleted bills, credits and refunds are deleted there while sending is on.
+  assert.match(page, /Customers and vendors stay in\s+QuickBooks even if they&apos;re deleted in the CRM/);
+  assert.doesNotMatch(page, /deleting something in the CRM/);
   assert.doesNotMatch(source("../app-store/legal.ts"), /LEGAL_UPDATED = "September 27, 2026"/);
 });

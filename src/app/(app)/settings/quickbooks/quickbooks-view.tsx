@@ -62,7 +62,7 @@ export function QuickBooksView({
   const c = settings.connection;
   const connected = !!c?.connected;
   // Connected on the other side of Intuit: nothing goes until it connects again (DECISIONS #192).
-  const otherSide = otherSideNote(c, settings.environment);
+  const otherSide = otherSideNote(c, settings.configured ? settings.environment : null);
 
   function run(action: () => Promise<{ error?: string; count?: number }>, done: (r: { count?: number }) => string) {
     setError(null);

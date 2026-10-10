@@ -15,15 +15,15 @@ export function onOtherSide(environment: string | null | undefined, crm: QbEnvir
  * practice company while the CRM now sends to real books, or the other way
  * round. Its login was given to the other side's app, so nothing goes
  * until the company connects again, and Settings has to say so instead of
- * "Connected". Null when the connection is on the CRM's side, or there is
- * none.
+ * "Connected". Null when the connection is on the CRM's side, when there is
+ * none, or while QuickBooks isn't set up on the CRM (`crm` null).
  */
 export function otherSideNote(
   connection: { connected: boolean; environment: QbEnvironment } | null,
-  crm: QbEnvironment
+  crm: QbEnvironment | null
 ): string | null {
   if (!connection?.connected || !onOtherSide(connection.environment, crm)) return null;
   return crm === "production"
     ? "This is Intuit's practice company. The CRM now sends to real QuickBooks companies, so nothing goes to QuickBooks until you connect your real company: click Connect again."
-    : "This is a real QuickBooks company, but the CRM is set to Intuit's practice companies right now, so nothing goes to QuickBooks. Connect again to use a practice company.";
+    : "This is a real QuickBooks company, but the CRM is set to Intuit's practice companies right now, so nothing goes to QuickBooks. Connecting again to a practice company clears what's picked for this one, so only do that if you mean to.";
 }
