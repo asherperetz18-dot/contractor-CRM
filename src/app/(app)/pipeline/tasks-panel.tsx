@@ -101,9 +101,9 @@ export function TasksPanel({
     return roster.find((r) => r.id === id)?.name || null;
   }
 
-  // Each call goes through attempt: one that never reaches the server (a
-  // tab opened before an update) says so instead of leaving the buttons
-  // greyed out, and a refusal is shown rather than swallowed.
+  // Each call goes through attempt: one that never reaches the server
+  // says so instead of leaving the buttons greyed out, and an error the
+  // server returns is shown rather than swallowed.
   async function handleAdd() {
     if (!form.title.trim()) {
       setError("Type what the task is first.");
@@ -121,6 +121,11 @@ export function TasksPanel({
     }
     reset();
     onChanged();
+  }
+
+  function cancelAdd() {
+    setError("");
+    reset();
   }
 
   async function handleComplete(taskId: string) {
@@ -283,7 +288,7 @@ export function TasksPanel({
             <button
               type="button"
               className="btn-ghost small"
-              onClick={reset}
+              onClick={cancelAdd}
             >
               Cancel
             </button>

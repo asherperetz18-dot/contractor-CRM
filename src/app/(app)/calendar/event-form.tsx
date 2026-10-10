@@ -383,7 +383,7 @@ export function EventForm({
    * to show. Save Result runs it alone; the footer's Save runs it after
    * the appointment's own fields.
    */
-  async function commitResult(): Promise<{ error?: string }> {
+  async function commitResult(): Promise<{ error?: string; partly?: boolean }> {
     if (!lead || !event) return {};
     const outcome = (pendingOutcome || form.status) as EventStatus;
     // Checked here as well as on the button. The button is the courtesy;
@@ -412,13 +412,22 @@ export function EventForm({
     // result as unsaved, hid Save Result and never said "✓ Result saved".
     setBaseline((b) => ({ ...b, status: outcome }));
 
+    // From here the outcome is on record, so a refusal says so rather
+    // than "the result didn't save".
     if (chosenStage !== lead.stage) {
       const stageResult = await moveLeadStage(lead.id, chosenStage);
-      if (stageResult?.error) return { error: stageResult.error };
+      if (stageResult?.error) {
+        return {
+          error: `The outcome is saved, but the contact didn't move to ${chosenStage}: ${stageResult.error}`,
+          partly: true,
+        };
+      }
     }
     if (resultNote.trim()) {
       const noteResult = await addLeadNote(lead.id, resultNote.trim(), event.id);
-      if (noteResult?.error) return { error: noteResult.error };
+      if (noteResult?.error) {
+        return { error: `The outcome is saved, but the result note didn't: ${noteResult.error}`, partly: true };
+      }
     }
     // Cleared once it has all landed, so a later step failing in the
     // footer's Save can't make a retry add the note twice.
@@ -430,10 +439,12 @@ export function EventForm({
   }
 
   async function saveResult() {
+    if (pending || resultPending) return;
     setResultPending(true);
     setError("");
     const result = await attempt(commitResult);
     setResultPending(false);
+    if (result.partly) router.refresh();
     if (result.error) {
       setError(result.error);
       return;
@@ -449,6 +460,7 @@ export function EventForm({
    * stops it with the window open, saying what saved and what didn't.
    */
   async function handleSave() {
+    if (pending || resultPending) return;
     if (!form.title.trim()) {
       setError("Title is required.");
       return;
@@ -466,13 +478,17 @@ export function EventForm({
     setError("");
     const saving = form;
     const outcome = await commitPending({
-      appointment: async () => {
-        const result = event
-          ? await updateEvent(event.id, saving, confirmTouched)
-          : await createEvent(saving);
-        if (!result?.error) setBaseline(saving);
-        return result;
-      },
+      // Only when one of its own fields changed: writing the whole row from
+      // the page's copy would put back a reschedule made since it loaded.
+      appointment: !event || formDirty
+        ? async () => {
+            const result = event
+              ? await updateEvent(event.id, saving, confirmTouched)
+              : await createEvent(saving);
+            if (!result?.error) setBaseline(saving);
+            return result;
+          }
+        : undefined,
       result: resultDirty ? commitResult : undefined,
       task: lead && taskDraft.waiting
         ? async () => {
@@ -486,7 +502,7 @@ export function EventForm({
     if (taskStep) taskDraft.setBusy(false);
     // Only when something landed: refreshing a tab that couldn't reach
     // the server at all can reload the page out from under the window.
-    if (outcome.done.length) router.refresh();
+    if (outcome.done.length || outcome.partly) router.refresh();
     if (outcome.error) {
       setError(outcome.error);
       return;
@@ -569,6 +585,7 @@ export function EventForm({
     formDirty,
     resultDirty,
     taskPending: taskDraft.waiting,
+    saving: pending,
   });
   const isDirty = footer.dirty;
 
@@ -1134,7 +1151,7 @@ export function EventForm({
                     "chip" + ((pendingOutcome || form.status) === s ? " chip-active" : "")
                   }
                   onClick={() => pickOutcome(s)}
-                  disabled={readOnly || resultPending}
+                  disabled={readOnly || resultPending || pending}
                 >
                   {s}
                 </button>
@@ -1157,7 +1174,7 @@ export function EventForm({
                 value={resultValue}
                 onChange={(e) => setResultValue(e.target.value)}
                 placeholder={lead.value ? String(lead.value) : "18000"}
-                disabled={readOnly || resultPending}
+                disabled={readOnly || resultPending || pending}
               />
               {!resultValueOk && (
                 <p className="est-tax-note">
@@ -1174,7 +1191,7 @@ export function EventForm({
               <select
                 value={resultStage || lead.stage}
                 onChange={(e) => setResultStage(e.target.value)}
-                disabled={readOnly || resultPending}
+                disabled={readOnly || resultPending || pending}
               >
                 {(stages ?? []).map((s) => (
                   <option key={s.id} value={s.name}>
@@ -1190,13 +1207,13 @@ export function EventForm({
               onChange={(e) => setResultNote(e.target.value)}
               rows={2}
               placeholder="e.g. Needs a 2nd appointment to finalize scope..."
-              disabled={readOnly || resultPending}
+              disabled={readOnly || resultPending || pending}
             />
           </Field>
           <p className="hint-note">
-            {footer.saveResult
+            {!readOnly && (footer.saveResult
               ? "Nothing here is saved until you press Save Result."
-              : "Nothing here is saved until you press Save, which saves it with your other changes."}
+              : "Nothing here is saved until you press Save, which saves it with your other changes.")}
             {followUpStage && <> No-show and Cancelled suggest {followUpStage}; change the stage if it belongs elsewhere.</>}
           </p>
         </div>
@@ -1401,7 +1418,7 @@ export function EventForm({
                 {footer.save ? "Cancel" : "Close"}
               </button>
               {footer.save && (
-                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || taskDraft.busy}>
+                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || resultPending || taskDraft.busy}>
                   {pending ? "Saving…" : "Save"}
                 </button>
               )}
@@ -1410,7 +1427,7 @@ export function EventForm({
                   type="button"
                   className="btn-primary"
                   onClick={saveResult}
-                  disabled={resultPending || !resultDirty || !resultValueOk}
+                  disabled={pending || resultPending || !resultDirty || !resultValueOk}
                 >
                   {resultPending ? "Saving…" : "Save Result"}
                 </button>

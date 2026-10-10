@@ -24,9 +24,9 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     version: "1.262.0",
     date: "2026-10-10",
     notes: [
-      "The Edit Appointment window no longer loses a task or a result. Its Save now saves everything you entered: the appointment, a result you picked, and a task you typed (no need to press Add Task first). If one part can't be saved, the window stays open and says which part didn't save and why.",
-      "A task you're typing stays put when you switch tabs, and closing the window asks before throwing it away. After Save Result the window shows \"✓ Result saved\" and the red dot on Result clears, instead of looking unsaved, and Save Result no longer disappears when someone confirmed the appointment by text after you opened the page.",
-      "If saving can't reach the CRM (a dropped signal, for example), the window now says so and the button works again, instead of staying greyed out.",
+      "The Edit Appointment window no longer loses a task or a result. Its Save now saves your changes to the appointment, a result you picked and a task you typed, all in one go (no need to press Add Task first). If one part can't be saved, the window stays open and says which part didn't save and why.",
+      "A task you're typing stays put when you switch tabs, and Cancel or the X asks before throwing it away. After Save Result the window shows \"✓ Result saved\" and the red dot on Result clears, instead of looking unsaved, and Save Result no longer disappears when someone confirmed the appointment by text after you opened the page.",
+      "In that window, and when adding, ticking off or deleting a task, a save that can't reach the CRM (a dropped signal, for example) now says so and the button works again, instead of staying greyed out.",
     ],
   },
   {

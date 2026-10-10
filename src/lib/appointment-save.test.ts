@@ -45,6 +45,23 @@ test("Save commits the appointment, then the result, then a typed task, and stop
   // Nothing after a failure runs.
   assert.deepEqual(order, ["appointment"]);
 
+  // A result whose outcome landed but whose stage or note didn't says
+  // exactly that, rather than "the result didn't save".
+  assert.deepEqual(
+    await commitPending({
+      appointment: ok("appointment"),
+      result: async () => ({ error: "The outcome is saved, but the contact didn't move to Follow Up: No.", partly: true }),
+      task: ok("task"),
+    }),
+    {
+      error: "Saved the appointment. The outcome is saved, but the contact didn't move to Follow Up: No. Not saved yet: the new task.",
+      failedAt: "result",
+      done: ["appointment"],
+      partly: true,
+    }
+  );
+  assert.deepEqual(await attempt(async () => ({ error: "Half.", partly: true })), { error: "Half.", partly: true });
+
   // Only what is pending runs, and a lone refusal reads as itself.
   assert.deepEqual(await commitPending({ task: ok("task") }), { done: ["task"] });
   assert.deepEqual(await commitPending({ appointment: async () => ({ error: "Pick a date." }), result: undefined }), {
@@ -80,6 +97,7 @@ const footer = (over: Partial<Parameters<typeof appointmentFooter>[0]> = {}) =>
     formDirty: false,
     resultDirty: false,
     taskPending: false,
+    saving: false,
     ...over,
   });
 
@@ -93,6 +111,16 @@ test("the Result tab shows one save button: Save Result for a result alone, Save
     dirty: true,
   });
   assert.deepEqual(footer({ tab: "Result", resultDirty: true, taskPending: true }), {
+    save: true,
+    saveResult: false,
+    dirty: true,
+  });
+});
+
+test("while Save is working, it stays the button on screen", () => {
+  // The appointment lands first and stops counting as an edit; offering
+  // Save Result then would let the result be sent a second time.
+  assert.deepEqual(footer({ tab: "Result", resultDirty: true, saving: true }), {
     save: true,
     saveResult: false,
     dirty: true,
@@ -134,6 +162,15 @@ test("the window commits everything pending through one Save and keeps a typed t
   assert.match(form, /const taskDraft = useTaskDraft\(\);/);
   assert.match(form, /<TasksPanel[\s\S]*?draft=\{taskDraft\}[\s\S]*?\/>/);
   assert.match(form, /await commitPending\(\{/);
+  // The appointment row is written only when one of its own fields
+  // changed, so a result and a task can't put back a reschedule someone
+  // else made since the page loaded.
+  assert.match(form, /appointment: !event \|\| formDirty/);
+  // One save at a time: neither button starts while the other is working.
+  assert.match(form, /async function handleSave\(\) \{\s*if \(pending \|\| resultPending\) return;/);
+  assert.match(form, /async function saveResult\(\) \{\s*if \(pending \|\| resultPending\) return;/);
+  assert.match(form, /saving: pending,/);
+  assert.match(form, /disabled=\{pending \|\| resultPending \|\| !resultDirty \|\| !resultValueOk\}/);
   assert.match(form, /result: resultDirty \? commitResult : undefined,/);
   assert.match(form, /task: lead && taskDraft\.waiting/);
   assert.match(form, /appointmentFooter\(\{/);
@@ -154,7 +191,9 @@ test("the window commits everything pending through one Save and keeps a typed t
   assert.match(form, /appointmentResultOverdue\(\{ \.\.\.event, status: baseline\.status \}, openedAtMs\)/);
   // A task already on its way (Add Task) can't be sent again by Save, nor
   // the other way round -- the slow-signal double tap.
-  assert.match(form, /disabled=\{pending \|\| taskDraft\.busy\}/);
+  assert.match(form, /disabled=\{pending \|\| resultPending \|\| taskDraft\.busy\}/);
+  // A read-only window doesn't point at a save button it doesn't have.
+  assert.match(form, /\{!readOnly && \(footer\.saveResult/);
   assert.match(form, /if \(taskStep\) taskDraft\.setBusy\(true\);/);
 });
 
@@ -170,6 +209,7 @@ test("the task panel takes its draft from the window when given one, and reports
   assert.match(panel, /if \(!form\.title\.trim\(\)\) \{\s*setError\(/);
   // The panel's Cancel throws the draft away, so Save can't add a task
   // the person backed out of.
-  assert.match(panel, /onClick=\{reset\}/);
+  assert.match(panel, /onClick=\{cancelAdd\}/);
+  assert.match(panel, /function cancelAdd\(\) \{\s*setError\(""\);\s*reset\(\);/);
   assert.match(panel, /disabled=\{pending \|\| busy\}/);
 });
