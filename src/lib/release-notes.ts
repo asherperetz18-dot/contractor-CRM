@@ -25,8 +25,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-10-10",
     notes: [
       "If your role isn't allowed to delete a note, or to tick off or delete a task, the CRM now tells you, instead of leaving it there without a word.",
-      "Estimates and the Contract Board now keep a proposal as Sent all through its last valid day. After 5pm Pacific it could already show as Expired or Closed, while your customer could still sign it in the portal.",
-      "The AI assistant now goes by your company's clock: it no longer calls a proposal expired on the evening of its last day, it dates documents written or signed in the evening on the right day, and it shows call times in your time zone instead of 7 or 8 hours ahead.",
+      "Estimates and the Contract Board now keep a proposal awaiting signature (Sent or Viewed) all through its last valid day. After 5pm Pacific it could already show as Expired or Closed, while your customer could still sign it in the portal.",
+      "The AI assistant now goes by your company's clock: it no longer calls a proposal expired on the evening of its last day, it dates documents written or signed in the evening on the right day, and it shows call times in your time zone instead of in UTC, hours ahead.",
       "In a contact's window, a task, note, shared note or text you're typing now stays put when you switch tabs, and closing the window, a stage button, Delete or opening an estimate asks before throwing it away.",
     ],
   },

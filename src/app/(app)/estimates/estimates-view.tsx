@@ -305,8 +305,9 @@ export function EstimatesView({
   // typed is no edge rather than a broken window.
   // Noon of the company's today: the date window above counts from it,
   // and every expiry below is judged on it (DECISIONS #193). The clock
-  // where the page drew put a proposal under Lost from 5pm Pacific on its
-  // last day on the server's first draw, while the browser said Sent.
+  // where the page drew put a proposal under Declined from 5pm Pacific on
+  // its last day on the server's first draw, while the browser still had
+  // it awaiting a signature.
   const asOf = new Date(`${today}T12:00:00`);
   const dateWindow = resolveWindow({ preset: datePreset, from: dateFrom, to: dateTo }, asOf);
   const madeInWindow = stampedWithin({ from: calendarDay(dateWindow.from), to: calendarDay(dateWindow.to) }, zone);

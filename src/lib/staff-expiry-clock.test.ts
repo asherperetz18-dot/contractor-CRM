@@ -64,10 +64,13 @@ test("on its last day a proposal is awaiting a signature everywhere, in any zone
 });
 
 test("a column's money, and the board's cards, judge expiry on the same day", () => {
-  const voided = { ...lastDay, status: "Void" as const, expires_at: null };
+  // Voiding keeps expires_at: on its last day it is still Void on the
+  // company's clock, its money out of the column and the Voided card.
+  const voided = { ...lastDay, status: "Void" as const };
   inZone("UTC", () => {
     const asOf = new Date("2026-10-09T12:00:00");
     assert.equal(columnTotalCents([lastDay, voided], asOf), 50_000);
+    assert.deepEqual(funnelCardStats([voided], "void", none, nobody, asOf), { count: 1, totalCents: 0 });
     // The real instant is already the 10th in UTC (6pm Pacific on the 9th);
     // the expiry day is the company's.
     const now = new Date("2026-10-10T01:00:00Z");
