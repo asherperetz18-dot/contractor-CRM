@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { downloadBackup } from "@/lib/actions/backup";
 
 export function BackupView({
@@ -12,6 +13,8 @@ export function BackupView({
   skipped: Record<string, string>;
   totalRows: number;
 }) {
+  // The file is named for the company's day, not the UTC one.
+  const today = useCompanyToday();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -33,7 +36,7 @@ export function BackupView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `crm-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `crm-backup-${today()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setDone(`Downloaded ${result.rows?.toLocaleString()} rows.`);

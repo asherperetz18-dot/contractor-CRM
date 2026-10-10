@@ -36,6 +36,10 @@ export type CompanyChrome = {
   logo_url: string | null;
   time_format: TimeFormat | null;
   nav_order: string[] | null;
+  /** The company's time zone label, for the client screens' today
+   *  (`CompanyZoneProvider`). Saved on Company Profile, which drops
+   *  this cache. */
+  timezone: string | null;
 };
 
 const EMPTY_CHROME: CompanyChrome = {
@@ -43,6 +47,7 @@ const EMPTY_CHROME: CompanyChrome = {
   logo_url: null,
   time_format: null,
   nav_order: null,
+  timezone: null,
 };
 
 const chromeTag = (companyId: string) => `company-chrome:${companyId}`;
@@ -61,7 +66,7 @@ export function getCompanyChrome(companyId: string): Promise<CompanyChrome> {
       // own.
       const { data } = await supabase
         .from("company_profile")
-        .select("name, logo_url, time_format, nav_order")
+        .select("name, logo_url, time_format, nav_order, timezone")
         .eq("company_id", id)
         .maybeSingle();
       return (data as CompanyChrome | null) ?? EMPTY_CHROME;

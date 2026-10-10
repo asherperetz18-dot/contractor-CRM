@@ -260,6 +260,7 @@ export function PortalHome({
   documents,
   sharedNotes,
   words = STANDARD_WORDS,
+  today,
 }: {
   lead: Lead;
   events: Event[];
@@ -279,6 +280,9 @@ export function PortalHome({
   sharedNotes: SharedNote[] | null;
   /** The company's own words (DECISIONS #121). */
   words?: CompanyWords;
+  /** The company's today, from the page: a visit today is still upcoming
+   *  all evening. The UTC date filed it under past from 5pm Pacific. */
+  today: string;
 }) {
   const JOURNEY = journeyLabels(words);
   const router = useRouter();
@@ -299,9 +303,8 @@ export function PortalHome({
 
   const step = journeyStep(lead.stage_key, estimates);
   const progress = step === null ? null : journeyProgress(step, JOURNEY.length);
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const upcoming = events.filter((e) => e.date >= todayISO && e.status !== "Cancelled");
-  const past = events.filter((e) => e.date < todayISO || e.status === "Cancelled");
+  const upcoming = events.filter((e) => e.date >= today && e.status !== "Cancelled");
+  const past = events.filter((e) => e.date < today || e.status === "Cancelled");
 
   function repName(id: string | null) {
     if (!id) return null;

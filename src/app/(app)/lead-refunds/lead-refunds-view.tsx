@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { leadDisplayName, money, type Lead, type Profile } from "@/lib/data/types";
@@ -34,6 +35,8 @@ export function LeadRefundsView({
   reps: Profile[];
   canWrite: boolean;
 }) {
+  // The CSV is named for the company's day, not the UTC one.
+  const today = useCompanyToday();
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
   const [search, setSearch] = useState("");
@@ -111,7 +114,7 @@ export function LeadRefundsView({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `lead-refunds-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `lead-refunds-${today()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }

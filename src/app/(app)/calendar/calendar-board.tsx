@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useTimeFormat } from "@/components/time-format-context";
+import { useCompanyToday } from "@/components/company-zone-context";
 import {
   EVENT_STATUSES,
   EVENT_STATUS_COLOR,
@@ -47,10 +48,6 @@ function ymd(y: number, m: number, d: number) {
 
 function ymdFromDate(d: Date) {
   return ymd(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function startOfWeek(dateStr: string): Date {
@@ -133,6 +130,10 @@ export function CalendarBoard({
   appointmentHolders: Record<string, string | null>;
 }) {
   const timeFormat = useTimeFormat();
+  // The company's today: the day the board marks, opens on and books on
+  // by default. The UTC date it used was already tomorrow from 5pm
+  // Pacific. The same on the server's draw and in the browser.
+  const today = useCompanyToday();
   /**
    * Null until the user picks a view for themselves, so the default can
    * depend on the screen without overriding a deliberate choice.
@@ -161,12 +162,12 @@ export function CalendarBoard({
   // Starts in the month the page loaded: today, or the month in the
   // address (a reload, or a link to one appointment).
   const [cursorDate, setCursorDate] = useState(() =>
-    monthOf(todayISO()) === loadedMonth ? todayISO() : `${loadedMonth}-01`
+    monthOf(today()) === loadedMonth ? today() : `${loadedMonth}-01`
   );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editing, setEditing] = useState<Event | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [newDate, setNewDate] = useState(todayISO());
+  const [newDate, setNewDate] = useState(today());
   const [statusFilter, setStatusFilter] = useState<Set<EventStatus>>(new Set());
   const [calendarFilter, setCalendarFilter] = useState<Set<string>>(new Set());
   const [repFilter, setRepFilter] = useState<Set<string>>(new Set());
@@ -410,8 +411,8 @@ export function CalendarBoard({
     }
   }
   function goToday() {
-    setCursorDate(todayISO());
-    setSelectedDate(todayISO());
+    setCursorDate(today());
+    setSelectedDate(today());
   }
   function openNewOnDate(dateStr: string) {
     setNewDate(dateStr);
@@ -435,7 +436,7 @@ export function CalendarBoard({
     return jobs.find((j) => j.id === id)?.name || null;
   }
 
-  const todayStr = todayISO();
+  const todayStr = today();
   const selectedEvents = selectedDate ? eventsByDate.get(selectedDate) ?? [] : [];
   const dayViewEvents = eventsByDate.get(cursorDate) ?? [];
 

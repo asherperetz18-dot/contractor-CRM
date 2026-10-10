@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import {
   centsFromInput,
@@ -50,7 +51,10 @@ export function RecordPayment({
   const [method, setMethod] = useState<ManualPaymentMethod>("check");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
-  const [receivedOn, setReceivedOn] = useState(new Date().toISOString().slice(0, 10));
+  // Received today on the company's calendar, not the UTC date (already
+  // tomorrow from 5pm Pacific).
+  const today = useCompanyToday();
+  const [receivedOn, setReceivedOn] = useState(today());
   const [deposited, setDeposited] = useState(true);
   const [sendReceipt, setSendReceipt] = useState(false);
   const [error, setError] = useState<string | null>(null);

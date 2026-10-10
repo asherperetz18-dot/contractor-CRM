@@ -1,14 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { Field } from "@/components/ui/field";
 import type { LeadTask, Profile } from "@/lib/data/types";
 import { repBylineName, repDropdownOptions } from "@/lib/data/rep-options";
 import { completeLeadTask, createLeadTask, deleteLeadTask } from "@/lib/actions/leads";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function formatDueTime(time: string | null) {
   if (!time) return "";
@@ -53,7 +50,10 @@ export function TasksPanel({
   const [showAdd, setShowAdd] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ title: "", due_date: todayISO(), due_time: "", assigned_to: "" });
+  // A new task is due today on the company's calendar, not the UTC day
+  // (already tomorrow from 5pm Pacific).
+  const today = useCompanyToday();
+  const [form, setForm] = useState({ title: "", due_date: today(), due_time: "", assigned_to: "" });
 
   const open = tasks.filter((t) => !t.completed_at);
   const done = tasks.filter((t) => t.completed_at);
@@ -75,7 +75,7 @@ export function TasksPanel({
       setError(result.error);
       return;
     }
-    setForm({ title: "", due_date: todayISO(), due_time: "", assigned_to: "" });
+    setForm({ title: "", due_date: today(), due_time: "", assigned_to: "" });
     setShowAdd(false);
     onChanged();
   }

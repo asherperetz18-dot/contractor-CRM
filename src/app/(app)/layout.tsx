@@ -7,6 +7,7 @@ import {
   canEditDispatch,
   canSeePage,
   canViewEstimates,
+  companyIanaZone,
   isAdminRole,
   isFieldRole,
   isPlatformAdmin,
@@ -40,6 +41,7 @@ import { PhoneTabBar } from "./phone-tab-bar";
 import { MoreSheet } from "./more-sheet";
 import { mobileTabs, moreSections, navHrefs } from "@/lib/mobile-tabs";
 import { TimeFormatProvider } from "@/components/time-format-context";
+import { CompanyZoneProvider } from "@/components/company-zone-context";
 import type { TimeFormat } from "@/lib/data/types";
 import { getCompanyBilling } from "@/lib/billing/company-billing";
 import { getCompanyClosure } from "@/lib/billing/company-closure";
@@ -150,6 +152,9 @@ export default async function AppLayout({
 
   return (
     <TimeFormatProvider value={timeFormat}>
+    {/* The company's zone, for the client screens' today
+        (useCompanyToday): read from the cached company row above. */}
+    <CompanyZoneProvider value={companyIanaZone(company.timezone)}>
     <div className="app-shell">
       <div className="app-root">
         <div className="global-topbar">
@@ -291,6 +296,7 @@ export default async function AppLayout({
         />
       </div>
     </div>
+    </CompanyZoneProvider>
     </TimeFormatProvider>
   );
 }

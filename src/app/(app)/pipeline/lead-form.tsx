@@ -2,6 +2,7 @@
 
 import { clientName } from "@/lib/data/client-name";
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
@@ -78,11 +79,9 @@ import { boughtListKeys, contactFormComplete, countsAsLead, realLeadSources } fr
 
 type Tab = "Overview" | "Appointments" | "Tasks" | "Notes" | "Texts" | "Calls" | "Files";
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function toInput(lead: Lead | undefined, stages: PipelineStageRow[]): LeadInput {
+/** `today` is the company's (useCompanyToday): a new contact's Date
+ *  received when it has none of its own. */
+function toInput(lead: Lead | undefined, stages: PipelineStageRow[], today: string): LeadInput {
   return {
     contact_type: lead?.contact_type ?? "Individual",
     company_name: lead?.company_name ?? "",
@@ -99,7 +98,7 @@ function toInput(lead: Lead | undefined, stages: PipelineStageRow[]): LeadInput 
     stage: lead?.stage ?? stageLabel(stages, "unsorted"),
     value: lead ? String(lead.value ?? "") : "",
     lead_cost: lead?.lead_cost != null ? String(lead.lead_cost) : "",
-    date_received: lead?.date_received ?? todayISO(),
+    date_received: lead?.date_received ?? today,
     notes: lead?.notes ?? "",
     has_appt: lead?.has_appt ?? false,
     second_contact_first_name: lead?.second_contact_first_name ?? "",
@@ -171,7 +170,8 @@ export function LeadForm({
   const [, startTransition] = useTransition();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState<LeadInput>(toInput(lead, stages));
+  const today = useCompanyToday();
+  const [form, setForm] = useState<LeadInput>(toInput(lead, stages, today()));
   const [hasSecondContact, setHasSecondContact] = useState(
     !!(lead?.second_contact_first_name || lead?.second_contact_phone || lead?.second_contact_email)
   );
@@ -405,7 +405,7 @@ export function LeadForm({
     setRefundStatus(status);
   }
   const [booking, setBooking] = useState({
-    date: todayISO(),
+    date: today(),
     time: "09:00",
     endTime: "",
     eventType: "Estimate",

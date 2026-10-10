@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useCompanyToday } from "@/components/company-zone-context";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/modal";
 import { Field } from "@/components/ui/field";
@@ -19,10 +20,6 @@ import { bookAppointmentForLead, createLead } from "@/lib/actions/leads";
 import { searchBookableLeads, type LeadMatch } from "@/lib/actions/lead-search";
 import { createEvent } from "@/lib/actions/events";
 import { stageLabel } from "@/lib/pipeline/stage-keys";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function AppointmentWizard({
   reps,
@@ -61,7 +58,10 @@ export function AppointmentWizard({
 
   const [apptTitle, setApptTitle] = useState("");
   const [apptType, setApptType] = useState<EventType>("Estimate");
-  const [apptDate, setApptDate] = useState(initialDate || todayISO());
+  // The company's today, not the UTC date (already tomorrow from 5pm
+  // Pacific): the day a booking starts on, and a new contact's Date received.
+  const today = useCompanyToday();
+  const [apptDate, setApptDate] = useState(initialDate || today());
   const [apptTime, setApptTime] = useState("09:00");
   const [apptEndTime, setApptEndTime] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
@@ -143,7 +143,7 @@ export function AppointmentWizard({
         stage: leadStage,
         value,
         lead_cost: "",
-        date_received: new Date().toISOString().slice(0, 10),
+        date_received: today(),
         notes: "",
         has_appt: createAppt,
         second_contact_first_name: "",
