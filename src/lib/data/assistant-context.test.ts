@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   assistantRepScope,
   buildAssistantContext,
@@ -30,6 +31,7 @@ function baseInput(over: Partial<AssistantContextInput> = {}): AssistantContextI
   return {
     companyName: "Ace Roofing",
     todayISO: "2026-09-18",
+    zone: "America/Los_Angeles",
     stages: ["New", "Appointment Scheduled", "Won", "Lost"],
     team: [{ id: REP, name: "Josh Closer" }],
     access: { canViewEstimates: true, canViewFinancials: true },
@@ -463,3 +465,53 @@ test("unscoped context keeps the company-wide summary and no viewer banner", () 
   assert.ok(text.includes("company-wide"), "full view keeps the company-wide label");
   assert.ok(!text.includes("VIEWER SCOPE"), "no banner for desk roles");
 });
+
+// ── The company's day (DECISIONS #194) ───────────────────────────────
+
+test("a proposal on its last day is awaiting a signature, not expired, all that day", () => {
+  // Judged by the server's clock (UTC) the chat called it Expired from
+  // 5pm Pacific on its last day; the portal still let the customer sign.
+  const text = buildAssistantContext(
+    baseInput({
+      estimates: [
+        estimate({ doc_number: "EST-1", status: "Sent", expires_at: "2026-09-18" }),
+        estimate({ doc_number: "CO-1", kind: "change_order", status: "Sent", expires_at: "2026-09-18" }),
+        estimate({ doc_number: "EST-2", status: "Sent", expires_at: "2026-09-17" }),
+      ],
+    })
+  );
+  assert.match(text, /Awaiting signature: 1 /);
+  assert.match(text, /Change orders pending signature: 1 /);
+  assert.match(text, /- EST-1 \| contract \| Sent \|/);
+  assert.match(text, /- CO-1 \| change order \| Sent \|/);
+  // The day before today has lapsed.
+  assert.match(text, /- EST-2 \| contract \| Expired \|/);
+});
+
+test("documents are dated, and calls timed, on the company's clock", () => {
+  const text = buildAssistantContext(
+    baseInput({
+      // 6:30pm Pacific on the 17th is 1:30am UTC on the 18th.
+      estimates: [
+        estimate({
+          doc_number: "EST-9",
+          status: "Signed",
+          created_at: "2026-09-18T01:30:00Z",
+          signed_at: "2026-09-18T02:15:00Z",
+        }),
+      ],
+      // 7:02am Pacific.
+      calls: [call({ created_at: "2026-09-17T14:02:00Z" })],
+    })
+  );
+  assert.match(text, /- EST-9 \|[^\n]*\| created: 2026-09-17 \| signed: 2026-09-17/);
+  assert.match(text, /- 2026-09-17 07:02 \| outbound \|/);
+  assert.doesNotMatch(text, /2026-09-17 14:02/);
+});
+
+test("the chat's route hands the context the company's zone with its today", () => {
+  const route = readFileSync(new URL("../../app/api/ai-assistant/route.ts", import.meta.url), "utf8");
+  assert.match(route, /const zone = await getCompanyZone\(\);\s*const todayISO = isoDateInZone\(new Date\(\), zone\);/);
+  assert.match(route, /todayISO,\s*zone,/);
+});
+

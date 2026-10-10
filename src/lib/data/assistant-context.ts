@@ -8,6 +8,7 @@ import {
   type Estimate,
 } from "./types.ts";
 import { funnelCardStats, effectiveEstimateStatus } from "./funnel-cards.ts";
+import { isoDateReader, wallClockIn } from "../company-clock.ts";
 import { isClosedStageKey } from "../pipeline/stage-keys.ts";
 import { countsAsLead } from "../lead-or-contact.ts";
 
@@ -168,6 +169,9 @@ export type AssistantCall = {
 export type AssistantContextInput = {
   companyName: string;
   todayISO: string;
+  /** The company's IANA zone: documents are dated and calls timed on its
+   *  clock, not the server's UTC (DECISIONS #194). */
+  zone: string;
   stages: string[];
   team: { id: string; name: string }[];
   access: AssistantAccess;
@@ -305,8 +309,13 @@ export function buildAssistantContext(input: AssistantContextInput): string {
   if (input.access.canViewEstimates) {
     const none = new Set<string>();
     const noRep = () => [];
+    // Expiry on the company's today, as the Estimates page and the portal
+    // judge it (DECISIONS #193, #194): the server's clock called a proposal
+    // Expired from 5pm Pacific on its last day.
+    const asOf = new Date(`${input.todayISO}T12:00:00`);
+    const dayOf = isoDateReader(input.zone);
     const card = (key: Parameters<typeof funnelCardStats>[1]) =>
-      funnelCardStats(input.estimates, key, none, noRep);
+      funnelCardStats(input.estimates, key, none, noRep, asOf);
     const stat = (label: string, s: { count: number; totalCents: number }) =>
       `${label}: ${s.count} (${moneyCents(s.totalCents)})`;
     const changes = card("changes");
@@ -333,8 +342,10 @@ export function buildAssistantContext(input: AssistantContextInput): string {
         estimateAssignedTo: e.assigned_to,
         leadAssignedTo: leadById.get(e.lead_id)?.assigned_to,
       });
-      const signed = e.signed_at ? ` | signed: ${e.signed_at.slice(0, 10)}` : "";
-      return `- ${e.doc_number} | ${ESTIMATE_KIND_LABEL[e.kind] || e.kind} | ${effectiveEstimateStatus(e)} | ${moneyCents(e.total_cents)} | client: ${leadName(e.lead_id)} | rep: ${rep(repId)} | created: ${e.created_at.slice(0, 10)}${signed}`;
+      // The company's day each was made and signed: the UTC day put an
+      // evening document, or an evening e-signature, on tomorrow.
+      const signed = e.signed_at ? ` | signed: ${dayOf(new Date(e.signed_at))}` : "";
+      return `- ${e.doc_number} | ${ESTIMATE_KIND_LABEL[e.kind] || e.kind} | ${effectiveEstimateStatus(e, asOf)} | ${moneyCents(e.total_cents)} | client: ${leadName(e.lead_id)} | rep: ${rep(repId)} | created: ${dayOf(new Date(e.created_at))}${signed}`;
     });
 
     sections.push(
@@ -451,9 +462,16 @@ export function buildAssistantContext(input: AssistantContextInput): string {
     const recent = [...input.calls]
       .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
       .slice(0, MAX_CALLS_IN_CONTEXT);
+    // On the company's clock: the UTC wall time read a 10am call as 17:00
+    // all day, and from 5pm put it on tomorrow (DECISIONS #194).
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const callTime = (iso: string) => {
+      const w = wallClockIn(new Date(iso), input.zone);
+      return `${w.year}-${pad(w.month)}-${pad(w.day)} ${pad(w.hour)}:${pad(w.minute)}`;
+    };
     const lines = recent.map((c) => {
       const contact = c.lead_id && leadName(c.lead_id) !== "—" ? ` | contact: ${leadName(c.lead_id)}` : "";
-      return `- ${c.created_at.slice(0, 16).replace("T", " ")} | ${c.direction} | ${formatCallDuration(c.duration_seconds || 0)} | ${c.disposition || "—"} | rep: ${rep(c.rep_id)}${contact}`;
+      return `- ${callTime(c.created_at)} | ${c.direction} | ${formatCallDuration(c.duration_seconds || 0)} | ${c.disposition || "—"} | rep: ${rep(c.rep_id)}${contact}`;
     });
 
     sections.push(

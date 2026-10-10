@@ -1,5 +1,5 @@
-import { addDays } from "@/lib/company-clock";
-import { companyToday } from "@/lib/data/company-today";
+import { addDays, isoDateInZone } from "@/lib/company-clock";
+import { getCompanyZone } from "@/lib/data/company-today";
 import Anthropic from "@anthropic-ai/sdk";
 import { aiForCompany } from "@/lib/ai/company-ai";
 import type { NextRequest } from "next/server";
@@ -219,7 +219,10 @@ async function gatherContext(
   access: Access,
   repScope: AssistantRepScope | null
 ) {
-  const todayISO = await companyToday();
+  // The zone too, not just its today: the context dates documents and
+  // times calls on the company's clock (DECISIONS #194).
+  const zone = await getCompanyZone();
+  const todayISO = isoDateInZone(new Date(), zone);
   const callWindowStart = new Date(Date.now() - CALL_WINDOW_DAYS * 86400000).toISOString();
 
   // A rep-scoped viewer gets only their own rows, filtered at the
@@ -397,6 +400,7 @@ async function gatherContext(
   return buildAssistantContext({
     companyName: (companyProfile as { name: string | null } | null)?.name || "this company",
     todayISO,
+    zone,
     stages: (((stages ?? []) as { name: string }[]) || []).map((s) => s.name),
     team,
     access,
