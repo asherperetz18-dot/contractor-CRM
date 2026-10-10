@@ -35,12 +35,18 @@ export async function attempt(fn: () => Promise<StepResult>): Promise<{ error?: 
   }
 }
 
-export type SaveStep = "appointment" | "result" | "task";
+export type SaveStep = "appointment" | "result" | "task" | "note";
 
 // The appointment first: it's what the window is for, and the result
 // rewrites its status, so the result has to land after it, not under it.
-const ORDER: SaveStep[] = ["appointment", "result", "task"];
-const PART: Record<SaveStep, string> = { appointment: "appointment", result: "result", task: "new task" };
+// A typed task, then a typed note (DECISIONS #190), come last.
+const ORDER: SaveStep[] = ["appointment", "result", "task", "note"];
+const PART: Record<SaveStep, string> = {
+  appointment: "appointment",
+  result: "result",
+  task: "new task",
+  note: "new note",
+};
 
 /**
  * Commits whatever is pending, in order, stopping at the first refusal.
@@ -83,6 +89,11 @@ export async function commitPending(
  * which commits all of it. While Save is working (`saving`) it stays
  * Save: the appointment lands first and stops counting as an edit, and
  * swapping in Save Result then would offer to send the result twice.
+ *
+ * A typed text (`textPending`) is unsaved work -- closing asks -- but
+ * nothing Save may commit: sending a text is never a side effect of
+ * saving. A typed note counts even in a read-only window, where notes can
+ * still be allowed; Add Note saves it there.
  */
 export function appointmentFooter(s: {
   tab: string;
@@ -90,17 +101,31 @@ export function appointmentFooter(s: {
   formDirty: boolean;
   resultDirty: boolean;
   taskPending: boolean;
+  notePending: boolean;
+  textPending: boolean;
   saving: boolean;
 }): { save: boolean; saveResult: boolean; dirty: boolean } {
-  if (s.readOnly) return { save: false, saveResult: false, dirty: false };
-  const dirty = s.formDirty || s.resultDirty || s.taskPending;
-  if (s.tab === "Result" && !s.formDirty && !s.taskPending && !s.saving) {
+  const drafts = s.notePending || s.textPending;
+  if (s.readOnly) return { save: false, saveResult: false, dirty: drafts };
+  const committable = s.formDirty || s.resultDirty || s.taskPending || s.notePending;
+  const dirty = committable || drafts;
+  if (s.tab === "Result" && !s.formDirty && !s.taskPending && !s.notePending && !s.saving) {
     return { save: false, saveResult: true, dirty };
   }
   // Texts and Photos commit as they go: nothing there for Save to do
-  // unless something elsewhere in the window is waiting.
+  // unless something it can commit is waiting elsewhere in the window.
   const selfSaving = s.tab === "Texts" || s.tab === "Photos";
-  return { save: !(selfSaving && !dirty), saveResult: false, dirty };
+  return { save: !(selfSaving && !committable), saveResult: false, dirty };
+}
+
+/**
+ * Why Save left the window open on a typed text: it saves, it never
+ * sends, and closing would drop the text without a word.
+ */
+export function unsentTextNote(savedSomething: boolean): string {
+  const note =
+    "The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there.";
+  return savedSomething ? `Saved. ${note}` : note;
 }
 
 type LiveFields = { customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus };

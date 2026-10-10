@@ -53,12 +53,12 @@ import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
-import { appointmentFooter, applyLiveState, attempt, commitPending } from "@/lib/appointment-save";
+import { appointmentFooter, applyLiveState, attempt, commitPending, unsentTextNote } from "@/lib/appointment-save";
 import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
-import { MessagesPanel } from "../pipeline/messages-panel";
+import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
-import { NotesTimeline } from "../pipeline/notes-timeline";
+import { NotesTimeline, useNoteDraft } from "../pipeline/notes-timeline";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
 type Tab =
@@ -272,8 +272,12 @@ export function EventForm({
     status: false,
   });
   // A task typed on the Tasks tab, held here rather than in the panel so
-  // it survives a tab switch and the footer's Save can commit it.
+  // it survives a tab switch and the footer's Save can commit it. The same
+  // for a note typed in Activity & Notes, and for a text typed on the
+  // Texts tab -- which Save never sends (DECISIONS #190).
   const taskDraft = useTaskDraft();
+  const noteDraft = useNoteDraft();
+  const textDrafts = useTextDrafts();
 
   /**
    * Re-reads what the server holds the moment this opens.
@@ -478,8 +482,10 @@ export function EventForm({
       return;
     }
     const taskStep = !!lead && taskDraft.waiting;
+    const noteStep = !!lead && !!canAddNotes && noteDraft.waiting;
     setPending(true);
     if (taskStep) taskDraft.setBusy(true);
+    if (noteStep) noteDraft.setBusy(true);
     setError("");
     const saving = form;
     const outcome = await commitPending({
@@ -502,14 +508,27 @@ export function EventForm({
             return result;
           }
         : undefined,
+      note: lead && canAddNotes && noteDraft.waiting
+        ? async () => {
+            const result = await addLeadNote(lead.id, noteDraft.body);
+            if (!result?.error) noteDraft.setBody("");
+            return result;
+          }
+        : undefined,
     });
     setPending(false);
     if (taskStep) taskDraft.setBusy(false);
+    if (noteStep) noteDraft.setBusy(false);
     // Only when something landed: refreshing a tab that couldn't reach
     // the server at all can reload the page out from under the window.
     if (outcome.done.length || outcome.partly) router.refresh();
     if (outcome.error) {
       setError(outcome.error);
+      return;
+    }
+    // Save never sends a text, and closing would drop it without a word.
+    if (textDrafts.waiting) {
+      setError(unsentTextNote(outcome.done.length > 0));
       return;
     }
     onSaved();
@@ -530,7 +549,7 @@ export function EventForm({
   }
 
   function openFullLead() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     onCancel();
     router.push(`/contacts?openLead=${lead.id}&from=${encodeURIComponent(pathname)}`);
   }
@@ -547,7 +566,7 @@ export function EventForm({
    * as a message here rather than a hidden button lying about rights.
    */
   async function writeEstimate() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     setEstimatePending(true);
     setEstimateError("");
     const res = await createEstimate(lead.id, lead.project_type || "Estimate");
@@ -577,8 +596,9 @@ export function EventForm({
   /**
    * Which save button the footer shows (appointmentFooter). Save Result
    * commits the Result tab alone, so it is offered only while the result
-   * is all that's waiting; with an appointment edit or a typed task
-   * pending too, the footer offers Save, which commits all of it.
+   * is all that's waiting; with an appointment edit, a typed task or a
+   * typed note pending too, the footer offers Save, which commits all of
+   * it. A typed text counts as unsaved but is never Save's to send.
    *
    * resultDirty, not its parts: a chosen stage counts too. Listing the
    * note and the outcome by hand left the stage out, so picking DNC and
@@ -590,13 +610,28 @@ export function EventForm({
     formDirty,
     resultDirty,
     taskPending: taskDraft.waiting,
+    notePending: !!canAddNotes && noteDraft.waiting,
+    textPending: textDrafts.waiting,
     saving: pending,
   });
   const isDirty = footer.dirty;
 
+  // Every way out of the window asks before dropping unsaved work: Cancel
+  // and the X did, but the Text button, a quick text, Edit on contact
+  // card, Open Full Contact, Write estimate and an estimate's row left
+  // without a word.
+  function leaveOk() {
+    return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
+  }
+
   function requestClose() {
-    if (isDirty && !window.confirm("Discard your unsaved changes to this appointment?")) return;
+    if (!leaveOk()) return;
     onCancel();
+  }
+
+  function openEstimate(id: string) {
+    if (!leaveOk()) return;
+    router.push(`/estimates/${id}`);
   }
 
   /**
@@ -623,6 +658,7 @@ export function EventForm({
   }
 
   function textPhone(phone: string, body?: string) {
+    if (!leaveOk()) return;
     onCancel();
     const params = new URLSearchParams();
     if (lead) params.set("leadId", lead.id);
@@ -1307,11 +1343,11 @@ export function EventForm({
                   <tr
                     key={e.id}
                     className="est-row"
-                    onClick={() => router.push(`/estimates/${e.id}`)}
+                    onClick={() => openEstimate(e.id)}
                     role="link"
                     tabIndex={0}
                     onKeyDown={(ev) => {
-                      if (ev.key === "Enter") router.push(`/estimates/${e.id}`);
+                      if (ev.key === "Enter") openEstimate(e.id);
                     }}
                   >
                     <td className="mono">{e.doc_number}</td>
@@ -1350,7 +1386,7 @@ export function EventForm({
       )}
 
       {lead && tab === "Texts" && (
-        <MessagesPanel leadId={lead.id} phone={lead.phone ?? ""} readOnly={readOnly} />
+        <MessagesPanel leadId={lead.id} phone={lead.phone ?? ""} readOnly={readOnly} drafts={textDrafts} />
       )}
 
       {lead && tab === "Notes" && (
@@ -1361,6 +1397,7 @@ export function EventForm({
             reps={reps}
             readOnly={!canAddNotes}
             onChanged={() => router.refresh()}
+            draft={noteDraft}
           />
         </div>
       )}
@@ -1428,7 +1465,7 @@ export function EventForm({
                 {footer.save ? "Cancel" : "Close"}
               </button>
               {footer.save && (
-                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || resultPending || taskDraft.busy}>
+                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || resultPending || taskDraft.busy || noteDraft.busy}>
                   {pending ? "Saving…" : "Save"}
                 </button>
               )}

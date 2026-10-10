@@ -3,6 +3,23 @@
 import { useState } from "react";
 import type { LeadNote, Profile } from "@/lib/data/types";
 import { addLeadNote, deleteLeadNote } from "@/lib/actions/lead-notes";
+import { attempt } from "@/lib/appointment-save";
+
+/**
+ * The note being typed, held by whoever owns it. The panel unmounts on a
+ * tab switch, so a note kept inside it vanished when someone clicked
+ * away -- a window that wants it to survive (and its own Save to add it)
+ * holds it with this hook and passes it in (DECISIONS #190).
+ */
+export function useNoteDraft() {
+  const [body, setBody] = useState("");
+  // On its way to the server, by Add Note or the window's Save: the other
+  // waits, so a double tap on a slow signal can't add it twice.
+  const [busy, setBusy] = useState(false);
+  return { body, setBody, busy, setBusy, waiting: body.trim() !== "" };
+}
+
+export type NoteDraft = ReturnType<typeof useNoteDraft>;
 
 export function NotesTimeline({
   leadId,
@@ -10,14 +27,19 @@ export function NotesTimeline({
   reps,
   readOnly,
   onChanged,
+  draft,
 }: {
   leadId: string;
   notes: LeadNote[];
   reps: Profile[];
   readOnly?: boolean;
   onChanged: () => void;
+  // Held by the host so it outlives a tab switch; the panel keeps its own
+  // when none is given.
+  draft?: NoteDraft;
 }) {
-  const [body, setBody] = useState("");
+  const own = useNoteDraft();
+  const { body, setBody, busy, setBusy } = draft ?? own;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,12 +51,19 @@ export function NotesTimeline({
 
   const sorted = [...notes].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
+  // Both calls go through attempt: one that never reaches the server says
+  // so instead of leaving Add Note on "Adding…", and a refusal is shown.
   async function handleAdd() {
-    if (!body.trim()) return;
+    if (!body.trim()) {
+      setError("Type the note first.");
+      return;
+    }
     setPending(true);
+    setBusy(true);
     setError("");
-    const result = await addLeadNote(leadId, body);
+    const result = await attempt(() => addLeadNote(leadId, body));
     setPending(false);
+    setBusy(false);
     if (result.error) {
       setError(result.error);
       return;
@@ -45,7 +74,12 @@ export function NotesTimeline({
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this note?")) return;
-    await deleteLeadNote(id);
+    setError("");
+    const result = await attempt(() => deleteLeadNote(id));
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
     onChanged();
   }
 
@@ -97,6 +131,7 @@ export function NotesTimeline({
             onChange={(e) => setBody(e.target.value)}
             rows={2}
             placeholder="Add a note…"
+            disabled={busy}
           />
           {error && <p className="error-note">{error}</p>}
           <div className="modal-actions">
@@ -106,7 +141,7 @@ export function NotesTimeline({
                 type="button"
                 className="btn-primary small"
                 onClick={handleAdd}
-                disabled={pending}
+                disabled={pending || busy}
               >
                 {pending ? "Adding…" : "Add Note"}
               </button>

@@ -2498,3 +2498,18 @@ A saved result could also look lost. The window compared the form with how the a
 
 **Consequence:** confirming an existing figure is one tap. The cost is that a rep can accept a stale figure without typing; the line under the box is there so it is read, not assumed. No SQL.
 
+## 190 — The appointment window holds its note and text drafts too
+
+**Date:** 2026-10-10
+
+**Context:** #188 lifted the typed task out of its panel; the window's other two drafts stayed inside theirs. A note typed in Activity & Notes on the Notes tab and a text typed on the Texts tab lived in `NotesTimeline` and `MessagesPanel`, which unmount on a tab switch, so clicking away threw them away. Save didn't add the note, and the close question didn't count either. Separately, the Text button, picking a quick text, Edit on contact card, Open Full Contact, Write estimate and an estimate's row left the window without the discard question at all. Add Note and Send didn't catch a call that never reached the server, so their button stayed on "Adding…" or "Sending…".
+
+**Decision:**
+- **The window holds both drafts** (`useNoteDraft`, passed to `NotesTimeline` as `draft`; `useTextDrafts`, passed to `MessagesPanel` as `drafts`, one per thread as before). They survive tab switches and count as unsaved work when closing. Hosts that pass none (the contact window) keep the panels' own, as before.
+- **Save adds a typed note**, after a typed task (`commitPending`'s `note` step), when the person may add notes. While Add Note or Save is sending it, the other waits, so a double tap can't add it twice. A note counts as unsaved even in a read-only window where notes are still allowed (`canAddNotes`); there Add Note saves it, since there's no Save.
+- **Save never sends a text.** Sending is an outward act, the reason autosave was turned down for this window. A typed text keeps Save off the Texts tab, and on any other tab Save commits the rest and then stays open with "The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there." (`unsentTextNote`, with "Saved." in front when something was).
+- **Every way out asks** (`leaveOk`): the six exits above now ask the same "Discard your unsaved changes to this appointment?" as Cancel and the X.
+- **Add Note, a note's ✕, Send and the rep Send go through `attempt`**, so a lost call says so and a refusal from the server is shown. Add Note with nothing typed says "Type the note first."
+
+**Consequence:** nothing typed in the appointment window's tabs is dropped by a tab switch or a way out without asking. The contact window's own Tasks, Notes and Texts drafts are still lost on a tab switch there (TECH_DEBT). No SQL.
+

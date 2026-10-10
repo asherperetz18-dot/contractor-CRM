@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: "2026-10-10",
     notes: [
       "Recording a Showed or Won on an appointment now starts from the contact's current job value, so you only type a number when the job is worth something else.",
+      "In the Edit Appointment window, a note or a text you're typing stays put when you switch tabs, and Save adds the note too. Save never sends a text: if one is waiting, the window stays open and says so. Every way out of the window (the Text button, a quick text, Edit on contact card, Write estimate, opening an estimate) now asks before throwing away what you typed.",
     ],
   },
   {
