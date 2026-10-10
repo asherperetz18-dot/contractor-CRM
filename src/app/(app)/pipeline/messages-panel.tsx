@@ -59,6 +59,9 @@ export function useTextDrafts() {
   // tab switch mid-send can't bring the text back with Send live and text
   // it twice, and a draft to the rep reopens on the Rep thread.
   const [sending, setSending] = useState(false);
+  // What the last send came back with: a send that fails after a tab
+  // switch still shows its warning when the text comes back.
+  const [sendError, setSendError] = useState("");
   const [thread, setThread] = useState<"client" | "rep">("client");
   return {
     body,
@@ -67,6 +70,8 @@ export function useTextDrafts() {
     setRepBody,
     sending,
     setSending,
+    sendError,
+    setSendError,
     thread,
     setThread,
     waiting: body.trim() !== "" || repBody.trim() !== "",
@@ -95,7 +100,8 @@ export function MessagesPanel({
   const [jobLabel, setJobLabel] = useState("");
   const [error, setError] = useState("");
   const own = useTextDrafts();
-  const { body, setBody, repBody, setRepBody, sending, setSending, thread: tab, setThread: setTab } = drafts ?? own;
+  const { body, setBody, repBody, setRepBody, sending, setSending, sendError, setSendError, thread: tab, setThread: setTab } =
+    drafts ?? own;
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -179,13 +185,13 @@ export function MessagesPanel({
     const text = body.trim();
     if (!text || !phone) return;
     setSending(true);
-    setError("");
+    setSendError("");
     // Through attempt: a send that never comes back says so instead of
     // leaving the button on "Sending…", and to check before resending.
     const result = await attempt(() => sendSms(leadId, phone, text), SEND_UNREACHABLE);
     setSending(false);
     if (result.error) {
-      setError(result.error);
+      setSendError(result.error);
       return;
     }
     setBody("");
@@ -204,11 +210,11 @@ export function MessagesPanel({
     const text = repBody.trim();
     if (!text || !repTo) return;
     setSending(true);
-    setError("");
+    setSendError("");
     const result = await attempt(() => sendRepMessage(leadId, repTo, text), SEND_UNREACHABLE);
     setSending(false);
     if (result.error) {
-      setError(result.error);
+      setSendError(result.error);
       return;
     }
     setRepBody("");
@@ -318,7 +324,7 @@ export function MessagesPanel({
         </div>
       )}
 
-      {error && <p className="error-note">{error}</p>}
+      {(sendError || error) && <p className="error-note">{sendError || error}</p>}
 
       {/* Each tab composes to its own side. The recipient is named on the
           button rather than implied by the tab, because the whole risk

@@ -53,7 +53,14 @@ import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
-import { appointmentFooter, applyLiveState, attempt, commitPending, unsentTextNote } from "@/lib/appointment-save";
+import {
+  appointmentFooter,
+  applyLiveState,
+  attempt,
+  commitPending,
+  parseJobValue,
+  unsentTextNote,
+} from "@/lib/appointment-save";
 import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
 import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
@@ -260,6 +267,10 @@ export function EventForm({
   // What the rep typed in the job value box; null until they type. Until
   // then the box shows what the contact is worth (resultValue, below).
   const [typedValue, setTypedValue] = useState<string | null>(null);
+  // The value this window last wrote. The page's copy of the contact keeps
+  // the old figure until the refresh lands, so comparing with it alone
+  // read a value just saved as an unsaved edit.
+  const [savedValue, setSavedValue] = useState<number | null>(null);
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
   // Tracks whether the user actually toggled each confirmation badge, so a
@@ -277,6 +288,11 @@ export function EventForm({
   const taskDraft = useTaskDraft();
   const noteDraft = useNoteDraft();
   const textDrafts = useTextDrafts();
+  // The unsent-text line is about the text Save stopped on: once that is
+  // sent or cleared it's done, so a new text typed later doesn't bring it
+  // back. Adjusted during render, React's pattern for state that follows
+  // other state.
+  if (textHeld !== null && !textDrafts.waiting) setTextHeld(null);
 
   /**
    * Re-reads what the server holds the moment this opens.
@@ -359,7 +375,7 @@ export function EventForm({
   const outcomeNeedsValue = VALUED_OUTCOMES.includes(
     (pendingOutcome || form.status) as EventStatus
   );
-  const parsedResultValue = Number(resultValue.replace(/[^0-9.]/g, ""));
+  const parsedResultValue = parseJobValue(resultValue);
   const resultValueOk =
     !outcomeNeedsValue ||
     (resultValue.trim() !== "" && Number.isFinite(parsedResultValue) && parsedResultValue > 0);
@@ -371,7 +387,7 @@ export function EventForm({
     !!pendingOutcome ||
     resultNote.trim().length > 0 ||
     (!!resultStage && !!lead && resultStage !== lead.stage) ||
-    (outcomeNeedsValue && resultValueOk && !!lead && parsedResultValue !== lead.value);
+    (outcomeNeedsValue && resultValueOk && !!lead && parsedResultValue !== lead.value && parsedResultValue !== savedValue);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -418,6 +434,7 @@ export function EventForm({
     if (VALUED_OUTCOMES.includes(outcome) && parsedResultValue > 0 && parsedResultValue !== lead.value) {
       const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
       if (valueResult?.error) return { error: valueResult.error };
+      setSavedValue(parsedResultValue);
     }
 
     // Then the outcome: it's the thing the red badge and the follow-up

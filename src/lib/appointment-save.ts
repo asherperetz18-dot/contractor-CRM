@@ -139,6 +139,16 @@ export function unsentTextNote(savedSomething: boolean): string {
   return savedSomething ? `Saved. ${note}` : note;
 }
 
+/**
+ * A typed job value, to the cent: `leads.value` is numeric(12,2), and an
+ * unrounded figure never equalled the stored one, so the window kept it
+ * as an unsaved edit forever. Not a number stays NaN for the caller to
+ * refuse.
+ */
+export function parseJobValue(text: string): number {
+  return Math.round(Number(text.replace(/[^0-9.]/g, "")) * 100) / 100;
+}
+
 type LiveFields = { customer_confirmed: boolean; rep_confirmed: boolean; status: EventStatus };
 
 /**

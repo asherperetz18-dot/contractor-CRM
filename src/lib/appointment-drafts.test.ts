@@ -28,6 +28,8 @@ test("Save adds a typed note, and stays open on a typed text it won't send", () 
   assert.match(form, /if \(textDrafts\.waiting\) \{\s*setTextHeld\(outcome\.done\.length > 0\);\s*return;\s*\}/);
   // The note goes once the text is sent or cleared.
   assert.match(form, /\{textHeld !== null && textDrafts\.waiting && \(/);
+  // ...and doesn't come back for a new text typed afterwards.
+  assert.match(form, /if \(textHeld !== null && !textDrafts\.waiting\) setTextHeld\(null\);/);
 });
 
 test("every way out of the window asks before dropping unsaved work", () => {
@@ -65,5 +67,12 @@ test("the texts panel takes its drafts from the window, and reports a lost call"
   // switch mid-send can't bring the text back with Send live, and a rep
   // draft reopens on the Rep thread where it was typed.
   assert.match(panel, /export function useTextDrafts\(\) \{[\s\S]*?const \[sending, setSending\] = useState\(false\);[\s\S]*?const \[thread, setThread\] = useState<"client" \| "rep">\("client"\);/);
-  assert.match(panel, /const \{ body, setBody, repBody, setRepBody, sending, setSending, thread: tab, setThread: setTab \} = drafts \?\? own;/);
+  assert.match(
+    panel,
+    /const \{ body, setBody, repBody, setRepBody, sending, setSending, sendError, setSendError, thread: tab, setThread: setTab \} =\s*drafts \?\? own;/
+  );
+  // A send's outcome lives with the drafts too: one that fails after a tab
+  // switch still shows its warning when the text comes back.
+  assert.match(panel, /const \[sendError, setSendError\] = useState\(""\);/);
+  assert.equal((panel.match(/setSendError\(result\.error\);/g) ?? []).length, 2);
 });
