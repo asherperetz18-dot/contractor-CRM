@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.263.0",
+    date: "2026-10-10",
+    notes: [
+      "Recording a Showed or Won on an appointment now starts from the contact's current job value, so you only type a number when the job is worth something else.",
+    ],
+  },
+  {
     version: "1.262.0",
     date: "2026-10-10",
     notes: [

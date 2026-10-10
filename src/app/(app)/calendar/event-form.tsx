@@ -253,9 +253,14 @@ export function EventForm({
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
-  // Starts empty, so a Showed or Won asks for the value even when the
-  // lead already has one (TECH_DEBT).
-  const [resultValue, setResultValue] = useState("");
+  // Starts from what the contact is already worth, so a rep confirming an
+  // existing figure doesn't retype it (DECISIONS #189). It used to start
+  // empty with that figure as grey placeholder text: a box that looked
+  // filled while Save Result stayed greyed out.
+  const [resultValue, setResultValue] = useState(() => {
+    const opening = event?.lead_id ? leads?.find((l) => l.id === event.lead_id) : null;
+    return opening?.value && opening.value > 0 ? String(opening.value) : "";
+  });
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
   // Tracks whether the user actually toggled each confirmation badge, so a
@@ -1181,6 +1186,11 @@ export function EventForm({
                   Required on a {(pendingOutcome || form.status) === "Won" ? "Won" : "Showed"}.
                   Every money figure on the pipeline is a sum of this, so a visit logged without
                   one reads as a slow month rather than as missing data.
+                </p>
+              )}
+              {resultValueOk && !!lead.value && parsedResultValue === lead.value && (
+                <p className="est-tax-note">
+                  The contact&apos;s current value. Change it if this job is worth more or less.
                 </p>
               )}
             </Field>

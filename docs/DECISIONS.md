@@ -2487,3 +2487,14 @@ A saved result could also look lost. The window compared the form with how the a
 - **The window's Save, Save Result and Delete, and the task panel's Add Task, ☐ and ✕ go through `attempt`**, which turns a rejected call into "Couldn't reach the CRM to save this. Check your connection and try again; if it keeps failing, refresh the page." and always releases the button. The footer Save refreshes the page only when something landed, so a tab that can't reach the server isn't reloaded out from under the window.
 
 **Consequence:** the appointment's fields, a picked result and a typed task are no longer dropped by Save or by a tab switch, and a failed save of any of them says so. Gaps found along the way are in TECH_DEBT, among them: a Save that edits an appointment field still writes the whole row from the page's copy; a note typed in Activity & Notes on the Notes tab and a text typed on the Texts tab are lost on a tab switch and not saved by Save; several other buttons in the window don't catch a lost call; and some buttons leave the window without the discard question. No SQL.
+
+## 189 — A Showed or Won starts from the contact's job value
+
+**Date:** 2026-10-10
+
+**Context:** A Showed or Won needs the job's estimated value (the server refuses one on a contact worth nothing), so the Result tab asks for it. The box started empty, with the contact's current value only as grey placeholder text, although the comment above it said it was seeded from that value. A rep confirming a figure the contact already had retyped it, and until they did, a box that looked filled kept Save Result greyed out.
+
+**Decision:** the box starts with the contact's current value when it is above zero, and a line under it says so ("The contact's current value. Change it if this job is worth more or less.") while it still holds that figure. A contact worth nothing still starts empty and still has to have a value typed. Nothing else changes: the value is still written before the outcome, only when it differs from the contact's, and the server's rule is the same.
+
+**Consequence:** confirming an existing figure is one tap. The cost is that a rep can accept a stale figure without typing; the line under the box is there so it is read, not assumed. No SQL.
+
