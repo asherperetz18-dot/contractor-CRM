@@ -173,9 +173,10 @@ What: `snapshotLead` keeps the tables listed in `LEAD_CHILDREN` and relinks `REL
 **The contact window still loses some work (found while making DECISIONS #197).**
 What: the window now holds its Tasks, Notes and Texts drafts and its own buttons ask before leaving, but:
 - **Ways out that aren't the window's own don't ask**, here or in the appointment window: a popup toast (it sits above the window and navigates straight away), the browser's Back (or Android's), a reload, or closing the tab. Nothing registers a `beforeunload` or back-button guard.
-- **An edit to a contact's fields made less than a second before closing is dropped.** Autosave waits a second after the last keystroke, and closing the window cancels the wait.
+- **The fields' autosave writes the whole row** (`updateLead` → `toRow`), so a stage, booking or rep changed elsewhere while the window is open is put back by the next edit's save. Fix: send only the fields the person changed.
+- **An edit that can't be saved is dropped without asking when the window goes by a route it doesn't control** (another contact opened over it, a link elsewhere on the page): a valid one is sent then without waiting, but an incomplete one can't be, and a failure there has no one to tell. A reload or closing the tab drops it too.
 - **The pipeline board's digest (follow-ups due, warnings, cold leads) doesn't see a task or note changed in the window** when the window is closed with the X or Close: only Save and Delete refetch the board. The window's own lists do update (#201).
 - **Editing or answering a shared note, and a call note on the Calls tab, are still held inside their panels**, so a tab switch throws them away.
 
-Why: each is its own change. Impact: a last-second edit lost, a digest a step behind. Where: `src/app/(app)/pipeline/lead-form.tsx`, `lead-notes-pane.tsx` (`SharedNotesList`), `calls-panel.tsx`, `pipeline-board.tsx`, `contacts-table.tsx`.
+Why: each is its own change. Impact: a reschedule or rep change undone by an edit, a digest a step behind. Where: `src/app/(app)/pipeline/lead-form.tsx`, `lead-notes-pane.tsx` (`SharedNotesList`), `calls-panel.tsx`, `pipeline-board.tsx`, `contacts-table.tsx`.
 

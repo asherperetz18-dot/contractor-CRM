@@ -26,25 +26,29 @@ test("the contact window holds its panels' drafts, so they outlive a tab switch"
 test("every way out of the contact window asks before dropping what was typed", () => {
   assert.match(form, /const draftsWaiting = taskDraft\.waiting \|\| notesDrafts\.waiting \|\| textDrafts\.waiting;/);
   assert.match(form, /function leaveOk\(\) \{\s*return !draftsWaiting \|\| window\.confirm\(/);
-  assert.match(form, /function handleClose\(\) \{\s*if \(!leaveOk\(\)\) return;/);
+  // leaveSaved asks leaveOk first, then settles the fields' autosave
+  // (DECISIONS #202).
+  assert.match(form, /async function leaveSaved\(\): Promise<boolean> \{\s*if \(!leaveOk\(\)\) return false;/);
+  assert.match(form, /async function handleClose\(\) \{[\s\S]*?if \(!\(await leaveSaved\(\)\)\) return;/);
   // Delete asks its own one question, which carries the draft warning
   // (contact-delete.test.ts).
   for (const fn of ["handleConvert", "handleBook"]) {
-    assert.match(form, new RegExp(`async function ${fn}\\(\\) \\{\\s*if \\(!lead \\|\\| !leaveOk\\(\\)\\) return;`), fn);
+    assert.match(form, new RegExp(`async function ${fn}\\(\\) \\{\\s*if \\(!lead \\|\\| !\\(await leaveSaved\\(\\)\\)\\) return;`), fn);
   }
   // Before its own question, so the stage move isn't confirmed and then
   // abandoned.
-  assert.match(form, /async function handleQuickExit\(stage: string\) \{\s*if \(!lead \|\| !leaveOk\(\)\) return;/);
-  assert.match(form, /<LeadEstimateButton[\s\S]*?leaveOk=\{leaveOk\}[\s\S]*?\/>/);
-  assert.match(form, /<LeadAppointmentsPanel[^>]*leaveOk=\{leaveOk\}/);
+  assert.match(form, /async function handleQuickExit\(stage: string\) \{\s*if \(!lead \|\| !\(await leaveSaved\(\)\)\) return;/);
+  assert.match(form, /<LeadEstimateButton[\s\S]*?leaveOk=\{leaveSaved\}[\s\S]*?\/>/);
+  assert.match(form, /<LeadAppointmentsPanel[^>]*leaveOk=\{leaveSaved\}/);
 
   const estimates = source("../app/(app)/pipeline/lead-estimate-button.tsx");
-  assert.match(estimates, /leaveOk\?: \(\) => boolean;/);
+  assert.match(estimates, /leaveOk\?: \(\) => boolean \| Promise<boolean>;/);
   // Opening one, picking one from the list, or making a new one.
-  assert.equal((estimates.match(/if \(leaveOk && !leaveOk\(\)\) return;/g) ?? []).length, 3);
+  assert.equal((estimates.match(/if \(leaveOk && !\(await leaveOk\(\)\)\) return;/g) ?? []).length, 3);
 
   const visits = source("../app/(app)/pipeline/lead-appointments-panel.tsx");
-  assert.match(visits, /function openAppointment\(eventId: string\) \{\s*if \(leaveOk && !leaveOk\(\)\) return;/);
+  assert.match(visits, /leaveOk\?: \(\) => boolean \| Promise<boolean>;/);
+  assert.match(visits, /async function openAppointment\(eventId: string\) \{\s*if \(leaveOk && !\(await leaveOk\(\)\)\) return;/);
 });
 
 test("the notes pane takes its drafts from the window: the internal note, the side, and the shared note", () => {

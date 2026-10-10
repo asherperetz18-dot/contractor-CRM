@@ -54,6 +54,15 @@ import { addLeadNote } from "@/lib/actions/lead-notes";
 import { attempt } from "@/lib/appointment-save";
 import { contactDeleteConfirm } from "@/lib/contact-delete";
 import {
+  INCOMPLETE_CLOSE_QUESTION,
+  closeStep,
+  contactPayload,
+  contactSaveKey,
+  contactSaveStatus,
+  createContactSaver,
+  failedCloseQuestion,
+} from "@/lib/contact-autosave";
+import {
   createPortalLinkForStaff,
   setPortalPaymentsDisabled,
   renewPortalAccess,
@@ -191,9 +200,9 @@ export function LeadForm({
   const notesDrafts = useNotesPaneDrafts();
   const textDrafts = useTextDrafts();
   const draftsWaiting = taskDraft.waiting || notesDrafts.waiting || textDrafts.waiting;
-  // Every way out asks before dropping a draft: the X, Close, Delete, the
-  // stage buttons, booking, Create Job, and leaving for an estimate or an
-  // appointment.
+  // Every way out asks before dropping a draft: the X, Close, the stage
+  // buttons, booking, Create Job, and leaving for an estimate or an
+  // appointment (all through leaveSaved). Delete asks its own question.
   function leaveOk() {
     return !draftsWaiting || window.confirm("Discard what you've typed on this contact?");
   }
@@ -212,7 +221,17 @@ export function LeadForm({
       ?.querySelector(".chip-active")
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [tab, isPhone]);
-  const [lastSaved, setLastSaved] = useState(form);
+  // The fields autosave a second after the last edit, through one saver
+  // that every way out of the window waits for (DECISIONS #202).
+  const [openingKey] = useState(() => contactSaveKey(contactPayload(form, hasSecondContact)));
+  const [saver] = useState(() =>
+    createContactSaver(
+      (p: LeadInput) => (lead ? updateLead(lead.id, p, { deferRevalidate: true }) : Promise.resolve({})),
+      openingKey
+    )
+  );
+  const [savedKey, setSavedKey] = useState(openingKey);
+  const [saveError, setSaveError] = useState("");
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
   );
@@ -221,7 +240,6 @@ export function LeadForm({
   const [sourceOptions, setSourceOptions] = useState<{ id: string; name: string }[]>(() =>
     newLead ? realLeadSources(sources) : sources
   );
-  const skipNextAutosave = useRef(true);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [refundStatus, setRefundStatus] = useState<RefundStatus>(lead?.refund_status ?? "None");
   // Client card > Online payments (migration 0133). Off = invoiced
@@ -365,21 +383,24 @@ export function LeadForm({
   // the stage dropdown and a save. Confirmed first because it drops them
   // from the active pipeline, and logged so there's a record of who did it.
   async function handleQuickExit(stage: string) {
-    if (!lead || !leaveOk()) return;
+    if (!lead || !(await leaveSaved())) return;
     const who = clientName(form) || "this contact";
     if (!confirm(`Move ${who} to ${stage}? They'll drop out of the active pipeline.`)) return;
 
+    // Nothing typed during the move: it would autosave the old stage.
+    setPending(true);
     setQuickExitPending(stage);
     setMarkLostError("");
-    const result = await moveLeadStage(lead.id, stage);
-    if (result?.error) {
+    const result = await attempt(() => moveLeadStage(lead.id, stage));
+    if (result.error) {
+      setPending(false);
       setQuickExitPending("");
       setMarkLostError(result.error);
       return;
     }
-    await addLeadNote(lead.id, `Moved to ${stage} from the contact card.`);
+    await attempt(() => addLeadNote(lead.id, `Moved to ${stage} from the contact card.`));
+    setPending(false);
     setQuickExitPending("");
-    setForm((f) => ({ ...f, stage }));
     refresh();
     onSaved();
   }
@@ -447,57 +468,84 @@ export function LeadForm({
     onPanelsChanged?.();
   }
 
-  // Autosaves write the database but no longer re-render the page --
-  // every pause in typing was re-rendering the whole board behind the
-  // open card, which froze scrolling for seconds. This remembers that
-  // the page is behind, and closing the card settles the debt with one
-  // refresh.
-  const needsRefreshOnClose = useRef(false);
-  function handleClose() {
-    if (!leaveOk()) return;
-    if (needsRefreshOnClose.current) {
-      needsRefreshOnClose.current = false;
-      refresh();
-    }
-    onCancel();
-  }
-
-  const autosaveDirty = form !== lastSaved;
+  const payload = contactPayload(form, hasSecondContact);
+  const payloadKey = contactSaveKey(payload);
+  const autosaveDirty = payloadKey !== savedKey;
   const formValid = contactFormComplete(form, { asLead: newLead });
 
+  async function saveFields(p: LeadInput): Promise<{ error?: string }> {
+    setSaveError("");
+    const result = await saver.send(p);
+    setSavedKey(saver.savedKey());
+    if (result.error) setSaveError(result.error);
+    return result;
+  }
+
+  // Autosaves write the database but don't re-render the page -- every
+  // pause in typing was re-rendering the whole board behind the open
+  // card, which froze scrolling for seconds. Closing after one has
+  // saved has the host refetch (handleClose).
   useEffect(() => {
     if (!lead || readOnly) return;
-    if (skipNextAutosave.current) {
-      skipNextAutosave.current = false;
-      return;
-    }
-    if (!formValid) return;
-
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    autosaveTimer.current = setTimeout(async () => {
-      const payload = hasSecondContact
-        ? form
-        : {
-            ...form,
-            second_contact_first_name: "",
-            second_contact_last_name: "",
-            second_contact_phone: "",
-            second_contact_email: "",
-          };
-      const result = await updateLead(lead.id, payload, { deferRevalidate: true });
-      if (result?.error) {
-        setError(result.error);
-        return;
-      }
-      setLastSaved(form);
-      needsRefreshOnClose.current = true;
-    }, 1000);
-
+    saver.hold(formValid ? payload : null);
+    if (!formValid || !saver.dirty(payload)) return;
+    autosaveTimer.current = setTimeout(() => void saveFields(payload), 1000);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, hasSecondContact]);
+  }, [payloadKey, formValid]);
+
+  // Gone by a route the window doesn't control (another contact opened
+  // over it, a link elsewhere on the page): send the last valid change
+  // without waiting, as there's no one left to ask.
+  useEffect(() => () => saver.flushHeld(), [saver]);
+
+  /**
+   * Every way out of the window: asks about drafts, then settles the
+   * fields' change -- saved and waited for, or given up on by the person
+   * when it can't be saved. A stage move, Create Job or booking waits for
+   * it too, so a save still waiting can't land after them and write the
+   * old stage back.
+   */
+  async function leaveSaved(): Promise<boolean> {
+    if (!leaveOk()) return false;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    const step = closeStep({ editable: !!lead && !readOnly, dirty: saver.dirty(payload), valid: formValid });
+    if (step === "close") return true;
+    if (step === "ask-incomplete") {
+      if (!window.confirm(INCOMPLETE_CLOSE_QUESTION)) return false;
+      saver.abandon();
+      return true;
+    }
+    setPending(true);
+    const result = await saveFields(payload);
+    setPending(false);
+    if (!result.error) return true;
+    if (!window.confirm(failedCloseQuestion(result.error))) return false;
+    saver.abandon();
+    return true;
+  }
+
+  // The X and the backdrop sit outside the fieldset that `pending` disables.
+  const closingRef = useRef(false);
+  async function handleClose() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    try {
+      if (!(await leaveSaved())) return;
+    } finally {
+      closingRef.current = false;
+    }
+    // Something saved while the window was open: the host refetches its
+    // board or rows, which router.refresh doesn't reach.
+    if (saver.savedKey() !== openingKey) {
+      refresh();
+      onSaved();
+    } else {
+      onCancel();
+    }
+  }
 
   async function handleSave() {
     if (!formValid) {
@@ -506,26 +554,12 @@ export function LeadForm({
     }
     setPending(true);
     setError("");
-    const payload = hasSecondContact
-      ? form
-      : {
-          ...form,
-          second_contact_first_name: "",
-          second_contact_last_name: "",
-          second_contact_phone: "",
-          second_contact_email: "",
-        };
-    const result = lead
-      ? await updateLead(lead.id, payload)
-      : await createLead(payload);
+    const result = lead ? await updateLead(lead.id, payload) : await createLead(payload);
     setPending(false);
     if (result?.error) {
       setError(result.error);
       return;
     }
-    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-    setLastSaved(form);
-    needsRefreshOnClose.current = false;
     refresh();
     onSaved();
   }
@@ -558,16 +592,28 @@ export function LeadForm({
       setError(result.error);
       return;
     }
+    saver.abandon();
     refresh();
     onDeleted?.();
   }
 
   async function handleConvert() {
-    if (!lead || !leaveOk()) return;
+    if (!lead || !(await leaveSaved())) return;
     setPending(true);
-    const result = await convertLeadToJob(lead);
+    // The name and address on screen, just saved -- not the copy the
+    // window opened with.
+    const result = await attempt(() =>
+      convertLeadToJob({
+        id: lead.id,
+        contact_type: form.contact_type,
+        company_name: form.company_name,
+        first_name: form.first_name,
+        last_name: form.last_name,
+        address: form.address,
+      })
+    );
     setPending(false);
-    if (result?.error) {
+    if (result.error) {
       setError(result.error);
       return;
     }
@@ -576,10 +622,11 @@ export function LeadForm({
   }
 
   async function handleBook() {
-    if (!lead || !leaveOk()) return;
+    if (!lead || !(await leaveSaved())) return;
     setPending(true);
     const contactName = clientName(form);
-    const result = await bookAppointmentForLead(lead.id, lead.stage, {
+    // The stage on screen, just saved, decides whether booking moves it on.
+    const result = await attempt(() => bookAppointmentForLead(lead.id, form.stage, {
       title: `${booking.eventType} — ${contactName}`,
       date: booking.date,
       time: booking.time,
@@ -588,9 +635,9 @@ export function LeadForm({
       assignedTo: booking.assignedTo,
       notes: booking.notes,
       projectType: booking.projectType,
-    });
+    }));
     setPending(false);
-    if (result?.error) {
+    if (result.error) {
       setError(result.error);
       return;
     }
@@ -1022,7 +1069,7 @@ export function LeadForm({
               paidCents={estimateIndex?.byLead[lead.id]?.paidCents ?? 0}
               canView={!!estimateIndex?.canView}
               canCreate={!!estimateIndex?.canCreate}
-              leaveOk={leaveOk}
+              leaveOk={leaveSaved}
             />
             {/* One-click exits from the pipeline. Each is shown only if the
                 stage exists for this company and isn't the current one, so
@@ -1405,7 +1452,7 @@ export function LeadForm({
         )}
 
         {lead && tab === "Appointments" && (
-          <LeadAppointmentsPanel leadId={lead.id} reps={reps} leaveOk={leaveOk} />
+          <LeadAppointmentsPanel leadId={lead.id} reps={reps} leaveOk={leaveSaved} />
         )}
 
         {lead && tab === "Tasks" && (
@@ -1449,6 +1496,7 @@ export function LeadForm({
         )}
 
         {error && <p className="error-note">{error}</p>}
+        {saveError && autosaveDirty && <p className="error-note">{saveError}</p>}
 
         <div className="modal-actions">
           <div className="modal-actions-left">
@@ -1468,11 +1516,7 @@ export function LeadForm({
             )}
             {lead && !readOnly && (
               <span className="empty-hint">
-                {!formValid
-                  ? "Not saved — fill in required fields (marked *)"
-                  : autosaveDirty
-                    ? "Saving…"
-                    : "✓ Saved"}
+                {contactSaveStatus({ valid: formValid, dirty: autosaveDirty, failed: !!saveError })}
               </span>
             )}
           </div>

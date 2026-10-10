@@ -2672,3 +2672,17 @@ No SQL.
 
 **Consequence:** a task, note or file added, completed or deleted shows in its list and count straight away. The board's digest still updates only on Save or Delete (TECH_DEBT). No SQL.
 
+## 202 — Leaving the contact window waits for its fields' save
+
+**Date:** 2026-10-10
+
+**Context:** the contact window autosaves its fields a second after the last edit. Closing it cancelled that second, so a field changed just before closing (a stage, a rep, a date) was dropped. A change that couldn't be saved (a required field empty, or a save refused or unreachable) was dropped too, with the footer still reading "Saving…" after a failure, and a save that never came back threw unseen. Worse, server actions run one at a time per tab, so a save still waiting when ✕ Lost, ✕ Not Interested, Create Job or booking was pressed ran after their own write and put the old stage back (Create Job's `won_at` with it). And closing after an autosave refreshed the page, but the board and the Contacts list keep their own copy, so they still showed the old values.
+
+**Decision:**
+- **One saver** (`createContactSaver`, `src/lib/contact-autosave.ts`) sends the window's saves in order, never the same fields twice at once and never fields already saved; a failure is tried again on the next send and a lost call reads as `SAVE_UNREACHABLE`. "Unsaved" compares what a save would write (`contactSaveKey`), so removing the second contact counts.
+- **Every way out waits** (`leaveSaved`): the drafts question (#197), then the fields' change is saved and waited for. When it can't be saved, the window says why and asks before going without it (`closeStep`). The X, Close, the stage buttons, booking, Create Job, opening an estimate and opening an appointment all go through it, so their own write lands after the field save. ✕ Lost and ✕ Not Interested disable the form during the move. Create Job names the job from the name and address on screen, and booking judges the stage on screen, not the copy the window opened with.
+- **Routes the window doesn't control** (another contact opened over it, a link elsewhere on the page) send the last valid change without waiting. Delete gives it up.
+- **Closing after a save has the host refetch** (`onSaved`), so the card or row shows it. The footer reads "Not saved — see the message above" after a failure, with the message beside it, kept apart from the window's other errors.
+
+**Consequence:** a change made in the window's last second is kept, a change that can't be saved is never dropped without a word through the window's own exits, and the stage buttons, Create Job and booking can't be undone by a save still waiting. Left in TECH_DEBT: the save still writes the whole row, so a change made elsewhere while the window is open is put back by the next edit; and an incomplete change is still lost on a route the window doesn't control, a reload or closing the tab. No SQL.
+

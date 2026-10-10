@@ -38,8 +38,9 @@ export function LeadEstimateButton({
   canView: boolean;
   canCreate: boolean;
   /** Asked before leaving the page for an estimate: the window it sits in
-   *  may hold unsaved drafts (DECISIONS #197). */
-  leaveOk?: () => boolean;
+   *  may hold unsaved drafts (DECISIONS #197), and waits for its fields'
+   *  save (#202). */
+  leaveOk?: () => boolean | Promise<boolean>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -76,12 +77,12 @@ export function LeadEstimateButton({
     );
   }
 
-  function go() {
+  async function go() {
     if (estimates && estimates.length > 1) {
       setListOpen((v) => !v);
       return;
     }
-    if (leaveOk && !leaveOk()) return;
+    if (leaveOk && !(await leaveOk())) return;
     setError(null);
     startTransition(async () => {
       const res = await openOrCreateEstimateForLead(leadId);
@@ -123,8 +124,8 @@ export function LeadEstimateButton({
               key={e.id}
               type="button"
               className="lead-est-item"
-              onClick={() => {
-                if (leaveOk && !leaveOk()) return;
+              onClick={async () => {
+                if (leaveOk && !(await leaveOk())) return;
                 router.push(`/estimates/${e.id}${backQuery}`);
               }}
             >
@@ -138,8 +139,8 @@ export function LeadEstimateButton({
             <button
               type="button"
               className="lead-est-item lead-est-new"
-              onClick={() => {
-                if (leaveOk && !leaveOk()) return;
+              onClick={async () => {
+                if (leaveOk && !(await leaveOk())) return;
                 setListOpen(false);
                 startTransition(async () => {
                   const res = await openOrCreateEstimateForLead(leadId);
