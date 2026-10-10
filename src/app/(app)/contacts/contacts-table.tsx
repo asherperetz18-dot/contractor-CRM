@@ -696,7 +696,12 @@ export function ContactsTable({
       )}
 
       {editing && (
+        // Keyed by the contact: a toast or link that opens another one
+        // while this window is open starts a fresh window, rather than
+        // re-rendering this one -- its drafts with it -- for the new
+        // contact (DECISIONS #195).
         <LeadForm
+          key={editing.lead.id}
           lead={editing.lead}
           reps={reps}
           allMembers={allMembers}

@@ -832,7 +832,12 @@ export function CalendarBoard({
         />
       )}
       {editing && (
+        // Keyed by the appointment: a toast or link that opens another one
+        // while this window is open used to re-render it for the new one,
+        // with the first one's fields and drafts still in it -- ready to
+        // be saved onto the second (DECISIONS #195).
         <EventForm
+          key={editing.id}
           event={editing}
           jobs={jobs}
           reps={reps}

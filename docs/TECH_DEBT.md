@@ -155,7 +155,7 @@ Why: these were found while fixing the lost task and result, and each is its own
 
 **Estimate expiry has gaps the clock fix didn't touch (found while making DECISIONS #193).**
 What:
-- **A voided document with a lapsed expiry date reads Expired.** `estimateExpired` exempts only Signed and Declined, and voiding doesn't clear `expires_at` (every new estimate gets one). So a voided document past its window leaves the Voided card for Lost, its money counts in Lost's total and the Closed column's, and its board card says "Expired" instead of the void reason.
+- **A voided document with a lapsed expiry date reads Expired.** `estimateExpired` exempts only Signed and Declined, and voiding doesn't clear `expires_at` (every new estimate gets one). So a voided document past its window leaves the Voided card for Declined, its money counts in Declined's total and the Closed column's, and its board card says "Expired" instead of the void reason.
 - **A draft with a lapsed expiry date also reads Expired** and leaves Drafts. Sending doesn't refresh `expires_at`, so a draft sent late goes out already expired. Whether a draft's expiry should run before it's sent is a product call.
 - **Screens that show the stored status and never check expiry** disagree with Estimates and the Contract Board once a proposal lapses: the contact window's estimate menu (`lead-estimate-button.tsx`; its loader doesn't read `expires_at`), the appointment window's Estimates tab, a contract's change orders list, global search, the Estimate Status board, and the dashboard's "Awaiting signature".
 - **The expiry day is the day the page loaded.** A tab left open past midnight keeps judging on yesterday until it reloads, the same as the date filters (#180).
@@ -163,7 +163,8 @@ What:
 Why: each is its own change; the first two change what a status means. Impact: a cancelled job reads as a lost sale, and some screens call a lapsed proposal Sent. Where: `src/lib/data/types.ts` (`estimateExpired`), `src/lib/actions/estimates.ts` (void, send), `src/app/(app)/pipeline/lead-estimate-button.tsx`, `src/lib/data/lead-estimate-index.ts`, `src/app/(app)/calendar/event-form.tsx`, `src/app/(app)/estimates/[id]/change-orders.tsx`, `src/lib/data/global-search.ts`, `src/lib/estimate-flow-status.ts`, `src/lib/data/dashboard-rollup.ts`.
 
 **The contact window still loses some work (found while making DECISIONS #195).**
-What: the window now holds its Tasks, Notes and Texts drafts and asks before every way out, but:
+What: the window now holds its Tasks, Notes and Texts drafts and its own buttons ask before leaving, but:
+- **Ways out that aren't the window's own don't ask**, here or in the appointment window: a popup toast (it sits above the window and navigates straight away), the browser's Back (or Android's), a reload, or closing the tab. Nothing registers a `beforeunload` or back-button guard.
 - **Delete removes the contact without asking**, unless a draft is waiting. `handleDelete` has no confirmation of its own.
 - **An edit to a contact's fields made less than a second before closing is dropped.** Autosave waits a second after the last keystroke, and closing the window cancels the wait.
 - **A task or note added here doesn't appear in its list or badge until the window is reopened.** The lists come from the snapshot the window opened with, and `router.refresh` doesn't reload it.

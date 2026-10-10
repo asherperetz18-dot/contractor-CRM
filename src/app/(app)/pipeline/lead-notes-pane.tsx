@@ -210,8 +210,10 @@ function SharedNotesList({
     return r?.name || r?.email || "Someone on the team";
   }
 
-  // Through attempt: a call that never reaches the server says so instead
-  // of leaving its button on "Sharing…" for good.
+  // Through attempt, the call and the refresh after it: one that never
+  // reaches the server says so instead of leaving its button on
+  // "Sharing…" for good. A refresh that fails after the change landed
+  // still counts as done -- the note is there; the list catches up later.
   async function run(key: string, action: () => Promise<{ error?: string }>) {
     setBusy(key);
     setError("");
@@ -221,7 +223,7 @@ function SharedNotesList({
       setError(res.error);
       return false;
     }
-    await onChanged();
+    await attempt(onChanged);
     setBusy("");
     return true;
   }

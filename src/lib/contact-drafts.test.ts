@@ -57,3 +57,20 @@ test("the notes pane takes its drafts from the window: the internal note, the si
   assert.match(pane, /disabled=\{busy === "add" \|\| sharing \|\| !body\.trim\(\)\}/);
   assert.match(pane, /const res = await attempt\(action\);/);
 });
+
+test("each window is its record's own: opening another contact or appointment starts a fresh window", () => {
+  // A popup toast can open contact B, or appointment B, while A's window
+  // is open. Without a key the same window re-rendered with B: A's drafts
+  // (and, in the appointment window, A's fields) stayed on screen, ready
+  // to be added or saved onto B.
+  assert.match(source("../app/(app)/contacts/contacts-table.tsx"), /<LeadForm\s+key=\{editing\.lead\.id\}/);
+  assert.match(source("../app/(app)/pipeline/pipeline-board.tsx"), /<LeadForm\s+key=\{editing\.lead\.id\}/);
+  assert.match(source("../app/(app)/calendar/calendar-board.tsx"), /<EventForm\s+key=\{editing\.id\}/);
+  assert.match(source("../app/(app)/schedule/schedule-list.tsx"), /<EventForm\s+key=\{editing\.id\}/);
+});
+
+test("a shared note's refresh that never arrives can't leave Share stuck", () => {
+  const pane = source("../app/(app)/pipeline/lead-notes-pane.tsx");
+  assert.match(pane, /await attempt\(onChanged\);/);
+});
+
