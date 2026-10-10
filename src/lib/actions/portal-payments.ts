@@ -1,6 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { todayForCompany } from "@/lib/data/company-today";
 import { getPortalViewer, portalBaseUrl } from "@/lib/portal/session";
 import { financedLender } from "@/lib/data/financed-contracts";
 import { stripeClient } from "@/lib/stripe-env";
@@ -190,13 +191,15 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
   const admin = createAdminClient();
   const { data: estimate } = await admin
     .from("estimates")
-    .select("id, lead_id, status")
+    .select("id, lead_id, status, company_id")
     .eq("id", estimateId)
-    .maybeSingle<{ id: string; lead_id: string; status: EstimateStatus }>();
+    .maybeSingle<{ id: string; lead_id: string; status: EstimateStatus; company_id: string }>();
   if (!estimate || estimate.lead_id !== viewer.lead.id) return [];
   if (estimate.status !== "Signed") return [];
-
-  const [{ data: phases }, { data: allPayments }, undecided] = await Promise.all([
+  // `today`: a stage is due through its due day on the company's calendar,
+  // as the staff Payments page counts it; the server's UTC clock read
+  // "Was due" from 5pm Pacific on the day itself (DECISIONS #191).
+  const [{ data: phases }, { data: allPayments }, undecided, today] = await Promise.all([
     admin
       .from("estimate_payments")
       .select("*")
@@ -220,6 +223,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         >[]
       >(),
     undecidedRefundIds(admin, "estimate_id", [estimateId]),
+    todayForCompany(admin, estimate.company_id),
   ]);
   // A refund made in Stripe waits on the office's "still owed?" before
   // the customer sees it (#155).
@@ -243,7 +247,7 @@ export async function getPortalPhases(estimateId: string): Promise<PortalPhase[]
         owedCents: phaseOwedCents(p, on),
         payableCents: phaseCheckoutCents(p, on),
         dueDate: p.due_date ?? null,
-        state: phaseState(p, on),
+        state: phaseState(p, on, new Date(`${today}T12:00:00`)),
         paidAt: settled?.paid_at ?? null,
         creditCents: Math.max(0, p.credit_cents ?? 0),
       };

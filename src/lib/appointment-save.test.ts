@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   SAVE_UNREACHABLE,
+  SEND_UNREACHABLE,
   appointmentFooter,
   applyLiveState,
   attempt,
   commitPending,
+  unsentTextNote,
 } from "./appointment-save.ts";
 
 /**
@@ -85,6 +87,10 @@ test("a call that never reaches the server says so, instead of leaving the butto
     failedAt: "task",
     done: ["appointment"],
   });
+  // A send that never came back may have gone out: it says to check the
+  // thread rather than inviting a second text.
+  assert.deepEqual(await attempt(lost, SEND_UNREACHABLE), { error: SEND_UNREACHABLE });
+  assert.match(SEND_UNREACHABLE, /check the thread before sending it again/);
   // A plain success, an undefined return and a returned error pass through.
   assert.deepEqual(await attempt(async () => undefined), {});
   assert.deepEqual(await attempt(async () => ({ error: "No." })), { error: "No." });
@@ -97,6 +103,8 @@ const footer = (over: Partial<Parameters<typeof appointmentFooter>[0]> = {}) =>
     formDirty: false,
     resultDirty: false,
     taskPending: false,
+    notePending: false,
+    textPending: false,
     saving: false,
     ...over,
   });
@@ -137,6 +145,60 @@ test("other tabs keep Save, a typed task counts as unsaved work, and a read-only
     save: false,
     saveResult: false,
     dirty: false,
+  });
+});
+
+test("a typed note is saved by Save like a typed task, after it", async () => {
+  const order: string[] = [];
+  const ok = (name: string) => async () => {
+    order.push(name);
+    return {};
+  };
+  assert.deepEqual(await commitPending({ note: ok("note"), task: ok("task"), appointment: ok("appointment") }), {
+    done: ["appointment", "task", "note"],
+  });
+  assert.deepEqual(order, ["appointment", "task", "note"]);
+  assert.deepEqual(
+    await commitPending({ task: async () => ({ error: "No." }), note: ok("note") }),
+    { error: "The new task didn't save: No. Not saved yet: the new note.", failedAt: "task", done: [] }
+  );
+  // On the Result tab a typed note means Save, not Save Result.
+  assert.deepEqual(footer({ tab: "Result", resultDirty: true, notePending: true }), {
+    save: true,
+    saveResult: false,
+    dirty: true,
+  });
+  assert.deepEqual(footer({ tab: "Notes", notePending: true }), { save: true, saveResult: false, dirty: true });
+});
+
+test("a typed text counts as unsaved, but Save never sends it", () => {
+  // On the Texts tab Save has nothing it may commit, so it stays hidden;
+  // closing still asks.
+  assert.deepEqual(footer({ tab: "Texts", textPending: true }), { save: false, saveResult: false, dirty: true });
+  // A text waiting elsewhere doesn't take Save Result away from a result.
+  assert.deepEqual(footer({ tab: "Result", resultDirty: true, textPending: true }), {
+    save: false,
+    saveResult: true,
+    dirty: true,
+  });
+  // Save stays open on an unsent text and says why, whether or not
+  // anything else was saved.
+  assert.equal(
+    unsentTextNote(true),
+    "Saved. The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there."
+  );
+  assert.equal(
+    unsentTextNote(false),
+    "The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there."
+  );
+});
+
+test("a note typed in a read-only window, where notes are still allowed, is unsaved work too", () => {
+  // Save is hidden there (Add Note saves it), but closing has to ask.
+  assert.deepEqual(footer({ tab: "Notes", readOnly: true, notePending: true }), {
+    save: false,
+    saveResult: false,
+    dirty: true,
   });
 });
 
@@ -195,7 +257,7 @@ test("the window commits everything pending through one Save and keeps a typed t
   assert.match(form, /appointmentResultOverdue\(\{ \.\.\.event, status: baseline\.status \}, openedAtMs\)/);
   // A task already on its way (Add Task) can't be sent again by Save, nor
   // the other way round -- the slow-signal double tap.
-  assert.match(form, /disabled=\{pending \|\| resultPending \|\| taskDraft\.busy\}/);
+  assert.match(form, /disabled=\{pending \|\| resultPending \|\| taskDraft\.busy \|\| noteDraft\.busy\}/);
   // A read-only window doesn't point at a save button it doesn't have.
   assert.match(form, /\{!readOnly && \(footer\.saveResult/);
   assert.match(form, /if \(taskStep\) taskDraft\.setBusy\(true\);/);

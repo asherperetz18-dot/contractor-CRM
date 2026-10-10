@@ -2487,3 +2487,42 @@ A saved result could also look lost. The window compared the form with how the a
 - **The window's Save, Save Result and Delete, and the task panel's Add Task, ☐ and ✕ go through `attempt`**, which turns a rejected call into "Couldn't reach the CRM to save this. Check your connection and try again; if it keeps failing, refresh the page." and always releases the button. The footer Save refreshes the page only when something landed, so a tab that can't reach the server isn't reloaded out from under the window.
 
 **Consequence:** the appointment's fields, a picked result and a typed task are no longer dropped by Save or by a tab switch, and a failed save of any of them says so. Gaps found along the way are in TECH_DEBT, among them: a Save that edits an appointment field still writes the whole row from the page's copy; a note typed in Activity & Notes on the Notes tab and a text typed on the Texts tab are lost on a tab switch and not saved by Save; several other buttons in the window don't catch a lost call; and some buttons leave the window without the discard question. No SQL.
+
+## 189 — A Showed or Won starts from the contact's job value
+
+**Date:** 2026-10-10
+
+**Context:** A Showed or Won needs the job's estimated value (the server refuses one on a contact worth nothing), so the Result tab asks for it. The box started empty, with the contact's current value only as grey placeholder text. A rep confirming a figure the contact already had retyped it, and until they did, a box that looked filled kept Save Result greyed out. And on an appointment already recorded Showed or Won, changing only the value wasn't counted as anything to save: Save Result stayed greyed out, the footer said "Nothing changed to save." and closing dropped the new figure.
+
+**Decision:**
+- **The box shows the contact's current value, live, until someone types in it** (`typedValue ?? lead.value`), so a refresh that brings a newer figure moves an untouched box with it. A line under it says so ("The contact's current value. Change it if this job is worth more or less.") while it still holds that figure. A contact worth nothing still starts empty and still has to have a value typed.
+- **A new value on a Showed or Won is a result to save**, on its own: Save Result lights up, the footer says it isn't saved, and closing asks. Saving it rewrites the same outcome and moves no stage. The figure the window just wrote stops counting as an edit at once, before the page's copy of the contact catches up, and a typed value is read to the cent (`parseJobValue`), as `leads.value` stores it.
+- Nothing else changes: the value is still written before the outcome, only when it differs from the contact's, and the server's rule is the same.
+
+**Consequence:** confirming an existing figure is one tap. The cost is that a rep can accept a stale figure without typing; the line under the box is there so it is read, not assumed. No SQL.
+
+## 190 — The appointment window holds its note and text drafts too
+
+**Date:** 2026-10-10
+
+**Context:** #188 lifted the typed task out of its panel; the window's other two drafts stayed inside theirs. A note typed in Activity & Notes on the Notes tab and a text typed on the Texts tab lived in `NotesTimeline` and `MessagesPanel`, which unmount on a tab switch, so clicking away threw them away. Save didn't add the note, and the close question didn't count either. Separately, the Text button, picking a quick text, Edit on contact card, Open Full Contact, Write estimate, an estimate's row and Delete left the window without the discard question at all. Add Note and Send didn't catch a call that never reached the server, so their button stayed on "Adding…" or "Sending…".
+
+**Decision:**
+- **The window holds both drafts** (`useNoteDraft`, passed to `NotesTimeline` as `draft`; `useTextDrafts`, passed to `MessagesPanel` as `drafts`, one per thread as before). They survive tab switches and count as unsaved work when closing. A text's sending flag, what its last send came back with, and the open thread (Client or Rep) live with them, so a tab switch mid-send can't bring the text back with Send live and send it twice, a send that fails after the switch still shows its warning when the text comes back, and a draft to the rep reopens on the Rep thread. Hosts that pass none (the contact window) keep the panels' own, as before.
+- **Save adds a typed note**, after a typed task (`commitPending`'s `note` step), when the person may add notes. While Add Note or Save is sending it, the other waits, so a double tap can't add it twice. A note counts as unsaved even in a read-only window where notes are still allowed (`canAddNotes`); there Add Note saves it, since there's no Save.
+- **Save never sends a text.** Sending is an outward act, the reason autosave was turned down for this window. A typed text never brings Save up on its own, and any Save run while a text is typed commits the rest and then stays open, saying "The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there." (`unsentTextNote`, with "Saved." in front when something was). The line goes once the text is sent or cleared, and a text typed after that doesn't bring it back.
+- **Every button that leaves the window asks** (`leaveOk`): the seven exits above now ask the same "Discard your unsaved changes to this appointment?" as Cancel and the X.
+- **Add Note, a note's ✕, Send and the rep Send go through `attempt`**, so a call that never comes back says so, and an error the server returns is shown. A send that never came back may still have gone out, so its message says to check the thread before sending again (`SEND_UNREACHABLE`). Add Note with nothing typed says "Type the note first." A note's ✕ that the database refuses still returns no error and says nothing (TECH_DEBT).
+
+**Consequence:** nothing typed in the appointment window's tabs is dropped by a tab switch or by one of its buttons without asking. The contact window's own Tasks, Notes and Texts drafts are still lost on a tab switch there (TECH_DEBT). No SQL.
+
+## 191 — The customer portal judges a proposal's expiry on the company's today
+
+**Date:** 2026-10-10
+
+**Context:** A proposal is valid through its expiry day. The customer portal judged that with the server's clock: the page called `estimateExpired` with none, and the sign and optional-line actions repeated the check as `expires_at` 23:59:59 against `Date.now()`. The server runs on UTC, already tomorrow from 5pm Pacific (4pm in winter), so on the evening of a proposal's last day the customer saw "This estimate has expired" instead of Sign, a signature was refused, and the optional lines locked. The portal's billed stages had the same seam: `getPortalPhases` called `phaseState` with no clock, so a stage read "Was due" instead of "Due" on the evening of its due date, while the staff Payments page already passes the company's day.
+
+**Decision:** the portal works out the company's today and judges at noon of it, the way the Payments page does (`new Date(`${today}T12:00:00`)`): the expiry check on the page (today from the company row the page already reads, so no extra query), the same check in signing and in ticking an optional line (`expired()`, now built on `estimateExpired`, with `todayForCompany`), and the billed stages' state (`getPortalPhases`, reading today alongside the stages). No new helper: at noon of a calendar day, the 23:59:59 comparison these helpers already make reduces to comparing days, in whatever zone the server runs.
+
+**Consequence:** a customer can sign, and tick optional lines, until the company's midnight on the last valid day, and a stage reads Due all of its due day. The staff screens' own expiry still reads the clock where the page draws (the server's UTC on the first draw, then the browser's), which #180 left for its own change, and the AI chat's reads the server's (both in TECH_DEBT). No SQL.
+

@@ -53,12 +53,19 @@ import { getQuickTextOptions } from "@/lib/actions/sms-quick-texts";
 import { sendSms } from "@/lib/actions/sms";
 import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
-import { appointmentFooter, applyLiveState, attempt, commitPending } from "@/lib/appointment-save";
+import {
+  appointmentFooter,
+  applyLiveState,
+  attempt,
+  commitPending,
+  parseJobValue,
+  unsentTextNote,
+} from "@/lib/appointment-save";
 import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
-import { MessagesPanel } from "../pipeline/messages-panel";
+import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
-import { NotesTimeline } from "../pipeline/notes-timeline";
+import { NotesTimeline, useNoteDraft } from "../pipeline/notes-timeline";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
 type Tab =
@@ -223,6 +230,10 @@ export function EventForm({
   const [baseline, setBaseline] = useState<EventInput>(() => toInput(event, initialDate));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // Set when Save stopped on an unsent text (true if it saved something
+  // first). Shown only while the text is still there, so sending or
+  // clearing it takes the note away.
+  const [textHeld, setTextHeld] = useState<boolean | null>(null);
   const [tab, setTab] = useState<Tab>("Appointment");
   const [showQuickText, setShowQuickText] = useState(false);
   const [quickTextOptions, setQuickTextOptions] = useState<{
@@ -253,9 +264,13 @@ export function EventForm({
   // Selected outcome, not yet written. Empty means "unchanged".
   const [pendingOutcome, setPendingOutcome] = useState<EventStatus | "">("");
   const [resultNote, setResultNote] = useState("");
-  // Starts empty, so a Showed or Won asks for the value even when the
-  // lead already has one (TECH_DEBT).
-  const [resultValue, setResultValue] = useState("");
+  // What the rep typed in the job value box; null until they type. Until
+  // then the box shows what the contact is worth (resultValue, below).
+  const [typedValue, setTypedValue] = useState<string | null>(null);
+  // The value this window last wrote. The page's copy of the contact keeps
+  // the old figure until the refresh lands, so comparing with it alone
+  // read a value just saved as an unsaved edit.
+  const [savedValue, setSavedValue] = useState<number | null>(null);
   const [resultPending, setResultPending] = useState(false);
   const [resultSaved, setResultSaved] = useState(false);
   // Tracks whether the user actually toggled each confirmation badge, so a
@@ -267,8 +282,17 @@ export function EventForm({
     status: false,
   });
   // A task typed on the Tasks tab, held here rather than in the panel so
-  // it survives a tab switch and the footer's Save can commit it.
+  // it survives a tab switch and the footer's Save can commit it. The same
+  // for a note typed in Activity & Notes, and for a text typed on the
+  // Texts tab -- which Save never sends (DECISIONS #190).
   const taskDraft = useTaskDraft();
+  const noteDraft = useNoteDraft();
+  const textDrafts = useTextDrafts();
+  // The unsent-text line is about the text Save stopped on: once that is
+  // sent or cleared it's done, so a new text typed later doesn't bring it
+  // back. Adjusted during render, React's pattern for state that follows
+  // other state.
+  if (textHeld !== null && !textDrafts.waiting) setTextHeld(null);
 
   /**
    * Re-reads what the server holds the moment this opens.
@@ -341,19 +365,29 @@ export function EventForm({
   const resultOverdue =
     !!event && appointmentResultOverdue({ ...event, status: baseline.status }, openedAtMs);
   const resultRecorded = !!event && hasAppointmentResult(form.status);
-  // Something to save: a new outcome, a note, or a stage change.
-  const resultDirty =
-    !!pendingOutcome ||
-    resultNote.trim().length > 0 ||
-    (!!resultStage && !!lead && resultStage !== lead.stage);
 
+  // Starts from what the contact is worth, live, so a rep confirming an
+  // existing figure doesn't retype it and a refresh that brings a newer
+  // figure moves an untouched box with it (DECISIONS #189). It used to
+  // start empty with that figure as grey placeholder text: a box that
+  // looked filled while Save Result stayed greyed out.
+  const resultValue = typedValue ?? (lead && lead.value > 0 ? String(lead.value) : "");
   const outcomeNeedsValue = VALUED_OUTCOMES.includes(
     (pendingOutcome || form.status) as EventStatus
   );
-  const parsedResultValue = Number(resultValue.replace(/[^0-9.]/g, ""));
+  const parsedResultValue = parseJobValue(resultValue);
   const resultValueOk =
     !outcomeNeedsValue ||
     (resultValue.trim() !== "" && Number.isFinite(parsedResultValue) && parsedResultValue > 0);
+  // Something to save: a new outcome, a note, a stage change, or a new
+  // job value on a Showed or Won. On one already recorded the value alone
+  // is the edit; it counted as nothing, so Save Result stayed greyed out
+  // and closing dropped the new figure.
+  const resultDirty =
+    !!pendingOutcome ||
+    resultNote.trim().length > 0 ||
+    (!!resultStage && !!lead && resultStage !== lead.stage) ||
+    (outcomeNeedsValue && resultValueOk && !!lead && parsedResultValue !== lead.value && parsedResultValue !== savedValue);
 
   function repName(id: string | null) {
     if (!id) return null;
@@ -400,6 +434,7 @@ export function EventForm({
     if (VALUED_OUTCOMES.includes(outcome) && parsedResultValue > 0 && parsedResultValue !== lead.value) {
       const valueResult = await setLeadEstimatedValue(lead.id, parsedResultValue);
       if (valueResult?.error) return { error: valueResult.error };
+      setSavedValue(parsedResultValue);
     }
 
     // Then the outcome: it's the thing the red badge and the follow-up
@@ -473,9 +508,12 @@ export function EventForm({
       return;
     }
     const taskStep = !!lead && taskDraft.waiting;
+    const noteStep = !!lead && !!canAddNotes && noteDraft.waiting;
     setPending(true);
     if (taskStep) taskDraft.setBusy(true);
+    if (noteStep) noteDraft.setBusy(true);
     setError("");
+    setTextHeld(null);
     const saving = form;
     const outcome = await commitPending({
       // Only when one of its own fields changed: writing the whole row from
@@ -497,9 +535,17 @@ export function EventForm({
             return result;
           }
         : undefined,
+      note: lead && canAddNotes && noteDraft.waiting
+        ? async () => {
+            const result = await addLeadNote(lead.id, noteDraft.body);
+            if (!result?.error) noteDraft.setBody("");
+            return result;
+          }
+        : undefined,
     });
     setPending(false);
     if (taskStep) taskDraft.setBusy(false);
+    if (noteStep) noteDraft.setBusy(false);
     // Only when something landed: refreshing a tab that couldn't reach
     // the server at all can reload the page out from under the window.
     if (outcome.done.length || outcome.partly) router.refresh();
@@ -507,11 +553,16 @@ export function EventForm({
       setError(outcome.error);
       return;
     }
+    // Save never sends a text, and closing would drop it without a word.
+    if (textDrafts.waiting) {
+      setTextHeld(outcome.done.length > 0);
+      return;
+    }
     onSaved();
   }
 
   async function handleDelete() {
-    if (!event) return;
+    if (!event || !leaveOk()) return;
     setPending(true);
     setError("");
     const result = await attempt(() => deleteEvent(event.id));
@@ -525,7 +576,7 @@ export function EventForm({
   }
 
   function openFullLead() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     onCancel();
     router.push(`/contacts?openLead=${lead.id}&from=${encodeURIComponent(pathname)}`);
   }
@@ -542,7 +593,7 @@ export function EventForm({
    * as a message here rather than a hidden button lying about rights.
    */
   async function writeEstimate() {
-    if (!lead) return;
+    if (!lead || !leaveOk()) return;
     setEstimatePending(true);
     setEstimateError("");
     const res = await createEstimate(lead.id, lead.project_type || "Estimate");
@@ -572,8 +623,9 @@ export function EventForm({
   /**
    * Which save button the footer shows (appointmentFooter). Save Result
    * commits the Result tab alone, so it is offered only while the result
-   * is all that's waiting; with an appointment edit or a typed task
-   * pending too, the footer offers Save, which commits all of it.
+   * is all that's waiting; with an appointment edit, a typed task or a
+   * typed note pending too, the footer offers Save, which commits all of
+   * it. A typed text counts as unsaved but is never Save's to send.
    *
    * resultDirty, not its parts: a chosen stage counts too. Listing the
    * note and the outcome by hand left the stage out, so picking DNC and
@@ -585,13 +637,28 @@ export function EventForm({
     formDirty,
     resultDirty,
     taskPending: taskDraft.waiting,
+    notePending: !!canAddNotes && noteDraft.waiting,
+    textPending: textDrafts.waiting,
     saving: pending,
   });
   const isDirty = footer.dirty;
 
+  // Every way out of the window asks before dropping unsaved work: Cancel
+  // and the X did, but the Text button, a quick text, Edit on contact
+  // card, Open Full Contact, Write estimate and an estimate's row left
+  // without a word.
+  function leaveOk() {
+    return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
+  }
+
   function requestClose() {
-    if (isDirty && !window.confirm("Discard your unsaved changes to this appointment?")) return;
+    if (!leaveOk()) return;
     onCancel();
+  }
+
+  function openEstimate(id: string) {
+    if (!leaveOk()) return;
+    router.push(`/estimates/${id}`);
   }
 
   /**
@@ -618,6 +685,7 @@ export function EventForm({
   }
 
   function textPhone(phone: string, body?: string) {
+    if (!leaveOk()) return;
     onCancel();
     const params = new URLSearchParams();
     if (lead) params.set("leadId", lead.id);
@@ -1172,7 +1240,7 @@ export function EventForm({
                 // in it, not to grey out a button elsewhere.
                 autoFocus
                 value={resultValue}
-                onChange={(e) => setResultValue(e.target.value)}
+                onChange={(e) => setTypedValue(e.target.value)}
                 placeholder={lead.value ? String(lead.value) : "18000"}
                 disabled={readOnly || resultPending || pending}
               />
@@ -1181,6 +1249,11 @@ export function EventForm({
                   Required on a {(pendingOutcome || form.status) === "Won" ? "Won" : "Showed"}.
                   Every money figure on the pipeline is a sum of this, so a visit logged without
                   one reads as a slow month rather than as missing data.
+                </p>
+              )}
+              {resultValueOk && !!lead.value && parsedResultValue === lead.value && (
+                <p className="est-tax-note">
+                  The contact&apos;s current value. Change it if this job is worth more or less.
                 </p>
               )}
             </Field>
@@ -1297,11 +1370,11 @@ export function EventForm({
                   <tr
                     key={e.id}
                     className="est-row"
-                    onClick={() => router.push(`/estimates/${e.id}`)}
+                    onClick={() => openEstimate(e.id)}
                     role="link"
                     tabIndex={0}
                     onKeyDown={(ev) => {
-                      if (ev.key === "Enter") router.push(`/estimates/${e.id}`);
+                      if (ev.key === "Enter") openEstimate(e.id);
                     }}
                   >
                     <td className="mono">{e.doc_number}</td>
@@ -1340,7 +1413,7 @@ export function EventForm({
       )}
 
       {lead && tab === "Texts" && (
-        <MessagesPanel leadId={lead.id} phone={lead.phone ?? ""} readOnly={readOnly} />
+        <MessagesPanel leadId={lead.id} phone={lead.phone ?? ""} readOnly={readOnly} drafts={textDrafts} />
       )}
 
       {lead && tab === "Notes" && (
@@ -1351,6 +1424,7 @@ export function EventForm({
             reps={reps}
             readOnly={!canAddNotes}
             onChanged={() => router.refresh()}
+            draft={noteDraft}
           />
         </div>
       )}
@@ -1380,6 +1454,9 @@ export function EventForm({
       {(!lead || tab !== "Lead") && (
         <>
           {error && <p className="error-note">{error}</p>}
+          {textHeld !== null && textDrafts.waiting && (
+            <p className="error-note">{unsentTextNote(textHeld)}</p>
+          )}
           {/* Pinned to the bottom of the modal: this form is taller than
               the viewport, so Save used to sit below the fold and had to
               be scrolled to before anything could be committed. */}
@@ -1418,7 +1495,7 @@ export function EventForm({
                 {footer.save ? "Cancel" : "Close"}
               </button>
               {footer.save && (
-                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || resultPending || taskDraft.busy}>
+                <button type="button" className="btn-primary" onClick={handleSave} disabled={pending || resultPending || taskDraft.busy || noteDraft.busy}>
                   {pending ? "Saving…" : "Save"}
                 </button>
               )}

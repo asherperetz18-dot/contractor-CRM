@@ -11,6 +11,7 @@ import {
   type RepMessage,
   type RepRecipient,
 } from "@/lib/actions/sms";
+import { SEND_UNREACHABLE, attempt } from "@/lib/appointment-save";
 
 /**
  * The thread is read through a route handler, never a Server Action:
@@ -42,28 +43,65 @@ function channelTag(channel: string) {
   return null;
 }
 
+/**
+ * The texts being typed, one per thread, held by whoever owns them. The
+ * panel unmounts on a tab switch, so a text kept inside it vanished when
+ * someone clicked away -- a window that wants it to survive holds it with
+ * this hook and passes it in (DECISIONS #190). Holding it never sends it.
+ */
+export function useTextDrafts() {
+  // Separate drafts per thread. One shared box meant a half-typed note to
+  // the customer was still sitting there after switching to Rep, one
+  // press away from going to the wrong person entirely.
+  const [body, setBody] = useState("");
+  const [repBody, setRepBody] = useState("");
+  // On its way out, and which thread is open: held with the drafts, so a
+  // tab switch mid-send can't bring the text back with Send live and text
+  // it twice, and a draft to the rep reopens on the Rep thread.
+  const [sending, setSending] = useState(false);
+  // What the last send came back with: a send that fails after a tab
+  // switch still shows its warning when the text comes back.
+  const [sendError, setSendError] = useState("");
+  const [thread, setThread] = useState<"client" | "rep">("client");
+  return {
+    body,
+    setBody,
+    repBody,
+    setRepBody,
+    sending,
+    setSending,
+    sendError,
+    setSendError,
+    thread,
+    setThread,
+    waiting: body.trim() !== "" || repBody.trim() !== "",
+  };
+}
+
+export type TextDrafts = ReturnType<typeof useTextDrafts>;
+
 export function MessagesPanel({
   leadId,
   phone,
   readOnly,
+  drafts,
 }: {
   leadId: string;
   phone: string;
   readOnly?: boolean;
+  // Held by the host so they outlive a tab switch; the panel keeps its own
+  // when none are given.
+  drafts?: TextDrafts;
 }) {
   const [messages, setMessages] = useState<LeadMessage[] | null>(null);
   const [repMessages, setRepMessages] = useState<RepMessage[] | null>(null);
   const [recipients, setRecipients] = useState<RepRecipient[]>([]);
   const [repTo, setRepTo] = useState("");
   const [jobLabel, setJobLabel] = useState("");
-  const [tab, setTab] = useState<"client" | "rep">("client");
   const [error, setError] = useState("");
-  // Separate drafts per tab. One shared box meant a half-typed note to the
-  // customer was still sitting there after switching to Rep, one press
-  // away from going to the wrong person entirely.
-  const [body, setBody] = useState("");
-  const [repBody, setRepBody] = useState("");
-  const [sending, setSending] = useState(false);
+  const own = useTextDrafts();
+  const { body, setBody, repBody, setRepBody, sending, setSending, sendError, setSendError, thread: tab, setThread: setTab } =
+    drafts ?? own;
 
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -147,11 +185,13 @@ export function MessagesPanel({
     const text = body.trim();
     if (!text || !phone) return;
     setSending(true);
-    setError("");
-    const result = await sendSms(leadId, phone, text);
+    setSendError("");
+    // Through attempt: a send that never comes back says so instead of
+    // leaving the button on "Sending…", and to check before resending.
+    const result = await attempt(() => sendSms(leadId, phone, text), SEND_UNREACHABLE);
     setSending(false);
-    if (result?.error) {
-      setError(result.error);
+    if (result.error) {
+      setSendError(result.error);
       return;
     }
     setBody("");
@@ -170,11 +210,11 @@ export function MessagesPanel({
     const text = repBody.trim();
     if (!text || !repTo) return;
     setSending(true);
-    setError("");
-    const result = await sendRepMessage(leadId, repTo, text);
+    setSendError("");
+    const result = await attempt(() => sendRepMessage(leadId, repTo, text), SEND_UNREACHABLE);
     setSending(false);
-    if (result?.error) {
-      setError(result.error);
+    if (result.error) {
+      setSendError(result.error);
       return;
     }
     setRepBody("");
@@ -284,7 +324,7 @@ export function MessagesPanel({
         </div>
       )}
 
-      {error && <p className="error-note">{error}</p>}
+      {(sendError || error) && <p className="error-note">{sendError || error}</p>}
 
       {/* Each tab composes to its own side. The recipient is named on the
           button rather than implied by the tab, because the whole risk
