@@ -377,8 +377,8 @@ export async function sendBillsToQuickBooksNow(): Promise<SendNowResult> {
   return s.error ? { ...result, error: s.error } : result;
 }
 
-/** Reads QuickBooks' accounts again: one added there since connecting. */
-export async function refreshQuickBooksAccounts(): Promise<{ error?: string; count?: number }> {
+/** Reads QuickBooks' accounts again, and its products and services for invoices, saying how many of each came back. */
+export async function refreshQuickBooksAccounts(): Promise<{ error?: string; count?: number; items?: number; itemsError?: string }> {
   const who = await officeAdmin();
   if (!who) return { error: "Only Office or Admin users can change this." };
   const got = await quickBooksAccess(who.admin, who.profile.company_id);
@@ -392,14 +392,19 @@ export async function refreshQuickBooksAccounts(): Promise<{ error?: string; cou
   if (error) return { error: isMissingSchemaError(error) ? NEEDS_0221 : error.message };
   // Products and services too, for invoices (DECISIONS #184); before 0227 there's nowhere to keep them.
   const items = await readItems(got.access);
-  if (!("error" in items)) {
-    await who.admin
-      .from("quickbooks_connections")
-      .update({ items: items.items, items_read_at: new Date().toISOString() })
-      .eq("company_id", who.profile.company_id);
+  if ("error" in items) {
+    revalidatePath("/settings/quickbooks");
+    return { count: read.accounts.length, itemsError: `Products and services couldn't be read from QuickBooks: ${items.error.message}` };
   }
+  const { error: itemsSaveError } = await who.admin
+    .from("quickbooks_connections")
+    .update({ items: items.items, items_read_at: new Date().toISOString() })
+    .eq("company_id", who.profile.company_id);
   revalidatePath("/settings/quickbooks");
-  return { count: read.accounts.length };
+  if (itemsSaveError) {
+    return { count: read.accounts.length, itemsError: isMissingSchemaError(itemsSaveError) ? NEEDS_0225 : itemsSaveError.message };
+  }
+  return { count: read.accounts.length, items: items.items.length };
 }
 
 /**
