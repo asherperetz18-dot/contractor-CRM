@@ -220,7 +220,7 @@ async function gatherContext(
   repScope: AssistantRepScope | null
 ) {
   // The zone too, not just its today: the context dates documents and
-  // times calls on the company's clock (DECISIONS #195).
+  // times calls on the company's clock (DECISIONS #196).
   const zone = await getCompanyZone();
   const todayISO = isoDateInZone(new Date(), zone);
   const callWindowStart = new Date(Date.now() - CALL_WINDOW_DAYS * 86400000).toISOString();

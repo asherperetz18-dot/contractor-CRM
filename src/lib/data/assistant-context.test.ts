@@ -466,7 +466,7 @@ test("unscoped context keeps the company-wide summary and no viewer banner", () 
   assert.ok(!text.includes("VIEWER SCOPE"), "no banner for desk roles");
 });
 
-// ── The company's day (DECISIONS #195) ───────────────────────────────
+// ── The company's day (DECISIONS #196) ───────────────────────────────
 
 test("a proposal on its last day is awaiting a signature, not expired, all that day", () => {
   // Judged by the server's clock (UTC) the chat called it Expired from

@@ -38,7 +38,7 @@ export function LeadEstimateButton({
   canView: boolean;
   canCreate: boolean;
   /** Asked before leaving the page for an estimate: the window it sits in
-   *  may hold unsaved drafts (DECISIONS #196). */
+   *  may hold unsaved drafts (DECISIONS #197). */
   leaveOk?: () => boolean;
 }) {
   const router = useRouter();

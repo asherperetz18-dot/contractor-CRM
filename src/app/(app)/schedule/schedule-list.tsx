@@ -352,7 +352,7 @@ export function ScheduleList({
         />
       )}
       {editing && (
-        // Keyed by the appointment, as on the Calendar (DECISIONS #196).
+        // Keyed by the appointment, as on the Calendar (DECISIONS #197).
         <EventForm
           key={editing.id}
           event={editing}

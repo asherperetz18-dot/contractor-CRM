@@ -2562,7 +2562,7 @@ Not changed:
 
 No SQL.
 
-## 193 — A refused note delete or task tick says so
+## 194 — A refused note delete or task tick says so
 
 **Date:** 2026-10-10
 
@@ -2572,7 +2572,7 @@ No SQL.
 
 **Consequence:** a refusal is said where it happens. A second ✕ on a row already gone reads the same way. No SQL.
 
-## 194 — Estimates and the Contract Board judge expiry on the company's today
+## 195 — Estimates and the Contract Board judge expiry on the company's today
 
 **Date:** 2026-10-10
 
@@ -2582,17 +2582,17 @@ No SQL.
 
 **Consequence:** Estimates, the Contract Board and the portal agree that a proposal is valid through its last day on the company's calendar, the server's first draw and the browser's agree, and the board's Expiring soon matches the Estimates "Expires within 7 days" chip. The day is the one the page loaded, as for the date filters. Expiry gaps the clock doesn't touch (voided and draft documents with a lapsed date, screens that never check expiry) are in TECH_DEBT. No SQL.
 
-## 195 — The AI chat reads the company's day and clock
+## 196 — The AI chat reads the company's day and clock
 
 **Date:** 2026-10-10
 
 **Context:** The chat's context already carried the company's today, but judged estimate status by the server's clock (UTC): from 5pm Pacific on a proposal's last day it listed the proposal as Expired and counted it under "Lost" instead of "Awaiting signature", and a change order on its last day dropped out of "Change orders pending signature". It also dated each document's created and signed day by its UTC day, so an evening document or e-signature read as tomorrow, and showed each call's UTC wall time with no zone, so for a Pacific company every call read 7 hours late (8 in winter) all day, and from 5pm (4pm in winter) on tomorrow; other zones were off by their own offset.
 
-**Decision:** the route hands the context the company's zone with its today (`getCompanyZone`, then `isoDateInZone`). The context judges expiry at noon of that today through the same optional clock as Estimates (#194), dates documents with `isoDateReader(zone)` and times calls with `wallClockIn(…, zone)`, still as `YYYY-MM-DD HH:MM`.
+**Decision:** the route hands the context the company's zone with its today (`getCompanyZone`, then `isoDateInZone`). The context judges expiry at noon of that today through the same optional clock as Estimates (#195), dates documents with `isoDateReader(zone)` and times calls with `wallClockIn(…, zone)`, still as `YYYY-MM-DD HH:MM`.
 
 **Consequence:** the chat agrees with the Estimates page and the portal on what is still awaiting a signature, and "what did we write, sign or call today?" counts the company's day. The rolling 30-day call window still counts back from the moment, as a rolling window should (#182). No SQL.
 
-## 196 — The contact window holds its drafts and asks before its buttons leave
+## 197 — The contact window holds its drafts and asks before its buttons leave
 
 **Date:** 2026-10-10
 

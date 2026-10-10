@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 /**
  * The contact window's Tasks, Notes and Texts tabs kept what was being
  * typed inside their panels, which unmount on a tab switch, and nothing
- * in the window asked before closing (DECISIONS #196): a typed task,
+ * in the window asked before closing (DECISIONS #197): a typed task,
  * note, shared note or text was thrown away by a tab switch, the X, a
  * stage button or opening an estimate. The window now holds them, as the
  * appointment window does (#188, #190), and asks before any way out.

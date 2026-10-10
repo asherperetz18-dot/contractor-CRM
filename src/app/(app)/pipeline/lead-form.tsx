@@ -179,7 +179,7 @@ export function LeadForm({
   const [tab, setTab] = useState<Tab>(initialTab ?? "Overview");
   // What's being typed on the Tasks, Notes and Texts tabs, held here so a
   // tab switch doesn't throw it away and leaving the window can ask
-  // first (DECISIONS #196). The fields above autosave; these don't.
+  // first (DECISIONS #197). The fields above autosave; these don't.
   const taskDraft = useTaskDraft();
   const notesDrafts = useNotesPaneDrafts();
   const textDrafts = useTextDrafts();

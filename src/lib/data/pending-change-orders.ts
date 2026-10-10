@@ -14,7 +14,7 @@ import { estimateExpired, type Estimate } from "./types.ts";
 export function isPendingChangeOrder(
   e: Pick<Estimate, "kind" | "status" | "expires_at">,
   /** The clock to judge expiry by: noon of the company's today on the
-   *  staff screens and in the AI chat (DECISIONS #194). */
+   *  staff screens and in the AI chat (DECISIONS #195). */
   now: Date = new Date()
 ): boolean {
   if (e.kind !== "change_order") return false;

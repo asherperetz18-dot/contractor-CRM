@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
  * A note's ✕, a task's ☐ and a task's ✕ that row security refused matched
  * no row, came back with no error, and the panel refreshed as if it had
  * worked -- the note or task still there and nothing said (DECISIONS
- * #193). Each now asks for the row back, the way deleteEvent does, and
+ * #194). Each now asks for the row back, the way deleteEvent does, and
  * says so when there is none.
  */
 

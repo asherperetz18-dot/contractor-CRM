@@ -45,7 +45,7 @@ export async function deleteLeadNote(id: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   // .select() so a delete the policy refused (only Office and Admin may
   // delete notes) surfaces as an error rather than as silence: it matched
-  // no row and the note stayed with nothing said (DECISIONS #193). The
+  // no row and the note stayed with nothing said (DECISIONS #194). The
   // .eq("id") already needs the row readable, so this hides no permitted
   // delete.
   const { data, error } = await supabase.from("lead_notes").delete().eq("id", id).select("id");
