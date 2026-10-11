@@ -260,8 +260,11 @@ test("the privacy page says what goes to a company's own QuickBooks and that it 
   // Not among the services that work for us: it's the company's own account.
   assert.doesNotMatch(page, /<li>[^<]*QuickBooks/);
   assert.match(page, /If your company connects its own QuickBooks Online \(Intuit\), the CRM sends it what your company turns on:/);
+  // Lender fees go as expenses (DECISIONS #199).
+  assert.match(page, /vendors, bills, invoices, payments,\s+expenses and receipts\./);
   // Only what stays: deleted bills, credits and refunds are deleted there while sending is on.
   assert.match(page, /Customers and vendors stay in\s+QuickBooks even if they&apos;re deleted in the CRM/);
   assert.doesNotMatch(page, /deleting something in the CRM/);
-  assert.doesNotMatch(source("../app-store/legal.ts"), /LEGAL_UPDATED = "September 27, 2026"/);
+  // Not the date of any earlier wording (the last before expenses: October 10).
+  assert.doesNotMatch(source("../app-store/legal.ts"), /LEGAL_UPDATED = "(September 27|October 10), 2026"/);
 });

@@ -91,8 +91,8 @@ export default function PrivacyPage() {
         </ul>
         <p>
           If your company connects its own QuickBooks Online (Intuit), the CRM sends it what your company turns on:
-          customers (names, contact details and addresses), vendors, bills, invoices, payments and receipts. These are
-          kept in your company&apos;s QuickBooks account under Intuit&apos;s terms. Customers and vendors stay in
+          customers (names, contact details and addresses), vendors, bills, invoices, payments, expenses and receipts.
+          These are kept in your company&apos;s QuickBooks account under Intuit&apos;s terms. Customers and vendors stay in
           QuickBooks even if they&apos;re deleted in the CRM, and so does anything sent before your company disconnects
           QuickBooks or closes its CRM account.
         </p>

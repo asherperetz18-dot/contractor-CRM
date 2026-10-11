@@ -21,6 +21,14 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.269.0",
+    date: "2026-10-11",
+    notes: [
+      "QuickBooks: lender fees can go to your books. Turn on \"Send job costs to QuickBooks\" in Settings › QuickBooks, pick the bank account your lenders pay into, and match \"Financing fee\". From the start date, deposit each lender payout at its full amount: the fee is already there as its own expense.",
+      "Bills to Pay › Paid › \"Paid on entry\" shows where each of those costs stands with QuickBooks. Older \"Already paid\" costs, costs below zero and costs in a closed month say to enter them there by hand.",
+    ],
+  },
+  {
     version: "1.268.0",
     date: "2026-10-10",
     notes: [
