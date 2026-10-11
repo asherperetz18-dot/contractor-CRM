@@ -39,6 +39,7 @@ import {
 } from "@/lib/actions/vendor-bills";
 import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
 import { billQbChips, paymentQbNote, qbWebUrl, type BillsQuickBooks, type ChipRecord, type QbChip } from "@/lib/quickbooks/bill-status";
+import { costQbChips, costQbState } from "@/lib/quickbooks/cost-status";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/components/uploads/file-drop";
@@ -493,6 +494,8 @@ export function BillsView({
           vendorById={vendorById}
           leadById={leadById}
           canEdit={canEditCosts}
+          qb={qb}
+          qbRecord={qbRecord}
           onError={setError}
         />
       )}
@@ -885,7 +888,9 @@ export function PaymentModal({
  * Void; Edit fixes or deletes the cost itself (QuickBooks rows stay
  * locked -- the next sync would overwrite them). Listed so the Paid tab
  * holds every dollar paid out, the same rows a project's Transactions list
- * shows under Paid.
+ * shows under Paid. Once job costs go to QuickBooks (DECISIONS #199) each
+ * row says where it stands there: a lender fee goes as an expense, and
+ * other costs from the start date say to enter them by hand.
  */
 function PaidOnEntry({
   receipts,
@@ -893,6 +898,8 @@ function PaidOnEntry({
   vendorById,
   leadById,
   canEdit,
+  qb,
+  qbRecord,
   onError,
 }: {
   receipts: JobExpense[];
@@ -900,10 +907,15 @@ function PaidOnEntry({
   vendorById: Map<string, Vendor>;
   leadById: Map<string, Lead>;
   canEdit: boolean;
+  /** Null when QuickBooks isn't connected; its costs are null before 0230. */
+  qb: BillsQuickBooks | null;
+  /** Every record, by "record_type:record_id". */
+  qbRecord: Map<string, ChipRecord>;
   onError: (msg: string) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<JobExpense | null>(null);
+  const feeIds = useMemo(() => new Set(qb?.costs?.fees ?? []), [qb]);
   const total = receipts.reduce((s, r) => s + r.amount_cents, 0);
   const jobs: BillJobOption[] = [...leadById.values()]
     .map((l) => ({
@@ -954,6 +966,16 @@ function PaidOnEntry({
                     {(r.description || r.category) && (
                       <div className="est-tax-note">{r.description || r.category}</div>
                     )}
+                    {qb?.costs && (
+                      <CostQbStatus
+                        qb={qb}
+                        costs={qb.costs}
+                        cost={r}
+                        fee={qb.costs.fees ? feeIds.has(r.id) : null}
+                        record={qbRecord.get(`expense:${r.id}`) ?? null}
+                        receipt={{ has: !!r.receipt_path, record: qbRecord.get(`expense_receipt:${r.id}`) ?? null }}
+                      />
+                    )}
                   </td>
                   <td>{lead ? leadDisplayName(lead) : "Unknown job"}</td>
                   <td className="mono">{fmtDay(r.spent_on)}</td>
@@ -980,6 +1002,8 @@ function PaidOnEntry({
           expense={editing}
           jobs={jobs}
           vendors={vendors}
+          // Whether Save and Delete reach QuickBooks: told here from the records the page has (null: nothing to say).
+          quickBooks={qb?.costs ? costQbState(qbRecord.get(`expense:${editing.id}`), qb.costs.sending) : null}
           onClose={() => setEditing(null)}
         />
       )}
@@ -1038,6 +1062,48 @@ function QbStatus({
       ))}
       {qbId && (
         <a className="qb-open" href={qbWebUrl(qb.environment, "bill", qbId, qb.realmId)} target="_blank" rel="noopener noreferrer">
+          Open in QuickBooks ↗
+        </a>
+      )}
+    </div>
+  );
+}
+
+/** Where a "Paid on entry" cost stands with QuickBooks, under its vendor (DECISIONS #199), and its receipt. */
+function CostQbStatus({
+  qb,
+  costs,
+  cost,
+  fee,
+  record,
+  receipt,
+}: {
+  qb: BillsQuickBooks;
+  costs: NonNullable<BillsQuickBooks["costs"]>;
+  cost: JobExpense;
+  /** Whether it's a lender fee; null when that couldn't be read. */
+  fee: boolean | null;
+  record: ChipRecord | null;
+  receipt: { has: boolean; record: ChipRecord | null };
+}) {
+  const { chips, qbId } = costQbChips({
+    sending: costs.sending,
+    sendFrom: costs.sendFrom,
+    cost: { spentOn: cost.spent_on, source: cost.source, lenderFee: fee },
+    record,
+    receipt,
+    day: shortDay,
+  });
+  if (!chips.length) return null;
+  return (
+    <div className="qb-chips">
+      {chips.map((c) => (
+        <span key={c.text} className={`est-badge qb-chip ${QB_TONE[c.tone]}`} suppressHydrationWarning>
+          {c.text}
+        </span>
+      ))}
+      {qbId && (
+        <a className="qb-open" href={qbWebUrl(qb.environment, "expense", qbId, qb.realmId)} target="_blank" rel="noopener noreferrer">
           Open in QuickBooks ↗
         </a>
       )}

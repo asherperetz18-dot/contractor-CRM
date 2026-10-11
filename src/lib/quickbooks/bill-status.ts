@@ -185,4 +185,7 @@ export type BillsQuickBooks = {
   records: ChipRecord[];
   /** 0223 has run: receipts go with their bills (DECISIONS #174). */
   receipts: boolean;
+  /** Job costs (DECISIONS #199): their own switch and start date, and which costs are lender fees
+   *  (null when that couldn't be read). Null before 0230. */
+  costs: { sending: boolean; sendFrom: string | null; fees: string[] | null } | null;
 };

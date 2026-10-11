@@ -141,7 +141,8 @@ export default async function BillsPage() {
 }
 
 /**
- * Where each bill stands with QuickBooks (DECISIONS #173). The connection
+ * Where each bill stands with QuickBooks (DECISIONS #173), and each
+ * "Paid on entry" job cost once job costs go there (#199). The connection
  * is server-only (it holds the login), so it's read here, after the page's
  * own gate; the records are read as the viewer, through row-level security.
  */
@@ -163,7 +164,7 @@ async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient
   // switch to real books): nothing goes, and what went isn't in these books
   // (DECISIONS #192). Settings says to connect again.
   if (onOtherSide(conn.environment, quickbooksCredentials()?.environment)) return null;
-  const [records, receipts] = await Promise.all([
+  const [records, receipts, costConn, fees] = await Promise.all([
     selectAll<ChipRecord>((f, t) =>
       supabase
         .from("quickbooks_sync")
@@ -176,9 +177,19 @@ async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient
         .range(f, t)
     ),
     quickBooksReceiptsReady(createAdminClient()),
+    // Job costs (step 4, DECISIONS #199) have their own switch, read apart: a database without 0230 still shows bills' lines.
+    createAdminClient()
+      .from("quickbooks_connections")
+      .select("send_costs, send_costs_from")
+      .eq("company_id", companyId)
+      .maybeSingle<{ send_costs: boolean; send_costs_from: string | null }>(),
+    lenderFeeIds(companyId),
   ]);
   const sending = conn.send_bills && !conn.disconnected_at;
-  if (!sending && !records.length) return null;
+  const costs = costConn.error
+    ? null
+    : { sending: !!costConn.data?.send_costs && !conn.disconnected_at, sendFrom: costConn.data?.send_costs_from ?? null, fees };
+  if (!sending && !costs?.sending && !records.length) return null;
   return {
     sending,
     sendFrom: conn.send_bills_from,
@@ -186,5 +197,24 @@ async function quickBooksStatus(supabase: Awaited<ReturnType<typeof createClient
     realmId: conn.realm_id,
     records,
     receipts: receipts === true,
+    costs,
   };
+}
+
+/** Which of the company's job costs are lender fees (0230's mark), so a cost not looked at yet shows what will happen to it.
+ *  Read apart from the page's own cost list (which must not name a 0230 column); null when it can't be read. */
+async function lenderFeeIds(companyId: string): Promise<string[] | null> {
+  const ids: string[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await createAdminClient()
+      .from("job_expenses")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("lender_fee", true)
+      .order("id")
+      .range(from, from + 999);
+    if (error) return null;
+    ids.push(...((data ?? []) as { id: string }[]).map((r) => r.id));
+    if ((data ?? []).length < 1000) return ids;
+  }
 }

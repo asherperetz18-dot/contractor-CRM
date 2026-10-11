@@ -562,3 +562,133 @@ test("the page and the settings list name lender fees", () => {
     /desc: "Connect QuickBooks Online, match your accounts, and send your bills, invoices, payments and lender fees to your books",/
   );
 });
+
+// ---------------------------------------------------------------- Bills to Pay and ✎ Edit
+
+const billsPage = () => source("../../app/(app)/bills/page.tsx");
+const billsView = () => source("../../app/(app)/bills/bills-view.tsx");
+
+test("Bills to Pay knows job costs' switch and which costs are lender fees (null before 0230)", () => {
+  const status = source("./bill-status.ts");
+  const type = status.slice(status.indexOf("export type BillsQuickBooks = {"));
+  assert.match(type, /^ {2}costs: \{ sending: boolean; sendFrom: string \| null; fees: string\[\] \| null \} \| null;$/m);
+});
+
+test("Bills to Pay reads job costs' switch and the lender fees apart, so a database without 0230 still shows bills", () => {
+  const page = billsPage();
+  const status = fn(page, "async function quickBooksStatus(");
+  // Bills' own read and the other-side line stay as they were.
+  assert.match(status, /\.select\("realm_id, environment, disconnected_at, send_bills, send_bills_from"\)/);
+  assert.match(status, /if \(onOtherSide\(conn\.environment, quickbooksCredentials\(\)\?\.environment\)\) return null;/);
+  // The switch in a read of its own: an error there (no 0230) leaves bills' lines as they are, and no cost lines.
+  const at = status.indexOf('.select("send_costs, send_costs_from")');
+  assert.ok(at >= 0, "the job-costs switch is read");
+  const switchRead = status.slice(status.lastIndexOf(".from(", at), status.indexOf(".maybeSingle", at));
+  assert.match(switchRead, /^\.from\("quickbooks_connections"\)/);
+  assert.doesNotMatch(switchRead, /realm_id|send_bills/);
+  assert.match(switchRead, /\.eq\("company_id", companyId\)/);
+  assert.match(
+    status,
+    /const costs = costConn\.error\s*\? null\s*: \{ sending: !!costConn\.data\?\.send_costs && !conn\.disconnected_at, sendFrom: costConn\.data\?\.send_costs_from \?\? null, fees \};/
+  );
+  assert.ok(status.indexOf('.select("send_costs, send_costs_from")') > status.indexOf("if (onOtherSide("), "read only on this side of Intuit");
+  // Shown when either is sending, or something was sent.
+  assert.match(status, /if \(!sending && !costs\?\.sending && !records\.length\) return null;/);
+  assert.match(status, /^ {4}costs,$/m);
+  // The lender fees: their own read of this company's costs, null when it fails (then a cost not looked at yet says nothing).
+  const fees = fn(page, "async function lenderFeeIds(");
+  assert.match(fees, /^async function lenderFeeIds\(companyId: string\): Promise<string\[\] \| null> \{/);
+  assert.match(fees, /\.from\("job_expenses"\)\s*\.select\("id"\)\s*\.eq\("company_id", companyId\)\s*\.eq\("lender_fee", true\)/);
+  assert.match(fees, /if \(error\) return null;/);
+  assert.match(fees, /\.range\(from, from \+ 999\)/);
+  // The page's own cost list names no 0230 column (selectAll would quietly return nothing before 0230).
+  const list = statements(page).find((s) => s.startsWith('.from("job_expenses")') && s.includes("receipt_path"));
+  assert.ok(list, "the page lists its costs");
+  assert.doesNotMatch(list, /lender_fee/);
+});
+
+test("Paid on entry rows show where each cost stands with QuickBooks, with Open in QuickBooks", () => {
+  const view = billsView();
+  assert.match(view, /<PaidOnEntry[^>]*\bqb=\{qb\}[^>]*\bqbRecord=\{qbRecord\}/);
+  const paid = fn(view, "function PaidOnEntry(");
+  // Under the vendor and What for, whenever job costs can be read (0230 has run).
+  assert.match(paid, /\{qb\?\.costs && \(\s*<CostQbStatus/);
+  assert.match(paid, /record=\{qbRecord\.get\(`expense:\$\{r\.id\}`\) \?\? null\}/);
+  assert.match(paid, /receipt=\{\{ has: !!r\.receipt_path, record: qbRecord\.get\(`expense_receipt:\$\{r\.id\}`\) \?\? null \}\}/);
+  // A cost not looked at yet: a lender fee says it goes, another says to enter it by hand, unknown says nothing.
+  assert.match(paid, /fee=\{qb\.costs\.fees \? feeIds\.has\(r\.id\) : null\}/);
+  assert.match(paid, /const feeIds = useMemo\(\(\) => new Set\(qb\?\.costs\?\.fees \?\? \[\]\), \[qb\]\);/);
+  const chips = fn(view, "function CostQbStatus(");
+  assert.match(chips, /costQbChips\(\{/);
+  assert.match(chips, /sending: costs\.sending,/);
+  assert.match(chips, /sendFrom: costs\.sendFrom,/);
+  assert.match(chips, /cost: \{ spentOn: cost\.spent_on, source: cost\.source, lenderFee: fee \},/);
+  assert.match(chips, /day: shortDay,/);
+  assert.match(chips, /qbWebUrl\(qb\.environment, "expense", qbId, qb\.realmId\)/);
+  assert.match(chips, /className=\{`est-badge qb-chip \$\{QB_TONE\[c\.tone\]\}`\} suppressHydrationWarning/);
+  assert.match(chips, /Open in QuickBooks ↗/);
+});
+
+test("✎ Edit on Bills to Pay is told where the cost's expense stands, from the records the page already has", () => {
+  const paid = fn(billsView(), "function PaidOnEntry(");
+  const modal = paid.slice(paid.indexOf("<EditPaidBillModal"));
+  assert.match(modal, /quickBooks=\{qb\?\.costs \? costQbState\(qbRecord\.get\(`expense:\$\{editing\.id\}`\), qb\.costs\.sending\) : null\}/);
+});
+
+test("✎ Edit says when Save and Delete reach QuickBooks, and asks the server when it isn't told", () => {
+  const modal = source("../../components/bills/edit-paid-bill-modal.tsx");
+  assert.match(modal, /quickBooks\?: CostQbState;/);
+  assert.match(modal, /const \[qbState, setQb\] = useState<CostQbState>\(quickBooks \?\? null\);/);
+  // Projects › Transactions doesn't say: the window asks (any error leaves it saying nothing).
+  const ask = modal.slice(modal.indexOf("jobCostInQuickBooks(expense.id)") - 200, modal.indexOf("jobCostInQuickBooks(expense.id)"));
+  assert.match(ask, /if \(quickBooks !== undefined\) return;/);
+  assert.match(modal, /jobCostInQuickBooks\(expense\.id\)\s*\.then\(setQb\)\s*\.catch\(\(\) => \{\}\)/);
+  // The line, just above Save / Cancel / Delete.
+  const note = modal.indexOf('{qbState && <p className="hint-note">{COST_EDIT_NOTE[qbState]}</p>}');
+  assert.ok(note >= 0, "the note is there");
+  assert.ok(note > modal.indexOf('{error && <p className="error-note">') && note < modal.indexOf('className="btn-primary" onClick={() => void save()}'));
+  // Delete says it comes out of QuickBooks too (or will, once sending is on again).
+  assert.match(
+    modal,
+    /It comes off the job's costs\$\{\s*qbState === "on"\s*\? " and out of QuickBooks"\s*: qbState === "paused"\s*\? " \(and out of QuickBooks once sending job costs is on again\)"\s*: ""\s*\}, and its receipt is deleted too\./
+  );
+});
+
+test("jobCostInQuickBooks: cost editors only, this company, this QuickBooks company, the switch read on its own", () => {
+  const actions = source("../actions/job-expenses.ts");
+  const ask = body(actions, "jobCostInQuickBooks");
+  assert.match(ask, /^export async function jobCostInQuickBooks\(expenseId: string\): Promise<CostQbState> \{/);
+  assert.match(ask, /if \(!profile \|\| !canEditJobCosts\(profile\)\) return null;/);
+  assert.match(ask, /onOtherSide\(conn\.environment, quickbooksCredentials\(\)\?\.environment\)/);
+  const reads = statements(ask);
+  assert.equal(reads.length, 3, "the connection, the switch and the expense's record");
+  for (const s of reads) assert.match(s, /\.eq\("company_id", profile\.company_id\)/, s);
+  // The switch apart, so before 0230 (no column) it simply says nothing.
+  const switchRead = reads.find((s) => s.includes('.select("send_costs")'));
+  assert.ok(switchRead, "the switch is read on its own");
+  assert.doesNotMatch(switchRead, /realm_id/);
+  const record = reads.find((s) => s.startsWith('.from("quickbooks_sync")'));
+  assert.ok(record, "the expense's record is read");
+  assert.match(record, /\.eq\("realm_id", conn\.realm_id\)/);
+  assert.match(record, /\.eq\("record_type", "expense"\)/);
+  assert.match(record, /\.eq\("record_id", expenseId\)/);
+  assert.match(ask, /return costQbState\(row, !!costs\?\.send_costs && !conn\.disconnected_at\);/);
+});
+
+test("Bills to Pay is refreshed whenever a job cost changes", () => {
+  const actions = source("../actions/job-expenses.ts");
+  for (const name of ["deleteJobExpense", "assignExpensePhase", "fileCostsToContract", "updateJobExpense", "setJobExpenseReceipt"]) {
+    assert.match(body(actions, name), /revalidatePath\("\/bills"\);/, name);
+  }
+  // Every cost, not only a bill payment's: Paid on entry lists the others (and their QuickBooks line).
+  assert.doesNotMatch(actions, /if \(cost\.source === "bill"\) revalidatePath\("\/bills"\)/);
+});
+
+test("✎ Edit on Projects gets each cost's vendor and receipt, so Save never clears them", () => {
+  // The window is opened from the job's Transactions with getJobExpenses' rows (not the Projects page's own cost sums).
+  assert.match(source("../../app/(app)/projects/job-ledger.tsx"), /const expenseById = new Map\(ledger\.expenses\.map\(\(e\) => \[e\.id, e\]\)\);/);
+  assert.match(source("../actions/job-ledger.ts"), /getJobExpenses\(contract\.lead_id\),/);
+  const columns = /const COLUMNS =\s*([^;]*);/.exec(source("../actions/job-expenses.ts"));
+  assert.ok(columns, "getJobExpenses' columns");
+  for (const c of ["vendor_id", "vendor,", "receipt_url", "receipt_path"]) assert.ok(columns[1].includes(c), c);
+});

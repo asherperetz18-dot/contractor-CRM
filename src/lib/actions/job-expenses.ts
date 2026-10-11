@@ -37,6 +37,10 @@ import {
   receiptUploadPath,
   type UploadedReceipt,
 } from "@/lib/receipts";
+import { costQbState, type CostQbState } from "@/lib/quickbooks/cost-status";
+import type { SyncRecord } from "@/lib/quickbooks/bill-status";
+import { quickbooksCredentials } from "@/lib/quickbooks/oauth";
+import { onOtherSide } from "@/lib/quickbooks/connection-side";
 
 const COLUMNS =
   "id, company_id, lead_id, estimate_payment_id, vendor, vendor_id, category, description, " +
@@ -243,7 +247,8 @@ export async function assignExpensePhase(
   if (!data?.length) return { error: "That cost couldn't be updated." };
 
   revalidatePath("/estimates");
-  if (cost.source === "bill") revalidatePath("/bills");
+  // Every cost: Bills to Pay lists the "Already paid" ones too, with where each stands in QuickBooks (#199).
+  revalidatePath("/bills");
   return {};
 }
 
@@ -282,6 +287,7 @@ export async function deleteJobExpense(expenseId: string): Promise<{ error?: str
   await removeReceiptFile(profile.company_id, row.receipt_path ?? null);
 
   revalidatePath("/estimates");
+  revalidatePath("/bills");
   return {};
 }
 
@@ -579,5 +585,44 @@ export async function fileCostsToContract(
 
   revalidatePath("/estimates");
   revalidatePath("/projects");
+  // A filed cost's memo names its contract, and it may be in QuickBooks (#199).
+  revalidatePath("/bills");
   return { filed: data?.length ?? 0 };
+}
+
+/** Where this job cost's expense stands in QuickBooks (DECISIONS #199), for its Edit window: "on" (Save and Delete
+ *  change it there), "paused" (in QuickBooks, sending job costs is off now), or null (not there, or can't tell). */
+export async function jobCostInQuickBooks(expenseId: string): Promise<CostQbState> {
+  const profile = await getCurrentProfile();
+  if (!profile || !canEditJobCosts(profile)) return null;
+
+  // The connection holds the login: read on the server, this company's only.
+  const admin = createAdminClient();
+  const { data: conn, error } = await admin
+    .from("quickbooks_connections")
+    .select("realm_id, environment, disconnected_at")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ realm_id: string | null; environment: "sandbox" | "production"; disconnected_at: string | null }>();
+  if (error || !conn?.realm_id) return null;
+  // A practice company after the switch to real books: what went there isn't in these books (DECISIONS #192).
+  if (onOtherSide(conn.environment, quickbooksCredentials()?.environment)) return null;
+
+  // The job-costs switch on its own: before 0230 there's no such column (and no expenses), so it says nothing.
+  const switchRead = admin
+    .from("quickbooks_connections")
+    .select("send_costs")
+    .eq("company_id", profile.company_id)
+    .maybeSingle<{ send_costs: boolean }>();
+  const recordRead = admin
+    .from("quickbooks_sync")
+    .select("qb_id, status")
+    .eq("company_id", profile.company_id)
+    .eq("realm_id", conn.realm_id)
+    .eq("record_type", "expense")
+    .eq("record_id", expenseId)
+    .maybeSingle<Pick<SyncRecord, "qb_id" | "status">>();
+  const [{ data: costs, error: switchError }, { data: row, error: rowError }] = await Promise.all([switchRead, recordRead]);
+  if (switchError || rowError) return null;
+  // Disconnected counts as off, as Bills to Pay shows it: once it's connected and sending again, the change goes.
+  return costQbState(row, !!costs?.send_costs && !conn.disconnected_at);
 }

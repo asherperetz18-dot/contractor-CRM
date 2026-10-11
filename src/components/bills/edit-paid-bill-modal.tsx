@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   createReceiptUploadUrl,
   deleteJobExpense,
+  jobCostInQuickBooks,
   setJobExpenseReceipt,
   updateJobExpense,
 } from "@/lib/actions/job-expenses";
@@ -19,6 +20,7 @@ import { useFileDrop } from "@/components/uploads/file-drop";
 import { ContractPicker } from "./contract-picker";
 import type { BillJobOption } from "./add-bill-modal";
 import type { UploadedReceipt } from "@/lib/receipts";
+import { COST_EDIT_NOTE, type CostQbState } from "@/lib/quickbooks/cost-status";
 import "@/components/ui/receipt-thumb.css";
 
 /** Straight to storage from the browser, like every receipt: a phone
@@ -42,18 +44,23 @@ async function uploadReceipt(
 /**
  * Fixes a bill saved as "Already paid": job, vendor, what for, amount,
  * date paid, the receipt -- or deletes it. Opened from Bills to Pay's
- * Paid tab and a project's Transactions list alike.
+ * Paid tab and a project's Transactions list alike. When the cost is in
+ * QuickBooks (a lender fee, DECISIONS #199) it says Save and Delete
+ * reach it there too.
  */
 export function EditPaidBillModal({
   expense,
   jobs,
   vendors: vendorsProp,
+  quickBooks,
   onSaved,
   onClose,
 }: {
   expense: JobExpense;
   jobs: BillJobOption[];
   vendors?: Vendor[];
+  /** Where its expense stands in QuickBooks. Left out: asked of the server. */
+  quickBooks?: CostQbState;
   onSaved?: () => void;
   onClose: () => void;
 }) {
@@ -72,11 +79,20 @@ export function EditPaidBillModal({
   const fileInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [qbState, setQb] = useState<CostQbState>(quickBooks ?? null);
 
   useEffect(() => {
     if (vendorsProp) return;
     getVendors().then((res) => setVendors(res.vendors ?? []));
   }, [vendorsProp]);
+
+  // Projects › Transactions doesn't know: ask. Any error leaves the window saying nothing about QuickBooks.
+  useEffect(() => {
+    if (quickBooks !== undefined) return;
+    jobCostInQuickBooks(expense.id)
+      .then(setQb)
+      .catch(() => {});
+  }, [quickBooks, expense.id]);
 
   const filePreview = useMemo(
     () => (file && file.type.startsWith("image/") ? URL.createObjectURL(file) : null),
@@ -141,7 +157,13 @@ export function EditPaidBillModal({
   async function remove() {
     if (
       !window.confirm(
-        `Delete this ${moneyCents(expense.amount_cents)} ${vendorName} bill? It comes off the job's costs, and its receipt is deleted too.`
+        `Delete this ${moneyCents(expense.amount_cents)} ${vendorName} bill? It comes off the job's costs${
+          qbState === "on"
+            ? " and out of QuickBooks"
+            : qbState === "paused"
+              ? " (and out of QuickBooks once sending job costs is on again)"
+              : ""
+        }, and its receipt is deleted too.`
       )
     )
       return;
@@ -264,6 +286,7 @@ export function EditPaidBillModal({
         </div>
 
         {error && <p className="error-note">{error}</p>}
+        {qbState && <p className="hint-note">{COST_EDIT_NOTE[qbState]}</p>}
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button type="button" className="btn-primary" onClick={() => void save()}>
