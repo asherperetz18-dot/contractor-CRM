@@ -107,3 +107,21 @@ export function inboxPath(companyId: string, messageId: string, fileName: string
   const safe = fileName.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(-120);
   return `whatsapp-inbox/${companyId}/${messageId}-${safe}`;
 }
+
+export type InboxCardAction = "bill" | "file" | "dismiss" | "restore";
+
+/**
+ * What a card offers. Every card waiting to be sorted can be dismissed,
+ * even one whose copy failed, was too big, or is still coming -- one that
+ * couldn't would sit in To sort forever. Filing and billing need the file.
+ */
+export function inboxCardActions(
+  item: { hasFile: boolean; mediaStatus: string },
+  view: "to_sort" | "filed" | "dismissed",
+  canMakeBill: boolean
+): InboxCardAction[] {
+  if (view === "dismissed") return ["restore"];
+  if (view === "filed") return [];
+  if (!item.hasFile) return ["dismiss"];
+  return [...(canMakeBill ? (["bill"] as const) : []), "file", "dismiss"];
+}

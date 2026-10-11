@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { inboxPath, suggestJob, type InboxJob } from "./whatsapp-inbox.ts";
+import { inboxCardActions, inboxPath, suggestJob, type InboxJob } from "./whatsapp-inbox.ts";
 import { canSeePage, defaultPageVisible } from "./data/types.ts";
 
 /**
@@ -147,4 +147,25 @@ test("by default only Office, Admin and Production see the inbox in the menu", (
     assert.equal(defaultPageVisible(role, "whatsapp-inbox"), false, role);
   }
   assert.equal(canSeePage({ roles: ["Admin"] }, "whatsapp-inbox", []), true);
+});
+
+test("inboxCardActions: every card waiting to be sorted can at least be dismissed", () => {
+  const withFile = { hasFile: true, mediaStatus: "saved" as const };
+  assert.deepEqual(inboxCardActions(withFile, "to_sort", true), ["bill", "file", "dismiss"]);
+  assert.deepEqual(inboxCardActions(withFile, "to_sort", false), ["file", "dismiss"]);
+  // A copy that failed or was too big has nothing to file -- but it must
+  // never sit in To sort forever.
+  for (const mediaStatus of ["failed", "too_large", "pending", "saving"] as const) {
+    assert.deepEqual(inboxCardActions({ hasFile: false, mediaStatus }, "to_sort", true), ["dismiss"], mediaStatus);
+  }
+  assert.deepEqual(inboxCardActions(withFile, "dismissed", true), ["restore"]);
+  assert.deepEqual(inboxCardActions(withFile, "filed", true), []);
+});
+
+test("dismissing doesn't need the file to have been copied", () => {
+  const actions = source("./actions/whatsapp-inbox.ts");
+  const helper = actions.slice(actions.indexOf("async function inboxMessage("), actions.indexOf("export type InboxItem"));
+  assert.doesNotMatch(helper, /media_path\) return null/);
+  const view = source("../app/(app)/whatsapp-inbox/whatsapp-inbox-view.tsx");
+  assert.match(view, /inboxCardActions\(/);
 });

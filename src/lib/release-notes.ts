@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.270.1",
+    date: "2026-10-11",
+    notes: [
+      "WhatsApp Inbox: a card whose photo or file couldn't be copied (too big, or no longer available from WhatsApp) now has a Dismiss button, so it no longer sits in To sort for good.",
+    ],
+  },
+  {
     version: "1.270.0",
     date: "2026-10-11",
     notes: [
