@@ -55,14 +55,18 @@ export function LeadFilesPanel({
   // A refused delete ("Only Office or Admin can delete files.") used to
   // look like success: the result was dropped (DECISIONS #200).
   const [deleteError, setDeleteError] = useState("");
+  // One delete at a time per file: a second ✕ on a slow line used to come
+  // back "refused" for a file the first had already deleted.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   async function handleDelete(file: LeadFile) {
     if (!window.confirm(deletePhotoConfirm(file.file_name, file.storage_provider, "contact"))) return;
     setDeleteError("");
+    setDeletingId(file.id);
     const res = await attempt(() => deleteLeadFile(file.id));
-    if (res.error) {
-      setDeleteError(res.error);
-      return;
-    }
+    setDeletingId(null);
+    if (res.error) setDeleteError(res.error);
+    // Reloaded either way: "Deleted, but saving it to the deletion
+    // history failed" is an error about a file that's gone.
     onChanged();
   }
 
@@ -129,6 +133,7 @@ export function LeadFilesPanel({
                     type="button"
                     className="icon-btn notes-timeline-delete"
                     onClick={() => handleDelete(f)}
+                    disabled={deletingId === f.id}
                     aria-label="Delete file"
                   >
                     ✕

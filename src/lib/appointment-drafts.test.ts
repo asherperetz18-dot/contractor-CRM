@@ -43,6 +43,8 @@ test("every way out of the window asks before dropping unsaved work", () => {
   // (DECISIONS #200).
   assert.match(form, /async function handleDelete\(\) \{\s*if \(!event\) return;\s*if \(\s*!window\.confirm\(\s*appointmentDeleteConfirm\(/);
   assert.match(form, /dirty: isDirty,/);
+  assert.match(form, /hasNotes: !!event\.notes\?\.trim\(\),/);
+  assert.match(form, /timeFormat: useTimeFormat\(\)|timeFormat,/);
   assert.doesNotMatch(form, /router\.push\(`\/estimates\/\$\{e\.id\}`\)/);
 });
 

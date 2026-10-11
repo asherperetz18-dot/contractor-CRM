@@ -97,8 +97,8 @@ test("the task is linked to its step, made by the server, and closed by the next
 
   // Restored from Trash after the contact's tasks, which it points at.
   const trash = source("./lead-trash.ts");
-  assert.match(trash, /table !== "bill_credits" && table !== "estimate_financing_events"/);
-  assert.match(trash, /await put\("estimate_financing_events", payload\.children\.estimate_financing_events\);/);
+  assert.match(trash, /const LATER_ESTIMATE_CHILDREN = new Set<string>\(\[[^\]]*"estimate_financing_events"/);
+  assert.match(trash, /for \(const table of LEAD_CHILDREN\) \{[\s\S]*?for \(const table of LATER_ESTIMATE_CHILDREN\) await put\(table, payload\.children\[table\]\);/);
 
   assert.match(source("./schema-drift.ts"), /column: "follow_up_task_id", migration: "0216_financing_follow_ups\.sql"/);
   assert.match(source("../app/(app)/estimates/[id]/financing-panel.tsx"), /remind me to follow up in/i);

@@ -84,9 +84,11 @@ test("the windows hold their unsaved work, and a popup alert asks before leaving
   assert.match(hook, /useEffect\(\(\) => \(dirty \? holdUnsaved\(\(\) => latest\.current\(\)\) : undefined\), \[dirty\]\);/);
   assert.match(
     source("../app/(app)/pipeline/lead-form.tsx"),
-    /useHoldUnsaved\(draftsWaiting \|\| \(!!lead && !readOnly && autosaveDirty\), leaveSaved\);/
+    /useHoldUnsaved\(draftsWaiting \|\| \(!!lead && !readOnly && autosaveDirty\), \(\) => !pending && leaveSaved\(\)\);/
   );
-  assert.match(source("../app/(app)/calendar/event-form.tsx"), /useHoldUnsaved\(isDirty, leaveOk\);/);
+  // While the window is busy saving or leaving, an alert waits rather than
+  // asking the same questions again.
+  assert.match(source("../app/(app)/calendar/event-form.tsx"), /useHoldUnsaved\(isDirty, \(\) => !pending && leaveOk\(\)\);/);
   assert.match(
     source("../app/(app)/popup-alerts.tsx"),
     /async function open\(t: PopupToast\) \{\s*if \(!\(await leaveUnsavedOk\(\)\)\) return;\s*dismiss\(t\.id\);\s*router\.push\(t\.href\);/

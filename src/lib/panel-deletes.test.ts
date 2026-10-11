@@ -25,12 +25,16 @@ test("a visit photo's Remove asks first, and reports a lost call", () => {
     media,
     /async function remove\(f: VisitFile\) \{\s*if \(!window\.confirm\(deletePhotoConfirm\(f\.file_name, f\.storage_provider, "visit"\)\)\) return;/
   );
-  assert.match(media, /await attempt\(\(\) => deleteLeadFile\(f\.id\)\)/);
+  assert.match(media, /const res = await attempt\(\(\) => deleteLeadFile\(f\.id\)\);\s*setBusy\(null\);\s*if \(res\.error\) setError\(res\.error\);[\s\S]*?await reload\(\);\s*\}/);
 });
 
 test("the contact's Files ✕ says whether the file can come back, and shows a refusal", () => {
   const panel = source("../app/(app)/pipeline/lead-files-panel.tsx");
   assert.match(panel, /if \(!window\.confirm\(deletePhotoConfirm\(file\.file_name, file\.storage_provider, "contact"\)\)\) return;/);
-  assert.match(panel, /const res = await attempt\(\(\) => deleteLeadFile\(file\.id\)\);\s*if \(res\.error\) \{\s*setDeleteError\(res\.error\);\s*return;\s*\}/);
+  // Reloaded either way: "Deleted, but saving it to the deletion history
+  // failed" is an error about a file that's gone. And one delete at a
+  // time, so a second ✕ can't report the first one's file as refused.
+  assert.match(panel, /const res = await attempt\(\(\) => deleteLeadFile\(file\.id\)\);\s*setDeletingId\(null\);\s*if \(res\.error\) setDeleteError\(res\.error\);[\s\S]*?onChanged\(\);\s*\}/);
+  assert.match(panel, /disabled=\{deletingId === f\.id\}/);
   assert.match(panel, /\{deleteError && <p className="error-note">\{deleteError\}<\/p>\}/);
 });

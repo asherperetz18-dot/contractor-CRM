@@ -59,9 +59,14 @@ test("Tasks, Notes and Files ask the host for fresh lists after a change", () =>
   const form = source("../app/(app)/pipeline/lead-form.tsx");
   assert.match(form, /onPanelsChanged\?: \(\) => void;/);
   for (const panel of ["TasksPanel", "LeadNotesPane", "LeadFilesPanel"]) {
-    assert.match(form, new RegExp(`<${panel}[\\s\\S]*?onChanged=\\{panelsChanged\\}[\\s\\S]*?\\/>`), panel);
+    // Within the element: not running on into the next panel's props.
+    assert.match(form, new RegExp(`<${panel}(?:(?!<[A-Z])[\\s\\S])*?onChanged=\\{panelsChanged\\}`), panel);
   }
   assert.doesNotMatch(form, /onChanged=\{refresh\}/);
+  // A call's outcome can add a follow-up task.
+  assert.match(form, /<CallsPanel[^>]*onChanged=\{panelsChanged\}/);
+  const calls = source("../app/(app)/pipeline/calls-panel.tsx");
+  assert.match(calls, /const res = await updateCallDisposition\(c\.id, e\.target\.value\);\s*if \(res\.error\) return setError\(res\.error\);\s*setReloadKey\(\(k\) => k \+ 1\);\s*onChanged\?\.\(\);/);
 });
 
 test("both hosts reload the open contact's lists without remounting it", () => {
@@ -74,6 +79,6 @@ test("both hosts reload the open contact's lists without remounting it", () => {
 
 test("the appointment window's task and note lists already reload with router.refresh", () => {
   const form = source("../app/(app)/calendar/event-form.tsx");
-  assert.match(form, /<TasksPanel[\s\S]*?onChanged=\{\(\) => router\.refresh\(\)\}/);
-  assert.match(form, /<NotesTimeline[\s\S]*?onChanged=\{\(\) => router\.refresh\(\)\}/);
+  assert.match(form, /<TasksPanel(?:(?!<[A-Z])[\s\S])*?onChanged=\{\(\) => router\.refresh\(\)\}/);
+  assert.match(form, /<NotesTimeline(?:(?!<[A-Z])[\s\S])*?onChanged=\{\(\) => router\.refresh\(\)\}/);
 });

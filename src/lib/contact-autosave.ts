@@ -53,7 +53,26 @@ export const INCOMPLETE_CLOSE_QUESTION =
   "This contact is missing a required field (marked *), so your latest changes can't be saved. Close this contact without them?";
 
 export function failedCloseQuestion(error: string): string {
-  return `Your latest changes didn't save: ${error}\n\nClose this contact without them?`;
+  return `Your latest changes aren't saved: ${error}\n\nClose this contact without them?`;
+}
+
+/** How long leaving waits on a save before asking (DECISIONS #202). */
+export const SAVE_WAIT_MS = 15_000;
+export const SAVE_SLOW =
+  "The save is taking too long; the connection may be slow or down. It may still go through.";
+
+/**
+ * A save that never answers would hold the window shut, so leaving gives
+ * up waiting after `ms` and asks. The save itself isn't stopped.
+ */
+export function withinWait(save: Promise<{ error?: string }>, ms: number = SAVE_WAIT_MS): Promise<{ error?: string }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve({ error: SAVE_SLOW }), ms);
+    void save.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
 }
 
 /**
@@ -64,15 +83,18 @@ export function failedCloseQuestion(error: string): string {
  * `hold` keeps the latest valid payload for `flushHeld`, which the window
  * calls when it goes away by a route it doesn't control (another contact
  * opening, a link elsewhere on the page): it sends without waiting, as
- * nobody is left to tell. `abandon` is a person choosing to close without
- * the change, or the contact being deleted.
+ * nobody is left to tell. `abandon` drops the held change: a person
+ * choosing to close without it, or the contact being deleted.
+ *
+ * `savedPayload` is what the contact holds as far as the window knows,
+ * for an action that must not act on values that never saved.
  */
-export function createContactSaver<P extends object>(save: (payload: P) => Promise<StepResult>, openingKey: string) {
-  let saved = openingKey;
+export function createContactSaver<P extends object>(save: (payload: P) => Promise<StepResult>, opening: P) {
+  let saved = contactSaveKey(opening);
+  let savedValue = opening;
   let tail: Promise<unknown> = Promise.resolve();
   let last: { key: string; promise: Promise<{ error?: string }> } | null = null;
   let held: P | null = null;
-  let abandoned = false;
 
   function send(payload: P): Promise<{ error?: string }> {
     const key = contactSaveKey(payload);
@@ -82,6 +104,7 @@ export function createContactSaver<P extends object>(save: (payload: P) => Promi
       const { error } = await attempt(() => save(payload));
       if (error) return { error };
       saved = key;
+      savedValue = payload;
       return {};
     });
     const entry = { key, promise };
@@ -96,15 +119,20 @@ export function createContactSaver<P extends object>(save: (payload: P) => Promi
   return {
     send,
     savedKey: () => saved,
-    dirty: (payload: P) => contactSaveKey(payload) !== saved,
+    savedPayload: () => savedValue,
+    // A save still out with other fields counts too: an edit undone while
+    // it's out matches what was saved before, but not what's on its way.
+    dirty: (payload: P) => {
+      const key = contactSaveKey(payload);
+      return key !== saved || (last !== null && last.key !== key);
+    },
     hold(payload: P | null) {
       held = payload;
     },
     flushHeld() {
-      if (!abandoned && held) void send(held);
+      if (held) void send(held);
     },
     abandon() {
-      abandoned = true;
       held = null;
     },
   };

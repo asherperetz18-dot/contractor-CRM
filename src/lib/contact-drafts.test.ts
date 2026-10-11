@@ -28,7 +28,7 @@ test("every way out of the contact window asks before dropping what was typed", 
   assert.match(form, /function leaveOk\(\) \{\s*return !draftsWaiting \|\| window\.confirm\(/);
   // leaveSaved asks leaveOk first, then settles the fields' autosave
   // (DECISIONS #202).
-  assert.match(form, /async function leaveSaved\(\): Promise<boolean> \{\s*if \(!leaveOk\(\)\) return false;/);
+  assert.match(form, /async function leaveSaved\(\): Promise<boolean> \{\s*if \(leavingRef\.current\) return false;\s*if \(!leaveOk\(\)\) return false;/);
   assert.match(form, /async function handleClose\(\) \{[\s\S]*?if \(!\(await leaveSaved\(\)\)\) return;/);
   // Delete asks its own one question, which carries the draft warning
   // (contact-delete.test.ts).

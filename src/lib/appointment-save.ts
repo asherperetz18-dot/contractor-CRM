@@ -1,4 +1,4 @@
-import { formatTimeRange, type EventStatus } from "./data/types.ts";
+import { formatTimeRange, type EventStatus, type TimeFormat } from "./data/types.ts";
 
 /**
  * Saving the Edit Appointment window (DECISIONS #188, #190).
@@ -152,20 +152,25 @@ export function appointmentDeleteConfirm(a: {
   time: string | null;
   endTime: string | null;
   status: EventStatus;
+  /** Text in the window's Appointment Notes box: the appointment's own
+   *  field, so it goes with it, unlike its timeline notes and photos. */
+  hasNotes: boolean;
   dirty: boolean;
+  timeFormat?: TimeFormat;
 }): string {
   // Noon, so the day reads the same on every machine.
   const day = new Date(`${a.date}T12:00:00`);
   const dayLabel = isNaN(day.getTime())
     ? a.date
     : day.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-  const times = formatTimeRange(a.time, a.endTime);
+  const times = formatTimeRange(a.time, a.endTime, a.timeFormat);
   const when = `on ${dayLabel}${times ? ` at ${times}` : ""}`;
   const what = a.who ? `the ${a.eventType} appointment with ${a.who}` : `this ${a.eventType} appointment`;
   return [
     `Delete ${what} ${when}?`,
     "This can't be undone. It leaves the calendar, the reports and any Google Calendar copy." +
-      (a.who ? ` Its notes and photos stay on ${a.who}'s contact.` : ""),
+      (a.hasNotes ? " What's written in Appointment Notes is deleted with it." : "") +
+      (a.who ? ` Notes and photos added to ${a.who}'s contact stay there.` : ""),
     a.status === "Cancelled" ? "" : "If it just isn't happening, set Status to Cancelled instead: that keeps it on record.",
     a.dirty ? "Your unsaved changes to it are discarded too." : "",
   ]

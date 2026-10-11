@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { EventStatus } from "./data/types.ts";
+import { formatTimeRange, type EventStatus } from "./data/types.ts";
 import {
   SAVE_UNREACHABLE,
   SEND_UNREACHABLE,
@@ -293,6 +293,7 @@ const booked = {
   time: "09:00:00",
   endTime: "10:00:00",
   status: "New" as EventStatus,
+  hasNotes: false,
   dirty: false,
 };
 
@@ -302,7 +303,8 @@ test("Delete names the appointment it removes, and says it can't be undone", () 
   const message = appointmentDeleteConfirm(booked);
   assert.match(message, /^Delete the Estimate appointment with Jane Smith on Tue, Oct 14 at 9:00 AM – 10:00 AM\?/);
   assert.match(message, /can't be undone/);
-  assert.match(message, /notes and photos stay on Jane Smith's contact/);
+  assert.match(message, /Notes and photos added to Jane Smith's contact stay there\./);
+  assert.doesNotMatch(message, /Appointment Notes/);
   assert.match(message, /set Status to Cancelled instead/);
   assert.doesNotMatch(message, /unsaved/);
 });
@@ -314,4 +316,13 @@ test("Delete's question fits what's on screen: cancelled, unsaved, no contact, n
   assert.match(orphan, /^Delete this Estimate appointment on Tue, Oct 14 at 9:00 AM – 10:00 AM\?/);
   assert.doesNotMatch(orphan, /contact/);
   assert.match(appointmentDeleteConfirm({ ...booked, time: null, endTime: null }), /on Tue, Oct 14\?/);
+});
+
+test("Delete says the Appointment Notes text goes with it, and shows the company's clock", () => {
+  // The notes box is the appointment's own field: it doesn't stay on the
+  // contact like its timeline notes and photos.
+  assert.match(appointmentDeleteConfirm({ ...booked, hasNotes: true }), /What's written in Appointment Notes is deleted with it\./);
+  const h24 = appointmentDeleteConfirm({ ...booked, time: "14:00:00", endTime: "15:00:00", timeFormat: "24h" });
+  assert.ok(h24.includes(`at ${formatTimeRange("14:00:00", "15:00:00", "24h")}?`), h24);
+  assert.doesNotMatch(h24, /PM/);
 });

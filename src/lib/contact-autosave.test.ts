@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { SAVE_UNREACHABLE } from "./appointment-save.ts";
 import {
   INCOMPLETE_CLOSE_QUESTION,
+  SAVE_SLOW,
+  withinWait,
   closeStep,
   contactPayload,
   contactSaveKey,
@@ -52,7 +54,7 @@ test("closing saves what's waiting, asks when the form is incomplete, and just c
   assert.equal(closeStep({ editable: true, dirty: false, valid: false }), "close");
   assert.equal(closeStep({ editable: false, dirty: true, valid: true }), "close");
   assert.match(INCOMPLETE_CLOSE_QUESTION, /missing a required field \(marked \*\)/);
-  assert.match(failedCloseQuestion("No connection."), /didn't save: No connection\.[\s\S]*without them\?/);
+  assert.match(failedCloseQuestion("No connection."), /aren't saved: No connection\.[\s\S]*without them\?/);
 });
 
 test("a failed autosave reads Not saved, never Saving…", () => {
@@ -69,7 +71,7 @@ function fakeSave(answer: (p: { n: number }) => Promise<{ error?: string } | voi
 
 test("a save in flight with the same fields isn't sent twice, and the saved fields aren't sent at all", async () => {
   const { calls, save } = fakeSave();
-  const saver = createContactSaver(save, contactSaveKey({ n: 0 }));
+  const saver = createContactSaver(save, { n: 0 });
   assert.deepEqual(await saver.send({ n: 0 }), {});
   assert.deepEqual(calls, []);
   const [a, b] = [saver.send({ n: 1 }), saver.send({ n: 1 })];
@@ -86,7 +88,7 @@ test("a newer edit waits for the save in flight, then is sent", async () => {
   const { calls, save } = fakeSave(async (p) => {
     if (p.n === 1) await gate;
   });
-  const saver = createContactSaver(save, contactSaveKey({ n: 0 }));
+  const saver = createContactSaver(save, { n: 0 });
   const first = saver.send({ n: 1 });
   const second = saver.send({ n: 2 });
   await Promise.resolve();
@@ -97,15 +99,54 @@ test("a newer edit waits for the save in flight, then is sent", async () => {
   assert.equal(saver.savedKey(), contactSaveKey({ n: 2 }));
 });
 
+test("an edit undone while its save is out still counts as unsaved, and is sent after it", async () => {
+  // Amy -> Bob goes out; back to Amy before it answers. Amy matched the
+  // last save, so it read as saved: nothing waited for it, and Bob stayed
+  // in the database (or Amy, flushed late, landed after a stage move).
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const { calls, save } = fakeSave(async (p) => {
+    if (p.n === 1) await gate;
+  });
+  const saver = createContactSaver(save, { n: 0 });
+  const bob = saver.send({ n: 1 });
+  assert.equal(saver.dirty({ n: 0 }), true);
+  assert.equal(saver.dirty({ n: 1 }), true);
+  const amy = saver.send({ n: 0 });
+  release();
+  await Promise.all([bob, amy]);
+  assert.deepEqual(calls, [1, 0]);
+  assert.equal(saver.savedKey(), contactSaveKey({ n: 0 }));
+  assert.equal(saver.dirty({ n: 0 }), false);
+});
+
+test("what was last saved is kept, for actions that must not use unsaved values", async () => {
+  let refuse = false;
+  const saver = createContactSaver(async () => (refuse ? { error: "No." } : {}), { n: 0 });
+  assert.deepEqual(saver.savedPayload(), { n: 0 });
+  await saver.send({ n: 1 });
+  assert.deepEqual(saver.savedPayload(), { n: 1 });
+  refuse = true;
+  await saver.send({ n: 2 });
+  assert.deepEqual(saver.savedPayload(), { n: 1 });
+});
+
+test("waiting on a save gives up after a while, with a message, without stopping it", async () => {
+  assert.deepEqual(await withinWait(Promise.resolve({}), 50), {});
+  const never = new Promise<{ error?: string }>(() => {});
+  assert.deepEqual(await withinWait(never, 5), { error: SAVE_SLOW });
+  assert.match(SAVE_SLOW, /taking too long/);
+});
+
 test("a refused or unreachable save leaves the change waiting and says why", async () => {
-  const refused = createContactSaver(async () => ({ error: "Not allowed." }), contactSaveKey({ n: 0 }));
+  const refused = createContactSaver(async () => ({ error: "Not allowed." }), { n: 0 });
   assert.deepEqual(await refused.send({ n: 1 }), { error: "Not allowed." });
   assert.equal(refused.dirty({ n: 1 }), true);
   const lost = createContactSaver(
     async () => {
       throw new Error("offline");
     },
-    contactSaveKey({ n: 0 })
+    { n: 0 }
   );
   assert.deepEqual(await lost.send({ n: 1 }), { error: SAVE_UNREACHABLE });
   // Tried again on the next send, not handed the old failure.
@@ -113,7 +154,7 @@ test("a refused or unreachable save leaves the change waiting and says why", asy
   let first = true;
   const flaky = createContactSaver(
     (p: { n: number }) => (first ? ((first = false), Promise.resolve({ error: "Busy." })) : save(p)),
-    contactSaveKey({ n: 0 })
+    { n: 0 }
   );
   await flaky.send({ n: 1 });
   assert.deepEqual(await flaky.send({ n: 1 }), {});
@@ -122,7 +163,7 @@ test("a refused or unreachable save leaves the change waiting and says why", asy
 
 test("leaving without the window's own buttons sends a valid unsaved change, unless it was given up", async () => {
   const { calls, save } = fakeSave();
-  const saver = createContactSaver(save, contactSaveKey({ n: 0 }));
+  const saver = createContactSaver(save, { n: 0 });
   saver.flushHeld();
   saver.hold({ n: 0 });
   saver.flushHeld();
@@ -139,6 +180,12 @@ test("leaving without the window's own buttons sends a valid unsaved change, unl
   saver.flushHeld();
   await saver.send({ n: 1 });
   assert.deepEqual(calls, [1]);
+  // Giving up one change doesn't give up the next: the window can stay
+  // open after a "without them" (a stage move answered No).
+  saver.hold({ n: 3 });
+  saver.flushHeld();
+  await saver.send({ n: 3 });
+  assert.deepEqual(calls, [1, 3]);
 });
 
 const form_ = readFileSync(new URL("../app/(app)/pipeline/lead-form.tsx", import.meta.url), "utf8");
@@ -159,6 +206,10 @@ test("the contact window saves through one saver, and waits for it on the way ou
   assert.match(leave, /closeStep\(/);
   assert.match(leave, /INCOMPLETE_CLOSE_QUESTION/);
   assert.match(leave, /failedCloseQuestion\(/);
+  // One at a time (a second X, an alert during a close), and a save that
+  // never answers can't hold the window shut.
+  assert.match(leave, /if \(leavingRef\.current\) return false;/);
+  assert.match(leave, /await withinWait\(saveFields\(payload\), SAVE_WAIT_MS\)/);
   // Something saved while the window was open: the host refetches its
   // board or rows, which router.refresh doesn't reach.
   assert.match(fn("async function handleClose()"), /saver\.savedKey\(\) !== openingKey[\s\S]*?onSaved\(\);[\s\S]*?onCancel\(\);/);
@@ -170,13 +221,18 @@ test("a stage move, Create Job and booking can't be undone by a save still waiti
   const exit = fn("async function handleQuickExit(stage: string)");
   assert.match(exit, /setPending\(true\);/);
   assert.doesNotMatch(exit, /setForm\(/);
+  // ...and acts on what was saved: after "without them", the values on
+  // screen never reached the contact.
   assert.doesNotMatch(form_, /convertLeadToJob\(lead\)/);
-  assert.match(fn("async function handleConvert()"), /first_name: form\.first_name/);
-  assert.match(fn("async function handleBook()"), /bookAppointmentForLead\(lead\.id, form\.stage,/);
+  assert.match(fn("async function handleConvert()"), /const saved = saver\.savedPayload\(\);[\s\S]*first_name: saved\.first_name/);
+  assert.match(fn("async function handleBook()"), /const saved = saver\.savedPayload\(\);[\s\S]*bookAppointmentForLead\(lead\.id, saved\.stage,/);
 });
 
 test("closing by other means sends the last valid change; a deleted contact's isn't", () => {
   assert.match(form_, /useEffect\(\(\) => \(\) => saver\.flushHeld\(\), \[saver\]\);/);
   assert.match(form_, /saver\.hold\(formValid \? payload : null\);/);
-  assert.match(fn("async function handleDelete()"), /saver\.abandon\(\);\s*refresh\(\);\s*onDeleted\?\.\(\);/);
+  const del = fn("async function handleDelete()");
+  assert.match(del, /saver\.abandon\(\);\s*refresh\(\);\s*onDeleted\?\.\(\);/);
+  // A refused delete leaves the window open: the edit it held back goes now.
+  assert.match(del, /setError\(result\.error\);\s*if \(formValid && saver\.dirty\(payload\)\) void saveFields\(payload\);\s*return;/);
 });

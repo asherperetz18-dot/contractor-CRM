@@ -67,6 +67,7 @@ import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
 import { useHoldUnsaved } from "../use-hold-unsaved";
+import { useTimeFormat } from "@/components/time-format-context";
 import { NotesTimeline, useNoteDraft } from "../pipeline/notes-timeline";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
@@ -201,6 +202,7 @@ export function EventForm({
   onDeleted?: () => void;
 }) {
   const router = useRouter();
+  const timeFormat = useTimeFormat();
   // Used to send the user back here after the contact window closes --
   // this form opens from both the calendar and the schedule.
   const pathname = usePathname();
@@ -574,7 +576,9 @@ export function EventForm({
           time: event.time,
           endTime: event.end_time,
           status: event.status,
+          hasNotes: !!event.notes?.trim(),
           dirty: isDirty,
+          timeFormat,
         })
       )
     )
@@ -667,7 +671,8 @@ export function EventForm({
     return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
   }
   // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
-  useHoldUnsaved(isDirty, leaveOk);
+  // While a save or delete is out, an alert waits.
+  useHoldUnsaved(isDirty, () => !pending && leaveOk());
 
   function requestClose() {
     if (!leaveOk()) return;

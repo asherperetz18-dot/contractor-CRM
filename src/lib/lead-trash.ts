@@ -61,6 +61,12 @@ const RELINK_TABLES: { table: string; column: string }[] = [
   { table: "call_logs", column: "lead_id" },
 ];
 
+// Estimate children that point at a contact's own rows, so they go in
+// after them: a photo on an estimate at its lead file (0080, NOT NULL --
+// restored before them, every one failed its foreign key), a credit at
+// the refund it came with, a financing step at its follow-up task.
+const LATER_ESTIMATE_CHILDREN = new Set<string>(["estimate_files", "bill_credits", "estimate_financing_events"]);
+
 type Row = Record<string, unknown>;
 
 export type LeadTrashPayload = {
@@ -149,7 +155,7 @@ export async function restoreSnapshot(
   );
   await put("estimates", estimates);
   for (const table of ESTIMATE_CHILDREN) {
-    if (table !== "bill_credits" && table !== "estimate_financing_events") await put(table, payload.children[table]);
+    if (!LATER_ESTIMATE_CHILDREN.has(table)) await put(table, payload.children[table]);
   }
   for (const table of LEAD_CHILDREN) {
     // A refund points at the payment it returns (refund_of, 0210), so
@@ -160,10 +166,7 @@ export async function restoreSnapshot(
         : payload.children[table];
     await put(table, rows);
   }
-  // A credit can point at the refund it came with, and a financing step
-  // at its follow-up task.
-  await put("bill_credits", payload.children.bill_credits);
-  await put("estimate_financing_events", payload.children.estimate_financing_events);
+  for (const table of LATER_ESTIMATE_CHILDREN) await put(table, payload.children[table]);
   await put("lead_duplicate_dismissals", payload.children.lead_duplicate_dismissals);
 
   for (const { table, column } of RELINK_TABLES) {

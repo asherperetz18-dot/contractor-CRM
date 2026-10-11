@@ -91,7 +91,9 @@ export function VisitMedia({
     setError("");
     const res = await attempt(() => deleteLeadFile(f.id));
     setBusy(null);
-    if (res.error) return setError(res.error);
+    if (res.error) setError(res.error);
+    // Reloaded either way: a delete whose history record failed still
+    // removed the photo.
     await reload();
   }
 

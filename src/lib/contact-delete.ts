@@ -5,13 +5,16 @@ import { moneyCents, type EstimateStatus } from "./data/types.ts";
  * to ask nothing when nothing was typed, and one click removed the
  * contact with its estimates, signed contracts, tasks, notes and files.
  *
- * The counts are what the window loaded. `estimates: null` is a viewer
+ * The counts are what the page loaded. `estimates: null` is a viewer
  * who can't see estimates: the question still warns, without counting
- * them or showing their money.
+ * them or showing their money. Invoices are counted apart (the estimate
+ * index keeps them off its list), and `paidCents` is what's been paid on
+ * all of them.
  */
 export function contactDeleteConfirm(c: {
   name: string;
   estimates: { status: EstimateStatus }[] | null;
+  invoices: number;
   paidCents: number;
   tasks: number;
   notes: number;
@@ -21,11 +24,15 @@ export function contactDeleteConfirm(c: {
   const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
   const parts: string[] = [];
   if (c.estimates === null) {
-    parts.push("any estimates or contracts");
-  } else if (c.estimates.length > 0) {
+    parts.push("any estimates, contracts or invoices");
+  } else {
+    const documents = [
+      c.estimates.length ? count(c.estimates.length, "estimate") : "",
+      c.invoices ? count(c.invoices, "invoice") : "",
+    ].filter(Boolean);
     const signed = c.estimates.filter((e) => e.status === "Signed").length;
     const detail = [signed ? `${signed} signed` : "", c.paidCents > 0 ? `${moneyCents(c.paidCents)} paid` : ""].filter(Boolean);
-    parts.push(count(c.estimates.length, "estimate") + (detail.length ? ` (${detail.join(", ")})` : ""));
+    if (documents.length) parts.push(documents.join(" and ") + (detail.length ? ` (${detail.join(", ")})` : ""));
   }
   if (c.tasks) parts.push(count(c.tasks, "task"));
   if (c.notes) parts.push(count(c.notes, "note"));

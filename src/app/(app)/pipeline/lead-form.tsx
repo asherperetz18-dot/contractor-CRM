@@ -56,12 +56,14 @@ import { attempt } from "@/lib/appointment-save";
 import { contactDeleteConfirm } from "@/lib/contact-delete";
 import {
   INCOMPLETE_CLOSE_QUESTION,
+  SAVE_WAIT_MS,
   closeStep,
   contactPayload,
   contactSaveKey,
   contactSaveStatus,
   createContactSaver,
   failedCloseQuestion,
+  withinWait,
 } from "@/lib/contact-autosave";
 import {
   createPortalLinkForStaff,
@@ -224,11 +226,12 @@ export function LeadForm({
   }, [tab, isPhone]);
   // The fields autosave a second after the last edit, through one saver
   // that every way out of the window waits for (DECISIONS #202).
-  const [openingKey] = useState(() => contactSaveKey(contactPayload(form, hasSecondContact)));
+  const [opening] = useState(() => contactPayload(form, hasSecondContact));
+  const openingKey = contactSaveKey(opening);
   const [saver] = useState(() =>
     createContactSaver(
       (p: LeadInput) => (lead ? updateLead(lead.id, p, { deferRevalidate: true }) : Promise.resolve({})),
-      openingKey
+      opening
     )
   );
   const [savedKey, setSavedKey] = useState(openingKey);
@@ -509,7 +512,11 @@ export function LeadForm({
    * it too, so a save still waiting can't land after them and write the
    * old stage back.
    */
+  // One at a time: the X and the backdrop sit outside the fieldset that
+  // `pending` disables, and an alert can be clicked during a close.
+  const leavingRef = useRef(false);
   async function leaveSaved(): Promise<boolean> {
+    if (leavingRef.current) return false;
     if (!leaveOk()) return false;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     const step = closeStep({ editable: !!lead && !readOnly, dirty: saver.dirty(payload), valid: formValid });
@@ -519,9 +526,12 @@ export function LeadForm({
       saver.abandon();
       return true;
     }
+    leavingRef.current = true;
     setPending(true);
-    const result = await saveFields(payload);
+    // A save that never answers mustn't hold the window shut.
+    const result = await withinWait(saveFields(payload), SAVE_WAIT_MS);
     setPending(false);
+    leavingRef.current = false;
     if (!result.error) return true;
     if (!window.confirm(failedCloseQuestion(result.error))) return false;
     saver.abandon();
@@ -529,18 +539,11 @@ export function LeadForm({
   }
 
   // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
-  useHoldUnsaved(draftsWaiting || (!!lead && !readOnly && autosaveDirty), leaveSaved);
+  // While the window is busy saving or leaving, an alert waits.
+  useHoldUnsaved(draftsWaiting || (!!lead && !readOnly && autosaveDirty), () => !pending && leaveSaved());
 
-  // The X and the backdrop sit outside the fieldset that `pending` disables.
-  const closingRef = useRef(false);
   async function handleClose() {
-    if (closingRef.current) return;
-    closingRef.current = true;
-    try {
-      if (!(await leaveSaved())) return;
-    } finally {
-      closingRef.current = false;
-    }
+    if (!(await leaveSaved())) return;
     // Something saved while the window was open: the host refetches its
     // board or rows, which router.refresh doesn't reach.
     if (saver.savedKey() !== openingKey) {
@@ -576,6 +579,7 @@ export function LeadForm({
         contactDeleteConfirm({
           name: clientName(form) || leadDisplayName(lead),
           estimates: estimateIndex?.canView ? (onFile?.estimates ?? []) : null,
+          invoices: estimateIndex?.canView ? (onFile?.invoices ?? 0) : 0,
           paidCents: estimateIndex?.canView ? (onFile?.paidCents ?? 0) : 0,
           tasks: tasks?.length ?? 0,
           notes: notes?.length ?? 0,
@@ -594,6 +598,7 @@ export function LeadForm({
     setPending(false);
     if (result.error) {
       setError(result.error);
+      if (formValid && saver.dirty(payload)) void saveFields(payload);
       return;
     }
     saver.abandon();
@@ -604,16 +609,17 @@ export function LeadForm({
   async function handleConvert() {
     if (!lead || !(await leaveSaved())) return;
     setPending(true);
-    // The name and address on screen, just saved -- not the copy the
-    // window opened with.
+    // The name and address as saved -- just now, or before a change the
+    // person chose to go without -- not the copy the window opened with.
+    const saved = saver.savedPayload();
     const result = await attempt(() =>
       convertLeadToJob({
         id: lead.id,
-        contact_type: form.contact_type,
-        company_name: form.company_name,
-        first_name: form.first_name,
-        last_name: form.last_name,
-        address: form.address,
+        contact_type: saved.contact_type,
+        company_name: saved.company_name,
+        first_name: saved.first_name,
+        last_name: saved.last_name,
+        address: saved.address,
       })
     );
     setPending(false);
@@ -629,8 +635,9 @@ export function LeadForm({
     if (!lead || !(await leaveSaved())) return;
     setPending(true);
     const contactName = clientName(form);
-    // The stage on screen, just saved, decides whether booking moves it on.
-    const result = await attempt(() => bookAppointmentForLead(lead.id, form.stage, {
+    // The stage as saved decides whether booking moves it on.
+    const saved = saver.savedPayload();
+    const result = await attempt(() => bookAppointmentForLead(lead.id, saved.stage, {
       title: `${booking.eventType} — ${contactName}`,
       date: booking.date,
       time: booking.time,
@@ -1487,7 +1494,7 @@ export function LeadForm({
           <MessagesPanel leadId={lead.id} phone={form.phone} readOnly={readOnly} drafts={textDrafts} />
         )}
 
-        {lead && tab === "Calls" && <CallsPanel leadId={lead.id} readOnly={readOnly} />}
+        {lead && tab === "Calls" && <CallsPanel leadId={lead.id} readOnly={readOnly} onChanged={panelsChanged} />}
 
         {lead && tab === "Files" && (
           <LeadFilesPanel
