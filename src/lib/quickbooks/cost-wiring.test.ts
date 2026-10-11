@@ -286,3 +286,54 @@ test("the invoices job adds and keeps the customers and jobs sent job costs are 
     assert.doesNotMatch(run.slice(m.index, end < 0 ? undefined : end), /\.(update|insert|upsert|delete)\(/);
   }
 });
+
+// ---------------------------------------------------------------- the five-minute job and Send now
+
+test("the five-minute job sends lender fees last, after invoices and bills, and still runs bills and invoices before 0230", () => {
+  const route = source("../../app/api/cron/quickbooks-sync/route.ts");
+  assert.match(route, /^import \{ syncCompanyCosts \} from "@\/lib\/quickbooks\/cost-sync-run";$/m);
+  // Every company that turned on any of the three.
+  assert.match(route, /\.select\("company_id, send_bills, send_invoices, send_costs"\)/);
+  assert.match(route, /\.or\("send_bills\.eq\.true,send_invoices\.eq\.true,send_costs\.eq\.true"\)/);
+  // Before 0230 there's no job-costs switch, and before 0227 no invoices switch: the older reads, tried in that order.
+  const tiers = [
+    route.indexOf('"send_bills.eq.true,send_invoices.eq.true,send_costs.eq.true"'),
+    route.indexOf('.or("send_bills.eq.true,send_invoices.eq.true")'),
+    route.indexOf('.eq("send_bills", true)'),
+  ];
+  assert.ok(tiers.every((at) => at >= 0), "all three reads are there");
+  assert.ok(tiers[0] < tiers[1] && tiers[1] < tiers[2], "newest first, each tried only when the one before it failed");
+  assert.match(route, /const both = all\.error\s*\?/);
+  assert.match(route, /const \{ data, error \} = both\.error\s*\?/);
+  // Invoices add the jobs the others are tagged with, so they go first; then bills; then lender fees.
+  const invoices = route.indexOf("syncCompanyInvoices(admin");
+  const bills = route.indexOf("syncCompanyBills(admin");
+  const costs = route.indexOf("syncCompanyCosts(admin");
+  assert.ok(invoices >= 0 && bills >= 0 && costs >= 0, "all three jobs run");
+  assert.ok(invoices < bills && bills < costs, "invoices, then bills, then job costs");
+  assert.match(
+    route,
+    /if \(company\.send_costs && \(!ran \|\| room\(\)\)\) add\(await syncCompanyCosts\(admin, company\.company_id, \{ budgetMs: budget\(\), fetchImpl \}\)\);/
+  );
+  // A company's 90 seconds are split between the jobs it has on (1: 90 s, 2: 45 s, 3: 30 s).
+  assert.match(route, /const jobs = \[company\.send_invoices, company\.send_bills, company\.send_costs\]\.filter\(Boolean\)\.length;/);
+  assert.match(route, /Math\.min\(Math\.floor\(90_000 \/ Math\.max\(1, jobs\)\), 230_000 - \(Date\.now\(\) - started\)\)/);
+});
+
+test("Send now for job costs: Office or Admin, never while locked, at once and with refusals tried again", () => {
+  const actions = source("../actions/quickbooks.ts");
+  assert.match(actions, /^import \{ syncCompanyCosts \} from "@\/lib\/quickbooks\/cost-sync-run";$/m);
+  const send = body(actions, "sendCostsToQuickBooksNow");
+  assert.match(send, /^export async function sendCostsToQuickBooksNow\(\): Promise<SendNowResult> \{/);
+  const who = send.indexOf("officeAdmin()");
+  const locked = send.indexOf("isCompanyLocked(");
+  const run = send.indexOf("syncCompanyCosts(who.admin, companyId, { writeCap: 40, budgetMs: 20_000, force: true })");
+  assert.ok(who >= 0 && locked > who && run > locked, "who's asking, then the lock, then the run");
+  // Settings and Bills to Pay show the new chips and counts, even when the run threw.
+  const after = block(send, send.indexOf("finally"));
+  assert.match(after, /revalidatePath\("\/settings\/quickbooks"\);/);
+  assert.match(after, /revalidatePath\("\/bills"\);/);
+  assert.match(send, /"QuickBooks is already sending this company's job costs\. Look again in a minute\."/);
+  // Only job costs: a brand-new fee goes untagged anyway, and its job follows on the next five-minute run.
+  assert.doesNotMatch(send, /syncCompanyInvoices\(|syncCompanyBills\(/);
+});

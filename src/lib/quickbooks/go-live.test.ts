@@ -134,21 +134,24 @@ test("a different QuickBooks company: switches off first, then every pick cleare
   assert.deepEqual(writes(calls), [
     "update quickbooks_connections",
     "update quickbooks_connections",
+    "update quickbooks_connections",
     "update payment_accounts",
     "delete quickbooks_expense_accounts",
   ]);
-  const [bills, invoices] = calls.filter((c) => c.op === "update" && c.table === "quickbooks_connections");
+  const [bills, invoices, costs] = calls.filter((c) => c.op === "update" && c.table === "quickbooks_connections");
   assert.deepEqual(bills.values, { send_bills: false, send_bills_from: null });
   assert.equal(invoices.values?.send_invoices, false);
   assert.equal(invoices.values?.invoice_item_id, null);
   assert.equal(invoices.values?.hand_refunds_account_id, null);
   assert.equal(invoices.values?.qb_prefs, null);
+  // Job costs' switch and the bank account lender payouts land in were the old company's (DECISIONS #199).
+  assert.deepEqual(costs.values, { send_costs: false, send_costs_from: null, lender_payouts_account_id: null });
 });
 
 test("the same QuickBooks company id but the other side of Intuit counts as different", async () => {
   const { admin, calls } = fakeAdmin((c) => (c.op === "select" ? { data: { realm_id: REAL.realmId, environment: "sandbox" } } : {}));
   assert.deepEqual(await clearForNewCompany(admin, "co-1", REAL), { cleared: true });
-  assert.equal(writes(calls).length, 4);
+  assert.equal(writes(calls).length, 5);
 });
 
 test("the same company again, or the first connection: nothing cleared", async () => {
@@ -184,7 +187,22 @@ test("a clearing write that fails stops connecting at once", async () => {
   assert.ok(res.error);
   assert.match(res.error, /wasn't connected/);
   // Switches were already off; the expense accounts weren't touched.
-  assert.deepEqual(writes(calls), ["update quickbooks_connections", "update quickbooks_connections", "update payment_accounts"]);
+  assert.deepEqual(writes(calls), [
+    "update quickbooks_connections",
+    "update quickbooks_connections",
+    "update quickbooks_connections",
+    "update payment_accounts",
+  ]);
+});
+
+test("clearing job costs' switch fails: connecting stops before the paid-from and expense accounts", async () => {
+  const { admin, calls } = fakeAdmin((c) =>
+    c.op === "select" ? { data: PRACTICE } : c.values && "send_costs" in c.values ? { error: { message: "network" } } : {}
+  );
+  const res = await clearForNewCompany(admin, "co-1", REAL);
+  assert.ok(res.error);
+  assert.match(res.error, /wasn't connected/);
+  assert.deepEqual(writes(calls), ["update quickbooks_connections", "update quickbooks_connections", "update quickbooks_connections"]);
 });
 
 test("before 0227 the invoice columns don't exist: that one is skipped, the rest go on", async () => {
@@ -196,7 +214,20 @@ test("before 0227 the invoice columns don't exist: that one is skipped, the rest
         : {}
   );
   assert.deepEqual(await clearForNewCompany(admin, "co-1", REAL), { cleared: true });
-  assert.equal(writes(calls).length, 4);
+  assert.equal(writes(calls).length, 5);
+});
+
+test("before 0230 the job-costs columns don't exist: that one is skipped, the rest go on", async () => {
+  const { admin, calls } = fakeAdmin((c) =>
+    c.op === "select"
+      ? { data: PRACTICE }
+      : c.values && "send_costs" in c.values
+        ? { error: { code: "PGRST204", message: "Could not find the 'send_costs' column" } }
+        : {}
+  );
+  assert.deepEqual(await clearForNewCompany(admin, "co-1", REAL), { cleared: true });
+  assert.equal(writes(calls).length, 5);
+  assert.deepEqual(writes(calls).slice(3), ["update payment_accounts", "delete quickbooks_expense_accounts"]);
 });
 
 test("before 0222 there's no bills switch: that one is skipped too, and the matches are still cleared", async () => {
@@ -208,7 +239,7 @@ test("before 0222 there's no bills switch: that one is skipped too, and the matc
         : {}
   );
   assert.deepEqual(await clearForNewCompany(admin, "co-1", REAL), { cleared: true });
-  assert.deepEqual(writes(calls).slice(2), ["update payment_accounts", "delete quickbooks_expense_accounts"]);
+  assert.deepEqual(writes(calls).slice(3), ["update payment_accounts", "delete quickbooks_expense_accounts"]);
 });
 
 test("the sign-in callback clears through it and stops on its error, before saving the new login", () => {

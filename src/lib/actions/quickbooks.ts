@@ -16,6 +16,7 @@ import { quickBooksReceiptsReady } from "@/lib/quickbooks/receipts-ready";
 import { accountChoices, categoryKey, costCategories, type QbAccount } from "@/lib/quickbooks/accounts";
 import { syncCompanyBills } from "@/lib/quickbooks/bill-sync-run";
 import { FOR_BILLS, syncCompanyInvoices } from "@/lib/quickbooks/invoice-sync-run";
+import { syncCompanyCosts } from "@/lib/quickbooks/cost-sync-run";
 import { qbDocNumber, SALES_WAIT } from "@/lib/quickbooks/invoice-sync";
 import { fetchUntil, readItems, type QbItem, type QbPrefs } from "@/lib/quickbooks/api";
 import { clientName } from "@/lib/data/client-name";
@@ -373,6 +374,34 @@ export async function sendBillsToQuickBooksNow(): Promise<SendNowResult> {
     revalidatePath("/bills");
   }
   if (s.busy) return { error: "QuickBooks is already sending this company's bills. Look again in a minute." };
+  const result = { sent: s.sent, changed: s.changed, removed: s.removed, waiting: s.waiting, failed: s.failed, more: s.more };
+  return s.error ? { ...result, error: s.error } : result;
+}
+
+/**
+ * Send now, for job costs (DECISIONS #199): this company's new and changed
+ * lender fees go at once, refusals tried again (notes to enter one by hand
+ * stand). Stops starting work after 20 seconds (and cuts off a call still
+ * going at 45), inside the page's 60-second limit; the rest goes with the
+ * five-minute job. Invoices aren't sent first: a brand-new fee goes without
+ * its job either way, and moves onto it with the five-minute job once the
+ * invoices job has added it.
+ */
+export async function sendCostsToQuickBooksNow(): Promise<SendNowResult> {
+  const who = await officeAdmin();
+  if (!who) return { error: "Only Office or Admin users can change this." };
+  const companyId = who.profile.company_id;
+  if (await isCompanyLocked(companyId)) return { error: (await lockedServicesError(companyId)) ?? "This company is locked." };
+  let s;
+  try {
+    s = await syncCompanyCosts(who.admin, companyId, { writeCap: 40, budgetMs: 20_000, force: true });
+  } catch {
+    return { error: "Sending didn't finish. Try again in a minute; nothing is sent twice." };
+  } finally {
+    revalidatePath("/settings/quickbooks");
+    revalidatePath("/bills");
+  }
+  if (s.busy) return { error: "QuickBooks is already sending this company's job costs. Look again in a minute." };
   const result = { sent: s.sent, changed: s.changed, removed: s.removed, waiting: s.waiting, failed: s.failed, more: s.more };
   return s.error ? { ...result, error: s.error } : result;
 }
