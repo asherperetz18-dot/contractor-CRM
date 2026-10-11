@@ -3,9 +3,10 @@ import { QB_MINOR_VERSION } from "./oauth.ts";
 /**
  * Talking to a company's QuickBooks Online for step 2 (DECISIONS #173):
  * find or add a vendor, and add, change or remove the bills and bill
- * payments the CRM sent, and their receipts (DECISIONS #174). Pure, with
- * `fetch` passed in, so it's tested without the network; the caller holds
- * the login (connection.ts).
+ * payments the CRM sent, and their receipts (DECISIONS #174); and from
+ * step 4 (DECISIONS #199) expenses (QuickBooks' Purchase) and their
+ * receipts. Pure, with `fetch` passed in, so it's tested without the
+ * network; the caller holds the login (connection.ts).
  *
  * Every write carries a request id: QuickBooks answers a repeat of the
  * same id with its first answer instead of doing the write twice. Each new
@@ -268,6 +269,78 @@ export async function voidBillPayment(access: QbAccess, current: Saved, requestI
   return "error" in s || s.id === current.id ? s : otherRecord();
 }
 
+// ---------------------------------------------------------------- step 4: expenses (DECISIONS #199)
+
+/** A lender fee as an Expense: paid out of the bank account lenders pay into, to the lender, one line. */
+export type QbPurchaseBody = {
+  PaymentType: "Cash";
+  AccountRef: { value: string };
+  EntityRef: { value: string; type: "Vendor" };
+  TxnDate: string;
+  PrivateNote: string;
+  Line: {
+    Id?: string;
+    DetailType: "AccountBasedExpenseLineDetail";
+    Amount: number;
+    Description?: string;
+    AccountBasedExpenseLineDetail: { AccountRef: { value: string }; CustomerRef?: { value: string }; BillableStatus?: "NotBillable" };
+  }[];
+};
+
+/** Adds an expense. `body` is a QbPurchaseBody -- or, repeating a try whose answer never came, exactly what was sent then. */
+export async function createPurchase(access: QbAccess, body: QbPurchaseBody | unknown, requestId: string, fetchImpl: typeof fetch = fetch) {
+  const res = await call(access, "POST", "purchase", { requestid: requestId }, body, fetchImpl);
+  return "error" in res ? res : saved(res.json, "Purchase");
+}
+
+/** An expense as QuickBooks has it now: what a change or delete must name, and keep. */
+export async function readPurchase(
+  access: QbAccess,
+  id: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<
+  | (Saved & { lines: Record<string, unknown>[]; entityRef: unknown; accountRef: unknown; paymentType: string | null; txnDate: string | null })
+  | { error: QbError }
+> {
+  const res = await call(access, "GET", `purchase/${encodeURIComponent(id)}`, {}, undefined, fetchImpl);
+  if ("error" in res) return res;
+  const s = saved(res.json, "Purchase");
+  if ("error" in s) return s;
+  const p = res.json.Purchase as { Line?: Record<string, unknown>[]; EntityRef?: unknown; AccountRef?: unknown; PaymentType?: unknown; TxnDate?: unknown };
+  const lines = (p.Line ?? []).filter((l) => l && l.DetailType !== "SubTotalLineDetail");
+  return {
+    ...s,
+    lines,
+    entityRef: p.EntityRef ?? null,
+    accountRef: p.AccountRef ?? null,
+    paymentType: typeof p.PaymentType === "string" ? p.PaymentType : null,
+    txnDate: typeof p.TxnDate === "string" ? p.TxnDate : null,
+  };
+}
+
+/** Changes an expense in place: a sparse body from purchaseUpdateBody or purchaseRetagBody (cost-sync.ts),
+ *  which keeps what the bookkeeper set on it. The answer must be about the same one. */
+export async function updatePurchase(access: QbAccess, body: Record<string, unknown>, requestId: string, fetchImpl: typeof fetch = fetch) {
+  const res = await call(access, "POST", "purchase", { requestid: requestId }, body, fetchImpl);
+  if ("error" in res) return res;
+  const s = saved(res.json, "Purchase");
+  return "error" in s || s.id === body.Id ? s : otherRecord();
+}
+
+/** Deletes an expense the CRM sent (QuickBooks' Expense has no void here, DECISIONS #199). */
+export async function deletePurchase(access: QbAccess, current: Saved, requestId: string, fetchImpl: typeof fetch = fetch) {
+  const res = await call(
+    access,
+    "POST",
+    "purchase",
+    { operation: "delete", requestid: requestId },
+    { Id: current.id, SyncToken: current.syncToken },
+    fetchImpl
+  );
+  if ("error" in res) return res;
+  return (res.json.Purchase as { Id?: unknown } | undefined)?.Id === current.id ? { id: current.id, syncToken: current.syncToken } : otherRecord();
+}
+
 // ---------------------------------------------------------------- receipts (DECISIONS #174)
 
 /** QuickBooks' query for the attachment the CRM uploaded with this note. */
@@ -277,18 +350,19 @@ export function attachableNoteQuery(note: string): string {
 
 /**
  * Uploads a bill's receipt and attaches it to the bill in QuickBooks, as a
- * Receipt. `note` is unique to this try: if the answer is lost, the
- * attachment is found by it (findAttachableByNote) instead of being
- * uploaded twice.
+ * Receipt -- or an expense's to the expense (`entity: "Purchase"`, step 4).
+ * `billQbId`: the bill's, or the expense's, QuickBooks id. `note` is unique
+ * to this try: if the answer is lost, the attachment is found by it
+ * (findAttachableByNote) instead of being uploaded twice.
  */
 export async function uploadReceipt(
   access: QbAccess,
-  p: { billQbId: string; fileName: string; contentType: string; note: string; bytes: Blob | Uint8Array },
+  p: { billQbId: string; fileName: string; contentType: string; note: string; bytes: Blob | Uint8Array; entity?: "Bill" | "Purchase" },
   fetchImpl: typeof fetch = fetch
 ): Promise<Saved | { error: QbError }> {
   const form = new FormData();
   const meta = {
-    AttachableRef: [{ EntityRef: { type: "Bill", value: p.billQbId } }],
+    AttachableRef: [{ EntityRef: { type: p.entity ?? "Bill", value: p.billQbId } }],
     FileName: p.fileName,
     ContentType: p.contentType,
     Category: "Receipt",
@@ -304,19 +378,25 @@ export async function uploadReceipt(
   return saved({ Attachable: item?.Attachable }, "Attachable");
 }
 
+/** QuickBooks' query for the attachments on one bill or expense. */
+export function attachableTxnQuery(entity: "Bill" | "Purchase", txnQbId: string): string {
+  return `select * from Attachable where AttachableRef.EntityRef.Type = '${entity}' and AttachableRef.EntityRef.value = '${qbLiteral(txnQbId)}'`;
+}
+
 /** QuickBooks' query for the attachments on one bill. */
 export function attachableBillQuery(billQbId: string): string {
-  return `select * from Attachable where AttachableRef.EntityRef.Type = 'Bill' and AttachableRef.EntityRef.value = '${qbLiteral(billQbId)}'`;
+  return attachableTxnQuery("Bill", billQbId);
 }
 
 /**
  * The attachment the CRM uploaded with this note, if QuickBooks has it.
  * Looked for by its note; if QuickBooks won't look by note, among the
- * bill's attachments. An error is never taken as "not there".
+ * bill's (or, with `entity: "Purchase"`, the expense's) attachments. An
+ * error is never taken as "not there".
  */
 export async function findAttachableByNote(
   access: QbAccess,
-  p: { note: string; billQbId: string | null },
+  p: { note: string; billQbId: string | null; entity?: "Bill" | "Purchase" },
   fetchImpl: typeof fetch = fetch
 ): Promise<{ attachable: { id: string } | null } | { error: QbError }> {
   const rows = (json: Record<string, unknown>) =>
@@ -329,9 +409,9 @@ export async function findAttachableByNote(
     return { attachable: hit ? { id: hit.Id as string } : null };
   }
   if (res.error.kind !== "validation" || !p.billQbId) return res;
-  const onBill = await call(access, "GET", "query", { query: attachableBillQuery(p.billQbId) }, undefined, fetchImpl);
-  if ("error" in onBill) return onBill;
-  const hit = rows(onBill.json)[0];
+  const onTxn = await call(access, "GET", "query", { query: attachableTxnQuery(p.entity ?? "Bill", p.billQbId) }, undefined, fetchImpl);
+  if ("error" in onTxn) return onTxn;
+  const hit = rows(onTxn.json)[0];
   return { attachable: hit ? { id: hit.Id as string } : null };
 }
 
