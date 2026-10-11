@@ -6,9 +6,11 @@ import {
   disconnectQuickBooks,
   refreshQuickBooksAccounts,
   saveQuickBooksBillSending,
+  saveQuickBooksCostSending,
   saveQuickBooksInvoiceSending,
   saveQuickBooksMatches,
   sendBillsToQuickBooksNow,
+  sendCostsToQuickBooksNow,
   sendInvoicesToQuickBooksNow,
   type QuickBooksSettings,
   type SendNowResult,
@@ -40,8 +42,8 @@ const KIND: Record<string, string> = { bank: "Bank account", credit_card: "Card"
 /**
  * Settings › QuickBooks: connect the company's QuickBooks Online and match
  * its accounts (DECISIONS #172), then send its bills and bill payments
- * (#173), with their receipts (#174), and its invoices and customer
- * payments (#184).
+ * (#173), with their receipts (#174), its invoices and customer payments
+ * (#184), and its lender fees as expenses (#199).
  */
 export function QuickBooksView({
   settings,
@@ -80,7 +82,7 @@ export function QuickBooksView({
       {justConnected && !connectError && (
         <p className="hint-note" style={{ color: "var(--success)" }}>
           {newCompany
-            ? "✓ Connected to QuickBooks. This is a different QuickBooks company, so sending bills and invoices is off and its accounts start fresh: check the matches below and save them, then pick the start dates and turn sending on again."
+            ? "✓ Connected to QuickBooks. This is a different QuickBooks company, so sending bills, invoices and job costs is off and its accounts start fresh: check the matches below and save them, then pick the start dates and turn sending on again."
             : "✓ Connected to QuickBooks. Check the matches below, then save them."}
         </p>
       )}
@@ -189,6 +191,15 @@ export function QuickBooksView({
           </li>
           <li>A bill&apos;s receipt (the photo or PDF attached in the CRM) is attached to it in QuickBooks too.</li>
           <li>
+            Each lender fee goes as an expense on its job: paid out of &ldquo;Lender payouts land in&rdquo;, dated the payout day, not
+            billable. A customer&apos;s own lender has no fee, so nothing goes for it. Other &ldquo;Already paid&rdquo; job costs
+            dated from the start date are to be entered by hand: the CRM never recorded what paid for them.
+          </li>
+          <li>
+            A job cost deleted with ✎ Edit is deleted in QuickBooks. Deleting a customer doesn&apos;t take anything out of QuickBooks,
+            and restoring them sends nothing twice.
+          </li>
+          <li>
             Each bill to a customer goes as an invoice, each payment as a payment on it, and each signed contract as a job
             under its customer. Customers get only what the CRM sends them: nothing is emailed from QuickBooks.
           </li>
@@ -215,16 +226,19 @@ export function QuickBooksView({
           <li>
             Bills, bill payments and their receipts go to QuickBooks <span className="est-badge est-badge-signed">Live</span>
           </li>
-          <li className="is-now">
-            <strong>Customers, invoices and customer payments</strong> <span className="est-badge est-badge-signed">Live</span>
+          <li>
+            Customers, invoices and customer payments <span className="est-badge est-badge-signed">Live</span>
           </li>
-          <li>Job costs, including lender fees</li>
+          <li className="is-now">
+            <strong>Job costs, including lender fees</strong> <span className="est-badge est-badge-signed">Live</span>
+          </li>
         </ol>
       </section>
 
       {/* On the other side of Intuit nothing goes, and its picks are cleared on connecting again: hidden until then. */}
       {connected && !otherSide && <BillSending settings={settings} />}
       {connected && !otherSide && <InvoiceSending settings={settings} />}
+      {connected && !otherSide && <JobCostSending settings={settings} />}
       {connected && !otherSide && <MatchForm settings={settings} />}
     </>
   );
@@ -467,8 +481,8 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
       <section className="est-pay">
         <h2 className="est-pay-title">Where job costs go</h2>
         <p className="est-tax-note">
-          The QuickBooks expense account each bill&apos;s cost lands in. Everything goes to the default unless you match a
-          category of your own.
+          The QuickBooks expense account each cost lands in: bills&apos; costs, and lender fees. A bill&apos;s cost goes to the default
+          unless you match its category.
         </p>
         <table className="qb-table">
           <thead>
@@ -493,6 +507,12 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
             ))}
           </tbody>
         </table>
+        {/* Decision 4 (#199): no default for a fee. Its "Financing fee" row is listed once 0230 has run. */}
+        {settings.costs.ready && (
+          <p className="est-tax-note">
+            Lender fees wait until &ldquo;Financing fee&rdquo; is matched, so they never land in the default account by mistake.
+          </p>
+        )}
         {error && <p className="error-note">{error}</p>}
         {saved && <p className="hint-note">Saved.</p>}
         <div className="est-pay-actions">
@@ -501,7 +521,7 @@ function MatchForm({ settings }: { settings: QuickBooksSettings }) {
           </button>
         </div>
         <p className="est-tax-note">
-          Vendors are matched to QuickBooks by name; one QuickBooks doesn&apos;t have yet is added when its first bill goes.
+          Vendors are matched to QuickBooks by name; one QuickBooks doesn&apos;t have yet is added when its first bill or lender fee goes.
         </p>
       </section>
     </>
@@ -780,6 +800,193 @@ function InvoiceSending({ settings }: { settings: QuickBooksSettings }) {
             </button>
             <span className="est-tax-note" suppressHydrationWarning>
               {v.checkedAt ? `Last checked ${ago(v.checkedAt)}` : "Not checked yet: the first run is within five minutes."}
+            </span>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Send job costs to QuickBooks (DECISIONS #199): the switch, the start date, the bank account lender payouts land in, and
+ * how it's going. Only lender fees go; other "Already paid" costs from the start date are to be entered by hand.
+ */
+function JobCostSending({ settings }: { settings: QuickBooksSettings }) {
+  const router = useRouter();
+  const k = settings.costs;
+  const [on, setOn] = useState(k.on);
+  // First offered: the invoices start date, so a fee and its payout start together.
+  const [from, setFrom] = useState(k.from ?? settings.invoices.from ?? k.today);
+  const [payout, setPayout] = useState(k.lenderPayoutsAccount ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const changed = on !== k.on || (on && from !== k.from) || payout !== (k.lenderPayoutsAccount ?? "");
+
+  function save() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const res = await saveQuickBooksCostSending({ on, from: on ? from : null, lenderPayoutsAccount: payout || null });
+      if (res.error) return setError(res.error);
+      // A fee waits for both its accounts: say so rather than "within a few minutes".
+      setMessage(
+        !on
+          ? "Saved. Nothing more goes to QuickBooks; what's there stays."
+          : payout && k.feeMatched
+            ? `Saved. Lender fees dated from ${fmtDate(from)} go to QuickBooks within a few minutes.`
+            : `Saved. Lender fees dated from ${fmtDate(from)} go to QuickBooks once both their accounts are picked.`
+      );
+      router.refresh();
+    });
+  }
+
+  function sendNow() {
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      const out = sentMessage(await sendCostsToQuickBooksNow());
+      setMessage(out.message);
+      setError(out.error);
+      router.refresh();
+    });
+  }
+
+  const pick = (value: string, onChange: (val: string) => void, options: { id: string; name: string; type: string }[], label: string, empty: string) => (
+    <select className="qb-select" value={value} onChange={(e) => onChange(e.target.value)} disabled={pending || !k.ready} aria-label={label}>
+      <option value="">{empty}</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.name} ({o.type})
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <section className="est-pay">
+      <h2 className="est-pay-title">Send job costs to QuickBooks</h2>
+      {!k.ready && <p className="error-note">Sending job costs needs a database update first: run 0230_quickbooks_job_costs.sql in Supabase.</p>}
+      <div className="qb-switch-row">
+        <div>
+          <strong>Lender fees and other job costs</strong>
+          <div className="est-tax-note">
+            On: each lender fee goes to QuickBooks as an expense on its job a few minutes after it&apos;s saved. Other costs under Bills to Pay › Paid ›
+            &ldquo;Paid on entry&rdquo; dated from the start date say to enter them in QuickBooks by hand.
+          </div>
+        </div>
+        <button
+          type="button"
+          className="ur-toggle-btn"
+          aria-pressed={on}
+          aria-label="Send job costs to QuickBooks"
+          disabled={pending || !k.ready}
+          onClick={() => {
+            setOn(!on);
+            setMessage(null);
+          }}
+        >
+          <span className={"toggle-track" + (on ? " toggle-on" : "")}>
+            <span className="toggle-thumb" />
+          </span>
+        </button>
+      </div>
+      {on && (
+        <>
+          <label className="field qb-from">
+            <span className="field-label">Start with job costs dated from</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} disabled={pending} />
+          </label>
+          <p className="est-tax-note">
+            Costs dated before this stay out of QuickBooks. Pick the day your bookkeeper stops entering lender fees by hand. From then on,
+            deposit each lender payout in QuickBooks at its full amount: the fee goes as its own expense.
+          </p>
+          {/* A payout the invoices job doesn't send may be entered by hand net of its fee: then the fee counts twice. */}
+          {!settings.invoices.on ? (
+            <p className="est-tax-note">
+              Sending invoices is off, so lender payouts don&apos;t go to QuickBooks. Whoever enters a payout there by hand must enter it at
+              its full amount, or its fee is counted twice.
+            </p>
+          ) : settings.invoices.from && from < settings.invoices.from ? (
+            <p className="est-tax-note">
+              {`Invoices go from ${fmtDate(settings.invoices.from)}. A fee dated before then goes, but its payout doesn't: enter that payout in QuickBooks by hand at its full amount, or the fee is counted twice.`}
+            </p>
+          ) : null}
+        </>
+      )}
+      {k.ready && (
+        <div className="qb-picks">
+          <label className="qb-pick">
+            <span>Lender payouts land in</span>
+            {pick(payout, setPayout, k.choices.bank, "Where lender payouts land", "Pick an account")}
+          </label>
+          <p className="est-tax-note">
+            The bank account your lenders pay into. Each fee comes out of it, so the full payout minus the fee matches the bank. Bank
+            accounts only.
+          </p>
+        </div>
+      )}
+      {k.on && !k.lenderPayoutsAccount && <p className="est-tax-note">Lender fees wait until you pick where lender payouts land.</p>}
+      {k.on && !k.feeMatched && (
+        <p className="est-tax-note">
+          Lender fees wait until &ldquo;Financing fee&rdquo; is matched under &ldquo;Where job costs go&rdquo; below.
+        </p>
+      )}
+      {settings.connection?.environment === "sandbox" && settings.environment === "sandbox" && (
+        <p className="est-tax-note">This sends to your practice company, so you can see it work before your real books.</p>
+      )}
+      {error && <p className="error-note">{error}</p>}
+      {message && <p className="hint-note">{message}</p>}
+      {changed && (
+        <div className="est-pay-actions">
+          <button type="button" className="btn-primary" onClick={save} disabled={pending || !k.ready || (on && !from)}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+
+      {k.on && (
+        <>
+          <div className="qb-counts">
+            <div className="qb-count">
+              <b>{k.counts.sent}</b>
+              <span>In QuickBooks</span>
+            </div>
+            <div className="qb-count">
+              <b>{k.counts.waiting}</b>
+              <span>Waiting</span>
+            </div>
+            <div className={"qb-count" + (k.counts.failed ? " is-failed" : "")}>
+              <b>{k.counts.failed}</b>
+              <span>Didn&apos;t go</span>
+            </div>
+          </div>
+          {k.attention.length > 0 && (
+            <>
+              <h3 className="qb-subhead">Needs a look</h3>
+              <ul className="qb-attention">
+                {k.attention.map((a, i) => (
+                  <li key={i} className={a.status === "waiting" ? undefined : "is-failed"}>
+                    <strong>
+                      {a.vendor}
+                      {a.amountCents !== null ? ` · ${money(a.amountCents)}` : ""}
+                      {a.kind === "receipt" ? " receipt" : ""}
+                    </strong>
+                    {a.deleted ? " (deleted in the CRM)" : a.day ? ` on ${fmtDate(a.day)}` : ""}
+                    {a.customer ? ` · ${a.customer}` : ""}
+                    <div className="est-tax-note">{a.reason}</div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="est-pay-actions qb-send-row">
+            <button type="button" className="btn-ghost" onClick={sendNow} disabled={pending || changed}>
+              {pending ? "Sending…" : "Send now"}
+            </button>
+            <span className="est-tax-note" suppressHydrationWarning>
+              {k.checkedAt ? `Last checked ${ago(k.checkedAt)}` : "Not checked yet: the first run is within five minutes."}
             </span>
           </div>
         </>

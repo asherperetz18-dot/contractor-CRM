@@ -337,3 +337,228 @@ test("Send now for job costs: Office or Admin, never while locked, at once and w
   // Only job costs: a brand-new fee goes untagged anyway, and its job follows on the next five-minute run.
   assert.doesNotMatch(send, /syncCompanyInvoices\(|syncCompanyBills\(/);
 });
+
+// ---------------------------------------------------------------- Settings › QuickBooks (actions/quickbooks.ts and its view)
+
+/** A top-level function's text, from its header to its closing brace at the start of a line. */
+function fn(text: string, header: string): string {
+  const start = text.indexOf(header);
+  assert.ok(start >= 0, `${header} is there`);
+  const end = text.indexOf("\n}\n", start);
+  return text.slice(start, end < 0 ? undefined : end + 2);
+}
+
+/** Each `admin.from(…)…` statement in the text, up to its `;`. */
+function statements(text: string): string[] {
+  return [...text.matchAll(/\.from\("/g)].map((m) => {
+    const end = text.indexOf(";", m.index);
+    return text.slice(m.index, end < 0 ? undefined : end);
+  });
+}
+
+test("Settings reads job costs' switch and picks on their own, and says to run 0230 until it's there", () => {
+  const actions = source("../actions/quickbooks.ts");
+  assert.match(actions, /const NEEDS_0230 = "Sending job costs needs a database update first: run 0230_quickbooks_job_costs\.sql in Supabase\.";/);
+  assert.match(actions, /const COST_TYPES = \["expense", "expense_receipt"\];/);
+  assert.match(actions, /^ {2}costs: QuickBooksCostSending;$/m);
+  const read = fn(actions, "async function readCostSending(");
+  // Its own read: a database without 0230 still shows bills and invoices.
+  assert.match(read, /\.select\("send_costs, send_costs_from, costs_checked_at, lender_payouts_account_id"\)/);
+  assert.match(read, /if \(error\) return \{ \.\.\.off, ready: !isMissingSchemaError\(error\) \};/);
+  // "Lender payouts land in": bank accounts only (decision 3).
+  assert.match(read, /bank: accounts\.filter\(\(a\) => a\.type === "Bank"\)\.sort\(/);
+  // Counted only for the connected QuickBooks company.
+  assert.match(read, /if \(!realmId\) return base;/);
+  // Every read is this company's, and every record read is for its QuickBooks company.
+  const reads = statements(read);
+  assert.ok(reads.length >= 6, "the switch, the records, customers, trash, costs and vendors are read");
+  for (const s of reads) {
+    assert.match(s, /\.eq\("company_id", companyId\)/, s);
+    if (s.startsWith('.from("quickbooks_sync")')) assert.match(s, /\.eq\("realm_id", realmId\)/, s);
+  }
+  assert.doesNotMatch(actions, /select\("\*"\)/);
+});
+
+test("Settings counts job costs as the tested rule says, and leaves a deleted customer's out", () => {
+  const read = fn(source("../actions/quickbooks.ts"), "async function readCostSending(");
+  // In QuickBooks: every expense sent (a deleted customer's are still there, so they count).
+  assert.match(read, /\.eq\("record_type", "expense"\)\s*\.eq\("status", "sent"\)/);
+  // Waiting and Didn't go, from every waiting, refused or gone record, paged (there are few).
+  assert.match(read, /\.in\("record_type", COST_TYPES\)\s*\.in\("status", \["waiting", "failed", "gone"\]\)/);
+  assert.match(read, /\.range\(at, at \+ 999\)/);
+  // Whose customer is gone or in the trash: not counted or listed. Both read, or nothing is left out.
+  assert.match(read, /from\("leads"\)/);
+  assert.match(read, /from\("lead_trash"\)/);
+  assert.match(read, /const goneLeads = leads && trash \? new Set\(\[\.\.\.leadIds\.filter\(\(id\) => !leadById\.has\(id\)\), \.\.\.trash\.map\(\(t\) => t\.lead_id\)\]\) : null;/);
+  assert.match(read, /const \{ waiting, failed, attention: open \} = costTrouble\(rows, goneLeads\);/);
+  assert.match(read, /counts: \{ sent, waiting, failed \}/);
+  // Named by its cost: "Home Depot · $412.37 on Oct 2 · Rachel Kim". A cost that couldn't be read isn't called deleted.
+  assert.match(read, /\.select\("id, vendor, vendor_id, amount_cents, spent_on, lead_id"\)/);
+  assert.match(read, /deleted: !!costs && !cost,/);
+  assert.match(read, /\|\| "A cost"/);
+});
+
+test("Settings lists Financing fee under Where job costs go once 0230 has run, and says whether it's matched", () => {
+  const get = body(source("../actions/quickbooks.ts"), "getQuickBooksSettings");
+  assert.match(get, /readCostSending\(admin, companyId, connection\?\.connected \? connection\.realmId : null, connection\?\.accounts \?\? \[\]\)/);
+  // Matched before the first fee, or before the switch goes on: fees never fall back to the default (decision 4).
+  assert.match(get, /\.\.\.\(costs\.ready \? \["Financing fee"\] : \[\]\)/);
+  assert.match(get, /costs: \{ \.\.\.costs, feeMatched: matched\.has\(categoryKey\("Financing fee"\)\) \}/);
+});
+
+test("saving job costs' switch: Office or Admin, connected, after 0230; a start date and no lock only to turn it on", () => {
+  const actions = source("../actions/quickbooks.ts");
+  const save = body(actions, "saveQuickBooksCostSending");
+  assert.match(save, /^export async function saveQuickBooksCostSending\(input: CostSendingInput\): Promise<\{ error\?: string \}> \{/);
+  assert.match(actions, /export type CostSendingInput = \{ on: boolean; from: string \| null; lenderPayoutsAccount: string \| null \};/);
+  const who = save.indexOf("officeAdmin()");
+  const connected = save.indexOf('return { error: "Connect QuickBooks first." }');
+  const ready = save.indexOf("if (!current.ready) return { error: NEEDS_0230 };");
+  const on = save.indexOf("if (input.on)");
+  const write = save.indexOf(".update(");
+  assert.ok(who >= 0 && connected > who && ready > connected && on > ready && write > on, "who, connected, 0230, then the checks to turn it on, then the save");
+  const turningOn = block(save, on);
+  assert.match(turningOn, /isCompanyLocked\(/);
+  assert.match(turningOn, /if \(!isDay\(input\.from\)\) return \{ error: "Pick the date job costs start from\." \};/);
+  // Only then: turning it off works on a locked company, and needs no date.
+  assert.doesNotMatch(save.slice(0, on) + save.slice(on + turningOn.length), /isCompanyLocked\(|isDay\(/);
+  // The payout account isn't needed to turn it on: fees wait until it's picked (decision 3).
+  assert.doesNotMatch(turningOn, /lenderPayoutsAccount/);
+  // A bank account QuickBooks lists, or none.
+  assert.match(save, /lender_payouts_account_id: pick\(input\.lenderPayoutsAccount, bankIds\),/);
+  assert.match(save, /send_costs: !!input\.on,/);
+  assert.match(save, /send_costs_from: input\.on \? input\.from : undefined,/);
+  assert.match(save, /\.eq\("company_id", companyId\)/);
+  assert.match(save, /if \(error\) return \{ error: isMissingSchemaError\(error\) \? NEEDS_0230 : error\.message \};/);
+  assert.match(save, /revalidatePath\("\/settings\/quickbooks"\);/);
+  assert.match(save, /revalidatePath\("\/bills"\);/);
+});
+
+const settingsView = () => source("../../app/(app)/settings/quickbooks/quickbooks-view.tsx");
+
+test("the job-costs card sits after invoices and before the matches, on this side of Intuit only", () => {
+  const view = settingsView();
+  const invoices = view.indexOf("{connected && !otherSide && <InvoiceSending settings={settings} />}");
+  const costs = view.indexOf("{connected && !otherSide && <JobCostSending settings={settings} />}");
+  const matches = view.indexOf("{connected && !otherSide && <MatchForm settings={settings} />}");
+  assert.ok(invoices >= 0 && costs > invoices && matches > costs);
+});
+
+test("the job-costs card says what goes (lender fees) and what's entered by hand (other costs), as decision 6 has it", () => {
+  const card = fn(settingsView(), "function JobCostSending(");
+  assert.match(card, /<h2 className="est-pay-title">Send job costs to QuickBooks<\/h2>/);
+  assert.match(
+    card,
+    /\{!k\.ready && <p className="error-note">Sending job costs needs a database update first: run 0230_quickbooks_job_costs\.sql in Supabase\.<\/p>\}/
+  );
+  assert.match(card, /<strong>Lender fees and other job costs<\/strong>/);
+  assert.match(
+    card,
+    /On: each lender fee goes to QuickBooks as an expense on its job a few minutes after it&apos;s saved\. Other costs under Bills to Pay › Paid ›\s+&ldquo;Paid on entry&rdquo; dated from the start date say to enter them in QuickBooks by hand\./
+  );
+  // The mockup's "each one goes" isn't true: other "Already paid" costs never go.
+  assert.doesNotMatch(card, /each one goes/i);
+  assert.match(card, /aria-label="Send job costs to QuickBooks"/);
+  assert.match(card, /disabled=\{pending \|\| !k\.ready\}/);
+});
+
+test("the job-costs card: its start date, the deposit warning, and when a fee's payout doesn't go", () => {
+  const card = fn(settingsView(), "function JobCostSending(");
+  // First offered: the invoices start date, so a fee and its payout start together.
+  assert.match(card, /useState\(k\.from \?\? settings\.invoices\.from \?\? k\.today\)/);
+  assert.match(card, /<span className="field-label">Start with job costs dated from<\/span>/);
+  assert.match(
+    card,
+    /Costs dated before this stay out of QuickBooks\. Pick the day your bookkeeper stops entering lender fees by hand\. From then on,\s+deposit each lender payout in QuickBooks at its full amount: the fee goes as its own expense\./
+  );
+  // Against the invoices card as saved: a payout that isn't sent may be entered net of its fee.
+  assert.match(
+    card,
+    /\{!settings\.invoices\.on \? \(\s*<p className="est-tax-note">\s*Sending invoices is off, so lender payouts don&apos;t go to QuickBooks\. Whoever enters a payout there by hand must enter it at\s+its full amount, or its fee is counted twice\.\s*<\/p>\s*\) : settings\.invoices\.from && from < settings\.invoices\.from \? \(/
+  );
+  assert.match(
+    card,
+    /`Invoices go from \$\{fmtDate\(settings\.invoices\.from\)\}\. A fee dated before then goes, but its payout doesn't: enter that payout in QuickBooks by hand at its full amount, or the fee is counted twice\.`/
+  );
+});
+
+test("the job-costs card: where lender payouts land (bank accounts), and what fees wait for", () => {
+  const card = fn(settingsView(), "function JobCostSending(");
+  assert.match(card, /<span>Lender payouts land in<\/span>/);
+  assert.match(card, /pick\(payout, setPayout, k\.choices\.bank, "Where lender payouts land", "Pick an account"\)/);
+  assert.match(
+    card,
+    /The bank account your lenders pay into\. Each fee comes out of it, so the full payout minus the fee matches the bank\. Bank\s+accounts only\./
+  );
+  assert.match(card, /\{k\.on && !k\.lenderPayoutsAccount && <p className="est-tax-note">Lender fees wait until you pick where lender payouts land\.<\/p>\}/);
+  assert.match(
+    card,
+    /\{k\.on && !k\.feeMatched && \(\s*<p className="est-tax-note">\s*Lender fees wait until &ldquo;Financing fee&rdquo; is matched under &ldquo;Where job costs go&rdquo; below\.\s*<\/p>\s*\)\}/
+  );
+  // Saved: the switch, the date, and the payout account.
+  assert.match(card, /const changed = on !== k\.on \|\| \(on && from !== k\.from\) \|\| payout !== \(k\.lenderPayoutsAccount \?\? ""\);/);
+  assert.match(card, /saveQuickBooksCostSending\(\{ on, from: on \? from : null, lenderPayoutsAccount: payout \|\| null \}\)/);
+  assert.match(card, /disabled=\{pending \|\| !k\.ready \|\| \(on && !from\)\}/);
+});
+
+test("the job-costs card: counts, Needs a look named by vendor and customer, Send now and Last checked", () => {
+  const card = fn(settingsView(), "function JobCostSending(");
+  assert.match(card, /\{k\.on && \(/);
+  assert.match(card, /<b>\{k\.counts\.sent\}<\/b>/);
+  assert.match(card, /<b>\{k\.counts\.waiting\}<\/b>/);
+  assert.match(card, /<b>\{k\.counts\.failed\}<\/b>/);
+  // "Home Depot · $412.37 on Oct 2 · Rachel Kim"
+  assert.match(card, /\{a\.vendor\}\s*\{a\.amountCents !== null \? ` · \$\{money\(a\.amountCents\)\}` : ""\}\s*\{a\.kind === "receipt" \? " receipt" : ""\}/);
+  assert.match(card, /\{a\.deleted \? " \(deleted in the CRM\)" : a\.day \? ` on \$\{fmtDate\(a\.day\)\}` : ""\}\s*\{a\.customer \? ` · \$\{a\.customer\}` : ""\}/);
+  assert.match(card, /sentMessage\(await sendCostsToQuickBooksNow\(\)\)/);
+  assert.match(card, /k\.checkedAt \? `Last checked \$\{ago\(k\.checkedAt\)\}` : "Not checked yet: the first run is within five minutes\."/);
+});
+
+test("Settings' plan: job costs are live now; How it works says which costs go and what a delete does", () => {
+  const view = settingsView();
+  assert.match(
+    view,
+    /<li className="is-now">\s*<strong>Job costs, including lender fees<\/strong> <span className="est-badge est-badge-signed">Live<\/span>\s*<\/li>/
+  );
+  assert.match(view, /<li>\s*Customers, invoices and customer payments <span className="est-badge est-badge-signed">Live<\/span>\s*<\/li>/);
+  assert.equal([...view.matchAll(/className="is-now"/g)].length, 1);
+  assert.match(
+    view,
+    /Each lender fee goes as an expense on its job: paid out of &ldquo;Lender payouts land in&rdquo;, dated the payout day, not\s+billable\. A customer&apos;s own lender has no fee, so nothing goes for it\. Other &ldquo;Already paid&rdquo; job costs\s+dated from the start date are to be entered by hand: the CRM never recorded what paid for them\./
+  );
+  assert.match(
+    view,
+    /A job cost deleted with ✎ Edit is deleted in QuickBooks\. Deleting a customer doesn&apos;t take anything out of QuickBooks,\s+and restoring them sends nothing twice\./
+  );
+  // After the receipts line.
+  assert.ok(view.indexOf("Each lender fee goes as an expense") > view.indexOf("A bill&apos;s receipt (the photo or PDF"));
+});
+
+test("Where job costs go: lender fees' category is matched there, and they never land in the default", () => {
+  const match = fn(settingsView(), "function MatchForm(");
+  const section = match.slice(match.indexOf("Where job costs go"));
+  assert.match(
+    section,
+    /The QuickBooks expense account each cost lands in: bills&apos; costs, and lender fees\. A bill&apos;s cost goes to the default\s+unless you match its category\./
+  );
+  // Under the table, as the mockup has it, once 0230 has run (the Financing fee row comes with it).
+  const table = section.indexOf("</table>");
+  const note = section.indexOf(
+    "Lender fees wait until &ldquo;Financing fee&rdquo; is matched, so they never land in the default account by mistake."
+  );
+  assert.ok(table >= 0 && note > table && note < section.indexOf('{error && <p className="error-note">'));
+  assert.match(section, /\{settings\.costs\.ready && \(/);
+  // The job-costs job adds a lender QuickBooks doesn't have yet, as bills' job adds a vendor.
+  assert.match(section, /one QuickBooks doesn&apos;t have yet is added when its first bill or lender fee goes\./);
+});
+
+test("the page and the settings list name lender fees", () => {
+  assert.match(
+    source("../../app/(app)/settings/quickbooks/page.tsx"),
+    /<p className="module-sub">Send your bills, invoices, payments and lender fees to QuickBooks Online, so nobody types them twice\.<\/p>/
+  );
+  assert.match(
+    source("../data/settings-catalog.ts"),
+    /desc: "Connect QuickBooks Online, match your accounts, and send your bills, invoices, payments and lender fees to your books",/
+  );
+});

@@ -17,15 +17,17 @@ import { accountChoices, categoryKey, costCategories, type QbAccount } from "@/l
 import { syncCompanyBills } from "@/lib/quickbooks/bill-sync-run";
 import { FOR_BILLS, syncCompanyInvoices } from "@/lib/quickbooks/invoice-sync-run";
 import { syncCompanyCosts } from "@/lib/quickbooks/cost-sync-run";
+import { costTrouble, type CostTroubleRow } from "@/lib/quickbooks/cost-status";
 import { qbDocNumber, SALES_WAIT } from "@/lib/quickbooks/invoice-sync";
 import { fetchUntil, readItems, type QbItem, type QbPrefs } from "@/lib/quickbooks/api";
 import { clientName } from "@/lib/data/client-name";
 
 /**
  * Settings › QuickBooks: the connection and the account matches (step 1,
- * DECISIONS #172), sending bills and bill payments (step 2, #173), and
- * sending invoices and customer payments (step 3, #184). Office or Admin,
- * like the rest of the company's settings.
+ * DECISIONS #172), sending bills and bill payments (step 2, #173),
+ * sending invoices and customer payments (step 3, #184), and sending
+ * lender fees as expenses (step 4, #199). Office or Admin, like the rest
+ * of the company's settings.
  */
 
 /** Step 2's record types: its counts and Needs a look leave step 3's out. */
@@ -36,6 +38,9 @@ const INVOICE_TYPES = ["invoice", "deposit", "customer_payment", "credit", "refu
 // so is a customer's or job's that couldn't be added (or was made inactive) for its bills' job.
 const INVOICE_TROUBLE_TYPES = [...INVOICE_TYPES, "credit_link", "customer", "job"];
 const NEEDS_0225 = "Sending invoices needs a database update first: run 0227_quickbooks_invoices.sql in Supabase.";
+/** Step 4's record types (DECISIONS #199): the expense counts as sent; its receipt's trouble counts too. */
+const COST_TYPES = ["expense", "expense_receipt"];
+const NEEDS_0230 = "Sending job costs needs a database update first: run 0230_quickbooks_job_costs.sql in Supabase.";
 
 const NEEDS_0221 = "QuickBooks needs a database update first: run 0221_quickbooks_connection.sql in Supabase.";
 const NEEDS_0222 = "Sending bills needs a database update first: run 0222_quickbooks_bills.sql in Supabase.";
@@ -90,6 +95,7 @@ export type QuickBooksSettings = {
   categories: { key: string; category: string; qbAccountId: string | null }[];
   bills: QuickBooksBillSending;
   invoices: QuickBooksInvoiceSending;
+  costs: QuickBooksCostSending;
 };
 
 /** Something on the invoices side that needs a look: waiting, or refused by QuickBooks. */
@@ -124,6 +130,38 @@ export type QuickBooksInvoiceSending = {
   prefs: QbPrefs | null;
   counts: { sent: number; waiting: number; failed: number };
   attention: QuickBooksInvoiceAttention[];
+};
+
+/** A job cost that needs a look (DECISIONS #199): waiting, or refused by QuickBooks. */
+export type QuickBooksCostAttention = {
+  kind: "expense" | "receipt";
+  /** The vendor's name, or the typed vendor; "A cost" when there's neither. */
+  vendor: string;
+  /** The cost's customer (else the one its record was on when last seen). */
+  customer: string | null;
+  amountCents: number | null;
+  /** spent_on. */
+  day: string | null;
+  /** The cost is no longer in the CRM. */
+  deleted: boolean;
+  status: "waiting" | "failed" | "gone";
+  reason: string;
+};
+
+export type QuickBooksCostSending = {
+  /** 0230 has run. */
+  ready: boolean;
+  on: boolean;
+  from: string | null;
+  today: string;
+  checkedAt: string | null;
+  lenderPayoutsAccount: string | null;
+  /** Bank accounts only (decision 3). */
+  choices: { bank: QbAccount[] };
+  /** "Financing fee" is matched under Where job costs go (fees wait until it is). */
+  feeMatched: boolean;
+  counts: { sent: number; waiting: number; failed: number };
+  attention: QuickBooksCostAttention[];
 };
 
 async function officeAdmin() {
@@ -176,13 +214,19 @@ export async function getQuickBooksSettings(): Promise<QuickBooksSettings | null
     connectedByName = m?.name || m?.email || null;
   }
 
-  const [bills, invoices] = await Promise.all([
+  const [bills, invoices, costs] = await Promise.all([
     readBillSending(admin, companyId, connection?.connected ? connection.realmId : null),
     readInvoiceSending(admin, companyId, connection?.connected ? connection.realmId : null, connection?.accounts ?? []),
+    readCostSending(admin, companyId, connection?.connected ? connection.realmId : null, connection?.accounts ?? []),
   ]);
 
   const matched = new Map((matchRows ?? []).map((r) => [r.category_key, r]));
-  const used = costCategories([...(costRows ?? []).map((r) => r.category), ...(vendorRows ?? []).map((r) => r.default_category)]);
+  const used = costCategories([
+    ...(costRows ?? []).map((r) => r.category),
+    ...(vendorRows ?? []).map((r) => r.default_category),
+    // Lender fees wait until "Financing fee" is matched (#199): it's listed once 0230 has run, so it can be matched first.
+    ...(costs.ready ? ["Financing fee"] : []),
+  ]);
   const accounts = connection?.accounts ?? [];
 
   return {
@@ -209,6 +253,7 @@ export async function getQuickBooksSettings(): Promise<QuickBooksSettings | null
     ],
     bills,
     invoices,
+    costs: { ...costs, feeMatched: matched.has(categoryKey("Financing fee")) },
   };
 }
 
@@ -855,4 +900,166 @@ export async function sendInvoicesToQuickBooksNow(): Promise<SendNowResult> {
   if (s.busy) return { error: "QuickBooks is already sending this company's invoices. Look again in a minute." };
   const result = { sent: s.sent, changed: s.changed, removed: s.removed, waiting: s.waiting, failed: s.failed, more: s.more };
   return s.error ? { ...result, error: s.error } : result;
+}
+
+// ---------------------------------------------------------------- step 4: lender fees as expenses (DECISIONS #199)
+
+/** Reads by id, 100 at a time; null when any read fails (so the caller says nothing rather than something untrue). */
+async function readByIds<T>(ids: string[], read: (chunk: string[]) => PromiseLike<{ data: unknown; error: unknown }>): Promise<T[] | null> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await read(ids.slice(i, i + 100));
+    if (error) return null;
+    out.push(...((data as T[] | null) ?? []));
+  }
+  return out;
+}
+
+type LeadNameRow = { id: string; first_name: string | null; last_name: string | null; company_name: string | null; contact_type: string | null };
+
+/** The send-job-costs switch, its start date, where lender payouts land, counts and what's waiting. */
+async function readCostSending(admin: Admin, companyId: string, realmId: string | null, accounts: QbAccount[]): Promise<QuickBooksCostSending> {
+  const today = await todayForCompany(admin, companyId);
+  const off: QuickBooksCostSending = {
+    ready: true,
+    on: false,
+    from: null,
+    today,
+    checkedAt: null,
+    lenderPayoutsAccount: null,
+    choices: { bank: accounts.filter((a) => a.type === "Bank").sort((a, b) => a.name.localeCompare(b.name)) },
+    feeMatched: false,
+    counts: { sent: 0, waiting: 0, failed: 0 },
+    attention: [],
+  };
+  const { data: conn, error } = await admin
+    .from("quickbooks_connections")
+    .select("send_costs, send_costs_from, costs_checked_at, lender_payouts_account_id")
+    .eq("company_id", companyId)
+    .maybeSingle<{ send_costs: boolean; send_costs_from: string | null; costs_checked_at: string | null; lender_payouts_account_id: string | null }>();
+  if (error) return { ...off, ready: !isMissingSchemaError(error) };
+  const base: QuickBooksCostSending = {
+    ...off,
+    on: !!conn?.send_costs,
+    from: conn?.send_costs_from ?? null,
+    checkedAt: conn?.costs_checked_at ?? null,
+    lenderPayoutsAccount: conn?.lender_payouts_account_id ?? null,
+  };
+  if (!realmId) return base;
+
+  // In QuickBooks: every expense sent. A deleted customer's are still there, so they count.
+  const sentRead = admin
+    .from("quickbooks_sync")
+    .select("record_id", { count: "exact", head: true })
+    .eq("company_id", companyId)
+    .eq("realm_id", realmId)
+    .eq("record_type", "expense")
+    .eq("status", "sent");
+  // Every waiting, refused or gone record (there are few). A page that fails stops there, and what came back is used.
+  const troubleRead = async () => {
+    const rows: CostTroubleRow[] = [];
+    for (let at = 0; at < 5000; at += 1000) {
+      const { data, error: pageError } = await admin
+        .from("quickbooks_sync")
+        .select("record_type, record_id, lead_id, status, reason, updated_at")
+        .eq("company_id", companyId)
+        .eq("realm_id", realmId)
+        .in("record_type", COST_TYPES)
+        .in("status", ["waiting", "failed", "gone"])
+        .order("updated_at", { ascending: false })
+        .order("record_type")
+        .order("record_id")
+        .range(at, at + 999)
+        .returns<CostTroubleRow[]>();
+      if (pageError) break;
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < 1000) break;
+    }
+    return rows;
+  };
+  const [{ count: sentCount }, rows] = await Promise.all([sentRead, troubleRead()]);
+  const sent = sentCount ?? 0;
+
+  // A deleted customer's records are left as they are in QuickBooks: not counted or listed (costTrouble). Deleted means
+  // not read back, or in the trash (being deleted or restored). If either read fails, nothing is left out.
+  const leadIds = [...new Set(rows.map((r) => r.lead_id).filter((id): id is string => !!id))];
+  const [leads, trash] = await Promise.all([
+    readByIds<LeadNameRow>(leadIds, (chunk) =>
+      admin.from("leads").select("id, first_name, last_name, company_name, contact_type").eq("company_id", companyId).in("id", chunk)
+    ),
+    readByIds<{ lead_id: string }>(leadIds, (chunk) => admin.from("lead_trash").select("lead_id").eq("company_id", companyId).in("lead_id", chunk)),
+  ]);
+  const leadById = new Map((leads ?? []).map((l) => [l.id, l]));
+  const goneLeads = leads && trash ? new Set([...leadIds.filter((id) => !leadById.has(id)), ...trash.map((t) => t.lead_id)]) : null;
+  const { waiting, failed, attention: open } = costTrouble(rows, goneLeads);
+
+  // Name each one the way Bills to Pay does: the vendor, the amount, the day, and the customer.
+  type CostRow = { id: string; vendor: string | null; vendor_id: string | null; amount_cents: number; spent_on: string; lead_id: string };
+  const costs = await readByIds<CostRow>([...new Set(open.map((r) => r.record_id))], (chunk) =>
+    admin.from("job_expenses").select("id, vendor, vendor_id, amount_cents, spent_on, lead_id").eq("company_id", companyId).in("id", chunk)
+  );
+  const costById = new Map((costs ?? []).map((c) => [c.id, c]));
+  const vendorIds = [...new Set((costs ?? []).map((c) => c.vendor_id).filter((v): v is string => !!v))];
+  const vendors = await readByIds<{ id: string; name: string }>(vendorIds, (chunk) =>
+    admin.from("vendors").select("id, name").eq("company_id", companyId).in("id", chunk)
+  );
+  const vendorName = new Map((vendors ?? []).map((v) => [v.id, v.name]));
+  const customer = (id: string | null | undefined) => (id && leadById.has(id) ? clientName(leadById.get(id)) || null : null);
+
+  const attention: QuickBooksCostAttention[] = open.map((r) => {
+    const cost = costById.get(r.record_id);
+    return {
+      // A receipt is named by its cost.
+      kind: r.record_type === "expense_receipt" ? "receipt" : "expense",
+      vendor: (cost?.vendor_id ? vendorName.get(cost.vendor_id) : null) || cost?.vendor || "A cost",
+      customer: customer(cost?.lead_id) ?? customer(r.lead_id),
+      amountCents: cost ? Number(cost.amount_cents) : null,
+      day: cost?.spent_on ?? null,
+      // Only when the costs were read: one that couldn't be read isn't called deleted.
+      deleted: !!costs && !cost,
+      status: r.status as QuickBooksCostAttention["status"],
+      reason: r.reason ?? "",
+    };
+  });
+  return { ...base, counts: { sent, waiting, failed }, attention };
+}
+
+export type CostSendingInput = { on: boolean; from: string | null; lenderPayoutsAccount: string | null };
+
+/**
+ * Turns sending job costs (lender fees) to QuickBooks on or off, with its
+ * start date and the bank account lender payouts land in: only fees dated
+ * from it go, so the ones the bookkeeper already entered aren't doubled.
+ * Turning it on doesn't need the bank account: fees wait until it's picked.
+ */
+export async function saveQuickBooksCostSending(input: CostSendingInput): Promise<{ error?: string }> {
+  const who = await officeAdmin();
+  if (!who) return { error: "Only Office or Admin users can change this." };
+  const companyId = who.profile.company_id;
+  const { connection } = await readQuickBooksConnection(who.admin, companyId);
+  if (!connection?.connected) return { error: "Connect QuickBooks first." };
+  // Only whether 0230 has run and the bank accounts: no realm, so nothing is counted.
+  const current = await readCostSending(who.admin, companyId, null, connection.accounts ?? []);
+  if (!current.ready) return { error: NEEDS_0230 };
+  const bankIds = new Set(current.choices.bank.map((a) => a.id));
+  const pick = (id: string | null, ok: Set<string>) => (id && ok.has(id) ? id : null);
+  if (input.on) {
+    if (await isCompanyLocked(companyId)) return { error: (await lockedServicesError(companyId)) ?? "This company is locked." };
+    if (!isDay(input.from)) return { error: "Pick the date job costs start from." };
+  }
+  const { data, error } = await who.admin
+    .from("quickbooks_connections")
+    .update({
+      send_costs: !!input.on,
+      send_costs_from: input.on ? input.from : undefined,
+      lender_payouts_account_id: pick(input.lenderPayoutsAccount, bankIds),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("company_id", companyId)
+    .select("company_id");
+  if (error) return { error: isMissingSchemaError(error) ? NEEDS_0230 : error.message };
+  if (!data?.length) return { error: "Connect QuickBooks first." };
+  revalidatePath("/settings/quickbooks");
+  revalidatePath("/bills");
+  return {};
 }

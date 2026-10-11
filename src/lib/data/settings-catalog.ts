@@ -293,7 +293,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       },
       {
         title: "QuickBooks",
-        desc: "Connect QuickBooks Online, match your accounts, and send your bills and bill payments to your books",
+        desc: "Connect QuickBooks Online, match your accounts, and send your bills, invoices, payments and lender fees to your books",
         icon: "🔗",
         href: "/settings/quickbooks",
       },

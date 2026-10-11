@@ -73,6 +73,7 @@ test("Settings shows it: Connect again instead of Connected, and the button", ()
   assert.match(view, /otherSide \? "Last connected to " : "Connected to "/);
   assert.match(view, /\{connected && !otherSide && <BillSending settings=\{settings\} \/>\}/);
   assert.match(view, /\{connected && !otherSide && <InvoiceSending settings=\{settings\} \/>\}/);
+  assert.match(view, /\{connected && !otherSide && <JobCostSending settings=\{settings\} \/>\}/);
   assert.match(view, /\{connected && !otherSide && <MatchForm settings=\{settings\} \/>\}/);
   // Disconnect doesn't promise the matches are kept, since a different company starts fresh.
   assert.match(view, /Connecting a different company means picking its accounts again\./);
@@ -80,7 +81,7 @@ test("Settings shows it: Connect again instead of Connected, and the button", ()
 
 test("after connecting a different company, Settings says sending is off and why", () => {
   const view = source("../../app/(app)/settings/quickbooks/quickbooks-view.tsx");
-  assert.match(view, /This is a different QuickBooks company, so sending bills and invoices is off/);
+  assert.match(view, /This is a different QuickBooks company, so sending bills, invoices and job costs is off/);
   const page = source("../../app/(app)/settings/quickbooks/page.tsx");
   assert.match(page, /newCompany=\{sp\.connected === "new"\}/);
   assert.match(source("../../app/api/oauth/quickbooks/callback/route.ts"), /return done\(undefined, !!cleared\.cleared\);/);
