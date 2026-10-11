@@ -67,6 +67,7 @@ async function visibleLead(leadId: string, companyId: string) {
 type InboxRow = {
   id: string;
   group_id: string;
+  media_status: string;
   media_path: string | null;
   media_name: string | null;
   media_type: string | null;
@@ -74,16 +75,18 @@ type InboxRow = {
   inbox_status: string | null;
 };
 
-/** One of this company's inbox files: a copied file from a general group. */
+/** One of this company's inbox items: a photo or file from a general
+ *  group, copied or not -- one whose copy failed can still be dismissed.
+ *  Filing and billing check for the copy themselves. */
 async function inboxMessage(companyId: string, messageId: string): Promise<InboxRow | null> {
   const admin = createAdminClient();
   const { data: msg } = await admin
     .from("whatsapp_group_messages")
-    .select("id, group_id, media_path, media_name, media_type, media_size, inbox_status")
+    .select("id, group_id, media_status, media_path, media_name, media_type, media_size, inbox_status")
     .eq("id", messageId)
     .eq("company_id", companyId)
     .maybeSingle<InboxRow>();
-  if (!msg?.media_path) return null;
+  if (!msg || msg.media_status === "none") return null;
   const { data: link } = await admin
     .from("whatsapp_group_links")
     .select("group_id")

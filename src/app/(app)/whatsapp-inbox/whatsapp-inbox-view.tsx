@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FilePreview } from "@/components/ui/file-preview";
 import { AddBillModal, jobOptionsFromProjects } from "@/components/bills/add-bill-modal";
+import { inboxCardActions } from "@/lib/whatsapp-inbox";
 import {
   dismissInboxItem,
   fileInboxItem,
@@ -146,117 +147,128 @@ export function WhatsAppInboxView() {
         </p>
       ) : (
         <div className="wai-grid">
-          {data.items.map((item) => (
-            <div key={item.id} className="wai-card">
-              <Media item={item} />
-              <div className="wai-head">
-                <strong>{item.sender}</strong>
-                <span className="wai-when">
-                  {new Date(item.sentAt).toLocaleString("en-US", WHEN)} · {item.groupName}
-                </span>
-              </div>
-              {item.body && <p className="wai-caption">{item.body}</p>}
-
-              {item.outcome && <p className="est-tax-note" style={{ margin: 0 }}>{item.outcome}</p>}
-
-              {view === "to_sort" && item.file && item.suggestion && (
-                <div className="wai-suggest">
-                  <span>
-                    Looks like <strong>{item.suggestion.label}</strong> (caption says “{item.suggestion.because}”)
+          {data.items.map((item) => {
+            const actions = inboxCardActions(
+              { hasFile: !!item.file, mediaStatus: item.mediaStatus },
+              view,
+              data.canMakeBill
+            );
+            return (
+              <div key={item.id} className="wai-card">
+                <Media item={item} />
+                <div className="wai-head">
+                  <strong>{item.sender}</strong>
+                  <span className="wai-when">
+                    {new Date(item.sentAt).toLocaleString("en-US", WHEN)} · {item.groupName}
                   </span>
-                  <button
-                    type="button"
-                    className="btn-ghost small"
-                    disabled={!!busy}
-                    onClick={() =>
-                      void act(
-                        "Filing…",
-                        () => fileInboxItem(item.id, item.suggestion!.estimateId),
-                        `Filed to ${item.suggestion!.label}.`
-                      )
-                    }
-                  >
-                    File there
-                  </button>
                 </div>
-              )}
+                {item.body && <p className="wai-caption">{item.body}</p>}
 
-              {view === "to_sort" && item.file && (
-                <div className="wai-actions">
-                  {data.canMakeBill && (
-                    <button type="button" className="btn-ghost small" disabled={!!busy} onClick={() => setBillFor(item)}>
-                      🧾 Make a bill…
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="btn-ghost small"
-                    disabled={!!busy}
-                    onClick={() => {
-                      setPickFor(item.id);
-                      setPickJob(item.suggestion?.estimateId ?? "");
-                    }}
-                  >
-                    📷 File to a job…
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost small"
-                    disabled={!!busy}
-                    onClick={() => void act("Dismissing…", () => dismissInboxItem(item.id), "Dismissed.")}
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
+                {item.outcome && <p className="est-tax-note" style={{ margin: 0 }}>{item.outcome}</p>}
 
-              {pickFor === item.id && (
-                <div className="wai-pick">
-                  <select value={pickJob} onChange={(e) => setPickJob(e.target.value)} aria-label="Job">
-                    <option value="">Pick the job…</option>
-                    {jobsByLabel.map((j) => (
-                      <option key={j.estimateId} value={j.estimateId}>
-                        {j.label}
-                        {j.address ? ` · ${j.address.split(",")[0]}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="wai-actions">
+                {view === "to_sort" && item.file && item.suggestion && (
+                  <div className="wai-suggest">
+                    <span>
+                      Looks like <strong>{item.suggestion.label}</strong> (caption says “{item.suggestion.because}”)
+                    </span>
                     <button
                       type="button"
-                      className="btn-primary small"
-                      disabled={!!busy || !pickJob}
+                      className="btn-ghost small"
+                      disabled={!!busy}
                       onClick={() =>
                         void act(
                           "Filing…",
-                          () => fileInboxItem(item.id, pickJob),
-                          `Filed to ${jobsByLabel.find((j) => j.estimateId === pickJob)?.label ?? "the job"}.`
+                          () => fileInboxItem(item.id, item.suggestion!.estimateId),
+                          `Filed to ${item.suggestion!.label}.`
                         )
                       }
                     >
-                      File
-                    </button>
-                    <button type="button" className="btn-ghost small" disabled={!!busy} onClick={() => setPickFor(null)}>
-                      Cancel
+                      File there
                     </button>
                   </div>
-                </div>
-              )}
+                )}
 
-              {view === "dismissed" && (
-                <div className="wai-actions">
-                  <button
-                    type="button"
-                    className="btn-ghost small"
-                    disabled={!!busy}
-                    onClick={() => void act("Putting it back…", () => restoreInboxItem(item.id), "Back in To sort.")}
-                  >
-                    Put back
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+                {(actions.includes("bill") || actions.includes("file") || actions.includes("dismiss")) && (
+                  <div className="wai-actions">
+                    {actions.includes("bill") && (
+                      <button type="button" className="btn-ghost small" disabled={!!busy} onClick={() => setBillFor(item)}>
+                        🧾 Make a bill…
+                      </button>
+                    )}
+                    {actions.includes("file") && (
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        disabled={!!busy}
+                        onClick={() => {
+                          setPickFor(item.id);
+                          setPickJob(item.suggestion?.estimateId ?? "");
+                        }}
+                      >
+                        📷 File to a job…
+                      </button>
+                    )}
+                    {actions.includes("dismiss") && (
+                      <button
+                        type="button"
+                        className="btn-ghost small"
+                        disabled={!!busy}
+                        onClick={() => void act("Dismissing…", () => dismissInboxItem(item.id), "Dismissed.")}
+                      >
+                        Dismiss
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {pickFor === item.id && (
+                  <div className="wai-pick">
+                    <select value={pickJob} onChange={(e) => setPickJob(e.target.value)} aria-label="Job">
+                      <option value="">Pick the job…</option>
+                      {jobsByLabel.map((j) => (
+                        <option key={j.estimateId} value={j.estimateId}>
+                          {j.label}
+                          {j.address ? ` · ${j.address.split(",")[0]}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="wai-actions">
+                      <button
+                        type="button"
+                        className="btn-primary small"
+                        disabled={!!busy || !pickJob}
+                        onClick={() =>
+                          void act(
+                            "Filing…",
+                            () => fileInboxItem(item.id, pickJob),
+                            `Filed to ${jobsByLabel.find((j) => j.estimateId === pickJob)?.label ?? "the job"}.`
+                          )
+                        }
+                      >
+                        File
+                      </button>
+                      <button type="button" className="btn-ghost small" disabled={!!busy} onClick={() => setPickFor(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {actions.includes("restore") && (
+                  <div className="wai-actions">
+                    <button
+                      type="button"
+                      className="btn-ghost small"
+                      disabled={!!busy}
+                      onClick={() => void act("Putting it back…", () => restoreInboxItem(item.id), "Back in To sort.")}
+                    >
+                      Put back
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

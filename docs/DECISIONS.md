@@ -2713,7 +2713,7 @@ No SQL.
 - **Files are copied on arrival, sorted later.** A general group's photos and files go to `whatsapp-inbox/<company>/<message>-<name>` in the lead-files bucket (`media_path`), not onto a customer, so a receipt isn't lost to WhatsApp's own retention while it waits. Each card stays in *To sort* until someone acts on it:
   - **File to a job:** copies it under the job's customer, filed under the contract, so it shows in the job's Photos or Permits & files.
   - **Make a bill:** opens the normal Add a bill window with the receipt attached. On save it's copied into that job's receipt slot (`receiptUploadPath`), so the bill passes the same checks and lands in Bills to Pay, job costs and QuickBooks like any bill. Only shown to people who may record costs.
-  - **Dismiss:** with **Put back** from the Dismissed tab.
+  - **Dismiss:** with **Put back** from the Dismissed tab. Any card waiting to be sorted can be dismissed, even one whose copy failed or was too big; otherwise it would sit in To sort for good (`inboxCardActions`, tested).
 
   Each action claims the item first (an update that must find it unsorted), so two people sorting at once never file one receipt twice.
 - **Who sorts.** Office, Admin and Production: the people who file a job's paperwork (`canEditChecklists`). The menu default matches (`defaultPageVisible`). RLS on general links grows a second arm, `has_role_in_company('Office' | 'Production')`, so a general group's messages, and opening its files (`staffCanReadFile` via `media_path`), stay with them.
