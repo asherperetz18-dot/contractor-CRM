@@ -257,3 +257,32 @@ test("a cost whose customer is deleted after the costs were read is left alone t
   const shaped = run.slice(run.indexOf("const costs: SyncCost[] = costRows"), run.indexOf("const steps = planCostSync("));
   assert.match(shaped, /\.filter\(\(x\) => x\.source === "manual" && !billCosts\.has\(x\.id\) && !leftAlone\.includes\(x\.id\)\)/);
 });
+
+// ---------------------------------------------------------------- step 3 adds their customers and jobs (invoice-sync-run.ts)
+
+test("the invoices job adds and keeps the customers and jobs sent job costs are tagged with", () => {
+  const run = source("./invoice-sync-run.ts");
+  // Every cost already in QuickBooks, whatever bills' switch says: only the invoices job adds customers and jobs.
+  assert.match(run, /record_type === "expense" && inQuickBooks\(r\)/);
+  const sentCosts = run.indexOf("const sentCosts = ");
+  assert.ok(sentCosts >= 0, "the sent costs are listed");
+  const read = run.slice(sentCosts, run.indexOf("links.set(id, link)", sentCosts));
+  assert.doesNotMatch(read, /send_bills|send_costs/);
+  // Read by id, in this company only (a database without 0230 has no such records, so reads nothing).
+  assert.match(
+    read,
+    /admin\.from\("job_expenses"\)\.select\("id, lead_id, estimate_payment_id"\)\.eq\("company_id", companyId\)\.in\("id", chunk\)/
+  );
+  // Linked to their jobs the way bills are (bill-jobs.ts), into the same list the plan gets.
+  assert.match(run, /for \(const \[id, link\] of await billJobLinks\(admin, companyId, costRows\)\) links\.set\(id, link\);/);
+  // Before the contracts and customers behind the links are read, so theirs load too.
+  const merged = run.indexOf("links.set(id, link)");
+  assert.ok(merged > run.indexOf("const links = await billJobLinks("), "bills' links come first");
+  assert.ok(merged < run.indexOf("await loadDocs([...links.values()]"), "merged before the contracts are read");
+  assert.ok(merged < run.indexOf("const leadIds = "), "merged before the customers are read");
+  // The invoices job only reads job costs: it never writes one (that would lock it from ✎ Edit).
+  for (const m of run.matchAll(/\.from\(\s*"job_expenses"\s*\)/g)) {
+    const end = run.indexOf(";", m.index);
+    assert.doesNotMatch(run.slice(m.index, end < 0 ? undefined : end), /\.(update|insert|upsert|delete)\(/);
+  }
+});

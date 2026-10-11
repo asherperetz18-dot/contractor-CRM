@@ -474,6 +474,13 @@ async function run(
     : [];
   const sentBills = new Set(records.filter((r) => r.record_type === "bill" && inQuickBooks(r)).map((r) => r.record_id));
   const links = await billJobLinks(admin, companyId, billRows.filter((b) => sentBills.has(b.id)));
+  // Job costs already in QuickBooks (step 4, DECISIONS #199) are tagged the same way: their customers and jobs
+  // are added and kept here too. Read by id, so a database without 0230 (no such records) reads nothing.
+  const sentCosts = records.filter((r) => r.record_type === "expense" && inQuickBooks(r)).map((r) => r.record_id);
+  const costRows = await inChunks<{ id: string; lead_id: string | null; estimate_payment_id: string | null }>(sentCosts, (chunk) =>
+    admin.from("job_expenses").select("id, lead_id, estimate_payment_id").eq("company_id", companyId).in("id", chunk)
+  );
+  for (const [id, link] of await billJobLinks(admin, companyId, costRows)) links.set(id, link);
   await loadDocs([...links.values()].map((l) => l.contractId ?? ""));
 
   const leadIds = [...new Set([...[...docRows.values()].map((d) => d.lead_id), ...[...links.values()].map((l) => l.leadId)])];
