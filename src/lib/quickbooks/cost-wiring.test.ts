@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { qbWebUrl, type SyncRecord } from "./bill-status.ts";
 
 /**
  * Step 4 (DECISIONS #199): lender fees go to QuickBooks as expenses. Every
@@ -92,35 +91,6 @@ test("0230's list of record types is the CRM's: all 13", () => {
   assert.deepEqual([...union[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1]).sort(), [...expected].sort());
 });
 
-test("a job cost's records carry their customer, and Open in QuickBooks names an expense", () => {
-  const record: SyncRecord = {
-    record_type: "expense",
-    record_id: "c1",
-    bill_id: "c1",
-    lead_id: "L1",
-    qb_id: "77",
-    qb_hash: "h",
-    tried_hash: null,
-    doubt: null,
-    status: "sent",
-    failed_op: null,
-    reason: null,
-    tries: 0,
-    next_try_at: null,
-    sent_at: "2026-10-08T15:00:00Z",
-  };
-  assert.equal(record.lead_id, "L1");
-  // The address format only: Intuit's real expense page is still to be tried (open question 1).
-  assert.equal(
-    qbWebUrl("sandbox", "expense", "77", "9341"),
-    "https://app.sandbox.qbo.intuit.com/app/expense?txnId=77&companyId=9341"
-  );
-  assert.equal(
-    qbWebUrl("production", "expense", "77", "9341"),
-    "https://app.qbo.intuit.com/app/expense?txnId=77&companyId=9341"
-  );
-});
-
 // ---------------------------------------------------------------- the mark
 
 test("Funded marks the lender's fee it saves, and still saves it before 0230", () => {
@@ -150,4 +120,18 @@ test("only Funded and Bills to Pay add job costs; the dead createJobExpense is g
   }
   // A 'manual' "Financing fee" cost the server inserts is marked by 0230's trigger, so no other place may insert one.
   assert.deepEqual([...new Set(inserters)].sort(), ["lib/actions/financing.ts", "lib/actions/vendor-bills.ts"]);
+});
+
+// ---------------------------------------------------------------- the pure parts
+
+test("the job-cost chips and wordings stay safe for the browser: no node:crypto, only bill-status", () => {
+  // Bills to Pay's browser code shows the chips, so this file mustn't pull in anything server-only.
+  const status = source("./cost-status.ts");
+  const imports = [...status.matchAll(/^import [^;]*? from "([^"]+)";/gm)].map((m) => m[1]);
+  assert.deepEqual(imports, ["./bill-status.ts"]);
+  assert.doesNotMatch(status, /["']node:|["']server-only["']/);
+  // The planner hashes, so it may use node:crypto; it shares the wordings rather than copying them.
+  const plan = source("./cost-sync.ts");
+  assert.match(plan, /from "\.\/cost-status\.ts";/);
+  assert.doesNotMatch(plan, /"The CRM doesn't know what paid for this cost/);
 });

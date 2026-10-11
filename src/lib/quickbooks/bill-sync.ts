@@ -124,11 +124,18 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /**
  * A bill's receipt as QuickBooks will hold it: "Receipt · Contractor
  * Warehouse · Oct 7.jpg", with its type. A kind of file QuickBooks doesn't
- * take, or one kept in Google Drive, waits instead, saying why.
+ * take, or one kept in Google Drive, waits instead, saying why. `words`:
+ * what a job cost's receipt says instead (DECISIONS #199) -- its name with
+ * no vendor, and its Google Drive wait; left out, a bill's.
  */
-export function receiptFile(path: string, vendorName: string | null, day: string): { file: { fileName: string; contentType: string } } | { wait: string } {
+export function receiptFile(
+  path: string,
+  vendorName: string | null,
+  day: string,
+  words: { label?: string; drive?: string } = {}
+): { file: { fileName: string; contentType: string } } | { wait: string } {
   if (!path.startsWith("receipts/")) {
-    return { wait: "This receipt is kept in Google Drive, so it can't be attached in QuickBooks. Attach the file to the bill instead." };
+    return { wait: words.drive ?? "This receipt is kept in Google Drive, so it can't be attached in QuickBooks. Attach the file to the bill instead." };
   }
   const name = path.slice(path.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
@@ -143,7 +150,7 @@ export function receiptFile(path: string, vendorName: string | null, day: string
   }
   const [, m, d] = day.split("-").map(Number);
   const when = m && d ? `${MONTHS[m - 1]} ${d}` : day;
-  const vendor = qbVendorName(vendorName) || "Bill";
+  const vendor = qbVendorName(vendorName) || words.label || "Bill";
   return { file: { fileName: qbText(`Receipt · ${vendor} · ${when}.${ext}`, 1000), contentType } };
 }
 
@@ -158,12 +165,12 @@ export function billMemo(p: { docNumber: string | null; customer: string | null;
   return parts.length ? parts.join(" · ") : "No job (overhead)";
 }
 
-const dollars = (cents: number) => Math.round(cents) / 100;
+export const dollars = (cents: number) => Math.round(cents) / 100;
 
 // ---------------------------------------------------------------- what is sent
 
 /** Tags a bill's line with its job: not billable, since the CRM bills its own costs back. */
-const jobTag = (tag: string | null | undefined) => (tag ? { CustomerRef: { value: tag }, BillableStatus: "NotBillable" as const } : {});
+export const jobTag = (tag: string | null | undefined) => (tag ? { CustomerRef: { value: tag }, BillableStatus: "NotBillable" as const } : {});
 
 /** A new bill. With no due date in the CRM it's due on its bill date. */
 export function billBody(bill: SyncBill, ref: { vendorId: string; accountId: string }): QbBillBody {
@@ -188,9 +195,10 @@ export function billBody(bill: SyncBill, ref: { vendorId: string; accountId: str
  * Moving a bill's job on its lines. The job goes on a line with no customer,
  * or one carrying the tag the CRM itself last sent on this bill (`lastTag`),
  * and comes off it when the bill leaves the job. Any other customer on a line
- * -- even one the CRM also knows -- is the bookkeeper's, and stays.
+ * -- even one the CRM also knows -- is the bookkeeper's, and stays. (A job
+ * cost's expense lines move the same way, DECISIONS #199.)
  */
-function lineTags(bill: SyncBill, lastTag: string | null) {
+export function lineTags(bill: { tag?: string | null }, lastTag: string | null) {
   const detailOf = (l: Record<string, unknown>) => (l.AccountBasedExpenseLineDetail ?? {}) as Record<string, unknown>;
   const tagOn = (l: Record<string, unknown>) => {
     const value = (detailOf(l).CustomerRef as { value?: unknown } | undefined)?.value;
@@ -323,7 +331,7 @@ export function billHash(bill: SyncBill): string {
   return bill.tag ? `${base}${JOB_HASH}${bill.tag}` : base;
 }
 
-const JOB_HASH = ":job:";
+export const JOB_HASH = ":job:";
 
 /**
  * Why a sent bill's job was left off in QuickBooks: its books are closed for
@@ -336,7 +344,7 @@ export function keptOutReason(closeDate: string | null): string {
     : "Its job is left off in QuickBooks: the books there are closed for its date.";
 }
 /** Two bill hashes that differ only in the job. */
-const onlyJobDiffers = (a: string | null, b: string) => !!a && a !== b && a.split(JOB_HASH)[0] === b.split(JOB_HASH)[0];
+export const onlyJobDiffers = (a: string | null, b: string) => !!a && a !== b && a.split(JOB_HASH)[0] === b.split(JOB_HASH)[0];
 
 export function paymentHash(payment: SyncPayment): string {
   return sha([
