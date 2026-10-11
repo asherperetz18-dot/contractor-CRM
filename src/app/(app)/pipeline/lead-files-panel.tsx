@@ -55,16 +55,19 @@ export function LeadFilesPanel({
   // A refused delete ("Only Office or Admin can delete files.") used to
   // look like success: the result was dropped (DECISIONS #200).
   const [deleteError, setDeleteError] = useState("");
-  // One delete at a time per file: a second ✕ on a slow line used to come
-  // back "refused" for a file the first had already deleted.
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  // A file's ✕ stays off from the click until the reload drops the file:
+  // a second ✕ on a slow line used to come back "refused" for a file the
+  // first had already deleted. Only a delete that didn't happen turns it
+  // back on ("Deleted, but…" did happen).
+  const [deleting, setDeleting] = useState<Set<string>>(() => new Set());
+  const without = (s: Set<string>, id: string) => new Set([...s].filter((x) => x !== id));
   async function handleDelete(file: LeadFile) {
     if (!window.confirm(deletePhotoConfirm(file.file_name, file.storage_provider, "contact"))) return;
     setDeleteError("");
-    setDeletingId(file.id);
+    setDeleting((s) => new Set(s).add(file.id));
     const res = await attempt(() => deleteLeadFile(file.id));
-    setDeletingId(null);
     if (res.error) setDeleteError(res.error);
+    if (res.error && !res.error.startsWith("Deleted,")) setDeleting((s) => without(s, file.id));
     // Reloaded either way: "Deleted, but saving it to the deletion
     // history failed" is an error about a file that's gone.
     onChanged();
@@ -133,7 +136,7 @@ export function LeadFilesPanel({
                     type="button"
                     className="icon-btn notes-timeline-delete"
                     onClick={() => handleDelete(f)}
-                    disabled={deletingId === f.id}
+                    disabled={deleting.has(f.id)}
                     aria-label="Delete file"
                   >
                     ✕

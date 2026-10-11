@@ -101,11 +101,16 @@ test("the estimate index counts a contact's invoices", () => {
   assert.match(index, /entry\.invoices = \(entry\.invoices \?\? 0\) \+ 1;\s*continue;/);
 });
 
-test("a restored contact gets its estimate photos back", () => {
-  // estimate_files.lead_file_id references lead_files (0080), so they go in
-  // after the contact's files, or every one fails its foreign key.
+test("a restored contact gets its estimate photos and billed invoice lines back", () => {
+  // estimate_files.lead_file_id references lead_files (0080), and an
+  // invoice line's source_expense_id a job cost (0180), so they go in after
+  // the contact's own rows, or every one fails its foreign key.
   const trash = source("./lead-trash.ts");
   assert.match(trash, /for \(const table of ESTIMATE_CHILDREN\) \{\s*if \(!LATER_ESTIMATE_CHILDREN\.has\(table\)\)/);
-  assert.match(trash, /const LATER_ESTIMATE_CHILDREN = new Set<string>\(\["estimate_files", "bill_credits", "estimate_financing_events"\]\);/);
-  assert.match(trash, /for \(const table of LEAD_CHILDREN\) \{[\s\S]*?\}\s*[\s\S]*?for \(const table of LATER_ESTIMATE_CHILDREN\) await put\(table, payload\.children\[table\]\);/);
+  assert.match(trash, /const LATER_ESTIMATE_CHILDREN = new Set<string>\(\[\s*"estimate_items",\s*"estimate_files",\s*"bill_credits",\s*"estimate_financing_events",?\s*\]\);/);
+  // In the restore, not the snapshot above it.
+  const restore = trash.slice(trash.indexOf("export async function restoreSnapshot("));
+  const leadPass = restore.indexOf("for (const table of LEAD_CHILDREN)");
+  const laterPass = restore.indexOf("for (const table of LATER_ESTIMATE_CHILDREN) await put(table, payload.children[table]);");
+  assert.ok(leadPass > 0 && laterPass > leadPass);
 });

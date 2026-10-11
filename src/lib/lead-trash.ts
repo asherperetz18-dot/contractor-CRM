@@ -62,10 +62,17 @@ const RELINK_TABLES: { table: string; column: string }[] = [
 ];
 
 // Estimate children that point at a contact's own rows, so they go in
-// after them: a photo on an estimate at its lead file (0080, NOT NULL --
-// restored before them, every one failed its foreign key), a credit at
-// the refund it came with, a financing step at its follow-up task.
-const LATER_ESTIMATE_CHILDREN = new Set<string>(["estimate_files", "bill_credits", "estimate_financing_events"]);
+// after them (restored before them, each failed its foreign key): an
+// invoice line at the job cost it bills (0180), a photo on an estimate at
+// its lead file (0080, NOT NULL; after the lines, which it can pin to), a
+// credit at the refund it came with, a financing step at its follow-up
+// task. A Set keeps this order.
+const LATER_ESTIMATE_CHILDREN = new Set<string>([
+  "estimate_items",
+  "estimate_files",
+  "bill_credits",
+  "estimate_financing_events",
+]);
 
 type Row = Record<string, unknown>;
 

@@ -671,7 +671,7 @@ export function EventForm({
     return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
   }
   // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
-  // While a save or delete is out, an alert waits.
+  // While a save or delete is out, a click on an alert does nothing.
   useHoldUnsaved(isDirty, () => !pending && leaveOk());
 
   function requestClose() {

@@ -234,7 +234,9 @@ export function LeadForm({
       opening
     )
   );
-  const [savedKey, setSavedKey] = useState(openingKey);
+  // Re-renders when a save answers: the saver, not React state, knows
+  // what's saved and what's still out.
+  const [, setSettled] = useState(0);
   const [saveError, setSaveError] = useState("");
   const [projectTypeOptions, setProjectTypeOptions] = useState<{ id: string; name: string }[]>(
     projectTypes
@@ -474,13 +476,14 @@ export function LeadForm({
 
   const payload = contactPayload(form, hasSecondContact);
   const payloadKey = contactSaveKey(payload);
-  const autosaveDirty = payloadKey !== savedKey;
+  // Counts a save still out too: an edit undone while it's out isn't saved.
+  const autosaveDirty = saver.dirty(payload);
   const formValid = contactFormComplete(form, { asLead: newLead });
 
   async function saveFields(p: LeadInput): Promise<{ error?: string }> {
     setSaveError("");
     const result = await saver.send(p);
-    setSavedKey(saver.savedKey());
+    setSettled((n) => n + 1);
     if (result.error) setSaveError(result.error);
     return result;
   }
@@ -539,14 +542,19 @@ export function LeadForm({
   }
 
   // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
-  // While the window is busy saving or leaving, an alert waits.
+  // While the window is busy saving or leaving, a click on an alert does
+  // nothing; it can be clicked again once the window settles.
   useHoldUnsaved(draftsWaiting || (!!lead && !readOnly && autosaveDirty), () => !pending && leaveSaved());
 
+  // The X and the backdrop sit outside the fieldset that `pending`
+  // disables: nothing closes the window while a write is out.
   async function handleClose() {
+    if (pending) return;
     if (!(await leaveSaved())) return;
-    // Something saved while the window was open: the host refetches its
-    // board or rows, which router.refresh doesn't reach.
-    if (saver.savedKey() !== openingKey) {
+    // Something saved while the window was open, or a save that outlasted
+    // the wait may still land: the host refetches its board or rows,
+    // which router.refresh doesn't reach.
+    if (saver.savedKey() !== openingKey || saver.busy()) {
       refresh();
       onSaved();
     } else {
@@ -611,6 +619,9 @@ export function LeadForm({
     setPending(true);
     // The name and address as saved -- just now, or before a change the
     // person chose to go without -- not the copy the window opened with.
+    // A save that outlasted the wait lands before this anyway (actions run
+    // in order), so read what's saved once it has.
+    await saver.idle();
     const saved = saver.savedPayload();
     const result = await attempt(() =>
       convertLeadToJob({
@@ -634,9 +645,11 @@ export function LeadForm({
   async function handleBook() {
     if (!lead || !(await leaveSaved())) return;
     setPending(true);
-    const contactName = clientName(form);
-    // The stage as saved decides whether booking moves it on.
+    // The name and stage as saved, as for Create Job: the stage decides
+    // whether booking moves it on.
+    await saver.idle();
     const saved = saver.savedPayload();
+    const contactName = clientName(saved);
     const result = await attempt(() => bookAppointmentForLead(lead.id, saved.stage, {
       title: `${booking.eventType} — ${contactName}`,
       date: booking.date,

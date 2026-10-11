@@ -47,8 +47,13 @@ export function VisitMedia({
   const [error, setError] = useState("");
 
   async function reload() {
-    const res = await getVisitMedia(eventId);
-    setFiles(res.files ?? []);
+    try {
+      const res = await getVisitMedia(eventId);
+      // A refused load keeps what's shown rather than emptying it.
+      if (res.files) setFiles(res.files);
+    } catch {
+      // Unreachable: keep what's shown.
+    }
   }
 
   const uploadOne = useCallback(
@@ -90,11 +95,12 @@ export function VisitMedia({
     setBusy("Removing…");
     setError("");
     const res = await attempt(() => deleteLeadFile(f.id));
-    setBusy(null);
     if (res.error) setError(res.error);
     // Reloaded either way: a delete whose history record failed still
-    // removed the photo.
+    // removed the photo. Busy until then, so its Remove can't be pressed
+    // again for a photo that's gone.
     await reload();
+    setBusy(null);
   }
 
   return (

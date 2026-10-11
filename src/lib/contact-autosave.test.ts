@@ -131,6 +131,25 @@ test("what was last saved is kept, for actions that must not use unsaved values"
   assert.deepEqual(saver.savedPayload(), { n: 1 });
 });
 
+test("an action after a slow save can wait for it, and then reads what landed", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const saver = createContactSaver(async () => {
+    await gate;
+  }, { n: 0 });
+  assert.equal(saver.busy(), false);
+  void saver.send({ n: 1 });
+  assert.equal(saver.busy(), true);
+  let idle = false;
+  const waited = saver.idle().then(() => (idle = true));
+  await Promise.resolve();
+  assert.equal(idle, false);
+  release();
+  await waited;
+  assert.equal(saver.busy(), false);
+  assert.deepEqual(saver.savedPayload(), { n: 1 });
+});
+
 test("waiting on a save gives up after a while, with a message, without stopping it", async () => {
   assert.deepEqual(await withinWait(Promise.resolve({}), 50), {});
   const never = new Promise<{ error?: string }>(() => {});
@@ -169,9 +188,10 @@ test("leaving without the window's own buttons sends a valid unsaved change, unl
   saver.flushHeld();
   await saver.send({ n: 0 });
   assert.deepEqual(calls, [], "nothing held, or nothing new");
+  const drain = () => new Promise((r) => setTimeout(r, 0));
   saver.hold({ n: 1 });
   saver.flushHeld();
-  await saver.send({ n: 1 });
+  await drain();
   assert.deepEqual(calls, [1]);
   saver.hold(null); // an incomplete form isn't sent
   saver.flushHeld();
@@ -184,7 +204,7 @@ test("leaving without the window's own buttons sends a valid unsaved change, unl
   // open after a "without them" (a stage move answered No).
   saver.hold({ n: 3 });
   saver.flushHeld();
-  await saver.send({ n: 3 });
+  await drain();
   assert.deepEqual(calls, [1, 3]);
 });
 
@@ -214,6 +234,15 @@ test("the contact window saves through one saver, and waits for it on the way ou
   // board or rows, which router.refresh doesn't reach.
   assert.match(fn("async function handleClose()"), /saver\.savedKey\(\) !== openingKey[\s\S]*?onSaved\(\);[\s\S]*?onCancel\(\);/);
   assert.match(form_, /contactSaveStatus\(\{/);
+  // The footer and the unload hold read the saver, so an edit undone
+  // while its save is out doesn't read "✓ Saved".
+  assert.match(form_, /const autosaveDirty = saver\.dirty\(payload\);/);
+  // Nothing closes the window mid-write: the X and the backdrop sit
+  // outside the fieldset that \`pending\` disables.
+  const close = fn("async function handleClose()");
+  assert.match(close, /async function handleClose\(\) \{\s*if \(pending\) return;/);
+  // A save that outlasted the wait may still land: refetch either way.
+  assert.match(close, /if \(saver\.savedKey\(\) !== openingKey \|\| saver\.busy\(\)\) \{/);
 });
 
 test("a stage move, Create Job and booking can't be undone by a save still waiting", () => {
@@ -224,8 +253,12 @@ test("a stage move, Create Job and booking can't be undone by a save still waiti
   // ...and acts on what was saved: after "without them", the values on
   // screen never reached the contact.
   assert.doesNotMatch(form_, /convertLeadToJob\(lead\)/);
-  assert.match(fn("async function handleConvert()"), /const saved = saver\.savedPayload\(\);[\s\S]*first_name: saved\.first_name/);
-  assert.match(fn("async function handleBook()"), /const saved = saver\.savedPayload\(\);[\s\S]*bookAppointmentForLead\(lead\.id, saved\.stage,/);
+  // A save that outlasted the wait lands first (actions run in order), so
+  // they read what's saved once it has.
+  assert.match(fn("async function handleConvert()"), /await saver\.idle\(\);\s*const saved = saver\.savedPayload\(\);[\s\S]*first_name: saved\.first_name/);
+  const book = fn("async function handleBook()");
+  assert.match(book, /await saver\.idle\(\);\s*const saved = saver\.savedPayload\(\);\s*const contactName = clientName\(saved\);/);
+  assert.match(book, /bookAppointmentForLead\(lead\.id, saved\.stage,/);
 });
 
 test("closing by other means sends the last valid change; a deleted contact's isn't", () => {

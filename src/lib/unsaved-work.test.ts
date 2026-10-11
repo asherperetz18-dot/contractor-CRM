@@ -86,8 +86,8 @@ test("the windows hold their unsaved work, and a popup alert asks before leaving
     source("../app/(app)/pipeline/lead-form.tsx"),
     /useHoldUnsaved\(draftsWaiting \|\| \(!!lead && !readOnly && autosaveDirty\), \(\) => !pending && leaveSaved\(\)\);/
   );
-  // While the window is busy saving or leaving, an alert waits rather than
-  // asking the same questions again.
+  // While the window is busy saving or leaving, a click on an alert does
+  // nothing rather than asking the same questions again.
   assert.match(source("../app/(app)/calendar/event-form.tsx"), /useHoldUnsaved\(isDirty, \(\) => !pending && leaveOk\(\)\);/);
   assert.match(
     source("../app/(app)/popup-alerts.tsx"),

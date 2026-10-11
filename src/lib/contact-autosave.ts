@@ -120,6 +120,10 @@ export function createContactSaver<P extends object>(save: (payload: P) => Promi
     send,
     savedKey: () => saved,
     savedPayload: () => savedValue,
+    /** A save is still out. */
+    busy: () => last !== null,
+    /** Settles once every save sent so far has answered. */
+    idle: (): Promise<void> => tail.then(() => undefined),
     // A save still out with other fields counts too: an edit undone while
     // it's out matches what was saved before, but not what's on its way.
     dirty: (payload: P) => {
