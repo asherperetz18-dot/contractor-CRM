@@ -9,7 +9,9 @@
  * bill's id) -- and from step 3 (DECISIONS #184) a customer, a job, an
  * invoice (a billed stage or an issued invoice, keyed by its stage), a
  * deposit invoice (keyed by its contract), a customer payment, a credit
- * and the $0.00 payment that applies it, and a refund.
+ * and the $0.00 payment that applies it, and a refund -- and from step 4
+ * (DECISIONS #199) a job cost's expense and its receipt, each keyed by
+ * the cost's id.
  */
 export type RecordType =
   | "bill"
@@ -22,7 +24,9 @@ export type RecordType =
   | "customer_payment"
   | "credit"
   | "credit_link"
-  | "refund";
+  | "refund"
+  | "expense"
+  | "expense_receipt";
 /**
  * sent: in QuickBooks as the CRM has it. waiting: can't go yet, or its
  * last change can't. failed: QuickBooks refused it, or its last change.
@@ -53,6 +57,8 @@ export type SyncRecord = {
   tries: number;
   next_try_at: string | null;
   sent_at: string | null;
+  /** For a job cost's records: its customer when last seen (0230). */
+  lead_id?: string | null;
 };
 
 /** What Bills to Pay needs of a record. */
@@ -67,8 +73,8 @@ export function billDay(bill: { billDate: string | null; createdAt: string }): s
 export const inQuickBooks = (r: Pick<SyncRecord, "qb_id" | "status"> | null | undefined) =>
   !!r?.qb_id && r.status !== "removed" && r.status !== "gone";
 
-/** The QuickBooks Online page for a bill (or bill payment), in the right company. */
-export function qbWebUrl(environment: "sandbox" | "production", kind: "bill" | "billpayment" | "invoice", txnId: string, realmId: string): string {
+/** The QuickBooks Online page for a bill (or bill payment, invoice or expense), in the right company. */
+export function qbWebUrl(environment: "sandbox" | "production", kind: "bill" | "billpayment" | "invoice" | "expense", txnId: string, realmId: string): string {
   const host = environment === "production" ? "https://app.qbo.intuit.com" : "https://app.sandbox.qbo.intuit.com";
   return `${host}/app/${kind}?txnId=${encodeURIComponent(txnId)}&companyId=${encodeURIComponent(realmId)}`;
 }

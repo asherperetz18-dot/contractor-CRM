@@ -11,7 +11,6 @@ import {
   contractOfCost,
   type ContractFilingOption,
   type JobExpense,
-  type JobExpenseInput,
 } from "@/lib/data/types";
 import {
   canEditJobCosts,
@@ -174,98 +173,6 @@ export async function getJobExpenses(
       .range(from, to)
   );
   return { expenses: rows };
-}
-
-export async function createJobExpense(
-  input: JobExpenseInput,
-  // The already-uploaded receipt file, when one was attached.
-  receipt?: UploadedReceipt | null
-): Promise<{ error?: string; id?: string }> {
-  const profile = await getCurrentProfile();
-  if (!profile) return { error: "Not signed in." };
-
-  const amount = Math.round(Number(input.amountCents) || 0);
-  if (!amount) return { error: "Enter an amount." };
-  if (!input.spentOn) return { error: "Enter the date it was spent." };
-  if (!input.leadId) return { error: "Pick the job this belongs to." };
-
-  // The receipt path is client-supplied and this function reaches for
-  // the admin client, so it is held to the slot createReceiptUploadUrl
-  // actually issued: under receipts/ for THIS job, on a lead that
-  // belongs to THIS company. Anything else could name another tenant's
-  // object in the shared bucket. Same rule recordLeadFile enforces.
-  let receiptFields: { receipt_url: string; receipt_path: string } | null = null;
-  if (receipt?.path) {
-    if (!canManageCosts(profile)) return { error: "You don't have access to record costs." };
-    if (!receiptPathBelongs(receipt.path, profile.company_id, input.leadId)) {
-      return { error: "That receipt doesn't belong to this job." };
-    }
-    const admin = createAdminClient();
-    const { data: lead } = await admin
-      .from("leads")
-      .select("id")
-      .eq("id", input.leadId)
-      .eq("company_id", profile.company_id)
-      .maybeSingle();
-    if (!lead) return { error: "Job not found." };
-
-    const confirmed = await confirmReceiptUpload(admin, receipt.path);
-    if (confirmed.error || !confirmed.fields) return { error: confirmed.error };
-    receiptFields = confirmed.fields;
-  }
-
-  if (input.estimatePaymentId && !(await phaseIsOnJob(profile.company_id, input.leadId, input.estimatePaymentId))) {
-    return { error: "That contract isn't on this job." };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("job_expenses")
-    .insert({
-      ...(receiptFields ?? {}),
-      company_id: profile.company_id,
-      lead_id: input.leadId,
-      estimate_payment_id: input.estimatePaymentId || null,
-      vendor_id: input.vendorId || null,
-      // Only kept when no vendor record was picked. Storing both would
-      // be two names for one supplier, free to drift apart the moment
-      // somebody corrects the vendor record.
-      vendor: input.vendorId ? null : input.vendor?.trim() || null,
-      category: input.category?.trim() || null,
-      description: input.description?.trim() || null,
-      amount_cents: amount,
-      spent_on: input.spentOn,
-      source: "manual",
-      created_by: profile.id,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    // The row never happened, so nothing references the upload -- sweep
-    // it rather than leave the bucket accumulating orphans. The next
-    // attempt uploads fresh under a new timestamped path.
-    if (receipt?.path && receiptFields) {
-      await createAdminClient().storage.from(RECEIPT_BUCKET).remove([receipt.path]);
-    }
-    return { error: error.message };
-  }
-
-  const id = (data as { id: string }).id;
-  // Only after the row exists, and pointing at the bucket copy until the
-  // very last step -- every way this can fail leaves a reachable receipt.
-  if (receipt?.path && receiptFields) {
-    await promoteReceiptToDrive(
-      profile.company_id,
-      input.leadId,
-      id,
-      receipt.path,
-      receipt.fileName,
-      receipt.contentType
-    );
-  }
-
-  revalidatePath("/estimates");
-  return { id };
 }
 
 /**
@@ -431,8 +338,8 @@ async function loadEditable(
 
 /**
  * Checks a freshly uploaded receipt against the slot it must have come
- * from (this company's job) and that it actually landed. Same rules as
- * createJobExpense.
+ * from (this company's job) and that it actually landed. Same rule
+ * recordLeadFile enforces.
  */
 async function confirmNewReceipt(
   companyId: string,

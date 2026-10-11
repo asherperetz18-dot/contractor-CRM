@@ -2429,19 +2429,6 @@ export type JobExpense = {
   created_at: string;
 };
 
-export type JobExpenseInput = {
-  leadId: string;
-  estimatePaymentId: string | null;
-  vendorId: string | null;
-  /** Only used when no vendor record matches -- a QuickBooks import
-   *  whose supplier is not in the list yet still has to keep the name. */
-  vendor: string;
-  category: string;
-  description: string;
-  amountCents: number;
-  spentOn: string;
-};
-
 // ── Vendors ──────────────────────────────────────────────────────────
 
 /**

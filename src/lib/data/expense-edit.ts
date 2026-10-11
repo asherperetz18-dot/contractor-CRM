@@ -97,7 +97,7 @@ export function jobExpensePatch(
             ? current.estimate_payment_id
             : null,
       vendor_id: input.vendorId || null,
-      // One name per supplier, same rule as createJobExpense.
+      // One name per supplier, same rule as bills.
       vendor: input.vendorId ? null : input.vendor.trim() || null,
       description: input.description.trim() || null,
       amount_cents: amount,

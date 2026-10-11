@@ -668,20 +668,26 @@ export async function recordFinancingStatus(input: {
     // what the loan really brought in. Not for the customer's own loan --
     // their bank charges them, not the company.
     if (feeCents > 0 && !who.chosen?.own) {
-      const { error: feeError } = await admin
-        .from("job_expenses")
-        .insert({
-          company_id: doc.company_id,
-          lead_id: doc.lead_id,
-          estimate_payment_id: null,
-          vendor: lender || null,
-          category: "Financing fee",
-          description: `${lender ? `${lender} dealer fee` : "Lender's fee"} on ${doc.doc_number}`,
-          amount_cents: feeCents,
-          spent_on: day ?? (await companyToday()),
-          source: "manual",
-          created_by: profile.id,
-        });
+      const feeRow: Record<string, unknown> = {
+        company_id: doc.company_id,
+        lead_id: doc.lead_id,
+        estimate_payment_id: null,
+        vendor: lender || null,
+        category: "Financing fee",
+        description: `${lender ? `${lender} dealer fee` : "Lender's fee"} on ${doc.doc_number}`,
+        amount_cents: feeCents,
+        spent_on: day ?? (await companyToday()),
+        source: "manual",
+        created_by: profile.id,
+        // Marks it as a lender's fee (0230): the only job costs that go to QuickBooks (#199).
+        lender_fee: true,
+      };
+      let { error: feeError } = await admin.from("job_expenses").insert(feeRow);
+      // Before 0230 there's no mark: the fee is still saved (0230 marks the ones already saved when it runs).
+      if (feeError && isMissingSchemaError(feeError)) {
+        delete feeRow.lender_fee;
+        ({ error: feeError } = await admin.from("job_expenses").insert(feeRow));
+      }
       if (feeError) feeWarning = `The payment was recorded, but the lender's fee wasn't saved as a job cost: ${feeError.message}`;
       else feeRecorded = feeCents;
     }
@@ -731,7 +737,11 @@ export async function recordFinancingStatus(input: {
     revalidatePath("/invoices");
     revalidatePath("/collect");
   }
-  if (feeRecorded) revalidatePath("/profit-loss");
+  // The fee is listed on Bills to Pay too (Paid › Paid on entry).
+  if (feeRecorded) {
+    revalidatePath("/profit-loss");
+    revalidatePath("/bills");
+  }
   return {
     ok: true,
     movedTo,
