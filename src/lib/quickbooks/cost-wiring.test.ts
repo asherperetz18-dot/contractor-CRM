@@ -135,3 +135,125 @@ test("the job-cost chips and wordings stay safe for the browser: no node:crypto,
   assert.match(plan, /from "\.\/cost-status\.ts";/);
   assert.doesNotMatch(plan, /"The CRM doesn't know what paid for this cost/);
 });
+
+// ---------------------------------------------------------------- the job (cost-sync-run.ts)
+
+/** The `{ … }` block that opens at the first "{" at or after `from`, braces balanced. */
+function block(text: string, from: number): string {
+  const open = text.indexOf("{", from);
+  assert.ok(open >= 0, "a block opens");
+  let depth = 0;
+  for (let i = open; i < text.length; i += 1) {
+    if (text[i] === "{") depth += 1;
+    if (text[i] === "}" && --depth === 0) return text.slice(open, i + 1);
+  }
+  assert.fail("the block closes");
+}
+
+/** Every `Promise.all([ … ])` in the text, brackets balanced. */
+function promiseAlls(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/Promise\.all\(\[/g)) {
+    let depth = 0;
+    for (let i = m.index + "Promise.all(".length; i < text.length; i += 1) {
+      if (text[i] === "[") depth += 1;
+      if (text[i] === "]" && --depth === 0) {
+        out.push(text.slice(m.index, i + 1));
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+test("the job-costs job claims the company, keeps to its QuickBooks company, and never adds an expense twice", () => {
+  const run = source("./cost-sync-run.ts");
+  assert.match(run, /^import "server-only";/);
+  assert.match(run, /export async function syncCompanyCosts\(/);
+  assert.match(run, /costs_claimed_until/);
+  assert.match(run, /\.eq\("realm_id", realmId\)/);
+  assert.match(run, /planCostSync\(/);
+  assert.match(run, /quickBooksAccess\(/);
+  // The exact request is written down before an add goes, and repeated (same id) if no answer came.
+  assert.match(run, /requestId: newRequestId\(\)/);
+  assert.match(run, /case "resolve":/);
+  // A lender fee's receipt is downloaded from storage, cut off with the run, and attached to the expense.
+  assert.match(run, /storage\.from\(RECEIPT_BUCKET\)\.download\(/);
+  assert.match(run, /\.download\(path, \{\}, \{ signal \}\)/);
+  assert.match(run, /entity: "Purchase"/);
+  // A fee deleted with its receipt: QuickBooks' closing date is checked before the receipt is touched.
+  assert.match(run, /forDelete/);
+  // A failed read stops the run: never read as "nothing sent" or "every cost deleted".
+  assert.doesNotMatch(run, /selectAll/);
+  // Bills' job is its own: only its summary's shape is borrowed.
+  assert.deepEqual(
+    [...run.matchAll(/^import ([^;]*?) from "\.\/bill-sync-run";/gm)].map((m) => m[1]),
+    ["type { BillSyncSummary }"]
+  );
+  // Customers and jobs are the invoices job's to add (DECISIONS #184).
+  assert.doesNotMatch(run, /createSales\(|findCustomer\(/);
+});
+
+test("the job-costs job uses the Financing fee match only, never the default account (decision 4)", () => {
+  const run = source("./cost-sync-run.ts");
+  assert.match(run, /\.eq\("category_key", categoryKey\("Financing fee"\)\)/);
+  assert.doesNotMatch(run, /category_key === ""/);
+  assert.doesNotMatch(run, /\.eq\("category_key", ""\)/);
+  // "Lender payouts land in" counts only while QuickBooks still lists it as a Bank account (decision 3).
+  assert.match(run, /payoutAccountOf\(/);
+});
+
+test("the job-costs job only reads job costs: it never writes one, nor locks one from editing", () => {
+  const run = source("./cost-sync-run.ts");
+  for (const m of run.matchAll(/\.from\(\s*"job_expenses"\s*\)/g)) {
+    const end = run.indexOf(";", m.index);
+    const statement = run.slice(m.index, end < 0 ? undefined : end);
+    assert.doesNotMatch(statement, /\.(update|insert|upsert|delete)\(/, statement);
+  }
+  // qb_txn_id / qb_txn_type lock a cost from ✎ Edit (expense-edit.ts).
+  assert.doesNotMatch(run, /qb_txn_id|qb_txn_type/);
+});
+
+test("QuickBooks' closing date is read fresh (or the invoices job's, under 10 minutes old); a failed read stops before anything", () => {
+  const run = source("./cost-sync-run.ts");
+  assert.match(run, /closeDateFor\(/);
+  const read = run.indexOf("readPreferences(");
+  assert.ok(read >= 0, "readPreferences is called");
+  // Before the records are read: a run never goes on as if the books were open.
+  assert.ok(read < run.indexOf('from("quickbooks_sync")'), "the closing date comes before the records");
+  const failed = block(run, run.indexOf('if ("error" in ', read));
+  assert.match(failed, /return \{ \.\.\.summary, error:/);
+  // Read under the claim, so a busy run doesn't read it.
+  assert.ok(run.indexOf("costs_claimed_until") < read);
+});
+
+test("a deleted customer's expenses are never deleted in QuickBooks: trash before the costs, leads and trash again after", () => {
+  const run = source("./cost-sync-run.ts");
+  const trash = [...run.matchAll(/from\("lead_trash"\)/g)].map((m) => m.index);
+  assert.equal(trash.length, 2, "lead_trash is read twice");
+  const costs = [...run.matchAll(/from\("job_expenses"\)/g)].map((m) => m.index);
+  assert.ok(costs.length >= 1, "the costs are read");
+  const leads = [...run.matchAll(/from\("leads"\)/g)].map((m) => m.index);
+  assert.ok(leads.length >= 1, "the customers are read");
+  // The records first (whose customers the trash is checked for), then the trash, then the costs.
+  assert.ok(run.indexOf('from("quickbooks_sync")') < trash[0]);
+  assert.ok(trash[0] < Math.min(...costs), "the first trash read comes before the costs");
+  // A customer deleted meanwhile reads as gone, never as costs deleted with ✎ Edit.
+  for (const at of leads) assert.ok(at > Math.max(...costs), "the customers are read after the costs");
+  assert.ok(trash[1] > Math.max(...costs), "the second trash read comes after the costs");
+  // Never at the same time as the costs: a read that starts first may finish last.
+  for (const all of promiseAlls(run)) {
+    if (!all.includes('from("job_expenses")')) continue;
+    assert.doesNotMatch(all, /from\("leads"\)|from\("lead_trash"\)/, all);
+  }
+});
+
+test("a cost whose customer is deleted after the costs were read is left alone that run", () => {
+  const run = source("./cost-sync-run.ts");
+  // Planned, it would go without its customer's name in the memo: a change sent for a deleted customer.
+  assert.match(run, /const leftAlone = costRows\.filter\(\(x\) => !leadById\.has\(x\.lead_id\)\)\.map\(\(x\) => x\.id\);/);
+  // Like a bill's cost: no step for it or its records; next run reads it gone with its customer.
+  assert.match(run, /billCosts: new Set\(\[\.\.\.billCosts, \.\.\.leftAlone\]\),/);
+  const shaped = run.slice(run.indexOf("const costs: SyncCost[] = costRows"), run.indexOf("const steps = planCostSync("));
+  assert.match(shaped, /\.filter\(\(x\) => x\.source === "manual" && !billCosts\.has\(x\.id\) && !leftAlone\.includes\(x\.id\)\)/);
+});
