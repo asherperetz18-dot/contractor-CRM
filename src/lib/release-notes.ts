@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.270.0",
+    date: "2026-10-11",
+    notes: [
+      "Call Reports: the date filter now sits in the filter row, next to search, rep and disposition, instead of alone in the top-right corner. Pick a period such as Today, Last 7 days or Last month, or pick Custom range… to choose your own From and To dates and press Apply. The date boxes now show the dates you're looking at: after a reload, when you arrive from the Daily Brief's week tile, and when you switch to Custom (they start on the period already on screen, so you only change what you need).",
+    ],
+  },
+  {
     version: "1.269.0",
     date: "2026-10-11",
     notes: [

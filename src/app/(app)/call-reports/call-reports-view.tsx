@@ -40,6 +40,9 @@ export function CallReportsView({
   dispositions,
   canWrite,
   initialRange,
+  initialFrom,
+  initialTo,
+  today,
 }: {
   callLogs: CallLog[];
   leads: LeadLite[];
@@ -47,23 +50,35 @@ export function CallReportsView({
   dispositions: CallDispositionRow[];
   canWrite: boolean;
   initialRange: string;
+  /** The loaded period's first and last day ("" for no first day), for the custom boxes. */
+  initialFrom: string;
+  initialTo: string;
+  /** The company's today: the latest day the boxes offer. */
+  today: string;
 }) {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [repFilter, setRepFilter] = useState("All");
   const [dispositionFilter, setDispositionFilter] = useState("All");
   const [rangeKey, setRangeKey] = useState(initialRange);
+  // The boxes start on the days the page loaded: a reload or a linked
+  // custom range shows its own dates, and picking Custom starts from the
+  // period on screen rather than from two blanks.
+  const [customFrom, setCustomFrom] = useState(initialFrom);
+  const [customTo, setCustomTo] = useState(initialTo);
   // A link can land here while the report is open -- the Daily Brief
   // opens from the top bar on this very page, and its Calls tile links
-  // here. The calls follow the address; the picker must name its period,
-  // not the last one picked (adjusting state from a prop, during render).
-  const [seenRange, setSeenRange] = useState(initialRange);
-  if (seenRange !== initialRange) {
-    setSeenRange(initialRange);
-    if (initialRange !== rangeKey) setRangeKey(initialRange);
+  // here. The calls follow the address; the picker must name its period
+  // and days, not the last ones picked (adjusting state from a prop,
+  // during render).
+  const link = `${initialRange}|${initialFrom}|${initialTo}`;
+  const [seenLink, setSeenLink] = useState(link);
+  if (seenLink !== link) {
+    setSeenLink(link);
+    setRangeKey(initialRange);
+    setCustomFrom(initialFrom);
+    setCustomTo(initialTo);
   }
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
 
   // Local midnights, sent as UTC instants -- "today" means today where
   // the person is sitting, not where the server happens to run.
@@ -133,44 +148,6 @@ export function CallReportsView({
           <h1 className="module-title">Call Reports</h1>
           <p className="module-sub">Every call placed through the in-app dialer, with recordings and outcomes</p>
         </div>
-        <div className="cr-range">
-          <select
-            value={rangeKey}
-            onChange={(e) => applyRange(e.target.value)}
-            aria-label="Date range"
-          >
-            {RANGES.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-          {rangeKey === "custom" && (
-            <>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={(e) => setCustomFrom(e.target.value)}
-                aria-label="From date"
-              />
-              <span>–</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={(e) => setCustomTo(e.target.value)}
-                aria-label="To date"
-              />
-              <button
-                type="button"
-                className="btn-ghost small"
-                disabled={!customFrom || !customTo || customFrom > customTo}
-                onClick={() => applyRange("custom", customFrom, customTo)}
-              >
-                Apply
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       <div className="stat-grid">
@@ -200,6 +177,47 @@ export function CallReportsView({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search name or phone…"
         />
+        {/* With the other filters, not alone in the page's corner. */}
+        <div className="cr-range">
+          <select
+            value={rangeKey}
+            onChange={(e) => applyRange(e.target.value)}
+            aria-label="Date range"
+          >
+            {RANGES.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+          {rangeKey === "custom" && (
+            <>
+              <input
+                type="date"
+                value={customFrom}
+                max={today}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                aria-label="From date"
+              />
+              <span>–</span>
+              <input
+                type="date"
+                value={customTo}
+                max={today}
+                onChange={(e) => setCustomTo(e.target.value)}
+                aria-label="To date"
+              />
+              <button
+                type="button"
+                className="btn-ghost small"
+                disabled={!customFrom || !customTo || customFrom > customTo}
+                onClick={() => applyRange("custom", customFrom, customTo)}
+              >
+                Apply
+              </button>
+            </>
+          )}
+        </div>
         <select value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
           <option value="All">All Reps</option>
           {repDropdownOptions(

@@ -3,6 +3,9 @@ import { selectAll } from "@/lib/data/select-all";
 import { getCurrentProfile } from "@/lib/data/profile";
 import { getCompanyMembers } from "@/lib/data/company";
 import { leadsLiteByIds } from "@/lib/data/lead-lite";
+import { getCompanyZone } from "@/lib/data/company-today";
+import { isoDateInZone } from "@/lib/company-clock";
+import { callReportDays } from "@/lib/call-reports-range";
 import {
   canUseSalesCenter,
   type CallDispositionRow,
@@ -34,6 +37,12 @@ export default async function CallReportsPage({
   const thirtyDaysBack = new Date(Date.now() - 30 * 86400000).toISOString();
   const fromIso = valid(fromTs) ? fromTs! : rangeKey === "all" ? null : thirtyDaysBack;
   const toIso = valid(toTs) ? toTs! : null;
+  // The same period as days, for the custom From / To boxes -- so a
+  // reload or a linked range shows its dates, and picking Custom starts
+  // from the period on screen.
+  const zone = await getCompanyZone();
+  const today = isoDateInZone(new Date(), zone);
+  const days = callReportDays(fromIso, toIso, zone, today);
 
   const [callLogs, reps, { data: dispositions }] = await Promise.all([
     // selectAll, where a bare select stopped at PostgREST's 1000-row
@@ -65,6 +74,9 @@ export default async function CallReportsPage({
       dispositions={(dispositions as CallDispositionRow[]) ?? []}
       canWrite={canWrite}
       initialRange={rangeKey}
+      initialFrom={days.from}
+      initialTo={days.to}
+      today={today}
     />
   );
 }

@@ -32,10 +32,12 @@ test("Text Reports follows a link that arrives while it's open", () => {
 });
 
 test("Call Reports names the period a link brought, not the last one picked", () => {
+  // Its days too: the brief's week tile lands on a custom range, and the
+  // From / To boxes must show that week, not the dates last typed.
   const view = source("../app/(app)/call-reports/call-reports-view.tsx");
   assert.match(
     view,
-    /if \(seenRange !== initialRange\) \{\s*setSeenRange\(initialRange\);\s*if \(initialRange !== rangeKey\) setRangeKey\(initialRange\);/
+    /if \(seenLink !== link\) \{\s*setSeenLink\(link\);\s*setRangeKey\(initialRange\);\s*setCustomFrom\(initialFrom\);\s*setCustomTo\(initialTo\);/
   );
 });
 
