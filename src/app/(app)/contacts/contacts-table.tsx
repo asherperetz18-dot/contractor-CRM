@@ -25,6 +25,7 @@ import {
   listMatchingRecipients,
   type ContactListRow,
 } from "@/lib/actions/contact-list";
+import { withFreshPanels } from "@/lib/lead-window-lists";
 import { getLeadCard } from "@/lib/actions/pipeline-board";
 import type { DuplicateGroup } from "@/lib/contact-duplicates";
 import { LeadForm } from "../pipeline/lead-form";
@@ -299,6 +300,18 @@ export function ContactsTable({
       return next;
     });
     setSelectAllNote("");
+  }, []);
+
+  /** A task, note or file changed in the open contact window: reload its
+   *  three lists, leaving the window and what's typed in it alone
+   *  (DECISIONS #201). */
+  const reloadPanels = useCallback(async (leadId: string) => {
+    try {
+      const fresh = await getLeadCard(leadId);
+      setEditing((open) => withFreshPanels(open, fresh));
+    } catch {
+      // Unreachable: the lists catch up when the window is next opened.
+    }
   }, []);
 
   /** Opens a contact window from any surface: a row, a duplicate-group
@@ -721,6 +734,7 @@ export function ContactsTable({
           onCancel={() => closeLead(false)}
           onSaved={() => closeLead(true)}
           onDeleted={() => closeLead(true)}
+          onPanelsChanged={() => void reloadPanels(editing.lead.id)}
         />
       )}
     </div>

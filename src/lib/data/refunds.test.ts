@@ -184,8 +184,13 @@ test("the places that look at single rows know a refund when they see one", () =
   // credit after the refund it came with.
   const trash = source("../lead-trash.ts");
   assert.match(trash, /\(a\.refund_of \? 1 : 0\) - \(b\.refund_of \? 1 : 0\)/);
-  assert.match(trash, /if \(table !== "bill_credits"( && table !== "estimate_financing_events")?\)/);
-  assert.match(trash, /await put\("bill_credits", payload\.children\.bill_credits\);/);
+  // Credits go in after the contact's payments (refunds among them).
+  assert.match(trash, /const LATER_ESTIMATE_CHILDREN = new Set<string>\(\[[^\]]*"bill_credits"/);
+  // In the restore, not the snapshot above it.
+  const restore = trash.slice(trash.indexOf("export async function restoreSnapshot("));
+  const leadPass = restore.indexOf("for (const table of LEAD_CHILDREN)");
+  const laterPass = restore.indexOf("for (const table of LATER_ESTIMATE_CHILDREN) await put(table, payload.children[table]);");
+  assert.ok(leadPass > 0 && laterPass > leadPass);
 });
 
 test("no reminder asks for money that just went back until someone says it's still owed", () => {

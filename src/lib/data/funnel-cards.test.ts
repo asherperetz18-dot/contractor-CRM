@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { funnelCardStats, matchesRepFilter, repOptionIds } from "./funnel-cards.ts";
+import { effectiveEstimateStatus, funnelCardStats, matchesRepFilter, repOptionIds } from "./funnel-cards.ts";
 import type { EstimateStatus } from "./types.ts";
 
 /**
@@ -144,4 +144,19 @@ test("an invoice sits on no funnel card: it's not a sale, and not an attachment 
     totalCents: 40_000,
   });
   assert.deepEqual(funnelCardStats(docs, "signed", nobody, repOf), { count: 0, totalCents: 0 });
+});
+
+test("a voided document stays on Voided after its expiry date: not lost, and not money", () => {
+  const docs = [
+    doc({ status: "Void", expires_at: "2000-01-01", total_cents: 1_200_000 }),
+    doc({ status: "Declined", total_cents: 300_000 }),
+  ];
+  assert.deepEqual(funnelCardStats(docs, "void", nobody, repOf), { count: 1, totalCents: 0 });
+  assert.deepEqual(funnelCardStats(docs, "declined", nobody, repOf), { count: 1, totalCents: 300_000 });
+});
+
+test("a voided change order past its date reads Void inside Attached", () => {
+  const co = doc({ kind: "change_order", status: "Void", expires_at: "2000-01-01" });
+  assert.equal(effectiveEstimateStatus(co), "Void");
+  assert.equal(funnelCardStats([co], "changes", nobody, repOf).count, 1);
 });

@@ -39,8 +39,12 @@ test("every way out of the window asks before dropping unsaved work", () => {
   assert.match(form, /async function writeEstimate\(\) \{\s*if \(!lead \|\| !leaveOk\(\)\) return;/);
   assert.match(form, /function textPhone\(phone: string, body\?: string\) \{\s*if \(!leaveOk\(\)\) return;/);
   assert.match(form, /function openEstimate\(id: string\) \{\s*if \(!leaveOk\(\)\) return;/);
-  // Delete closes the window too.
-  assert.match(form, /async function handleDelete\(\) \{\s*if \(!event \|\| !leaveOk\(\)\) return;/);
+  // Delete asks its own one question, which carries the unsaved warning
+  // (DECISIONS #200).
+  assert.match(form, /async function handleDelete\(\) \{\s*if \(!event\) return;\s*if \(\s*!window\.confirm\(\s*appointmentDeleteConfirm\(/);
+  assert.match(form, /dirty: isDirty,/);
+  assert.match(form, /hasNotes: !!event\.notes\?\.trim\(\),/);
+  assert.match(form, /timeFormat: useTimeFormat\(\)|timeFormat,/);
   assert.doesNotMatch(form, /router\.push\(`\/estimates\/\$\{e\.id\}`\)/);
 });
 

@@ -330,10 +330,12 @@ export async function deleteLead(id: string) {
   // The delete itself still runs as the signed-in user, so RLS gets the
   // final word even though the role check above already passed.
   const supabase = await createClient();
-  const { error } = await supabase.from("leads").delete().eq("id", id);
-  if (error) {
+  // .select() so a delete the policy refused matches no row and says so,
+  // rather than reporting success beside a trash copy (DECISIONS #194).
+  const { data: gone, error } = await supabase.from("leads").delete().eq("id", id).select("id");
+  if (error || !gone?.length) {
     await admin.from("lead_trash").delete().eq("id", trashRow.id);
-    return { error: error.message };
+    return { error: error?.message ?? "That contact couldn't be deleted — your role may not have permission." };
   }
 
   // Opportunistic purge: the trash promises 30 days, not forever.

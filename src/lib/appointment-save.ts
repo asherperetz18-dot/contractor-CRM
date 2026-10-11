@@ -1,4 +1,4 @@
-import type { EventStatus } from "./data/types.ts";
+import { formatTimeRange, type EventStatus, type TimeFormat } from "./data/types.ts";
 
 /**
  * Saving the Edit Appointment window (DECISIONS #188, #190).
@@ -137,6 +137,45 @@ export function unsentTextNote(savedSomething: boolean): string {
   const note =
     "The text you typed on the Texts tab hasn't been sent: Save never sends a text. Send it or clear it there.";
   return savedSomething ? `Saved. ${note}` : note;
+}
+
+/**
+ * The question the window's Delete asks (DECISIONS #200). An appointment
+ * has no trash -- a delete is for good -- and it used to go on one click
+ * when nothing was unsaved. Cancelled is offered as the way to keep it on
+ * record.
+ */
+export function appointmentDeleteConfirm(a: {
+  eventType: string;
+  who: string | null;
+  date: string;
+  time: string | null;
+  endTime: string | null;
+  status: EventStatus;
+  /** Text in the window's Appointment Notes box: the appointment's own
+   *  field, so it goes with it, unlike its timeline notes and photos. */
+  hasNotes: boolean;
+  dirty: boolean;
+  timeFormat?: TimeFormat;
+}): string {
+  // Noon, so the day reads the same on every machine.
+  const day = new Date(`${a.date}T12:00:00`);
+  const dayLabel = isNaN(day.getTime())
+    ? a.date
+    : day.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const times = formatTimeRange(a.time, a.endTime, a.timeFormat);
+  const when = `on ${dayLabel}${times ? ` at ${times}` : ""}`;
+  const what = a.who ? `the ${a.eventType} appointment with ${a.who}` : `this ${a.eventType} appointment`;
+  return [
+    `Delete ${what} ${when}?`,
+    "This can't be undone. It leaves the calendar, the reports and any Google Calendar copy." +
+      (a.hasNotes ? " What's written in Appointment Notes is deleted with it." : "") +
+      (a.who ? ` Notes and photos added to ${a.who}'s contact stay there.` : ""),
+    a.status === "Cancelled" ? "" : "If it just isn't happening, set Status to Cancelled instead: that keeps it on record.",
+    a.dirty ? "Your unsaved changes to it are discarded too." : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**

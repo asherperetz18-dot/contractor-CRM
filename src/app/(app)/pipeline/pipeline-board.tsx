@@ -22,6 +22,7 @@ import {
 } from "@/lib/data/types";
 import { repDropdownOptions } from "@/lib/data/rep-options";
 import { moveLeadStage } from "@/lib/actions/leads";
+import { withFreshPanels } from "@/lib/lead-window-lists";
 import { getLeadCard, getPipelineBoardData, getStageCards } from "@/lib/actions/pipeline-board";
 import type { BoardCard, PipelineBoardData, PipelineBoardQuery } from "@/lib/pipeline-board-types";
 import { PIPELINE_CARD_WINDOW } from "./board-query";
@@ -546,6 +547,18 @@ export function PipelineBoard({
     },
     [boardQuery]
   );
+
+  /** A task, note or file changed in the open contact window: reload its
+   *  three lists, leaving the window and what's typed in it alone
+   *  (DECISIONS #201). */
+  const reloadPanels = useCallback(async (leadId: string) => {
+    try {
+      const fresh = await getLeadCard(leadId);
+      setEditing((open) => withFreshPanels(open, fresh));
+    } catch {
+      // Unreachable: the lists catch up when the window is next opened.
+    }
+  }, []);
 
   /** A card, digest row, or breakdown row was clicked: fetch the full
    *  lead and its panels, then open the window. A second click while
@@ -1191,6 +1204,7 @@ export function PipelineBoard({
           estimateIndex={estimateIndex}
           dispatcherPicker={dispatcherPicker}
           initialTab={editing.tab}
+          onPanelsChanged={() => void reloadPanels(editing.lead.id)}
           onCancel={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);

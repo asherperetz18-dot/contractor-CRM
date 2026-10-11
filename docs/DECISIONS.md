@@ -2638,3 +2638,66 @@ No SQL.
 - **Before 0229 runs**, nothing can be marked, so every WhatsApp copy stays off the portal. Linking or switching says to run the file first.
 
 **Consequence:** the client sees what their own group shares and nothing from the crew's. Group text messages never reach the portal, whichever kind the group is. The cost is a lookup per portal file request, served by a new index on `whatsapp_group_messages (lead_file_id)`.
+
+## 199 — A voided document never expires
+
+**Date:** 2026-10-10
+
+**Context:** `estimateExpired` exempted only Signed and Declined, and voiding never clears `expires_at` (a manual void, a cancelled invoice, and the automatic void of version 1 when version 2 is signed). Nearly every contract has a date, so a void past it read Expired: it left the Voided card for Declined, its whole value counted as a lost sale there and in the Contract Board's Closed column, and its board card said "Expired <date>" instead of why it was voided. The common case is the superseded version 1, whose date is usually weeks gone by the time version 2 is signed. #195 logged this gap.
+
+**Decision:** `estimateExpired` exempts Void, like the other end states. Clearing `expires_at` on void was rejected: existing voids would need a hand-run backfill, and the voided copy still prints its "Valid until" date.
+
+**Consequence:** a lapsed void stays Void everywhere expiry is read: the Voided card, Declined's and the Closed column's totals, the board card's badge and reason, and the AI chat's funnel. The portal already checked Void before expiry, so nothing changes there. A lapsed draft still reads Expired (TECH_DEBT). No SQL.
+
+## 200 — Delete asks first, in both windows, and says what goes with the record
+
+**Date:** 2026-10-10
+
+**Context:** the contact window's Delete removed the contact with its estimates, signed contracts and their payments, tasks, notes and files on one click when nothing was typed; #197 had made it ask only about a typed draft. The appointment window's Delete was the same, and an appointment has no trash. Inside the windows a task's ✕ and a visit photo's Remove asked nothing (a bucket photo is gone for good), and the contact's Files ✕ dropped the server's answer, so a refused delete looked done.
+
+**Decision:**
+- **One question, worded from the record.** `contactDeleteConfirm` (`src/lib/contact-delete.ts`) names the contact, counts its estimates and invoices (how many signed, what's paid on them), tasks, notes and files, says appointments and texts stay unlinked, and that an Office or Admin user can restore it from Settings → Trash for 30 days. Someone who can't see estimates is told "any estimates, contracts or invoices", without counts or money. `appointmentDeleteConfirm` (`appointment-save.ts`) names the type, the person, the day and the time (on the company's 12- or 24-hour clock), says it can't be undone, that what's written in its Appointment Notes box goes with it, and that notes and photos added to the contact stay there, and offers Cancelled instead unless it already is. Each adds a line when a draft or unsaved change would go too, and replaces the window's `leaveOk()` in `handleDelete`, so nobody is asked twice.
+- **The panels' deletes ask too.** A task's ✕ names the task. A visit photo's Remove and a contact file's ✕ use the job photos' wording (`deletePhotoConfirm`), told where the ✕ was pressed so it stops saying "this job" elsewhere; it says whether the file can come back (Drive's trash for 30 days, or not at all).
+- **A refusal or lost call says so.** The contact delete, a visit photo's Remove and a file's ✕ run through `attempt`; the Files tab shows the error, and both reload after a delete either way (a delete whose history record failed still removed the file). A file's ✕ stays off from the click until the reload drops the file (back on only if the delete didn't happen), so a second click can't report a deleted file as refused; a visit photo's Remove stays off until its reload. `deleteLead`'s delete gained `.select("id")` (as #194), so a delete the policy refused is reported and its trash copy removed. Delete also holds back a pending autosave, so a last-second edit can't write the contact as it's deleted; if the delete is refused, the edit goes then.
+- **A restore brings back estimate photos and billed invoice lines.** `restoreSnapshot` put `estimate_files` back before the contact's files they point at (0080, not null), and invoice lines before the job costs they bill (`source_expense_id`, 0180), so each failed; they now go in after the contact's own rows, with the credits and financing steps.
+
+**Consequence:** every delete in these two windows asks once and says what it removes. The counts are what the page loaded. What a restore can't bring back (shared notes, the file-delete history, bill and receptionist-call links) and that a Sales rep with the delete grant can't open Trash are logged in TECH_DEBT. No SQL.
+
+## 201 — The contact window's task, note and file lists reload after a change
+
+**Date:** 2026-10-10
+
+**Context:** the contact window shows the tasks, notes and files `getLeadCard` returned when it opened, held in the host's state (the pipeline board or the Contacts page). After a change each panel called `router.refresh`, which re-renders the page, but both hosts copy their data into state once, so nothing reached the window: a task or note added there didn't show in its list or count until the window was reopened, and looked as if the add had failed. The appointment window doesn't have this problem: its lists are page props, which `router.refresh` does reload.
+
+**Decision:** the window tells its host (`onPanelsChanged`) after its Tasks, Notes and Files panels change something, and after a call's outcome on the Calls tab (which can add a follow-up task), and the host reloads the open contact through `getLeadCard` and lays only the three lists over the window (`withFreshPanels`, `src/lib/lead-window-lists.ts`). The lead stays the same object and the window stays mounted, so its fields, tab and drafts are untouched. A reload that lands after the window closed or moved to another contact, found nothing, or had a list fail to load (which `getLeadCard` used to read as empty, now `listsFailed`) changes nothing. The panels' `router.refresh` is gone: their actions already revalidate the page, and it queued each reload behind a full page render. Tasks now load oldest first, so a reload doesn't shuffle them.
+
+**Consequence:** a task, note or file added, completed or deleted from those tabs shows in its list and count straight away. A note written by the Overview's Closer or Partner Rep picker still shows only on reopening, and the board's digest misses a task or note change when the window closes without a field having saved (TECH_DEBT). No SQL.
+
+## 202 — Leaving the contact window waits for its fields' save
+
+**Date:** 2026-10-10
+
+**Context:** the contact window autosaves its fields a second after the last edit. Closing it cancelled that second, so a field changed just before closing (a stage, a rep, a date) was dropped. A change that couldn't be saved (a required field empty, or a save refused or unreachable) was dropped too, with the footer still reading "Saving…" after a failure, and a save that never came back threw unseen. Worse, server actions run one at a time per tab, so a save still waiting when ✕ Lost, ✕ Not Interested, Create Job or booking was pressed ran after their own write and put the old stage back (Create Job's `won_at` with it). And closing after an autosave refreshed the page, but the board and the Contacts list keep their own copy, so they still showed the old values.
+
+**Decision:**
+- **One saver** (`createContactSaver`, `src/lib/contact-autosave.ts`) sends the window's saves in order, never the same fields twice at once and never fields already saved; a failure is tried again on the next send and a lost call reads as `SAVE_UNREACHABLE`. "Unsaved" compares what a save would write (`contactSaveKey`), so removing the second contact counts, and so does an edit undone while its save is still out (it differs from what's on its way).
+- **Every way out waits** (`leaveSaved`): the drafts question (#197), then the fields' change is saved and waited for. When it can't be saved, the window says why and asks before going without it (`closeStep`); a save that hasn't answered after 15 seconds is treated the same way (`withinWait`), though it may still land, so closing then has the host refetch. Only one exit runs at a time: while a save or an exit's own write is out, the X and the backdrop do nothing, like the greyed-out buttons. The X, Close, the stage buttons, booking, Create Job, opening an estimate and opening an appointment all go through it, so their own write lands after the field save. ✕ Lost and ✕ Not Interested disable the form during the move. Create Job names the job, and booking titles the appointment and judges the stage, from what was saved (`savedPayload`), read once any save still out has answered (it runs first anyway): just now, or before a change the person chose to go without. Not from the copy the window opened with, and not from values on screen that never saved.
+- **Routes the window doesn't control** (another contact opened over it, a link elsewhere on the page) send the last valid change without waiting. Delete gives it up; going without one change doesn't give up the next.
+- **Closing after a save has the host refetch** (`onSaved`), so the card or row shows it. The footer reads "Not saved — see the message above" after a failure, with the message beside it, kept apart from the window's other errors.
+
+**Consequence:** a change made in the window's last second is kept, a change that can't be saved is never dropped without a word through the window's own exits, and the stage buttons, Create Job and booking can't be undone by a save still waiting. Left in TECH_DEBT: the save still writes the whole row, so a change made elsewhere while the window is open is put back by the next edit; and an incomplete change is still lost on a route the window doesn't control, a reload or closing the tab. No SQL.
+
+## 203 — A popup alert, a reload or closing the tab asks before dropping a window's unsaved work
+
+**Date:** 2026-10-10
+
+**Context:** the contact and appointment windows ask before their own buttons drop what's typed (#197, #190). Popup alerts sit above an open window and navigated straight away, re-opening another record or leaving the page, so a typed task, note, text or unsaved change went without a word. A reload, closing the tab or the update popup's Refresh now did the same. Nothing outside a window knew it held anything.
+
+**Decision:**
+- **An app-wide hold** (`src/lib/unsaved-work.ts`, `useHoldUnsaved`). While a window has unsaved work it holds its own leave check there: the appointment window its discard question, the contact window `leaveSaved` (its drafts question, then its fields' save, #202). It lets go as soon as nothing is unsaved, counting a save still out (an edit undone while it's out isn't saved yet).
+- **A popup alert runs that check before navigating**; choosing to stay doesn't dismiss it (one that fades on its own still does). While the window is busy saving or leaving, a click on the alert does nothing (no second question); it stays up to be clicked again once the window settles, unless it fades first.
+- **The browser asks before unloading** while anything is held: a `beforeunload` listener added only then, since one can keep a page out of the back/forward cache. The browser shows its own words; iPhones never ask.
+- **Back isn't intercepted.** This Next.js offers no way to stop it in the App Router, every workaround traced (a guard history entry, a capturing `popstate` handler) breaks against Next's own history writes or this app's, and the Android app's Back never reaches the page. Logged with the fix that would cover it, draft recovery per record in `sessionStorage`.
+
+**Consequence:** an alert, a reload, closing the tab and Refresh now ask before a window's unsaved work goes. Back, iPhone reloads, a link reached with Tab and a post-deploy double prompt stay in TECH_DEBT. No SQL.
+

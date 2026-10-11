@@ -21,6 +21,17 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.269.0",
+    date: "2026-10-11",
+    notes: [
+      "Delete in a contact's window now always asks first, and says what goes with the contact (its estimates, invoices and what's been paid, tasks, notes and files) and that Office or Admin can restore it from Settings › Trash for 30 days. Delete in an appointment's window asks too: it names the appointment, says it can't be undone, and suggests setting it to Cancelled instead. Removing a task or a visit photo now asks, and removing a file says whether it can be brought back.",
+      "A task, note or file you add in a contact's window now shows in its list and count straight away, instead of only after you close and reopen it.",
+      "A change you make to a contact's details just before closing its window is no longer lost: closing (or a stage button, booking, Create Job, or opening an estimate or appointment) now waits for it to save. If it can't be saved, the window tells you why and asks before closing without it. This also stops ✕ Lost, Create Job or booking from sometimes being undone by a save still on its way.",
+      "Clicking a pop-up alert, reloading the page or closing the tab now asks before throwing away something you've typed in a contact or appointment window. (The browser's Back button still doesn't ask, and iPhones don't ask before a reload.)",
+      "A voided estimate or contract now stays Void after its expiry date passes. It no longer shows as Expired under Declined, or counts as a lost sale in the Declined and Contract Board totals.",
+    ],
+  },
+  {
     version: "1.268.0",
     date: "2026-10-10",
     notes: [

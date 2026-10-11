@@ -28,7 +28,16 @@ function duration(seconds: number) {
  * live fetch from Twilio, and rendering five of them on open would pull
  * five recordings nobody asked to hear.
  */
-export function CallsPanel({ leadId, readOnly }: { leadId: string; readOnly?: boolean }) {
+export function CallsPanel({
+  leadId,
+  readOnly,
+  onChanged,
+}: {
+  leadId: string;
+  readOnly?: boolean;
+  /** An outcome can add a follow-up task to the contact (DECISIONS #201). */
+  onChanged?: () => void;
+}) {
   const [calls, setCalls] = useState<LeadCall[] | null>(null);
   const [dispositions, setDispositions] = useState<string[]>([]);
   const [playing, setPlaying] = useState<Set<string>>(new Set());
@@ -137,6 +146,7 @@ export function CallsPanel({ leadId, readOnly }: { leadId: string; readOnly?: bo
                         const res = await updateCallDisposition(c.id, e.target.value);
                         if (res.error) return setError(res.error);
                         setReloadKey((k) => k + 1);
+                        onChanged?.();
                       })
                     }
                   >

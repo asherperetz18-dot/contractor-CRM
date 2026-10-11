@@ -45,8 +45,9 @@ export function LeadAppointmentsPanel({
   leadId: string;
   reps: Profile[];
   /** Asked before leaving for the Calendar: the window it sits in may
-   *  hold unsaved drafts (DECISIONS #197). */
-  leaveOk?: () => boolean;
+   *  hold unsaved drafts (DECISIONS #197), and waits for its fields'
+   *  save (#202). */
+  leaveOk?: () => boolean | Promise<boolean>;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -79,8 +80,8 @@ export function LeadAppointmentsPanel({
    * still better than being left on the calendar wondering where the
    * customer went.
    */
-  function openAppointment(eventId: string) {
-    if (leaveOk && !leaveOk()) return;
+  async function openAppointment(eventId: string) {
+    if (leaveOk && !(await leaveOk())) return;
     const back = `${pathname}?openLead=${leadId}`;
     router.push(`/calendar?openEvent=${eventId}&from=${encodeURIComponent(back)}`);
   }

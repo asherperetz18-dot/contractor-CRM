@@ -8,6 +8,7 @@ import { shapeToasts, type PopupToast } from "@/lib/popup-shape";
 import { pageTitle, tabTitle } from "@/lib/tab-title";
 import { readPopupPrefs, usePopupPrefs } from "./popup-prefs";
 import { PopupToastList } from "./popup-toast-list";
+import { leaveUnsavedOk } from "@/lib/unsaved-work";
 import "./popup-alerts.css";
 
 const POLL_MS = 20_000;
@@ -285,7 +286,10 @@ export function PopupAlerts({ companyId }: { companyId: string }) {
     setToasts((x) => x.filter((y) => y.id !== id));
   }
 
-  function open(t: PopupToast) {
+  // An alert sits above an open contact or appointment window: it asks
+  // that window's question before leaving its unsaved work (DECISIONS #203).
+  async function open(t: PopupToast) {
+    if (!(await leaveUnsavedOk())) return;
     dismiss(t.id);
     router.push(t.href);
   }

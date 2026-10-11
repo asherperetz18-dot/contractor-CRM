@@ -23,6 +23,8 @@ export type LeadEstimateIndex = {
     {
       estimates: LeadEstimateSummaryRow[];
       paidCents: number;
+      /** Invoices, kept off `estimates` but deleted with the contact (#200). */
+      invoices?: number;
       /** Where the customer's financing stands (DECISIONS #165). */
       financing?: LeadFinancing;
     }
@@ -102,7 +104,10 @@ export async function getLeadEstimateIndex(): Promise<LeadEstimateIndex> {
     byLead[e.lead_id] = entry;
     // An invoice's money counts as paid, but it isn't an estimate to
     // open from the lead card -- that chip must still start one.
-    if (e.kind === "invoice") continue;
+    if (e.kind === "invoice") {
+      entry.invoices = (entry.invoices ?? 0) + 1;
+      continue;
+    }
     entry.estimates.push({
       id: e.id,
       doc_number: e.doc_number,

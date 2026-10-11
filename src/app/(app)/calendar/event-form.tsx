@@ -54,6 +54,7 @@ import { sendSms } from "@/lib/actions/sms";
 import { createLeadTask, moveLeadStage, setLeadEstimatedValue } from "@/lib/actions/leads";
 import { addLeadNote } from "@/lib/actions/lead-notes";
 import {
+  appointmentDeleteConfirm,
   appointmentFooter,
   applyLiveState,
   attempt,
@@ -65,6 +66,8 @@ import { TasksPanel, useTaskDraft } from "../pipeline/tasks-panel";
 import { MessagesPanel, useTextDrafts } from "../pipeline/messages-panel";
 import { EventOwnerNote } from "./event-owner-note";
 import { VisitMedia } from "./visit-media";
+import { useHoldUnsaved } from "../use-hold-unsaved";
+import { useTimeFormat } from "@/components/time-format-context";
 import { NotesTimeline, useNoteDraft } from "../pipeline/notes-timeline";
 import { stageNameFor } from "@/lib/pipeline/stage-keys";
 
@@ -199,6 +202,7 @@ export function EventForm({
   onDeleted?: () => void;
 }) {
   const router = useRouter();
+  const timeFormat = useTimeFormat();
   // Used to send the user back here after the contact window closes --
   // this form opens from both the calendar and the schedule.
   const pathname = usePathname();
@@ -562,7 +566,23 @@ export function EventForm({
   }
 
   async function handleDelete() {
-    if (!event || !leaveOk()) return;
+    if (!event) return;
+    if (
+      !window.confirm(
+        appointmentDeleteConfirm({
+          eventType: event.event_type,
+          who: lead ? leadDisplayName(lead) : null,
+          date: event.date,
+          time: event.time,
+          endTime: event.end_time,
+          status: event.status,
+          hasNotes: !!event.notes?.trim(),
+          dirty: isDirty,
+          timeFormat,
+        })
+      )
+    )
+      return;
     setPending(true);
     setError("");
     const result = await attempt(() => deleteEvent(event.id));
@@ -650,6 +670,9 @@ export function EventForm({
   function leaveOk() {
     return !isDirty || window.confirm("Discard your unsaved changes to this appointment?");
   }
+  // A popup alert, a reload or closing the tab asks too (DECISIONS #203).
+  // While a save or delete is out, a click on an alert does nothing.
+  useHoldUnsaved(isDirty, () => !pending && leaveOk());
 
   function requestClose() {
     if (!leaveOk()) return;

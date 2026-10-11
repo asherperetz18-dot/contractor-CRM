@@ -281,24 +281,35 @@ export async function getStageCards(
 /**
  * Everything the lead window needs, fetched when a card is opened: the
  * full row plus its tasks, notes, and files. These used to ride with
- * the page for every lead in the company at once.
+ * the page for every lead in the company at once. The window also
+ * reloads the three lists through here after a change (DECISIONS #201);
+ * `listsFailed` keeps a list that didn't load from blanking the one on
+ * screen.
  */
 export async function getLeadCard(leadId: string): Promise<{
   lead: Lead;
   tasks: LeadTask[];
   notes: LeadNote[];
   files: LeadFile[];
+  listsFailed: boolean;
 } | null> {
   const profile = await getCurrentProfile();
   if (!profile) return null;
   const supabase = await createClient();
 
-  const [{ data: lead }, { data: tasks }, { data: notes }, { data: files }] = await Promise.all([
+  const [
+    { data: lead },
+    { data: tasks, error: tasksError },
+    { data: notes, error: notesError },
+    { data: files, error: filesError },
+  ] = await Promise.all([
     supabase.from("leads").select("*").eq("id", leadId).eq("company_id", profile.company_id).maybeSingle(),
+    // Oldest first, so a reload after a change doesn't shuffle the list.
     supabase
       .from("lead_tasks")
       .select("id, lead_id, title, due_date, due_time, completed_at, assigned_to, created_by, created_at")
-      .eq("lead_id", leadId),
+      .eq("lead_id", leadId)
+      .order("created_at", { ascending: true }),
     supabase
       .from("lead_notes")
       .select("id, lead_id, author_id, body, event_id, created_at")
@@ -319,5 +330,6 @@ export async function getLeadCard(leadId: string): Promise<{
     tasks: (tasks ?? []) as LeadTask[],
     notes: (notes ?? []) as LeadNote[],
     files: (files ?? []) as LeadFile[],
+    listsFailed: !!(tasksError || notesError || filesError),
   };
 }

@@ -69,16 +69,30 @@ export function describeDeletion(
   return `${d.file_name} — deleted by ${who} · ${where}`;
 }
 
-/** The words on the delete confirm: a photo is one file, shown everywhere. */
-export function deletePhotoConfirm(fileName: string, storageProvider?: string | null): string {
+/**
+ * The words on the delete confirm: a photo is one file, shown everywhere.
+ * `from` is where the ✕ was pressed: a job, a contact's Files tab or an
+ * appointment's Photos tab (DECISIONS #200). Only a job has "Remove from
+ * job" to offer instead.
+ */
+export function deletePhotoConfirm(
+  fileName: string,
+  storageProvider?: string | null,
+  from: "job" | "contact" | "visit" = "job"
+): string {
   const recover =
     storageProvider === "google_drive"
       ? " It stays in the Google Drive trash for 30 days if you need it back."
       : " This can't be undone.";
+  const where = {
+    job: "this job, the customer's Files, and any visit",
+    contact: "the contact's Files, any visit, and any job it's filed under",
+    visit: "this visit, the contact's Files, and any job it's filed under",
+  }[from];
   return (
     `Delete "${fileName}"?\n\n` +
-    "It is removed everywhere it shows — this job, the customer's Files, and any visit." +
+    `It is removed everywhere it shows — ${where}.` +
     recover +
-    '\n\nFiled under the wrong job? Use "Remove from job" instead.'
+    (from === "job" ? '\n\nFiled under the wrong job? Use "Remove from job" instead.' : "")
   );
 }

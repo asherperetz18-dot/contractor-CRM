@@ -515,3 +515,14 @@ test("the chat's route hands the context the company's zone with its today", () 
   assert.match(route, /todayISO,\s*zone,/);
 });
 
+
+test("a voided document past its expiry is cancelled, not lost", () => {
+  const text = buildAssistantContext(
+    baseInput({
+      estimates: [estimate({ doc_number: "EST-9", status: "Void", expires_at: "2026-01-01", total_cents: 900000 })],
+    })
+  );
+  assert.ok(text.includes("Lost (declined/expired): 0 ($0.00)"));
+  assert.ok(text.includes("Cancelled: 1 ($0.00)"));
+  assert.match(text, /- EST-9 \| contract \| Void \|/);
+});

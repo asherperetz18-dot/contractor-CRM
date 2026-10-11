@@ -8,6 +8,8 @@ import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 import { FilePreview } from "@/components/ui/file-preview";
 import { driveFileId } from "@/lib/files/preview";
 import { leadPhotoThumbUrl } from "@/lib/data/types";
+import { deletePhotoConfirm } from "@/lib/data/lead-file-deletions";
+import { attempt } from "@/lib/appointment-save";
 
 function sizeLabel(bytes: number | null) {
   if (bytes == null) return "";
@@ -45,8 +47,13 @@ export function VisitMedia({
   const [error, setError] = useState("");
 
   async function reload() {
-    const res = await getVisitMedia(eventId);
-    setFiles(res.files ?? []);
+    try {
+      const res = await getVisitMedia(eventId);
+      // A refused load keeps what's shown rather than emptying it.
+      if (res.files) setFiles(res.files);
+    } catch {
+      // Unreachable: keep what's shown.
+    }
   }
 
   const uploadOne = useCallback(
@@ -84,11 +91,16 @@ export function VisitMedia({
   }
 
   async function remove(f: VisitFile) {
+    if (!window.confirm(deletePhotoConfirm(f.file_name, f.storage_provider, "visit"))) return;
     setBusy("Removing…");
-    const res = await deleteLeadFile(f.id);
-    setBusy(null);
-    if (res?.error) return setError(res.error);
+    setError("");
+    const res = await attempt(() => deleteLeadFile(f.id));
+    if (res.error) setError(res.error);
+    // Reloaded either way: a delete whose history record failed still
+    // removed the photo. Busy until then, so its Remove can't be pressed
+    // again for a photo that's gone.
     await reload();
+    setBusy(null);
   }
 
   return (

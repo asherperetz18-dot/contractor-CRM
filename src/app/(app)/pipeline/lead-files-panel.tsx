@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { LeadFile, Profile } from "@/lib/data/types";
 import { attachmentIsImage, leadPhotoThumbUrl } from "@/lib/data/types";
 import { FilePreview } from "@/components/ui/file-preview";
 import { driveFileId } from "@/lib/files/preview";
 import { deleteLeadFile } from "@/lib/actions/lead-files";
+import { deletePhotoConfirm } from "@/lib/data/lead-file-deletions";
+import { attempt } from "@/lib/appointment-save";
 import { uploadLeadFileDirect } from "@/lib/uploads/lead-file-upload";
 import { FileDropzone, useUploadQueue } from "@/components/uploads/file-drop";
 
@@ -50,9 +52,24 @@ export function LeadFilesPanel({
 
   const sorted = [...files].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
+  // A refused delete ("Only Office or Admin can delete files.") used to
+  // look like success: the result was dropped (DECISIONS #200).
+  const [deleteError, setDeleteError] = useState("");
+  // A file's ✕ stays off from the click until the reload drops the file:
+  // a second ✕ on a slow line used to come back "refused" for a file the
+  // first had already deleted. Only a delete that didn't happen turns it
+  // back on ("Deleted, but…" did happen).
+  const [deleting, setDeleting] = useState<Set<string>>(() => new Set());
+  const without = (s: Set<string>, id: string) => new Set([...s].filter((x) => x !== id));
   async function handleDelete(file: LeadFile) {
-    if (!confirm(`Delete "${file.file_name}"?`)) return;
-    await deleteLeadFile(file.id);
+    if (!window.confirm(deletePhotoConfirm(file.file_name, file.storage_provider, "contact"))) return;
+    setDeleteError("");
+    setDeleting((s) => new Set(s).add(file.id));
+    const res = await attempt(() => deleteLeadFile(file.id));
+    if (res.error) setDeleteError(res.error);
+    if (res.error && !res.error.startsWith("Deleted,")) setDeleting((s) => without(s, file.id));
+    // Reloaded either way: "Deleted, but saving it to the deletion
+    // history failed" is an error about a file that's gone.
     onChanged();
   }
 
@@ -119,6 +136,7 @@ export function LeadFilesPanel({
                     type="button"
                     className="icon-btn notes-timeline-delete"
                     onClick={() => handleDelete(f)}
+                    disabled={deleting.has(f.id)}
                     aria-label="Delete file"
                   >
                     ✕
@@ -129,6 +147,8 @@ export function LeadFilesPanel({
           ))}
         </div>
       )}
+
+      {deleteError && <p className="error-note">{deleteError}</p>}
 
       {!readOnly && (
         <div style={{ marginTop: 10 }}>
