@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { decryptSecret } from "@/lib/crypto/secrets";
 import { privateFileUrl } from "@/lib/files/file-url";
+import { inboxPath } from "@/lib/whatsapp-inbox";
 import {
   groupMessagesFromWebhook,
   initialMediaStatus,
@@ -131,8 +132,9 @@ const STALE_CLAIM_MS = 10 * 60 * 1000;
  * Copies the waiting photos/videos/documents of the given groups into
  * the projects they're linked to: Whapi's bytes → the lead-files bucket
  * → a lead_files row filed under the job (estimate_id), which is what
- * the job's Photos and Permits & files read. A group on no project keeps
- * its files waiting until it's linked.
+ * the job's Photos and Permits & files read. A general group's go to the
+ * company's inbox folder instead, to be sorted (#204). A group on no
+ * project keeps its files waiting until it's linked.
  *
  * Runs after the webhook has answered, so it stops at `budgetMs` and
  * leaves the rest for the group's next message. Each row is claimed
@@ -148,27 +150,33 @@ export async function saveGroupMedia(
   if (!groupIds.length) return { saved };
   const admin = createAdminClient();
 
+  // "*": before 0230 there is no kind, and every link is a job's.
   const { data: links } = await admin
     .from("whatsapp_group_links")
-    .select("group_id, estimate_id, estimates(lead_id)")
+    .select("*, estimates(lead_id)")
     .eq("company_id", companyId)
     .in("group_id", groupIds);
   const jobOf = new Map<string, { estimateId: string; leadId: string }>();
+  const general = new Set<string>();
   for (const l of (links ?? []) as unknown as {
     group_id: string;
-    estimate_id: string;
+    estimate_id: string | null;
+    kind?: string;
     estimates: { lead_id: string | null } | null;
   }[]) {
-    if (l.estimates?.lead_id) jobOf.set(l.group_id, { estimateId: l.estimate_id, leadId: l.estimates.lead_id });
+    if (l.kind === "general") general.add(l.group_id);
+    else if (l.estimate_id && l.estimates?.lead_id) {
+      jobOf.set(l.group_id, { estimateId: l.estimate_id, leadId: l.estimates.lead_id });
+    }
   }
-  if (!jobOf.size) return { saved };
+  if (!jobOf.size && !general.size) return { saved };
 
   const staleBefore = new Date(Date.now() - STALE_CLAIM_MS).toISOString();
   const { data: rows } = await admin
     .from("whatsapp_group_messages")
     .select("id, group_id, media_id, media_type, media_name, media_attempts")
     .eq("company_id", companyId)
-    .in("group_id", [...jobOf.keys()])
+    .in("group_id", [...jobOf.keys(), ...general])
     .or(`media_status.eq.pending,and(media_status.eq.saving,media_claimed_at.lt."${staleBefore}")`)
     .order("sent_at", { ascending: true })
     .limit(25);
@@ -180,7 +188,7 @@ export async function saveGroupMedia(
   for (const row of rows as PendingRow[]) {
     if (Date.now() - started > budgetMs) break;
     const job = jobOf.get(row.group_id);
-    if (!job) continue;
+    if (!job && !general.has(row.group_id)) continue;
 
     // The claim: only the run whose update matches the attempt count it
     // read gets to copy this row.
@@ -193,7 +201,9 @@ export async function saveGroupMedia(
       .select("id");
     if (!claimed?.length) continue;
 
-    const result = await copyOne(conn.apiToken, companyId, job, row);
+    const result = job
+      ? await copyOne(conn.apiToken, companyId, job, row)
+      : await copyToInbox(conn.apiToken, companyId, row);
     await admin
       .from("whatsapp_group_messages")
       .update(
@@ -201,12 +211,48 @@ export async function saveGroupMedia(
           ? { media_status: "too_large" }
           : typeof result === "string"
             ? { media_status: mediaStatusAfterFailure(attempt) }
-            : { media_status: "saved", lead_file_id: result.leadFileId }
+            : "leadFileId" in result
+              ? { media_status: "saved", lead_file_id: result.leadFileId }
+              : { media_status: "saved", media_path: result.mediaPath }
       )
       .eq("id", row.id);
     if (typeof result !== "string") saved++;
   }
   return { saved };
+}
+
+/** The file's bytes from Whapi, or why not. */
+async function fetchMedia(
+  apiToken: string,
+  row: PendingRow
+): Promise<{ bytes: ArrayBuffer; contentType: string; fileName: string } | "too_large" | "failed"> {
+  const res = await whapiFetch(apiToken, `/media/${encodeURIComponent(row.media_id)}`, { timeoutMs: 45_000 });
+  if (!res?.ok) return "failed";
+  if (Number(res.headers.get("content-length") ?? 0) > MAX_MEDIA_BYTES) return "too_large";
+  const bytes = await res.arrayBuffer().catch(() => null);
+  if (!bytes) return "failed";
+  if (bytes.byteLength > MAX_MEDIA_BYTES) return "too_large";
+  return {
+    bytes,
+    contentType: row.media_type || res.headers.get("content-type")?.split(";")[0].trim() || "application/octet-stream",
+    fileName: row.media_name || `whatsapp-${row.id}`,
+  };
+}
+
+/** A general group's file, into the company's inbox folder. Named by
+ *  its message, so a retry overwrites its own half-copy and nothing else. */
+async function copyToInbox(
+  apiToken: string,
+  companyId: string,
+  row: PendingRow
+): Promise<{ mediaPath: string } | "too_large" | "failed"> {
+  const media = await fetchMedia(apiToken, row);
+  if (typeof media === "string") return media;
+  const path = inboxPath(companyId, row.id, media.fileName);
+  const { error } = await createAdminClient()
+    .storage.from(BUCKET)
+    .upload(path, media.bytes, { contentType: media.contentType, upsert: true });
+  return error ? "failed" : { mediaPath: path };
 }
 
 async function copyOne(
@@ -215,16 +261,9 @@ async function copyOne(
   job: { estimateId: string; leadId: string },
   row: PendingRow
 ): Promise<{ leadFileId: string } | "too_large" | "failed"> {
-  const res = await whapiFetch(apiToken, `/media/${encodeURIComponent(row.media_id)}`, { timeoutMs: 45_000 });
-  if (!res?.ok) return "failed";
-  if (Number(res.headers.get("content-length") ?? 0) > MAX_MEDIA_BYTES) return "too_large";
-  const bytes = await res.arrayBuffer().catch(() => null);
-  if (!bytes) return "failed";
-  if (bytes.byteLength > MAX_MEDIA_BYTES) return "too_large";
-
-  const contentType =
-    row.media_type || res.headers.get("content-type")?.split(";")[0].trim() || "application/octet-stream";
-  const fileName = row.media_name || `whatsapp-${row.id}`;
+  const media = await fetchMedia(apiToken, row);
+  if (typeof media === "string") return media;
+  const { bytes, contentType, fileName } = media;
   const path = `${job.leadId}/${Date.now()}-${fileName}`;
   const admin = createAdminClient();
   const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, bytes, { contentType });

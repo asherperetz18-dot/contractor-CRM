@@ -8,6 +8,7 @@ import {
   type WhatsAppStatus,
 } from "@/lib/actions/whatsapp-groups";
 import { Field } from "@/components/ui/field";
+import { GeneralGroups } from "./general-groups";
 
 export function CompanyWhatsApp() {
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
@@ -87,6 +88,7 @@ export function CompanyWhatsApp() {
               {pending ? "Working…" : "Disconnect"}
             </button>
           </div>
+          <GeneralGroups />
         </>
       ) : (
         <>

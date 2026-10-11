@@ -106,6 +106,8 @@ export const EXPECTED_COLUMNS: readonly SchemaProbe[] = [
   { table: "whatsapp_group_links", column: "estimate_id", migration: "0228_whatsapp_groups.sql" },
   { table: "whatsapp_group_messages", column: "media_status", migration: "0228_whatsapp_groups.sql" },
   { table: "whatsapp_group_links", column: "show_to_client", migration: "0229_whatsapp_client_files.sql" },
+  { table: "whatsapp_group_links", column: "kind", migration: "0230_whatsapp_inbox.sql" },
+  { table: "whatsapp_group_messages", column: "inbox_status", migration: "0230_whatsapp_inbox.sql" },
 ];
 
 export type ProbeError = { code?: string | null; message?: string | null };

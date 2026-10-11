@@ -472,6 +472,7 @@ export type PageKey =
   | "calendar"
   | "schedule"
   | "contracts"
+  | "whatsapp-inbox"
   | "estimate-status"
   | "time-clock"
   | "team-map"
@@ -590,6 +591,9 @@ export const PAGE_REGISTRY: { key: PageKey; label: string; href: string; group: 
   },
   { key: "projects", label: "Projects", href: "/projects", group: "Production" },
   { key: "contracts", label: "Contracts", href: "/contracts", group: "Production" },
+  // Photos and receipts from a company's general WhatsApp group, waiting
+  // to be filed to a job or made into a bill (DECISIONS #204).
+  { key: "whatsapp-inbox", label: "WhatsApp Inbox", href: "/whatsapp-inbox", group: "Production" },
   // Accounting is the money in one place: what we owe, what we're owed,
   // what arrived, and what it all nets to. Bills and Collect moved here
   // from Production and Payments from the top level -- keys unchanged,
@@ -719,6 +723,9 @@ export function defaultPageVisible(role: AppRole, pageKey: PageKey): boolean {
   // Anyone who works may need to clock in; whether they do is the
   // company's Time Clock setting, not the menu's.
   if (pageKey === "time-clock") return true;
+  // The people who sort it: the office and production (Admin sees every
+  // page). Its actions hold the same line on the server.
+  if (pageKey === "whatsapp-inbox") return role === "Office" || role === "Production";
   // Where everyone is right now, and what they're paid for: the office's.
   if ((pageKey === "team-map" || pageKey === "timesheets") && role !== "Office" && role !== "Admin") {
     return false;

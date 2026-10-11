@@ -378,18 +378,21 @@ export async function listWhatsAppGroupChoices(
 
   const { data: links } = await createAdminClient()
     .from("whatsapp_group_links")
-    .select("group_id, estimate_id, estimates(doc_number, title, leads(contact_type, company_name, first_name, last_name))")
+    .select("*, estimates(doc_number, title, leads(contact_type, company_name, first_name, last_name))")
     .eq("company_id", profile.company_id);
   const labelled = ((links ?? []) as unknown as {
     group_id: string;
-    estimate_id: string;
+    estimate_id: string | null;
+    kind?: string;
     estimates: { doc_number: string; title: string; leads: ClientNameFields | null } | null;
   }[]).map((l) => ({
     group_id: l.group_id,
-    estimate_id: l.estimate_id,
+    estimate_id: l.estimate_id ?? "",
     label:
-      [clientName(l.estimates?.leads) || l.estimates?.doc_number, l.estimates?.title].filter(Boolean).join(" — ") ||
-      "another job",
+      l.kind === "general"
+        ? "the WhatsApp Inbox"
+        : [clientName(l.estimates?.leads) || l.estimates?.doc_number, l.estimates?.title].filter(Boolean).join(" — ") ||
+          "another job",
   }));
   return { options: groupOptions(groups, labelled, estimateId) };
 }
@@ -421,7 +424,17 @@ export async function linkWhatsAppGroup(
   const group = (await listBotGroups(conn.apiToken))?.find((g) => g.id === groupId);
   if (!group) return { error: "The project bot number isn't in that group." };
 
-  const { error } = await createAdminClient()
+  // A general group becoming a job's: its general link goes first, since
+  // a link can't be general and on a job at once (0230). Before 0230
+  // there is no kind, the delete errors, and there was nothing to clear.
+  const admin = createAdminClient();
+  await admin
+    .from("whatsapp_group_links")
+    .delete()
+    .eq("company_id", profile.company_id)
+    .eq("group_id", group.id)
+    .eq("kind", "general");
+  const { error } = await admin
     .from("whatsapp_group_links")
     .upsert(
       {

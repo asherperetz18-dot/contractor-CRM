@@ -4,6 +4,9 @@ Known shortcuts, deferred work, and things left deliberately unfinished — logg
 
 ---
 
+**The WhatsApp Inbox has no count on the menu.**
+What: since DECISIONS #204, photos and receipts from a general WhatsApp group wait in Production › WhatsApp Inbox, but the menu shows no number of items to sort. The count is on the page's To sort tab and beside each general group in Settings › WhatsApp Groups. Why: a menu count needs a poll route or a place in an existing rollup (#029, #062), more than the first version needed. Impact: someone has to open the page to see if anything is waiting. Fix: add the to-sort count to the popup-alerts rollup the sidebar badges already read. Where: `src/lib/actions/whatsapp-inbox.ts`, `src/lib/nav.ts`.
+
 **Project WhatsApp groups: no Drive copy, retries wait for the next message, backfill is the last 100.**
 What: since DECISIONS #193, photos, videos and documents from a linked WhatsApp group are copied into the job's files in app storage, even when the company keeps its files in Google Drive (an upload made in the CRM moves to Drive; this copy doesn't). A copy that fails is retried only when the same group's next message arrives, three tries in all, so a group that goes quiet keeps a failed photo waiting. Linking a group reads its last 100 messages and no further back, and a file from an old message may already be gone from WhatsApp by then. Messages from groups on no project are kept, unread by anyone, until the group is linked. Why: the first version keeps the copy inside one webhook's `after()`, with no new cron. Impact: a Drive company finds WhatsApp photos in the CRM but not in its Drive folder; rarely, a photo waits for the group's next message. Fix: run the copy through `recordLeadFile`'s Drive step, and add a sweep of `media_status = 'pending'` rows to an existing cron. Where: `src/lib/whatsapp-company.ts` (`saveGroupMedia`, `backfillGroup`), `src/app/api/whatsapp/webhook/route.ts`.
 

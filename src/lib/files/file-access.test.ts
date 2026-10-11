@@ -193,3 +193,19 @@ test("staff still open every WhatsApp copy", async () => {
   const { client } = fakeDb(WA_FILES);
   assert.equal(await staffCanReadFile(client, "lead-files", `${LEAD}/1-crew.jpg`), true);
 });
+
+// ---- WhatsApp Inbox copies (DECISIONS #204) -------------------------------
+
+test("staff who sort the inbox open its files; a customer never does", async () => {
+  const path = "whatsapp-inbox/co-1/msg-1-receipt.jpg";
+  // What row-level security returned: a sorter sees the general group's message.
+  const sorter = fakeDb({ whatsapp_group_messages: [{ id: "m1", media_path: path }] });
+  assert.equal(await staffCanReadFile(sorter.client, "lead-files", path), true);
+  // A rep who doesn't sort the inbox gets no row back, so no file.
+  const rep = fakeDb({});
+  assert.equal(await staffCanReadFile(rep.client, "lead-files", path), false);
+  // The portal asks with the service role: the row exists, but an inbox
+  // file is nobody's job file until it's filed.
+  const portal = fakeDb({ whatsapp_group_messages: [{ id: "m1", company_id: CO, media_path: path }] });
+  assert.equal(await portalCanReadFile(portal.client, viewer, "lead-files", path), false);
+});

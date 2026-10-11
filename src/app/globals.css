@@ -11952,6 +11952,127 @@ textarea.est-item-desc:disabled {
   gap: 8px;
   margin-bottom: 10px;
 }
+/* The WhatsApp Inbox (whatsapp-inbox-view.tsx, DECISIONS #204): one card
+   per photo or file from a general group, with what to do with it. The
+   suggestion wears the WhatsApp chip's brown. */
+.wai-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+.wai-tools .chip-row {
+  margin: 0;
+}
+.wai-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.wai-card {
+  background: #fff;
+  border: 1px solid #e4e0d8;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+}
+.wai-thumb {
+  width: 100%;
+  height: 170px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+.wai-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 110px;
+  padding: 8px;
+  text-align: center;
+  background: #f3f5f8;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #4d5666;
+  overflow-wrap: anywhere;
+}
+.wai-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+  font-size: 13px;
+}
+.wai-when {
+  color: #8a8578;
+  font-size: 12px;
+}
+.wai-caption {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.wai-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 12.5px;
+  background: #f7f0e6;
+  border: 1px solid #d9c3a5;
+  color: #7b4f24;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+.wai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wai-pick {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid #ece8df;
+  padding-top: 8px;
+}
+.wai-pick select {
+  width: 100%;
+  min-width: 0;
+}
+.wai-texts {
+  margin-top: 16px;
+}
+.wai-texts summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #4d5666;
+}
+/* Settings › WhatsApp Groups: the general groups that feed the inbox. */
+.wa-general {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  border-top: 1px solid #ece8df;
+  padding-top: 12px;
+}
+.wa-general h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.wa-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.wa-add-row select {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 /* The client-or-crew choice, on its own full-width line. */
 .wa-who-pick {
   flex: 1 1 100%;
