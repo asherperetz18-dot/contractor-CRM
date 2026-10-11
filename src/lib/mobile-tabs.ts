@@ -74,6 +74,7 @@ const PAGE_ICONS: Record<string, MobileIconName> = {
   "/production": "board",
   "/projects": "jobs",
   "/contracts": "contract",
+  "/whatsapp-inbox": "inbox",
   "/bills": "bill",
   "/invoices": "invoice",
   "/collect": "collect",

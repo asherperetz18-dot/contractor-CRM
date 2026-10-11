@@ -21,6 +21,13 @@ export type ReleaseNote = {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.270.0",
+    date: "2026-10-11",
+    notes: [
+      "New WhatsApp Inbox (Production menu, for Office, Admin and Production): add your company's general WhatsApp group — receipts, supply runs, odd photos — in Settings › WhatsApp Groups, and every photo or file posted there waits in the Inbox as a card. Make it a bill (the usual Add a bill window opens with the receipt already attached), file it to a job's Photos or files, or dismiss it. When the caption names a job's street, customer or job number, the card suggests that job for one-click filing. Nothing from a general group shows in a client's portal.",
+    ],
+  },
+  {
     version: "1.269.0",
     date: "2026-10-11",
     notes: [

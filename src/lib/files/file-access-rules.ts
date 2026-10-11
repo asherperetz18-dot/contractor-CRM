@@ -37,6 +37,9 @@ export async function staffCanReadFile(
     any(supabase.from("lead_files").select("id").eq("file_path", path).limit(1)),
     any(supabase.from("job_expenses").select("id").eq("receipt_path", path).limit(1)),
     any(supabase.from("vendor_bills").select("id").eq("receipt_path", path).limit(1)),
+    // A WhatsApp Inbox copy, waiting to be sorted (#204): read by whoever
+    // RLS lets see its general group -- the office and production.
+    any(supabase.from("whatsapp_group_messages").select("id").eq("media_path", path).limit(1)),
   ]);
   return found.some(Boolean);
 }

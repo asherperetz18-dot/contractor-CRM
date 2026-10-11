@@ -2701,3 +2701,23 @@ No SQL.
 
 **Consequence:** an alert, a reload, closing the tab and Refresh now ask before a window's unsaved work goes. Back, iPhone reloads, a link reached with Tab and a post-deploy double prompt stay in TECH_DEBT. No SQL.
 
+
+## 204 — A general WhatsApp group feeds a WhatsApp Inbox, sorted by the office and production
+
+**Date:** 2026-10-11
+
+**Context:** #193 ties each WhatsApp group to one job. Many companies also keep one general group for receipts, supply runs and odd photos that belong to whichever job, or to none. Linking it to a job would file everything in the wrong place. The owner saw a mock-up of an inbox to sort, and chose to build it with the office and production sorting and the page under Production.
+
+**Decision:**
+- **A group is a job's or general.** `whatsapp_group_links.kind` (0230), with `estimate_id` required for a job group and absent for a general one. Office or Admin add a general group in Settings › WhatsApp Groups, from the groups the bot number is in. Adding a group that's on a job moves it, after a confirm. Linking a general group to a job removes its general link first. Before 0230 runs, that delete simply fails, because there is nothing to clear.
+- **Files are copied on arrival, sorted later.** A general group's photos and files go to `whatsapp-inbox/<company>/<message>-<name>` in the lead-files bucket (`media_path`), not onto a customer, so a receipt isn't lost to WhatsApp's own retention while it waits. Each card stays in *To sort* until someone acts on it:
+  - **File to a job:** copies it under the job's customer, filed under the contract, so it shows in the job's Photos or Permits & files.
+  - **Make a bill:** opens the normal Add a bill window with the receipt attached. On save it's copied into that job's receipt slot (`receiptUploadPath`), so the bill passes the same checks and lands in Bills to Pay, job costs and QuickBooks like any bill. Only shown to people who may record costs.
+  - **Dismiss:** with **Put back** from the Dismissed tab.
+
+  Each action claims the item first (an update that must find it unsorted), so two people sorting at once never file one receipt twice.
+- **Who sorts.** Office, Admin and Production: the people who file a job's paperwork (`canEditChecklists`). The menu default matches (`defaultPageVisible`). RLS on general links grows a second arm, `has_role_in_company('Office' | 'Production')`, so a general group's messages, and opening its files (`staffCanReadFile` via `media_path`), stay with them.
+- **A suggestion, never a guess filed for you.** `suggestJob` reads the caption for the job number (EST-1089, #1089), the street (a long name on its own, a short one only with its Ave/St), or the customer's last or company name (4+ letters, whole words). Two jobs matching gives no suggestion.
+- **Never on a client's portal.** Filed copies are WhatsApp copies from a group not marked as the client's (#198), so the portal leaves them out.
+
+**Consequence:** a crew can keep using one receipts group, and every receipt still ends up on its job or as a bill. Text-only messages are shown under the cards for reading, with nothing to sort. There is no count on the menu yet; the To sort tab and Settings show it (TECH_DEBT).

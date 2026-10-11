@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createReceiptUploadUrl } from "@/lib/actions/job-expenses";
+import { inboxReceiptForBill } from "@/lib/actions/whatsapp-inbox";
 import { createBillWithPayments, createVendorBills } from "@/lib/actions/vendor-bills";
 import { getPaymentAccounts } from "@/lib/actions/payment-accounts";
 import type { PaymentAccount } from "@/lib/data/bills";
@@ -10,6 +11,7 @@ import { PaymentLines, linesForSave, newPaymentLine, type PaymentLineDraft } fro
 import { createVendor, getVendors } from "@/lib/actions/vendors";
 import { Field } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
+import { FilePreview } from "@/components/ui/file-preview";
 import { centsFromInput, moneyCents, vendorLabel, type Vendor } from "@/lib/data/types";
 import { downscaleImage } from "@/lib/images/downscale";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
@@ -83,6 +85,7 @@ export function AddBillModal({
   allowNoJob,
   defaultPaid,
   vendors: vendorsProp,
+  fromInbox,
   onSaved,
   onClose,
 }: {
@@ -105,6 +108,9 @@ export function AddBillModal({
   defaultPaid?: boolean;
   /** Vendor list, when the caller already has it; fetched otherwise. */
   vendors?: Vendor[];
+  /** A receipt already in the WhatsApp Inbox (#204), attached until a
+   *  file is picked instead; copied into the bill's receipt slot on save. */
+  fromInbox?: { messageId: string; fileName: string; contentType: string | null; previewUrl: string };
   onSaved?: () => void;
   onClose: () => void;
 }) {
@@ -130,6 +136,7 @@ export function AddBillModal({
   const [lines, setLines] = useState<PaymentLineDraft[]>(() => [newPaymentLine(today())]);
   const [accounts, setAccounts] = useState<PaymentAccount[]>([]);
   const [file, setFile] = useState<File | null>(null);
+  const [inboxReceipt, setInboxReceipt] = useState(fromInbox ?? null);
   // The emailed PDF or receipt photo can be dragged straight onto the row.
   const { dragOver: receiptDragOver, dropProps: receiptDropProps } = useFileDrop((files) =>
     setFile(files[0])
@@ -217,6 +224,10 @@ export function AddBillModal({
           });
         if (uploadError) return setError(uploadError.message);
         uploaded = { path: signed.path, fileName: shrunk.name, contentType: shrunk.type || null };
+      } else if (inboxReceipt) {
+        const res = await inboxReceiptForBill(inboxReceipt.messageId, leadId || null);
+        if (res.error || !res.receipt) return setError(res.error ?? "Couldn't attach the WhatsApp receipt.");
+        uploaded = res.receipt;
       }
 
       const bill = {
@@ -238,6 +249,8 @@ export function AddBillModal({
         : await createVendorBills([bill]);
       if (res.error) return setError(res.error);
 
+      // One bill per inbox receipt: the next in the stack brings its own.
+      setInboxReceipt(null);
       onSaved?.();
       router.refresh();
       if (!andAnother) {
@@ -455,10 +468,33 @@ export function AddBillModal({
             📷{" "}
             {receiptDragOver
               ? "Drop the receipt"
-              : file
+              : file || inboxReceipt
                 ? "Change the receipt"
                 : "Snap, attach or drop the receipt"}
           </button>
+          {!file && inboxReceipt && (
+            <>
+              {inboxReceipt.contentType?.startsWith("image/") && (
+                <FilePreview
+                  file={{ url: inboxReceipt.previewUrl, name: inboxReceipt.fileName, contentType: inboxReceipt.contentType }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- a stored inbox file */}
+                  <img className="bill-file-preview" src={inboxReceipt.previewUrl} alt="Receipt preview" />
+                </FilePreview>
+              )}
+              <span className="est-tax-note" style={{ wordBreak: "break-all", minWidth: 0 }}>
+                {inboxReceipt.fileName} (from WhatsApp){" "}
+                <button
+                  type="button"
+                  className="btn-ghost est-row-remove"
+                  aria-label="Remove receipt"
+                  onClick={() => setInboxReceipt(null)}
+                >
+                  ×
+                </button>
+              </span>
+            </>
+          )}
           {file && filePreview && (
             // eslint-disable-next-line @next/next/no-img-element
             <img className="bill-file-preview" src={filePreview} alt="Receipt preview" />
